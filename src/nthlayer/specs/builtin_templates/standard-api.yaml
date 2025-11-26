@@ -1,0 +1,40 @@
+name: standard-api
+description: Standard API with 99.5% availability SLO and low urgency PagerDuty
+tier: standard
+type: api
+
+resources:
+  # Availability SLO - 99.5%
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.5
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="${service}",code!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{service="${service}"}[5m]))
+  
+  # Latency SLO - p95 under 1000ms
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 95.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 1000
+        query: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # PagerDuty integration with low urgency
+  - kind: PagerDuty
+    name: primary
+    spec:
+      urgency: low
+      auto_create: true

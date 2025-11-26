@@ -1,0 +1,12 @@
+# Payment API - Base Configuration
+# Environments in environments/ directory override these defaults
+
+service:
+  name: payment-api
+  team: payments
+  tier: critical
+  type: api
+  template: critical-api
+
+# Base resources (production defaults)
+# Dev/staging environments will override with relaxed SLOs

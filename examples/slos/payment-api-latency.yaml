@@ -1,0 +1,32 @@
+# OpenSLO Example: Payment API Latency
+# This SLO tracks the latency of the payment API service
+
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: payment-api-latency
+  displayName: Payment API Latency (P95)
+  labels:
+    team: platform
+    tier: "1"
+    service: payment-api
+    owner: john@company.com
+
+spec:
+  service: payment-api
+  description: Payment API P95 latency must be under 500ms for 99% of requests over 30 days
+  
+  objectives:
+    - target: 0.99  # 99% of requests under threshold
+      indicator:
+        spec:
+          # Prometheus query for latency SLI
+          # Measures: percentage of requests with P95 < 500ms
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{service="payment-api"}[5m])) by (le)
+            ) < 0.5
+  
+  timeWindow:
+    - duration: 30d
+      type: rolling

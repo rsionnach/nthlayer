@@ -1,0 +1,22 @@
+{
+  "name": "nthlayer-presentations",
+  "version": "1.0.0",
+  "description": "NthLayer presentation decks (presentation-as-code with Slidev)",
+  "scripts": {
+    "dev": "slidev",
+    "build": "slidev build",
+    "export": "slidev export"
+  },
+  "dependencies": {
+    "@ktym4a/slidev-theme-ktym4a": "^0.3.2",
+    "@slidev/cli": "^52.9.1",
+    "@slidev/theme-default": "^0.25.0",
+    "@slidev/theme-seriph": "^0.25.0",
+    "slidev-addon-python-runner": "^0.1.3",
+    "slidev-theme-the-unnamed": "^0.0.22",
+    "slidev-theme-unicorn": "^1.1.2"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

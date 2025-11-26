@@ -1,0 +1,41 @@
+# Service-Specific Development Configuration: payment-api
+#
+# This file overrides dev.yaml for the payment-api service specifically.
+# Even in dev, payment-api needs higher reliability for testing real transactions.
+
+environment: dev
+
+service:
+  tier: standard  # Override dev.yaml's "low" tier for payment service
+  
+  metadata:
+    requires_database: true
+    requires_redis: true
+    testing_mode: true
+
+resources:
+  # Relaxed but realistic SLOs for dev testing
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.0  # Higher than typical dev (95.0)
+      window: 7d       # Shorter window for faster feedback
+      
+  - kind: SLO
+    name: latency
+    spec:
+      objective: 95.0
+      window: 7d
+      threshold_ms: 1000  # More lenient than prod (500ms)
+
+  # Dev-specific dependencies (local instances)
+  - kind: Dependencies
+    name: databases
+    spec:
+      databases:
+        - type: postgres
+          instance: payment-db-dev
+          connection: localhost:5432
+        - type: redis
+          instance: payment-cache-dev
+          connection: localhost:6379

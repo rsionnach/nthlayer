@@ -1,0 +1,33 @@
+name: low-api
+description: Low-priority API with 99.0% availability SLO
+tier: low
+type: api
+
+resources:
+  # Availability SLO - 99.0%
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="${service}",code!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{service="${service}"}[5m]))
+  
+  # Latency SLO - p95 under 2000ms (relaxed)
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 90.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 2000
+        query: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{service="${service}"}[5m])
+          )

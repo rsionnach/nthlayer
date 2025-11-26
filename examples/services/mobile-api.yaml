@@ -1,0 +1,63 @@
+# Mobile API Gateway
+# Critical API with higher latency tolerance (mobile networks)
+
+service:
+  name: mobile-api
+  team: mobile
+  tier: critical
+  type: api
+  language: node
+  framework: express
+  template: critical-api
+
+resources:
+  # Override: Mobile can tolerate higher latency
+  - kind: SLO
+    name: latency-p95
+    spec:
+      threshold_ms: 2000  # 2s (mobile networks are slower)
+      objective: 95.0     # More tolerance
+  
+  # Add: p99 latency for worst-case monitoring
+  - kind: SLO
+    name: latency-p99
+    spec:
+      objective: 90.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 99
+        threshold_ms: 5000  # 5s worst case
+        query: |
+          histogram_quantile(0.99,
+            rate(http_request_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # Add: API key validation success rate
+  - kind: SLO
+    name: auth-success-rate
+    spec:
+      objective: 99.9
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(api_key_validations{service="${service}",status="success"}[5m]))
+          /
+          sum(rate(api_key_validations{service="${service}"}[5m]))
+  
+  # Add: Dependencies
+  - kind: Dependencies
+    name: upstream
+    spec:
+      services:
+        - name: auth-api
+          criticality: critical
+        - name: user-service
+          criticality: high
+        - name: content-api
+          criticality: high
+      databases:
+        - name: mobile-cache
+          type: redis
+          criticality: high

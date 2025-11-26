@@ -1,0 +1,21 @@
+# Shared Staging Environment Configuration
+#
+# Staging mirrors production configuration but with slightly relaxed requirements.
+# Use this to test production-like configs before deploying to prod.
+
+environment: staging
+
+service:
+  tier: standard  # Most staging services are standard tier
+  
+  metadata:
+    environment: staging
+    monitoring_level: standard
+    auto_scaling: true
+    deployment_strategy: rolling
+
+# Staging typically uses:
+# - Production-like SLO targets (slightly relaxed)
+# - Full monitoring and alerting
+# - Similar resource allocations to prod
+# - Real integration points (but staging instances)

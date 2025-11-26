@@ -1,0 +1,26 @@
+# Payment API with Dependencies
+# This example shows how alert generation works
+
+service:
+  name: payment-api
+  team: payments
+  tier: critical
+  type: api
+  template: critical-api
+
+resources:
+  # Dependencies for alert generation
+  - kind: Dependencies
+    name: upstream
+    spec:
+      databases:
+        - name: postgres-main
+          type: postgres
+          criticality: high
+        - name: redis-cache
+          type: redis
+          criticality: medium
+      
+      services:
+        - name: auth-service
+          criticality: high

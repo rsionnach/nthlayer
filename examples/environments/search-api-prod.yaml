@@ -1,0 +1,62 @@
+# Service-Specific Production Configuration: search-api
+#
+# Search API handles high traffic but can tolerate slightly more latency
+# than transactional services like payment-api.
+
+environment: prod
+
+service:
+  tier: critical
+  
+  metadata:
+    traffic_pattern: high-volume
+    cache_strategy: aggressive
+    auto_scaling: true
+    scale_metric: requests_per_second
+
+resources:
+  # Search can tolerate slightly lower availability
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.9  # Three nines (sufficient for search)
+      window: 30d
+  
+  # Higher latency tolerance for search
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      threshold_ms: 800  # Search can be slower
+      
+  - kind: SLO
+    name: latency-p99
+    spec:
+      objective: 95.0  # More lenient p99
+      window: 30d
+      threshold_ms: 2000
+
+  # Search-specific dependencies
+  - kind: Dependencies
+    name: search
+    spec:
+      databases:
+        - type: elasticsearch
+          instance: search-cluster-prod
+          endpoint: search.prod.company.com
+          cluster_size: 5
+          
+        - type: redis
+          instance: search-cache-prod
+          endpoint: search-cache.prod.company.com
+          ttl: 300  # 5 minute cache
+
+  # Standard PagerDuty escalation (not high-urgency)
+  - kind: PagerDuty
+    name: primary
+    spec:
+      escalation_policy: search-team
+      urgency: high  # Still high, but separate escalation
+      auto_resolve: true
+      acknowledgement_timeout: 10m

@@ -1,0 +1,18 @@
+# Admin Dashboard API
+# Internal-only API with standard SLOs
+
+service:
+  name: admin-dashboard-api
+  team: platform
+  tier: standard
+  type: api
+  language: python
+  framework: flask
+  template: standard-api
+
+# Uses standard-api template:
+#   - 99.5% availability
+#   - p95 < 1000ms latency
+#   - Low urgency PagerDuty
+
+# No customization needed for this internal API

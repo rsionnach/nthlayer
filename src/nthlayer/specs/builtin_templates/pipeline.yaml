@@ -1,0 +1,33 @@
+name: pipeline
+description: Data pipeline with 95% success rate SLO
+tier: standard
+type: pipeline
+
+resources:
+  # Success rate SLO - 95.0% (more tolerance for pipelines)
+  - kind: SLO
+    name: success-rate
+    spec:
+      objective: 95.0
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(pipeline_success_total{service="${service}"}[5m]))
+          /
+          sum(rate(pipeline_runs_total{service="${service}"}[5m]))
+  
+  # Data freshness SLO - p95 under 6 hours
+  - kind: SLO
+    name: freshness-p95
+    spec:
+      objective: 95.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 21600000
+        query: |
+          histogram_quantile(0.95,
+            rate(pipeline_duration_seconds_bucket{service="${service}"}[5m])
+          )

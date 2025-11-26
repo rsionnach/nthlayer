@@ -1,0 +1,23 @@
+# Shared Production Environment Configuration
+#
+# Production defaults for all services. Critical services can override
+# with service-specific {service}-prod.yaml files.
+
+environment: prod
+
+service:
+  tier: critical  # Default production tier
+  
+  metadata:
+    environment: prod
+    monitoring_level: comprehensive
+    auto_scaling: true
+    deployment_strategy: canary
+    compliance_required: true
+
+# Production services have:
+# - Strict SLO targets
+# - Comprehensive monitoring
+# - PagerDuty integration
+# - Full alert coverage
+# - Automated deployment gates

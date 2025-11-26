@@ -1,0 +1,62 @@
+# Notification Service Definition
+#
+# Background job service for sending notifications
+
+service:
+  name: notification-service
+  team: platform
+  tier: standard
+  type: background-job
+  language: python
+  framework: celery
+
+resources:
+  # Availability SLO for background jobs
+  - kind: SLO
+    name: job-success-rate
+    spec:
+      objective: 99.5  # 99.5% of jobs succeed
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(job_runs{service="${service}",status="success"}[5m]))
+          /
+          sum(rate(job_runs{service="${service}"}[5m]))
+  
+  # Processing time SLO
+  - kind: SLO
+    name: processing-time-p95
+    spec:
+      objective: 95.0  # 95% under 5 seconds
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 5000
+        query: |
+          histogram_quantile(0.95,
+            rate(job_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # PagerDuty
+  - kind: PagerDuty
+    name: primary
+    spec:
+      escalation_policy: platform-standard
+      urgency: low  # Background job failures not critical
+      auto_create: true
+  
+  # Dependencies
+  - kind: Dependencies
+    name: upstream
+    spec:
+      queues:
+        - name: notification-queue
+          type: sqs
+          criticality: high
+      external_apis:
+        - name: sendgrid
+          criticality: high
+        - name: twilio
+          criticality: medium

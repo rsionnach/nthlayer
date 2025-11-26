@@ -1,0 +1,46 @@
+# Analytics ETL Pipeline
+# Batch job that processes user analytics data
+
+service:
+  name: analytics-pipeline
+  team: data
+  tier: standard
+  type: pipeline
+  language: python
+  template: pipeline
+
+resources:
+  # Override: Analytics pipeline runs daily, can take longer
+  - kind: SLO
+    name: freshness-p95
+    spec:
+      threshold_ms: 43200000  # 12 hours (template default is 6h)
+      objective: 90.0  # Relaxed (template is 95%)
+  
+  # Add: Data quality SLO
+  - kind: SLO
+    name: data-quality
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(pipeline_valid_records_total{service="${service}"}[5m]))
+          /
+          sum(rate(pipeline_processed_records_total{service="${service}"}[5m]))
+  
+  # Add: Dependencies
+  - kind: Dependencies
+    name: upstream
+    spec:
+      services:
+        - name: user-service
+          criticality: high  # Source of user data
+      databases:
+        - name: analytics-warehouse
+          type: bigquery
+          criticality: high
+        - name: raw-data-lake
+          type: s3
+          criticality: high

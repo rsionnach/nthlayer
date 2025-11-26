@@ -1,0 +1,32 @@
+# Search API Service Definition
+#
+# Critical tier API with template-based configuration
+
+service:
+  name: search-api
+  team: search
+  tier: critical
+  type: api
+  language: go
+  template: critical-api  # Uses template for standard SLOs
+
+# Minimal resources - most inherited from template
+resources:
+  # Override template's latency threshold
+  - kind: SLO
+    name: latency-p95
+    spec:
+      threshold_ms: 300  # Stricter than template's 500ms
+      
+  # Custom dependency configuration
+  - kind: Dependencies
+    spec:
+      upstream:
+        - name: catalog-service
+          criticality: high
+        - name: recommendation-service
+          criticality: low  # Search works without recommendations
+      databases:
+        - name: search-index
+          type: elasticsearch
+          criticality: high

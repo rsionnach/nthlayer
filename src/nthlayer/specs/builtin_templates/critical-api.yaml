@@ -1,0 +1,40 @@
+name: critical-api
+description: High-traffic API with 99.9% availability SLO and critical PagerDuty escalation
+tier: critical
+type: api
+
+resources:
+  # Availability SLO - 99.9%
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.9
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="${service}",code!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{service="${service}"}[5m]))
+  
+  # Latency SLO - p95 under 500ms
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 500
+        query: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # PagerDuty integration with high urgency
+  - kind: PagerDuty
+    name: primary
+    spec:
+      urgency: high
+      auto_create: true

@@ -1,0 +1,30 @@
+# OpenSLO Example: Search API Availability
+# Tier 2 service with slightly lower SLO target
+
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: search-api-availability
+  displayName: Search API Availability
+  labels:
+    team: commerce
+    tier: "2"
+    service: search-api
+    owner: alice@company.com
+
+spec:
+  service: search-api
+  description: Search API must be available 99.9% of the time over 30 days
+  
+  objectives:
+    - target: 0.999  # 99.9% availability (more relaxed than tier 1)
+      indicator:
+        spec:
+          query: |
+            sum(rate(http_requests_total{service="search-api",status=~"2.."}[5m]))
+            /
+            sum(rate(http_requests_total{service="search-api"}[5m]))
+  
+  timeWindow:
+    - duration: 30d
+      type: rolling

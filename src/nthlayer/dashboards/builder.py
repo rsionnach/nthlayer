@@ -1,0 +1,422 @@
+"""Dashboard builder for generating Grafana dashboards from service specs.
+
+Automatically creates dashboards with:
+- SLO panels (availability, latency, error rate)
+- Service metadata
+- Template variables
+- Technology-specific panels (auto-detected from dependencies)
+"""
+
+from typing import List, Optional
+from nthlayer.specs.models import Resource, ServiceContext
+from nthlayer.dashboards.models import (
+    Dashboard,
+    Panel,
+    Row,
+    Target,
+    TemplateVariable,
+)
+from nthlayer.dashboards.templates import get_template
+
+
+class DashboardBuilder:
+    """Builds Grafana dashboards from service specifications."""
+    
+    def __init__(self, service_context: ServiceContext, resources: List[Resource], full_panels: bool = False):
+        """Initialize builder with service context and resources.
+        
+        Args:
+            service_context: Service metadata (name, team, tier, etc.)
+            resources: List of resources (SLOs, dependencies, etc.)
+            full_panels: If True, use all template panels; if False, use overview only
+        """
+        self.context = service_context
+        self.resources = resources
+        self.slo_resources = [r for r in resources if r.kind == "SLO"]
+        self.dependency_resources = [r for r in resources if r.kind == "Dependencies"]
+        self.full_panels = full_panels
+    
+    def build(self) -> Dashboard:
+        """Build complete dashboard.
+        
+        Returns:
+            Dashboard object ready to be serialized to JSON
+        """
+        # Create dashboard
+        dashboard = Dashboard(
+            title=f"{self.context.name} - Service Dashboard",
+            uid=f"{self.context.name.replace('_', '-')}-overview",
+            description=f"Auto-generated dashboard for {self.context.name} service",
+            tags=[
+                "nthlayer",
+                "auto-generated",
+                self.context.team,
+                self.context.tier,
+            ],
+            time_from="now-6h",
+            time_to="now",
+            refresh="30s",
+        )
+        
+        # Add template variables
+        dashboard.template_variables = self._build_template_variables()
+        
+        # Add SLO panels
+        if self.slo_resources:
+            slo_row = Row(title="SLO Metrics")
+            slo_row.panels = self._build_slo_panels()
+            dashboard.rows.append(slo_row)
+        
+        # Add service health panels
+        health_row = Row(title="Service Health")
+        health_row.panels = self._build_health_panels()
+        dashboard.rows.append(health_row)
+        
+        # Add technology-specific panels if dependencies exist
+        if self.dependency_resources:
+            tech_panels = self._build_technology_panels()
+            if tech_panels:
+                tech_row = Row(title="Dependencies")
+                tech_row.panels = tech_panels
+                dashboard.rows.append(tech_row)
+        
+        return dashboard
+    
+    def _build_template_variables(self) -> List[TemplateVariable]:
+        """Build dashboard template variables.
+        
+        Returns:
+            List of template variables for filtering
+        """
+        variables = []
+        
+        # Service filter
+        variables.append(TemplateVariable(
+            name="service",
+            label="Service",
+            query=f'label_values(up{{service="{self.context.name}"}}, service)',
+            datasource="Prometheus",
+            current={"text": self.context.name, "value": self.context.name}
+        ))
+        
+        # Environment filter (if environment is set)
+        if self.context.environment:
+            variables.append(TemplateVariable(
+                name="environment",
+                label="Environment",
+                query='label_values(up{service="$service"}, environment)',
+                datasource="Prometheus",
+                current={"text": self.context.environment, "value": self.context.environment}
+            ))
+        
+        # Namespace filter (for Kubernetes)
+        if self.context.type in ["api", "web", "worker"]:
+            variables.append(TemplateVariable(
+                name="namespace",
+                label="Namespace",
+                query='label_values(up{service="$service"}, namespace)',
+                datasource="Prometheus",
+            ))
+        
+        return variables
+    
+    def _build_slo_panels(self) -> List[Panel]:
+        """Build panels for SLO metrics.
+        
+        Returns:
+            List of panels showing SLO status
+        """
+        panels = []
+        
+        for slo in self.slo_resources:
+            slo_name = slo.name
+            slo_spec = slo.spec
+            
+            # Determine SLO type and create appropriate panel
+            if "latency" in slo_name.lower():
+                panel = self._build_latency_slo_panel(slo_name, slo_spec)
+            elif "availability" in slo_name.lower():
+                panel = self._build_availability_slo_panel(slo_name, slo_spec)
+            elif "error" in slo_name.lower() or "success" in slo_name.lower():
+                panel = self._build_error_rate_slo_panel(slo_name, slo_spec)
+            else:
+                # Generic SLO panel
+                panel = self._build_generic_slo_panel(slo_name, slo_spec)
+            
+            panels.append(panel)
+        
+        return panels
+    
+    def _build_availability_slo_panel(self, name: str, spec: dict) -> Panel:
+        """Build availability SLO panel (gauge showing current availability)."""
+        objective = spec.get("objective", 99.9)
+        
+        return Panel(
+            title=f"{name.title()} SLO",
+            panel_type="gauge",
+            targets=[
+                Target(
+                    expr=(
+                        f'sum(rate(http_requests_total{{service="$service",status!~"5.."}}[5m])) / '
+                        f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                    ),
+                    legend_format="Availability %",
+                )
+            ],
+            description=f"Current availability vs {objective}% SLO target",
+            unit="percent",
+            decimals=2,
+            min=0,
+            max=100,
+            thresholds=[
+                {"value": 0, "color": "red"},
+                {"value": objective - 1, "color": "yellow"},
+                {"value": objective, "color": "green"},
+            ],
+            grid_pos={"h": 8, "w": 6, "x": 0, "y": 0}
+        )
+    
+    def _build_latency_slo_panel(self, name: str, spec: dict) -> Panel:
+        """Build latency SLO panel (showing p50, p95, p99)."""
+        objective = spec.get("objective", 99.0)
+        threshold_ms = spec.get("latency_threshold", 500)
+        
+        return Panel(
+            title=f"{name.title()} SLO",
+            panel_type="timeseries",
+            targets=[
+                Target(
+                    expr=f'histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    legend_format="p50",
+                    ref_id="A"
+                ),
+                Target(
+                    expr=f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    legend_format="p95",
+                    ref_id="B"
+                ),
+                Target(
+                    expr=f'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    legend_format="p99",
+                    ref_id="C"
+                ),
+            ],
+            description=f"Request latency percentiles (target: {objective}% under {threshold_ms}ms)",
+            unit="ms",
+            decimals=0,
+            thresholds=[
+                {"value": 0, "color": "green"},
+                {"value": threshold_ms * 0.8, "color": "yellow"},
+                {"value": threshold_ms, "color": "red"},
+            ],
+            grid_pos={"h": 8, "w": 12, "x": 0, "y": 0}
+        )
+    
+    def _build_error_rate_slo_panel(self, name: str, spec: dict) -> Panel:
+        """Build error rate SLO panel."""
+        objective = spec.get("objective", 99.9)
+        error_budget = 100 - objective
+        
+        return Panel(
+            title=f"{name.title()} SLO",
+            panel_type="timeseries",
+            targets=[
+                Target(
+                    expr=(
+                        f'sum(rate(http_requests_total{{service="$service",status=~"5.."}}[5m])) / '
+                        f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                    ),
+                    legend_format="Error Rate %",
+                )
+            ],
+            description=f"Error rate vs {error_budget}% budget",
+            unit="percent",
+            decimals=2,
+            min=0,
+            thresholds=[
+                {"value": 0, "color": "green"},
+                {"value": error_budget * 0.5, "color": "yellow"},
+                {"value": error_budget, "color": "red"},
+            ],
+            grid_pos={"h": 8, "w": 6, "x": 0, "y": 0}
+        )
+    
+    def _build_generic_slo_panel(self, name: str, spec: dict) -> Panel:
+        """Build generic SLO panel (when type is unknown)."""
+        objective = spec.get("objective", 99.9)
+        
+        return Panel(
+            title=f"{name.title()}",
+            panel_type="stat",
+            targets=[
+                Target(
+                    expr=f'slo_objective{{service="$service",slo="{name}"}}',
+                    legend_format="Objective",
+                )
+            ],
+            description=f"SLO objective: {objective}%",
+            unit="percent",
+            decimals=2,
+            grid_pos={"h": 8, "w": 6, "x": 0, "y": 0}
+        )
+    
+    def _build_health_panels(self) -> List[Panel]:
+        """Build general service health panels.
+        
+        Returns:
+            List of panels showing service health metrics
+        """
+        panels = []
+        
+        # Request rate panel
+        panels.append(Panel(
+            title="Request Rate",
+            panel_type="timeseries",
+            targets=[
+                Target(
+                    expr=f'sum(rate(http_requests_total{{service="$service"}}[5m]))',
+                    legend_format="Requests/sec",
+                )
+            ],
+            description="HTTP requests per second",
+            unit="reqps",
+            decimals=1,
+            grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+        ))
+        
+        # Error rate panel
+        panels.append(Panel(
+            title="Error Rate",
+            panel_type="timeseries",
+            targets=[
+                Target(
+                    expr=(
+                        f'sum(rate(http_requests_total{{service="$service",status=~"5.."}}[5m])) / '
+                        f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                    ),
+                    legend_format="Error %",
+                )
+            ],
+            description="Percentage of requests returning 5xx errors",
+            unit="percent",
+            decimals=2,
+            min=0,
+            thresholds=[
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"},
+            ],
+            grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+        ))
+        
+        # Response time panel
+        panels.append(Panel(
+            title="Response Time (p95)",
+            panel_type="timeseries",
+            targets=[
+                Target(
+                    expr=f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    legend_format="p95 latency",
+                )
+            ],
+            description="95th percentile response time",
+            unit="ms",
+            decimals=0,
+            grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+        ))
+        
+        return panels
+    
+    def _build_technology_panels(self) -> List[Panel]:
+        """Build technology-specific panels based on dependencies.
+        
+        Uses comprehensive technology templates for detailed monitoring.
+        
+        Returns:
+            List of panels for detected technologies
+        """
+        panels = []
+        seen_technologies = set()
+        
+        for dep in self.dependency_resources:
+            dep_spec = dep.spec
+            
+            # Check for databases
+            databases = dep_spec.get("databases", [])
+            for db in databases:
+                db_type = db.get("type", "").lower()
+                
+                # Skip if we've already added panels for this technology
+                if db_type in seen_technologies:
+                    continue
+                seen_technologies.add(db_type)
+                
+                try:
+                    template = get_template(db_type)
+                    # Use overview or full panels based on setting
+                    if self.full_panels:
+                        tech_panels = template.get_panels("$service")
+                    else:
+                        tech_panels = template.get_overview_panels("$service")
+                    panels.extend(tech_panels)
+                except KeyError:
+                    # Technology not in template registry - skip
+                    pass
+            
+            # Check for message queues
+            queues = dep_spec.get("message_queues", [])
+            for queue in queues:
+                queue_type = queue.get("type", "").lower()
+                
+                if queue_type in seen_technologies:
+                    continue
+                seen_technologies.add(queue_type)
+                
+                try:
+                    template = get_template(queue_type)
+                    # Use overview or full panels based on setting
+                    if self.full_panels:
+                        tech_panels = template.get_panels("$service")
+                    else:
+                        tech_panels = template.get_overview_panels("$service")
+                    panels.extend(tech_panels)
+                except KeyError:
+                    pass
+        
+        # Add Kubernetes panels if service type suggests containerized deployment
+        if self.context.type in ["api", "web", "worker"] and "kubernetes" not in seen_technologies:
+            try:
+                k8s_template = get_template("kubernetes")
+                # Use overview or full panels based on setting
+                if self.full_panels:
+                    panels.extend(k8s_template.get_panels("$service"))
+                else:
+                    panels.extend(k8s_template.get_overview_panels("$service"))
+            except KeyError:
+                pass
+        
+        return panels
+
+
+def build_dashboard(service_context: ServiceContext, resources: List[Resource], full_panels: bool = False) -> Dashboard:
+    """Convenience function to build a dashboard.
+    
+    Args:
+        service_context: Service metadata
+        resources: List of resources (SLOs, dependencies, etc.)
+        full_panels: If True, use all template panels; if False, use overview only
+        
+    Returns:
+        Complete dashboard object
+        
+    Example:
+        >>> from nthlayer.specs.parser import parse_service_file
+        >>> context, resources = parse_service_file("payment-api.yaml")
+        >>> dashboard = build_dashboard(context, resources)
+        >>> json_output = dashboard.to_grafana_payload()
+        
+        >>> # Generate with all panels
+        >>> dashboard_full = build_dashboard(context, resources, full_panels=True)
+    """
+    builder = DashboardBuilder(service_context, resources, full_panels=full_panels)
+    return builder.build()

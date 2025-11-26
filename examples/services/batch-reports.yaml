@@ -1,0 +1,36 @@
+# Batch Report Generator
+# Low-priority batch job for generating daily reports
+
+service:
+  name: batch-reports
+  team: data
+  tier: low
+  type: api
+  language: python
+  template: low-api
+
+resources:
+  # Add: Report generation success rate
+  - kind: SLO
+    name: report-success-rate
+    spec:
+      objective: 95.0  # Lower expectation for batch
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(reports_generated_total{service="${service}",status="success"}[5m]))
+          /
+          sum(rate(reports_generated_total{service="${service}"}[5m]))
+  
+  # Add: Dependencies (non-critical)
+  - kind: Dependencies
+    name: upstream
+    spec:
+      databases:
+        - name: analytics-db
+          type: postgresql
+          criticality: medium
+        - name: reports-storage
+          type: s3
+          criticality: medium

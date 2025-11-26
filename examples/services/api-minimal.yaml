@@ -1,0 +1,14 @@
+# Minimal API Service
+# Uses template with zero customization
+
+service:
+  name: api-minimal
+  team: platform
+  tier: critical
+  type: api
+  template: critical-api
+
+# That's it! Template provides all resources:
+#   - SLO: availability (99.9%)
+#   - SLO: latency-p95 (99% under 500ms)
+#   - PagerDuty: primary (high urgency)

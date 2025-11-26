@@ -1,0 +1,49 @@
+# Authentication API
+# Critical service with custom latency requirements
+
+service:
+  name: auth-api
+  team: platform
+  tier: critical
+  type: api
+  language: go
+  framework: gin
+  template: critical-api
+
+resources:
+  # Override: Auth needs to be faster than default
+  - kind: SLO
+    name: latency-p95
+    spec:
+      threshold_ms: 200  # Stricter than template's 500ms
+      objective: 99.5    # 99.5% of requests under 200ms
+  
+  # Add: Token generation latency
+  - kind: SLO
+    name: token-generation-latency
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 100
+        query: |
+          histogram_quantile(0.95,
+            rate(token_generation_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # Add: Dependencies on user service
+  - kind: Dependencies
+    name: upstream
+    spec:
+      services:
+        - name: user-service
+          criticality: critical
+      databases:
+        - name: auth-db
+          type: postgresql
+          criticality: critical
+      external_apis:
+        - name: oauth-provider
+          criticality: high

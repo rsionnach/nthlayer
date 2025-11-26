@@ -1,0 +1,93 @@
+# Payment API Service Definition
+# 
+# Critical tier API handling payment processing
+# Service name declared once - inherited by all resources
+
+service:
+  name: payment-api
+  team: payments
+  tier: critical
+  type: api
+  language: java
+  framework: spring-boot
+
+resources:
+  # Availability SLO - stricter than standard
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.95  # 99.95% availability
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests{service="${service}",code!~"5.."}[5m]))
+          /
+          sum(rate(http_requests{service="${service}"}[5m]))
+  
+  # Latency SLO - p95
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0  # 99% of requests under threshold
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 500
+        query: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # Latency SLO - p99  
+  - kind: SLO
+    name: latency-p99
+    spec:
+      objective: 95.0  # 95% of requests under threshold
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 99
+        threshold_ms: 1000
+  
+  # PagerDuty integration
+  - kind: PagerDuty
+    name: primary
+    spec:
+      escalation_policy: payments-critical
+      urgency: high
+      auto_create: true  # Create service if doesn't exist
+  
+  # Service dependencies for deploy correlation
+  - kind: Dependencies
+    name: upstream
+    spec:
+      services:
+        - name: user-service
+          criticality: high  # If user-service fails, we fail
+        - name: fraud-detection
+          criticality: high
+        - name: inventory-service
+          criticality: medium  # Can degrade gracefully
+      databases:
+        - name: payments-db
+          type: postgresql
+          criticality: high
+      external_apis:
+        - name: stripe
+          criticality: high
+          
+  # Observability configuration
+  - kind: Observability
+    name: metadata
+    spec:
+      metrics:
+        endpoint: /actuator/metrics
+        port: 8080
+      health:
+        endpoint: /actuator/health
+        port: 8080
+      logs:
+        format: json
+        level: info

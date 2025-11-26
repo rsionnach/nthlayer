@@ -1,0 +1,40 @@
+name: background-job
+description: Background worker service with success rate SLO
+tier: standard
+type: background-job
+
+resources:
+  # Success rate SLO - 99.0%
+  - kind: SLO
+    name: success-rate
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(job_success_total{service="${service}"}[5m]))
+          /
+          sum(rate(job_total{service="${service}"}[5m]))
+  
+  # Processing latency SLO - p95 under 60s
+  - kind: SLO
+    name: processing-latency-p95
+    spec:
+      objective: 95.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 60000
+        query: |
+          histogram_quantile(0.95,
+            rate(job_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # PagerDuty integration with low urgency
+  - kind: PagerDuty
+    name: primary
+    spec:
+      urgency: low
+      auto_create: true

@@ -1,0 +1,91 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Generated files (NthLayer output)
+generated/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# NthLayer specific
+.nthlayer/
+*.nthlayer.yaml
+
+# Development/Archive files (not for users)
+archive/*
+docs/archive/*
+*_OLD*.md
+*_BACKUP*.md
+*_COMPLETE.md
+*_COMPARISON.md
+CLEANUP_COMPLETE.md
+README_COMPARISON.md
+UNIFIED_APPLY_COMPLETE.md
+SESSION*.md
+PHASE*.md
+WEEK*.md
+
+# Presentation build artifacts
+presentations/node_modules/
+presentations/.slidev/
+presentations/dist/
+presentations/package-lock.json
+
+# Local demo/testing data
+demo-data/
+test-output/
+.demo/
+
+# Docker volumes
+postgres-data/
+redis-data/

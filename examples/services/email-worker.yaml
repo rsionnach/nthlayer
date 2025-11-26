@@ -1,0 +1,36 @@
+# Email Sending Worker
+# Background job that processes email queue
+
+service:
+  name: email-worker
+  team: notifications
+  tier: standard
+  type: background-job
+  language: python
+  framework: celery
+  template: background-job
+
+resources:
+  # Override: Email sending can take longer than default 60s
+  - kind: SLO
+    name: processing-latency-p95
+    spec:
+      threshold_ms: 120000  # 2 minutes (template default is 60s)
+  
+  # Add: Dependencies on email service provider
+  - kind: Dependencies
+    name: upstream
+    spec:
+      external_apis:
+        - name: sendgrid
+          criticality: high
+        - name: twilio
+          criticality: medium  # Fallback SMS
+      queues:
+        - name: email-queue
+          type: rabbitmq
+          criticality: high
+      databases:
+        - name: email-templates-db
+          type: postgresql
+          criticality: medium

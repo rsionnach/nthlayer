@@ -1,0 +1,29 @@
+# Shared Development Environment Configuration
+#
+# This file applies to ALL services when --env dev is used.
+# Service-specific overrides can be placed in {service}-dev.yaml
+
+environment: dev
+
+# Development services typically have:
+# - Lower SLO targets
+# - Reduced alert thresholds
+# - Lower tier priority
+# - Minimal monitoring overhead
+
+service:
+  tier: low  # All dev services are low priority
+  
+  metadata:
+    environment: dev
+    monitoring_level: basic
+    auto_scaling: false
+
+# Optional: Shared resource overrides
+# These apply to all services unless overridden by service-specific files
+# 
+# resources:
+#   - kind: SLO
+#     name: availability
+#     spec:
+#       objective: 95.0  # Relaxed SLO for dev

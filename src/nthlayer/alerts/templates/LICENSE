@@ -1,0 +1,51 @@
+# Alert Templates License
+
+The alert templates in this directory are sourced from:
+**awesome-prometheus-alerts** by samber
+https://github.com/samber/awesome-prometheus-alerts
+
+## License
+
+These templates are licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+**License:** https://creativecommons.org/licenses/by/4.0/legalcode
+
+**Copyright:** © samber and contributors
+
+## Attribution
+
+```
+Alert templates sourced from awesome-prometheus-alerts
+https://github.com/samber/awesome-prometheus-alerts
+Licensed under CC BY 4.0
+```
+
+## Modifications
+
+NthLayer uses these templates as-is with the following customizations:
+- Service-specific labels added (service, team, tier)
+- Runbook URL annotations added
+- Notification channel annotations added
+- Templates filtered by service tier
+
+The original alert expressions and thresholds are preserved.
+
+## Usage in NthLayer
+
+NthLayer loads these templates and customizes them for specific services,
+but does not claim ownership of the original alert definitions.
+
+All generated alerts include attribution to awesome-prometheus-alerts.
+
+## Creative Commons Attribution 4.0 Summary
+
+You are free to:
+- **Share** — copy and redistribute the material
+- **Adapt** — remix, transform, and build upon the material
+- For any purpose, including commercial use
+
+Under the following terms:
+- **Attribution** — You must give appropriate credit, provide a link to the license,
+  and indicate if changes were made
+
+Full license: https://creativecommons.org/licenses/by/4.0/legalcode

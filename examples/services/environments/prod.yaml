@@ -1,0 +1,17 @@
+# Production Environment Overrides
+# Applied when using --env prod
+
+environment: prod
+
+# Production typically uses base config, but you can add explicit overrides here
+
+# Example: Ensure production tier is critical
+service:
+  tier: critical
+
+# Example: Ensure production PagerDuty is high urgency
+resources:
+  - kind: PagerDuty
+    name: primary
+    spec:
+      urgency: high

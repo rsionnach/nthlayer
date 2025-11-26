@@ -1,0 +1,68 @@
+# Service-Specific Production Configuration: payment-api
+#
+# Payment API is mission-critical and requires stricter SLOs than other services.
+
+environment: prod
+
+service:
+  tier: critical  # Highest priority
+  
+  metadata:
+    criticality: mission-critical
+    compliance: pci-dss
+    data_classification: sensitive
+    on_call_required: true
+
+resources:
+  # Extra nine for payment API
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.99  # Four nines (vs default 99.9%)
+      window: 30d
+      indicator:
+        success_rate:
+          total_query: 'sum(rate(http_requests_total{service="payment-api"}[5m]))'
+          error_query: 'sum(rate(http_requests_total{service="payment-api",status=~"5.."}[5m]))'
+  
+  # Strict latency requirements
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.5
+      window: 30d
+      threshold_ms: 300  # Stricter than default 500ms
+      
+  - kind: SLO
+    name: latency-p99
+    spec:
+      objective: 99.0
+      window: 30d
+      threshold_ms: 500
+
+  # Production database configuration
+  - kind: Dependencies
+    name: databases
+    spec:
+      databases:
+        - type: postgres
+          instance: payment-db-prod
+          endpoint: payment-db.prod.company.com
+          connection_pool: 50
+          read_replicas: 3
+          ssl: required
+          
+        - type: redis
+          instance: payment-cache-prod
+          endpoint: payment-cache.prod.company.com
+          cluster: true
+          ssl: required
+
+  # High-urgency PagerDuty escalation
+  - kind: PagerDuty
+    name: primary
+    spec:
+      escalation_policy: payment-critical
+      urgency: high
+      auto_resolve: false
+      acknowledgement_timeout: 5m

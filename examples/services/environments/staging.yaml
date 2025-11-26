@@ -1,0 +1,28 @@
+# Staging Environment Overrides
+# Applied when using --env staging
+
+environment: staging
+
+# Override service-level fields
+service:
+  tier: standard  # Medium tier in staging
+
+# Override resources
+resources:
+  # Medium SLO targets for staging
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.5  # Between dev (99%) and prod (99.9%)
+  
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 95.0  # Medium
+      threshold_ms: 1000
+  
+  # PagerDuty - low urgency in staging
+  - kind: PagerDuty
+    name: primary
+    spec:
+      urgency: low  # Tickets only, no pages

@@ -1,0 +1,170 @@
+# Demo data for NthLayer testing
+# This file contains realistic sample data for development and demos
+
+services:
+  - id: search-api
+    name: Search API
+    tier: 1
+    team: team-platform
+    description: Core search service for product catalog
+    dependencies:
+      - elasticsearch
+      - redis-cache
+      - postgres-primary
+    slo:
+      availability: 99.95
+      latency_p99: 200ms
+      error_rate: 0.1%
+    
+  - id: user-service
+    name: User Service
+    tier: 2
+    team: team-identity
+    description: User authentication and profile management
+    dependencies:
+      - postgres-users
+      - redis-sessions
+    slo:
+      availability: 99.5
+      latency_p95: 500ms
+      error_rate: 1%
+  
+  - id: payment-api
+    name: Payment API
+    tier: 1
+    team: team-commerce
+    description: Payment processing and transaction management
+    dependencies:
+      - stripe
+      - postgres-payments
+      - kafka
+    slo:
+      availability: 99.99
+      latency_p99: 100ms
+      error_rate: 0.01%
+  
+  - id: notification-worker
+    name: Notification Worker
+    tier: 3
+    team: team-platform
+    description: Background worker for email/SMS notifications
+    dependencies:
+      - sqs-notifications
+      - sendgrid
+      - twilio
+    slo:
+      availability: 99.0
+      latency_p95: 5000ms
+      error_rate: 2%
+
+teams:
+  - id: team-platform
+    name: Platform Engineering
+    description: Core infrastructure and platform services
+    members:
+      - email: alice@example.com
+        role: manager
+        name: Alice Johnson
+      - email: bob@example.com
+        role: member
+        name: Bob Smith
+      - email: charlie@example.com
+        role: member
+        name: Charlie Davis
+    slack_channel: "#team-platform"
+    pagerduty_schedule: "Follow the sun"
+    
+  - id: team-identity
+    name: Identity & Access
+    description: Authentication, authorization, user management
+    members:
+      - email: diana@example.com
+        role: manager
+        name: Diana Prince
+      - email: evan@example.com
+        role: member
+        name: Evan Williams
+    slack_channel: "#team-identity"
+    pagerduty_schedule: "Weekly rotation"
+  
+  - id: team-commerce
+    name: Commerce
+    description: Payments, orders, checkout
+    members:
+      - email: frank@example.com
+        role: manager
+        name: Frank Castle
+      - email: grace@example.com
+        role: member
+        name: Grace Hopper
+      - email: henry@example.com
+        role: member
+        name: Henry Ford
+    slack_channel: "#team-commerce"
+    pagerduty_schedule: "24/7 rotation"
+
+alert_templates:
+  tier_1:
+    - name: "High Latency"
+      query: "p95 > 500ms for 5 minutes"
+      severity: critical
+      notify: pagerduty
+    - name: "Error Rate"
+      query: "error_rate > 1% for 5 minutes"
+      severity: critical
+      notify: pagerduty
+    - name: "Availability"
+      query: "uptime < 99.9% over 1 hour"
+      severity: critical
+      notify: pagerduty
+  
+  tier_2:
+    - name: "High Latency"
+      query: "p95 > 1000ms for 10 minutes"
+      severity: warning
+      notify: slack
+    - name: "Error Rate"
+      query: "error_rate > 2% for 10 minutes"
+      severity: warning
+      notify: slack
+  
+  tier_3:
+    - name: "High Error Rate"
+      query: "error_rate > 5% for 15 minutes"
+      severity: warning
+      notify: slack
+
+dashboard_templates:
+  golden_signals:
+    title: "{service} - Golden Signals"
+    panels:
+      - title: Latency
+        type: graph
+        metrics:
+          - p50
+          - p95
+          - p99
+      - title: Traffic
+        type: graph
+        metrics:
+          - requests_per_second
+      - title: Errors
+        type: graph
+        metrics:
+          - error_rate
+          - 5xx_count
+      - title: Saturation
+        type: graph
+        metrics:
+          - cpu_usage
+          - memory_usage
+  
+  dependencies:
+    title: "{service} - Dependencies"
+    panels:
+      - title: Downstream Services
+        type: heatmap
+      - title: Database Queries
+        type: graph
+      - title: External APIs
+        type: table
