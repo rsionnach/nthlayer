@@ -132,12 +132,16 @@ class DashboardBuilder:
             slo_name = slo.name
             slo_spec = slo.spec
             
+            # Check SLO type from indicators
+            indicators = slo_spec.get("indicators", [])
+            slo_type = indicators[0].get("type") if indicators else None
+            
             # Determine SLO type and create appropriate panel
-            if "latency" in slo_name.lower():
+            if slo_type == "latency" or "latency" in slo_name.lower():
                 panel = self._build_latency_slo_panel(slo_name, slo_spec)
-            elif "availability" in slo_name.lower():
+            elif slo_type == "availability" or "availability" in slo_name.lower() or "success" in slo_name.lower():
                 panel = self._build_availability_slo_panel(slo_name, slo_spec)
-            elif "error" in slo_name.lower() or "success" in slo_name.lower():
+            elif "error" in slo_name.lower():
                 panel = self._build_error_rate_slo_panel(slo_name, slo_spec)
             else:
                 # Generic SLO panel
