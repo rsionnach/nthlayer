@@ -177,6 +177,23 @@ for svc in SERVICES:
         result = builder.build()
         dashboard_json = result.get('dashboard', result)
         
+        # CRITICAL: Add template variables (required for $service to work)
+        dashboard_json['templating'] = {
+            'list': [
+                {
+                    'name': 'service',
+                    'type': 'constant',
+                    'current': {
+                        'value': svc['name'],
+                        'text': svc['name']
+                    },
+                    'hide': 2,  # Hide variable (it's constant)
+                    'label': 'Service',
+                    'query': svc['name']
+                }
+            ]
+        }
+        
         panel_count = len(dashboard_json.get('panels', []))
         print(f"   Title: {dashboard_json.get('title')}")
         print(f"   UID: {dashboard_json.get('uid')}")
