@@ -261,76 +261,187 @@ class DashboardBuilder:
         )
     
     def _build_health_panels(self) -> List[Panel]:
-        """Build general service health panels.
+        """Build general service health panels based on service type.
         
         Returns:
             List of panels showing service health metrics
         """
         panels = []
         
-        # Request rate panel
-        panels.append(Panel(
-            title="Request Rate",
-            panel_type="timeseries",
-            targets=[
-                Target(
-                    expr=f'sum(rate(http_requests_total{{service="$service"}}[5m]))',
-                    legend_format="Requests/sec",
-                )
-            ],
-            description="HTTP requests per second",
-            unit="reqps",
-            decimals=1,
-            grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
-        ))
+        # For API/web services, show HTTP metrics
+        if self.context.type in ["api", "web", "service"]:
+            # Request rate panel
+            panels.append(Panel(
+                title="Request Rate",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=f'sum(rate(http_requests_total{{service="$service"}}[5m]))',
+                        legend_format="Requests/sec",
+                    )
+                ],
+                description="HTTP requests per second",
+                unit="reqps",
+                decimals=1,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
+            
+            # Error rate panel
+            panels.append(Panel(
+                title="Error Rate",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=(
+                            f'sum(rate(http_requests_total{{service="$service",status=~"5.."}}[5m])) / '
+                            f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                        ),
+                        legend_format="Error %",
+                    )
+                ],
+                description="Percentage of requests returning 5xx errors",
+                unit="percent",
+                decimals=2,
+                min=0,
+                thresholds=[
+                    {"value": 0, "color": "green"},
+                    {"value": 1, "color": "yellow"},
+                    {"value": 5, "color": "red"},
+                ],
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
+            
+            # Response time panel
+            panels.append(Panel(
+                title="Response Time (p95)",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                        legend_format="p95 latency",
+                    )
+                ],
+                description="95th percentile response time",
+                unit="ms",
+                decimals=0,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
         
-        # Error rate panel
-        panels.append(Panel(
-            title="Error Rate",
-            panel_type="timeseries",
-            targets=[
-                Target(
-                    expr=(
-                        f'sum(rate(http_requests_total{{service="$service",status=~"5.."}}[5m])) / '
-                        f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
-                    ),
-                    legend_format="Error %",
-                )
-            ],
-            description="Percentage of requests returning 5xx errors",
-            unit="percent",
-            decimals=2,
-            min=0,
-            thresholds=[
-                {"value": 0, "color": "green"},
-                {"value": 1, "color": "yellow"},
-                {"value": 5, "color": "red"},
-            ],
-            grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
-        ))
+        # For stream-processor services, show event processing metrics
+        elif self.context.type == "stream-processor":
+            # Event rate panel
+            panels.append(Panel(
+                title="Event Processing Rate",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=f'sum(rate(events_processed_total{{service="$service"}}[5m]))',
+                        legend_format="Events/sec",
+                    )
+                ],
+                description="Events processed per second",
+                unit="ops",
+                decimals=1,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
+            
+            # Error rate panel
+            panels.append(Panel(
+                title="Event Error Rate",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=(
+                            f'sum(rate(events_processed_total{{service="$service",status="error"}}[5m])) / '
+                            f'sum(rate(events_processed_total{{service="$service"}}[5m])) * 100'
+                        ),
+                        legend_format="Error %",
+                    )
+                ],
+                description="Percentage of events that failed processing",
+                unit="percent",
+                decimals=2,
+                min=0,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
+            
+            # Processing time panel
+            panels.append(Panel(
+                title="Event Processing Time (p95)",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=f'histogram_quantile(0.95, rate(event_processing_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                        legend_format="p95 latency",
+                    )
+                ],
+                description="95th percentile event processing time",
+                unit="ms",
+                decimals=0,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
         
-        # Response time panel
-        panels.append(Panel(
-            title="Response Time (p95)",
-            panel_type="timeseries",
-            targets=[
-                Target(
-                    expr=f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
-                    legend_format="p95 latency",
-                )
-            ],
-            description="95th percentile response time",
-            unit="ms",
-            decimals=0,
-            grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
-        ))
+        # For worker services, show job/notification metrics
+        elif self.context.type == "worker":
+            # Job/notification rate panel
+            panels.append(Panel(
+                title="Job Processing Rate",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=f'sum(rate(notifications_sent_total{{service="$service"}}[5m]))',
+                        legend_format="Jobs/sec",
+                    )
+                ],
+                description="Jobs processed per second",
+                unit="ops",
+                decimals=1,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
+            
+            # Failure rate panel
+            panels.append(Panel(
+                title="Job Failure Rate",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=(
+                            f'sum(rate(notifications_sent_total{{service="$service",status="failed"}}[5m])) / '
+                            f'sum(rate(notifications_sent_total{{service="$service"}}[5m])) * 100'
+                        ),
+                        legend_format="Failure %",
+                    )
+                ],
+                description="Percentage of jobs that failed",
+                unit="percent",
+                decimals=2,
+                min=0,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
+            
+            # Processing time panel
+            panels.append(Panel(
+                title="Job Processing Time (p95)",
+                panel_type="timeseries",
+                targets=[
+                    Target(
+                        expr=f'histogram_quantile(0.95, rate(notification_processing_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                        legend_format="p95 latency",
+                    )
+                ],
+                description="95th percentile job processing time",
+                unit="ms",
+                decimals=0,
+                grid_pos={"h": 8, "w": 8, "x": 0, "y": 0}
+            ))
         
         return panels
     
     def _build_technology_panels(self) -> List[Panel]:
-        """Build technology-specific panels based on dependencies.
+        """Build technology-specific panels based on ACTUAL dependencies.
         
-        Uses comprehensive technology templates for detailed monitoring.
+        Only creates panels for technologies explicitly declared in the Dependencies resource.
+        No automatic assumptions or generic panels.
         
         Returns:
             List of panels for detected technologies
@@ -382,18 +493,26 @@ class DashboardBuilder:
                     panels.extend(tech_panels)
                 except KeyError:
                     pass
-        
-        # Add Kubernetes panels if service type suggests containerized deployment
-        if self.context.type in ["api", "web", "worker"] and "kubernetes" not in seen_technologies:
-            try:
-                k8s_template = get_template("kubernetes")
-                # Use overview or full panels based on setting
-                if self.full_panels:
-                    panels.extend(k8s_template.get_panels("$service"))
-                else:
-                    panels.extend(k8s_template.get_overview_panels("$service"))
-            except KeyError:
-                pass
+            
+            # Check for orchestration platforms (Kubernetes, ECS, etc.)
+            orchestration = dep_spec.get("orchestration", [])
+            for orch in orchestration:
+                orch_type = orch.get("type", "").lower()
+                
+                if orch_type in seen_technologies:
+                    continue
+                seen_technologies.add(orch_type)
+                
+                try:
+                    template = get_template(orch_type)
+                    # Use overview or full panels based on setting
+                    if self.full_panels:
+                        tech_panels = template.get_panels("$service")
+                    else:
+                        tech_panels = template.get_overview_panels("$service")
+                    panels.extend(tech_panels)
+                except KeyError:
+                    pass
         
         return panels
 
