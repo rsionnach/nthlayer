@@ -386,3 +386,78 @@ Hybrid model not properly implemented. Need intent-based templates with metric d
 - `3c82705` - Implement agents.md protocol
 - `07cedbb` - Fix template variables and SLO queries
 - Various dashboard fix commits
+
+---
+
+## Session 2: Hybrid Model Implementation (Evening)
+
+### Implementation Summary
+
+Implemented core components of the Enhanced Hybrid Model as per the approved spec:
+
+**Files Created (2600+ lines):**
+
+1. **intents.py** (450 lines)
+   - Intent registry with 40+ metric intents
+   - 9 technologies: http, postgresql, redis, mongodb, mysql, kafka, elasticsearch, stream, worker
+   - Each intent has candidates, fallbacks, and type information
+
+2. **resolver.py** (340 lines)
+   - MetricResolver class with discovery integration
+   - Resolution waterfall: Custom → Discovery → Fallback → Synthesis → Guidance
+   - Exporter recommendations for guidance panels
+
+3. **panel_spec.py** (360 lines)
+   - PanelSpec and QuerySpec models
+   - Intent-based panel definitions
+   - GuidancePanelSpec for instrumentation guidance
+
+4. **base_intent.py** (200 lines)
+   - IntentBasedTemplate base class
+   - Resolution caching and summary
+   - Guidance panel generation
+
+5. **postgresql_intent.py** (150 lines)
+   - 10 panel specs using intents
+   - Connections, Cache Hit Ratio, Transactions, etc.
+
+6. **redis_intent.py** (120 lines)
+   - 8 panel specs using intents
+   - Memory, Hit Rate, Connections, etc.
+
+7. **dashboard_validate.py** (180 lines)
+   - CLI commands for validation
+   - list_intents_command
+   - validate_dashboard_command
+
+**DashboardBuilderSDK Updates:**
+- Added prometheus_url parameter
+- Added custom_metric_overrides parameter
+- Added use_intent_templates flag
+- Integrated MetricResolver
+- Fallback to legacy templates
+
+### Test Results
+
+```
+✅ All 40 intents registered
+✅ PostgreSQL template: 8 panels generated
+✅ Redis template: 8 panels generated
+✅ Resolution test: pg_stat_database_numbackends resolved correctly
+```
+
+### Commits
+
+- `487d8e3` - Implement Enhanced Hybrid Model for dashboard generation
+
+### GitHub Issues
+
+- Issue #11 updated with implementation progress
+
+### Remaining Work
+
+1. Convert remaining templates (MongoDB, MySQL, Kafka, Elasticsearch)
+2. Comprehensive unit tests
+3. End-to-end testing with real Prometheus
+4. Documentation updates
+
