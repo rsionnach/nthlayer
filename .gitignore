@@ -90,3 +90,7 @@ test-output/
 postgres-data/
 redis-data/
 .env
+
+# Metric discovery test scripts (contains credentials via env vars)
+test_metric_discovery.py
+create_metric_discovery_epic.sh
