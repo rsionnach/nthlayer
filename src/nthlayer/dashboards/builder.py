@@ -156,6 +156,12 @@ class DashboardBuilder:
         if indicators and "success_ratio" in indicators[0]:
             good_query = indicators[0]["success_ratio"].get("good_query", "")
             total_query = indicators[0]["success_ratio"].get("total_query", "")
+            
+            # Replace service-specific values with $service template variable
+            import re
+            good_query = re.sub(r'service="[^"]*"', 'service="$service"', good_query)
+            total_query = re.sub(r'service="[^"]*"', 'service="$service"', total_query)
+            
             expr = f'({good_query}) / ({total_query}) * 100'
         else:
             # Fallback to HTTP metrics for API services

@@ -70,6 +70,8 @@ pg_query_duration = Histogram(
     buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0],
     registry=registry
 )
+# Alias for consistency
+pg_query_time = pg_query_duration
 
 # Redis metrics (payment-api, notification-worker, identity-service)
 redis_connections = Gauge(
@@ -290,7 +292,7 @@ def simulate_payment_api():
         container_memory.labels(service=svc, pod=pod, container='payment-api').set(random.randint(200_000_000, 400_000_000))
 
 def simulate_checkout_service():
-    """checkout-service: MySQL, RabbitMQ, ECS"""
+    """checkout-service: MySQL, RabbitMQ, Redis, ECS"""
     svc = 'checkout-service'
     
     # HTTP traffic
@@ -306,6 +308,12 @@ def simulate_checkout_service():
     mysql_connections.labels(service=svc).set(random.randint(10, 25))
     mysql_max_conn.labels(service=svc).set(150)
     mysql_queries.labels(service=svc).inc(random.randint(50, 200))
+    
+    # Redis (session cache)
+    redis_memory.labels(service=svc).set(random.randint(60_000_000, 120_000_000))
+    redis_connections.labels(service=svc).set(random.randint(8, 20))
+    cache_hits.labels(service=svc).inc(random.randint(80, 150))
+    cache_misses.labels(service=svc).inc(random.randint(3, 10))
     
     # RabbitMQ
     rabbitmq_messages.labels(service=svc, queue='order_queue').set(random.randint(0, 50))
@@ -331,12 +339,15 @@ def simulate_notification_worker():
     
     # Kafka
     kafka_lag.labels(service=svc, topic='notifications').set(random.uniform(0.1, 2.0))
+    kafka_throughput.labels(service=svc, topic='notifications').set(random.uniform(500, 900))
     for partition in range(3):
         kafka_offset.labels(service=svc, topic='notifications', partition=str(partition)).inc(random.randint(10, 50))
     
-    # Redis
+    # Redis (cache for notification templates)
     redis_connections.labels(service=svc).set(random.randint(5, 15))
     redis_memory.labels(service=svc).set(random.randint(50_000_000, 100_000_000))
+    cache_hits.labels(service=svc).inc(random.randint(50, 100))
+    cache_misses.labels(service=svc).inc(random.randint(2, 8))
     
     # Kubernetes
     for i in range(1, 4):
@@ -403,10 +414,18 @@ def simulate_identity_service():
     # PostgreSQL
     pg_connections.labels(service=svc, datname='identity').set(random.randint(10, 20))
     pg_max_conn.labels(service=svc).set(100)
+    # PostgreSQL cache metrics
+    pg_blks_hit.labels(service=svc, datname='identity').set(random.randint(80000, 100000))
+    pg_blks_read.labels(service=svc, datname='identity').set(random.randint(1000, 3000))
+    # PostgreSQL query performance
+    pg_query_time.labels(service=svc).observe(random.uniform(0.001, 0.02))
     
-    # Redis
+    # Redis (session cache)
     redis_keys.labels(service=svc, db='0').set(random.randint(1000, 5000))
     redis_memory.labels(service=svc).set(random.randint(80_000_000, 150_000_000))
+    redis_connections.labels(service=svc).set(random.randint(10, 25))
+    cache_hits.labels(service=svc).inc(random.randint(60, 120))
+    cache_misses.labels(service=svc).inc(random.randint(3, 12))
     
     # ECS
     ecs_tasks.labels(service=svc, cluster='production').set(3)
