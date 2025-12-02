@@ -1,0 +1,11 @@
+{
+  "id": "install-foundation-sdk",
+  "type": "task",
+  "title": "Install and test Grafana Foundation SDK",
+  "description": "Add grafana-foundation-sdk Python package, test basic dashboard creation, verify compatibility with Python 3.9+",
+  "status": "in_progress",
+  "priority": "P0",
+  "parent": "week2-foundation-sdk",
+  "tags": ["installation", "setup"],
+  "created_at": "2025-12-02T23:45:00Z"
+}
