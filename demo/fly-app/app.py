@@ -346,7 +346,7 @@ def simulate_notification_worker():
         container_memory.labels(service=svc, pod=pod, container='worker').set(random.randint(150_000_000, 300_000_000))
 
 def simulate_analytics_stream():
-    """analytics-stream: MongoDB, Kafka, Kubernetes"""
+    """analytics-stream: MongoDB, Redis, Kafka, Kubernetes"""
     svc = 'analytics-stream'
     
     # Events
@@ -362,9 +362,17 @@ def simulate_analytics_stream():
     mongo_ops.labels(service=svc, type='insert').inc(random.randint(50, 200))
     mongo_query_time.labels(service=svc).observe(random.uniform(0.005, 0.05))
     
+    # Redis (stream cache)
+    redis_memory.labels(service=svc).set(random.randint(80_000_000, 150_000_000))
+    redis_connections.labels(service=svc).set(random.randint(5, 12))
+    cache_hits.labels(service=svc).inc(random.randint(100, 200))
+    cache_misses.labels(service=svc).inc(random.randint(5, 15))
+    
     # Kafka
     kafka_lag.labels(service=svc, topic='events').set(random.uniform(0.05, 0.5))
     kafka_throughput.labels(service=svc, topic='events').set(random.uniform(800, 1200))
+    for partition in range(3):
+        kafka_offset.labels(service=svc, topic='events', partition=str(partition)).inc(random.randint(100, 300))
     
     # Kubernetes
     for i in range(1, 5):
