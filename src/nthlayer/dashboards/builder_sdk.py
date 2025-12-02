@@ -348,7 +348,18 @@ class DashboardBuilderSDK:
             elif technology == 'redis':
                 from nthlayer.dashboards.templates.redis_intent import RedisIntentTemplate
                 return RedisIntentTemplate()
-            # Add more intent templates as they're created
+            elif technology in ('mongodb', 'mongo'):
+                from nthlayer.dashboards.templates.mongodb_intent import MongoDBIntentTemplate
+                return MongoDBIntentTemplate()
+            elif technology == 'mysql':
+                from nthlayer.dashboards.templates.mysql_intent import MySQLIntentTemplate
+                return MySQLIntentTemplate()
+            elif technology == 'kafka':
+                from nthlayer.dashboards.templates.kafka_intent import KafkaIntentTemplate
+                return KafkaIntentTemplate()
+            elif technology == 'elasticsearch':
+                from nthlayer.dashboards.templates.elasticsearch_intent import ElasticsearchIntentTemplate
+                return ElasticsearchIntentTemplate()
             return None
         except ImportError as e:
             logger.debug(f"Intent template not available for {technology}: {e}")

@@ -456,6 +456,29 @@ KAFKA_INTENTS = {
         candidates=[
             "kafka_topic_partition_current_offset",
             "kafka_messages_in_total",
+            "kafka_consumer_records_per_second",
+        ],
+        unit="short"
+    ),
+    
+    "kafka.consumer_offset": MetricIntent(
+        intent="kafka.consumer_offset",
+        description="Consumer offset progress",
+        metric_type=MetricType.COUNTER,
+        candidates=[
+            "kafka_consumer_offset_total",
+            "kafka_consumergroup_current_offset",
+        ],
+        unit="short"
+    ),
+    
+    "kafka.partition_count": MetricIntent(
+        intent="kafka.partition_count",
+        description="Number of partitions",
+        metric_type=MetricType.GAUGE,
+        candidates=[
+            "kafka_topic_partitions",
+            "kafka_partition_count",
         ],
         unit="short"
     ),
@@ -488,6 +511,17 @@ ELASTICSEARCH_INTENTS = {
         unit="short"
     ),
     
+    "elasticsearch.relocating_shards": MetricIntent(
+        intent="elasticsearch.relocating_shards",
+        description="Relocating shards",
+        metric_type=MetricType.GAUGE,
+        candidates=[
+            "elasticsearch_cluster_health_relocating_shards",
+            "es_cluster_relocating_shards",
+        ],
+        unit="short"
+    ),
+    
     "elasticsearch.search_rate": MetricIntent(
         intent="elasticsearch.search_rate",
         description="Search queries per second",
@@ -499,6 +533,17 @@ ELASTICSEARCH_INTENTS = {
         unit="short"
     ),
     
+    "elasticsearch.search_latency": MetricIntent(
+        intent="elasticsearch.search_latency",
+        description="Search query latency",
+        metric_type=MetricType.HISTOGRAM,
+        candidates=[
+            "elasticsearch_indices_search_query_time_seconds_bucket",
+            "es_search_latency_seconds_bucket",
+        ],
+        unit="s"
+    ),
+    
     "elasticsearch.indexing_rate": MetricIntent(
         intent="elasticsearch.indexing_rate",
         description="Indexing rate",
@@ -508,6 +553,61 @@ ELASTICSEARCH_INTENTS = {
             "es_indexing_total",
         ],
         unit="short"
+    ),
+    
+    "elasticsearch.index_size": MetricIntent(
+        intent="elasticsearch.index_size",
+        description="Index size in bytes",
+        metric_type=MetricType.GAUGE,
+        candidates=[
+            "elasticsearch_indices_store_size_bytes",
+            "es_indices_size_bytes",
+        ],
+        unit="bytes"
+    ),
+    
+    "elasticsearch.docs_count": MetricIntent(
+        intent="elasticsearch.docs_count",
+        description="Total document count",
+        metric_type=MetricType.GAUGE,
+        candidates=[
+            "elasticsearch_indices_docs",
+            "es_indices_docs_total",
+        ],
+        unit="short"
+    ),
+    
+    "elasticsearch.jvm_heap_used": MetricIntent(
+        intent="elasticsearch.jvm_heap_used",
+        description="JVM heap memory used",
+        metric_type=MetricType.GAUGE,
+        candidates=[
+            "elasticsearch_jvm_memory_used_bytes",
+            "es_jvm_heap_used_bytes",
+        ],
+        unit="bytes"
+    ),
+    
+    "elasticsearch.jvm_heap_max": MetricIntent(
+        intent="elasticsearch.jvm_heap_max",
+        description="JVM heap memory max",
+        metric_type=MetricType.GAUGE,
+        candidates=[
+            "elasticsearch_jvm_memory_max_bytes",
+            "es_jvm_heap_max_bytes",
+        ],
+        unit="bytes"
+    ),
+    
+    "elasticsearch.gc_time": MetricIntent(
+        intent="elasticsearch.gc_time",
+        description="Garbage collection time",
+        metric_type=MetricType.COUNTER,
+        candidates=[
+            "elasticsearch_jvm_gc_collection_seconds_sum",
+            "es_jvm_gc_seconds_total",
+        ],
+        unit="s"
     ),
 }
 
