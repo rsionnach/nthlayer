@@ -43,6 +43,7 @@ resources:
           latency_query: histogram_quantile(0.99, rate(event_processing_duration_seconds_bucket{service="analytics-stream"}[5m]))
 
   - kind: Dependencies
+    name: dependencies
     spec:
       databases:
         - type: mongodb

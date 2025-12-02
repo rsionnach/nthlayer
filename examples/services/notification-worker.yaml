@@ -43,6 +43,7 @@ resources:
           metric: max(kafka_consumer_lag_seconds{service="notification-worker",topic="notifications"})
 
   - kind: Dependencies
+    name: dependencies
     spec:
       databases:
         - type: redis
