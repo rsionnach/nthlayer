@@ -75,6 +75,7 @@ resources:
         - order_value_dollars
         
   - kind: PagerDuty
+    name: pagerduty
     spec:
       service_key: checkout-service
       escalation_policy: critical-services

@@ -80,6 +80,7 @@ resources:
         - kafka_consumer_lag_seconds
         
   - kind: PagerDuty
+    name: pagerduty
     spec:
       service_key: notification-worker
       escalation_policy: platform-services

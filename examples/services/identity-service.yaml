@@ -78,6 +78,7 @@ resources:
         - password_reset_total
         
   - kind: PagerDuty
+    name: pagerduty
     spec:
       service_key: identity-service
       escalation_policy: critical-services
