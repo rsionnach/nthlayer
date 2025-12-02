@@ -215,6 +215,10 @@ class DashboardBuilderSDK:
                 db_name = db.get('name', 'database') if isinstance(db, dict) else getattr(db, 'name', 'database')
                 
                 # Get technology template
+                # Map MySQL to PostgreSQL template (similar metrics)
+                if db_type == 'mysql':
+                    db_type = 'postgresql'
+                
                 template = get_template(db_type)
                 if template and hasattr(template, 'get_panels'):
                     # Convert template panels to SDK panels
