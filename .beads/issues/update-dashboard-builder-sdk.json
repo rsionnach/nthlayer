@@ -1,0 +1,12 @@
+{
+  "id": "update-dashboard-builder-sdk",
+  "type": "task",
+  "title": "Update DashboardBuilder to use Foundation SDK",
+  "description": "Replace custom Panel/Target models with SDK builders. Integrate SDKAdapter while maintaining validation logic and service intelligence.",
+  "status": "in_progress",
+  "priority": "P0",
+  "parent": "week2-foundation-sdk",
+  "tags": ["builder", "integration", "sdk"],
+  "created_at": "2025-12-03T02:00:00Z",
+  "estimated_hours": 6
+}
