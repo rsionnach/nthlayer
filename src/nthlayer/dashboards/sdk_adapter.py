@@ -9,7 +9,8 @@ from typing import List, Optional, Dict, Any
 from grafana_foundation_sdk.builders import dashboard, timeseries, stat, gauge, prometheus
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
-from nthlayer.specs.models import ServiceContext, SLO
+from nthlayer.specs.models import ServiceContext
+from nthlayer.slos.models import SLO
 from nthlayer.dashboards.models import Panel, Target, TemplateVariable
 
 
