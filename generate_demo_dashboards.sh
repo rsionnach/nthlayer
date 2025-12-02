@@ -5,16 +5,28 @@ set -e  # Exit on error
 
 cd "$(dirname "$0")"
 
+# Load .env file if it exists
+if [ -f .env ]; then
+    echo "📝 Loading environment from .env file..."
+    set -a  # Automatically export all variables
+    source .env
+    set +a
+fi
+
 # Check environment variables
 if [ -z "$NTHLAYER_GRAFANA_URL" ]; then
     echo "❌ Error: NTHLAYER_GRAFANA_URL not set"
-    echo "   Run: export NTHLAYER_GRAFANA_URL='https://nthlayer.grafana.net'"
+    echo "   Either:"
+    echo "   1. Create .env file: echo 'NTHLAYER_GRAFANA_URL=https://nthlayer.grafana.net' >> .env"
+    echo "   2. Or export: export NTHLAYER_GRAFANA_URL='https://nthlayer.grafana.net'"
     exit 1
 fi
 
 if [ -z "$NTHLAYER_GRAFANA_API_KEY" ]; then
     echo "❌ Error: NTHLAYER_GRAFANA_API_KEY not set"
-    echo "   Run: export NTHLAYER_GRAFANA_API_KEY='glsa_...'"
+    echo "   Either:"
+    echo "   1. Create .env file: echo 'NTHLAYER_GRAFANA_API_KEY=glsa_...' >> .env"
+    echo "   2. Or export: export NTHLAYER_GRAFANA_API_KEY='glsa_...'"
     exit 1
 fi
 

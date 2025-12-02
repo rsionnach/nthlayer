@@ -617,7 +617,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             only=args.only,
             force=args.force,
             verbose=args.verbose,
-            output_format=args.output
+            output_format=args.output,
+            push_grafana=args.push_grafana
         ))
 
     # Handle existing commands
