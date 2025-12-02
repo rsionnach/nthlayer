@@ -54,12 +54,12 @@ pg_max_conn = Gauge(
     ['service'],
     registry=registry
 )
-pg_blks_hit = Counter(
+pg_blks_hit = Gauge(
     'pg_stat_database_blks_hit', 'Buffer cache hits',
     ['service', 'datname'],
     registry=registry
 )
-pg_blks_read = Counter(
+pg_blks_read = Gauge(
     'pg_stat_database_blks_read', 'Disk reads',
     ['service', 'datname'],
     registry=registry
@@ -271,8 +271,9 @@ def simulate_payment_api():
     # PostgreSQL
     pg_connections.labels(service=svc, datname='payments').set(random.randint(15, 35))
     pg_max_conn.labels(service=svc).set(100)
-    pg_blks_hit.labels(service=svc, datname='payments').inc(random.randint(1000, 5000))
-    pg_blks_read.labels(service=svc, datname='payments').inc(random.randint(10, 100))
+    # Use cumulative values for cache hits/reads to simulate realistic ratios
+    pg_blks_hit.labels(service=svc, datname='payments').set(random.randint(90000, 100000))
+    pg_blks_read.labels(service=svc, datname='payments').set(random.randint(1000, 2000))
     pg_query_duration.labels(service=svc).observe(random.uniform(0.001, 0.05))
     
     # Redis
