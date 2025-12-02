@@ -151,15 +151,25 @@ class DashboardBuilder:
         """Build availability SLO panel (gauge showing current availability)."""
         objective = spec.get("objective", 99.9)
         
+        # Check if SLO spec has custom queries
+        indicators = spec.get("indicators", [])
+        if indicators and "success_ratio" in indicators[0]:
+            good_query = indicators[0]["success_ratio"].get("good_query", "")
+            total_query = indicators[0]["success_ratio"].get("total_query", "")
+            expr = f'({good_query}) / ({total_query}) * 100'
+        else:
+            # Fallback to HTTP metrics for API services
+            expr = (
+                f'sum(rate(http_requests_total{{service="$service",status!~"5.."}}[5m])) / '
+                f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+            )
+        
         return Panel(
             title=f"{name.title()} SLO",
             panel_type="gauge",
             targets=[
                 Target(
-                    expr=(
-                        f'sum(rate(http_requests_total{{service="$service",status!~"5.."}}[5m])) / '
-                        f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
-                    ),
+                    expr=expr,
                     legend_format="Availability %",
                 )
             ],
@@ -179,12 +189,41 @@ class DashboardBuilder:
     def _build_latency_slo_panel(self, name: str, spec: dict) -> Panel:
         """Build latency SLO panel (showing p50, p95, p99)."""
         objective = spec.get("objective", 99.0)
-        threshold_ms = spec.get("latency_threshold", 500)
+        threshold_ms = spec.get("threshold_ms", 500)
         
-        return Panel(
-            title=f"{name.title()} SLO",
-            panel_type="timeseries",
-            targets=[
+        # Check if SLO spec has custom latency query
+        indicators = spec.get("indicators", [])
+        if indicators and "latency_query" in indicators[0]:
+            base_query = indicators[0]["latency_query"]
+            # Extract the metric name and service filter
+            # latency_query is already the p99 query, so we need to derive p50 and p95
+            if "event_processing_duration_seconds_bucket" in base_query:
+                metric = "event_processing_duration_seconds_bucket"
+            elif "notification_processing_duration_seconds_bucket" in base_query:
+                metric = "notification_processing_duration_seconds_bucket"
+            else:
+                metric = "http_request_duration_seconds_bucket"
+            
+            targets = [
+                Target(
+                    expr=f'histogram_quantile(0.50, rate({metric}{{service="$service"}}[5m])) * 1000',
+                    legend_format="p50",
+                    ref_id="A"
+                ),
+                Target(
+                    expr=f'histogram_quantile(0.95, rate({metric}{{service="$service"}}[5m])) * 1000',
+                    legend_format="p95",
+                    ref_id="B"
+                ),
+                Target(
+                    expr=f'histogram_quantile(0.99, rate({metric}{{service="$service"}}[5m])) * 1000',
+                    legend_format="p99",
+                    ref_id="C"
+                ),
+            ]
+        else:
+            # Fallback to HTTP metrics
+            targets = [
                 Target(
                     expr=f'histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
                     legend_format="p50",
@@ -200,8 +239,13 @@ class DashboardBuilder:
                     legend_format="p99",
                     ref_id="C"
                 ),
-            ],
-            description=f"Request latency percentiles (target: {objective}% under {threshold_ms}ms)",
+            ]
+        
+        return Panel(
+            title=f"{name.title()} SLO",
+            panel_type="timeseries",
+            targets=targets,
+            description=f"Latency percentiles (target: {objective}% under {threshold_ms}ms)",
             unit="ms",
             decimals=0,
             thresholds=[

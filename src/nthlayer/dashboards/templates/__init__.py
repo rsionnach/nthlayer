@@ -9,6 +9,8 @@ from nthlayer.dashboards.templates.postgresql import PostgreSQLTemplate
 from nthlayer.dashboards.templates.redis import RedisTemplate
 from nthlayer.dashboards.templates.kubernetes import KubernetesTemplate
 from nthlayer.dashboards.templates.http_api import HTTPAPITemplate
+from nthlayer.dashboards.templates.mongodb import MongoDBTemplate
+from nthlayer.dashboards.templates.kafka import KafkaTemplate
 
 
 # Registry of available templates
@@ -20,6 +22,9 @@ TECHNOLOGY_TEMPLATES: Dict[str, Type[TechnologyTemplate]] = {
     "k8s": KubernetesTemplate,
     "http": HTTPAPITemplate,
     "api": HTTPAPITemplate,
+    "mongodb": MongoDBTemplate,
+    "mongo": MongoDBTemplate,
+    "kafka": KafkaTemplate,
 }
 
 
@@ -59,6 +64,8 @@ __all__ = [
     "RedisTemplate",
     "KubernetesTemplate",
     "HTTPAPITemplate",
+    "MongoDBTemplate",
+    "KafkaTemplate",
     "get_template",
     "get_available_technologies",
 ]
