@@ -33,13 +33,13 @@ echo "📚 Part 1: Creating Foundation Epic (Historical Work)"
 echo "======================================================="
 
 $BD create "Foundation & MVP Development (Weeks 1-8)" --type epic --priority P0 \
-  -d "Core NthLayer platform completed Nov 14 - Dec 26, 2024. Includes: CLI framework, alert generation, SLO management, technology templates (PostgreSQL/Redis/Kubernetes), dashboard generation (40 panels), recording rules (21+), unified workflow (plan/apply), live demo infrastructure. 84/84 tests passing. See FOUNDATION_COMPLETE.md and archive/*_COMPLETE.md"
+  -d "Core NthLayer platform completed Nov 14 - Dec 26, 2025. Includes: CLI framework, alert generation, SLO management, technology templates (PostgreSQL/Redis/Kubernetes), dashboard generation (40 panels), recording rules (21+), unified workflow (plan/apply), live demo infrastructure. 84/84 tests passing. See FOUNDATION_COMPLETE.md and archive/*_COMPLETE.md"
 
 FOUNDATION_ID=$($BD list --title "Foundation & MVP" --json | jq -r '.[0].id')
 echo "Created: $FOUNDATION_ID - Foundation & MVP Development"
 
 # Close it immediately
-$BD close "$FOUNDATION_ID" --reason "Completed December 26, 2024. Foundation work done: 15,000 lines code, 84 tests passing, 4 templates, unified workflow, live demo. See FOUNDATION_COMPLETE.md"
+$BD close "$FOUNDATION_ID" --reason "Completed December 26, 2025. Foundation work done: 15,000 lines code, 84 tests passing, 4 templates, unified workflow, live demo. See FOUNDATION_COMPLETE.md"
 echo "✅ Closed foundation epic"
 echo ""
 

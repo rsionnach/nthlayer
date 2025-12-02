@@ -1,6 +1,6 @@
 # Changelog
 
-## Phase 3: Observability Suite (December 2024)
+## Phase 3: Observability Suite (December 2025)
 
 ### Phase 3D: Polish & Documentation
 - Added dashboard customization (--full flag for 28+ panels)

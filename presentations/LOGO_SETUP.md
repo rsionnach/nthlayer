@@ -74,6 +74,6 @@ Slidev looks for files in:
 
 ---
 
-**Setup Date:** December 26, 2024  
+**Setup Date:** December 26, 2025  
 **Status:** ✅ Complete  
 **Logo Active:** Yes
