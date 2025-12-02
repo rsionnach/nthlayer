@@ -1,335 +1,366 @@
 """
-Multi-service demo app for NthLayer Gallery
-Emits metrics for all 5 demo services with their respective tech stacks
+NthLayer Demo Application with Mock PostgreSQL and Kubernetes metrics
+
+Generates realistic metrics for demonstration purposes including:
+- HTTP service metrics
+- PostgreSQL database metrics
+- Kubernetes pod metrics
 """
 
-from flask import Flask, Response
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, REGISTRY
+import os
 import random
 import time
-import os
+import threading
+from datetime import datetime
+from functools import wraps
+
+from flask import Flask, jsonify, request, Response
+from prometheus_client import (
+    Counter,
+    Histogram,
+    Gauge,
+    generate_latest,
+    CollectorRegistry,
+    CONTENT_TYPE_LATEST
+)
 
 app = Flask(__name__)
 
-# Basic Auth (same as before)
-METRICS_USERNAME = "nthlayer"
-METRICS_PASSWORD = os.environ.get("METRICS_PASSWORD", "demo")
-
+# Basic auth for metrics endpoint
 def check_auth(username, password):
-    return username == METRICS_USERNAME and password == METRICS_PASSWORD
+    """Check if username/password is valid."""
+    expected_user = os.environ.get('METRICS_USERNAME', 'nthlayer')
+    expected_pass = os.environ.get('METRICS_PASSWORD', 'demo-metrics')
+    return username == expected_user and password == expected_pass
 
 def authenticate():
+    """Send 401 response for authentication."""
     return Response(
-        'Authentication required', 401,
-        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+        'Authentication required',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Metrics"'}
     )
 
-# =============================================================================
-# SERVICE 1: payment-api (PostgreSQL, Redis, Kubernetes)
-# =============================================================================
+def requires_auth(f):
+    """Decorator for endpoints requiring basic auth."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
-# HTTP metrics
-payment_requests = Counter('http_requests_total', 'Total HTTP requests', 
-                          ['service', 'method', 'endpoint', 'status'])
-payment_duration = Histogram('http_request_duration_seconds', 'Request duration',
-                            ['service', 'method', 'endpoint'],
-                            buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5])
+# Create custom registry
+registry = CollectorRegistry()
 
-# PostgreSQL metrics
-payment_pg_connections = Gauge('pg_stat_database_numbackends', 'Active connections',
-                              ['service', 'datname'])
-payment_pg_max_conn = Gauge('pg_settings_max_connections', 'Max connections', ['service'])
-payment_pg_blks_hit = Counter('pg_stat_database_blks_hit', 'Buffer cache hits', ['service', 'datname'])
-payment_pg_blks_read = Counter('pg_stat_database_blks_read', 'Disk reads', ['service', 'datname'])
-payment_pg_query_duration = Histogram('pg_stat_statements_mean_exec_time_seconds', 'Query duration',
-                                     ['service'], buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0])
+# === HTTP Service Metrics ===
+http_requests_total = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['service', 'method', 'endpoint', 'status'],
+    registry=registry
+)
 
-# Redis metrics
-payment_cache_hits = Counter('cache_hits_total', 'Cache hits', ['service'])
-payment_cache_misses = Counter('cache_misses_total', 'Cache misses', ['service'])
+http_request_duration_seconds = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request duration in seconds',
+    ['service', 'method', 'endpoint'],
+    registry=registry,
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+)
 
-# Kubernetes metrics
-payment_pod_status = Gauge('kube_pod_status_phase', 'Pod status', ['service', 'pod', 'phase'])
-payment_cpu_usage = Counter('container_cpu_usage_seconds_total', 'CPU usage', ['service', 'pod', 'container'])
-payment_memory_usage = Gauge('container_memory_working_set_bytes', 'Memory usage', ['service', 'pod', 'container'])
+error_budget_remaining_ratio = Gauge(
+    'error_budget_remaining_ratio',
+    'Remaining error budget as ratio (0-1)',
+    ['service', 'slo'],
+    registry=registry
+)
 
-# =============================================================================
-# SERVICE 2: checkout-service (MySQL, RabbitMQ, ECS)
-# =============================================================================
+service_up = Gauge(
+    'up',
+    'Service is up',
+    ['service', 'instance'],
+    registry=registry
+)
 
-checkout_requests = Counter('http_requests_total', 'Total HTTP requests',
-                           ['service', 'method', 'endpoint', 'status'])
-checkout_duration = Histogram('http_request_duration_seconds', 'Request duration',
-                             ['service', 'method', 'endpoint'],
-                             buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5])
+# === PostgreSQL Mock Metrics ===
+pg_stat_database_numbackends = Gauge(
+    'pg_stat_database_numbackends',
+    'Number of backends currently connected',
+    ['service', 'datname'],
+    registry=registry
+)
 
-# MySQL metrics
-checkout_mysql_connections = Gauge('mysql_global_status_threads_connected', 'MySQL connections', ['service'])
-checkout_mysql_max_conn = Gauge('mysql_global_variables_max_connections', 'Max connections', ['service'])
-checkout_mysql_queries = Counter('mysql_global_status_queries_total', 'Total queries', ['service'])
+pg_settings_max_connections = Gauge(
+    'pg_settings_max_connections',
+    'Maximum number of connections',
+    ['service'],
+    registry=registry
+)
 
-# RabbitMQ metrics
-checkout_rabbitmq_messages = Gauge('rabbitmq_queue_messages', 'Messages in queue', ['service', 'queue'])
-checkout_rabbitmq_consumers = Gauge('rabbitmq_queue_consumers', 'Active consumers', ['service', 'queue'])
-checkout_rabbitmq_published = Counter('rabbitmq_queue_messages_published_total', 'Published messages', ['service', 'queue'])
+pg_stat_database_blks_hit = Counter(
+    'pg_stat_database_blks_hit',
+    'Number of disk blocks found in buffer cache',
+    ['service', 'datname'],
+    registry=registry
+)
 
-# ECS metrics
-checkout_ecs_tasks = Gauge('ecs_service_running_count', 'Running tasks', ['service', 'cluster'])
-checkout_ecs_cpu = Gauge('ecs_task_cpu_utilization', 'CPU utilization %', ['service', 'task'])
-checkout_ecs_memory = Gauge('ecs_task_memory_utilization', 'Memory utilization %', ['service', 'task'])
+pg_stat_database_blks_read = Counter(
+    'pg_stat_database_blks_read',
+    'Number of disk blocks read from disk',
+    ['service', 'datname'],
+    registry=registry
+)
 
-# =============================================================================
-# SERVICE 3: notification-worker (Redis, Kafka, Kubernetes - Worker)
-# =============================================================================
+pg_stat_statements_mean_exec_time_seconds = Histogram(
+    'pg_stat_statements_mean_exec_time_seconds',
+    'Mean query execution time in seconds',
+    ['service'],
+    registry=registry,
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0)
+)
 
-notif_sent = Counter('notifications_sent_total', 'Notifications sent', ['service', 'status'])
-notif_duration = Histogram('notification_processing_duration_seconds', 'Processing duration',
-                          ['service'], buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0])
-notif_kafka_lag = Gauge('kafka_consumer_lag_seconds', 'Consumer lag', ['service', 'topic'])
-notif_kafka_offset = Counter('kafka_consumer_offset_total', 'Consumer offset', ['service', 'topic', 'partition'])
+# === Kubernetes Mock Metrics ===
+kube_pod_status_phase = Gauge(
+    'kube_pod_status_phase',
+    'Pod status phase (1 if in this phase)',
+    ['service', 'phase', 'pod'],
+    registry=registry
+)
 
-# Redis for notifications
-notif_redis_connections = Gauge('redis_connected_clients', 'Connected clients', ['service'])
-notif_redis_memory = Gauge('redis_memory_used_bytes', 'Memory used', ['service'])
+container_cpu_usage_seconds_total = Counter(
+    'container_cpu_usage_seconds_total',
+    'Cumulative CPU usage in seconds',
+    ['service', 'pod', 'container'],
+    registry=registry
+)
 
-# Kubernetes metrics for worker
-notif_pod_status = Gauge('kube_pod_status_phase', 'Pod status', ['service', 'pod', 'phase'])
-notif_cpu_usage = Counter('container_cpu_usage_seconds_total', 'CPU usage', ['service', 'pod', 'container'])
-notif_memory_usage = Gauge('container_memory_working_set_bytes', 'Memory usage', ['service', 'pod', 'container'])
+container_memory_working_set_bytes = Gauge(
+    'container_memory_working_set_bytes',
+    'Current working set memory in bytes',
+    ['service', 'pod', 'container'],
+    registry=registry
+)
 
-# =============================================================================
-# SERVICE 4: analytics-stream (MongoDB, Kafka, Kubernetes - Stream Processor)
-# =============================================================================
+# Configuration
+SERVICE_NAME = 'payment-api'
+ERROR_RATE = 0.05  # 5%
+PODS = [
+    'payment-api-7d4f8b9c5-abc12',
+    'payment-api-7d4f8b9c5-def34',
+    'payment-api-7d4f8b9c5-ghi56'
+]
 
-analytics_events = Counter('events_processed_total', 'Events processed', ['service', 'status'])
-analytics_duration = Histogram('event_processing_duration_seconds', 'Processing duration',
-                              ['service'], buckets=[0.001, 0.01, 0.05, 0.1, 0.5, 1.0])
-analytics_throughput = Gauge('stream_throughput_events_per_second', 'Throughput', ['service'])
+# Initialize service as up
+service_up.labels(service=SERVICE_NAME, instance='demo-1').set(1)
+pg_settings_max_connections.labels(service=SERVICE_NAME).set(100)
 
-# MongoDB metrics
-analytics_mongo_connections = Gauge('mongodb_connections', 'Active connections', ['service', 'state'])
-analytics_mongo_ops = Counter('mongodb_operations_total', 'Operations', ['service', 'type'])
-analytics_mongo_query_time = Histogram('mongodb_query_duration_seconds', 'Query duration',
-                                       ['service'], buckets=[0.001, 0.01, 0.05, 0.1, 0.5])
 
-# Kafka for analytics
-analytics_kafka_lag = Gauge('kafka_consumer_lag_seconds', 'Consumer lag', ['service', 'topic'])
-analytics_kafka_throughput = Gauge('kafka_consumer_records_per_second', 'Records/sec', ['service', 'topic'])
+def simulate_background_traffic():
+    """Background thread generating continuous metrics."""
+    while True:
+        try:
+            # === HTTP Traffic ===
+            for _ in range(random.randint(10, 20)):
+                endpoint = '/api/payment'
+                method = 'POST'
+                status = '200' if random.random() > ERROR_RATE else '500'
+                duration = random.gauss(0.3, 0.1) if status == '200' else random.gauss(0.5, 0.2)
+                duration = max(0.01, duration)
+                
+                http_requests_total.labels(
+                    service=SERVICE_NAME,
+                    method=method,
+                    endpoint=endpoint,
+                    status=status
+                ).inc()
+                
+                if status == '200':
+                    http_request_duration_seconds.labels(
+                        service=SERVICE_NAME,
+                        method=method,
+                        endpoint=endpoint
+                    ).observe(duration)
+            
+            # === Error Budget ===
+            error_budget_remaining_ratio.labels(
+                service=SERVICE_NAME,
+                slo='availability'
+            ).set(random.uniform(0.96, 0.99))
+            
+            error_budget_remaining_ratio.labels(
+                service=SERVICE_NAME,
+                slo='latency-p95'
+            ).set(random.uniform(0.92, 0.98))
+            
+            # === PostgreSQL Metrics ===
+            # Active connections (varies between 25-45)
+            pg_stat_database_numbackends.labels(
+                service=SERVICE_NAME,
+                datname='payment_db'
+            ).set(random.randint(25, 45))
+            
+            # Buffer cache activity (98-99% hit ratio)
+            for _ in range(random.randint(950, 990)):
+                pg_stat_database_blks_hit.labels(
+                    service=SERVICE_NAME,
+                    datname='payment_db'
+                ).inc()
+            
+            for _ in range(random.randint(10, 50)):
+                pg_stat_database_blks_read.labels(
+                    service=SERVICE_NAME,
+                    datname='payment_db'
+                ).inc()
+            
+            # Query execution times (mostly fast, occasional slow)
+            for _ in range(random.randint(15, 30)):
+                if random.random() < 0.95:
+                    # Fast query (5-30ms)
+                    query_time = random.uniform(0.005, 0.030)
+                else:
+                    # Slow query (100-500ms)
+                    query_time = random.uniform(0.100, 0.500)
+                
+                pg_stat_statements_mean_exec_time_seconds.labels(
+                    service=SERVICE_NAME
+                ).observe(query_time)
+            
+            # === Kubernetes Metrics ===
+            for pod in PODS:
+                # All pods running (no pending/failed)
+                kube_pod_status_phase.labels(
+                    service=SERVICE_NAME,
+                    phase='Running',
+                    pod=pod
+                ).set(1)
+                
+                kube_pod_status_phase.labels(
+                    service=SERVICE_NAME,
+                    phase='Pending',
+                    pod=pod
+                ).set(0)
+                
+                kube_pod_status_phase.labels(
+                    service=SERVICE_NAME,
+                    phase='Failed',
+                    pod=pod
+                ).set(0)
+                
+                # CPU usage (increment by small amounts to simulate usage)
+                for _ in range(random.randint(8, 15)):
+                    container_cpu_usage_seconds_total.labels(
+                        service=SERVICE_NAME,
+                        pod=pod,
+                        container='payment-api'
+                    ).inc(random.uniform(0.002, 0.008))
+                
+                # Memory usage (250-450 MB per pod)
+                container_memory_working_set_bytes.labels(
+                    service=SERVICE_NAME,
+                    pod=pod,
+                    container='payment-api'
+                ).set(random.randint(250_000_000, 450_000_000))
+            
+            time.sleep(2)
+            
+        except Exception as e:
+            print(f"Background traffic error: {e}")
+            time.sleep(5)
 
-# Kubernetes for stream processor
-analytics_pod_status = Gauge('kube_pod_status_phase', 'Pod status', ['service', 'pod', 'phase'])
-analytics_cpu_usage = Counter('container_cpu_usage_seconds_total', 'CPU usage', ['service', 'pod', 'container'])
-analytics_memory_usage = Gauge('container_memory_working_set_bytes', 'Memory usage', ['service', 'pod', 'container'])
 
-# =============================================================================
-# SERVICE 5: identity-service (PostgreSQL, Redis, ECS - Auth)
-# =============================================================================
+# Start background traffic
+threading.Thread(target=simulate_background_traffic, daemon=True).start()
 
-identity_requests = Counter('http_requests_total', 'Total HTTP requests',
-                           ['service', 'method', 'endpoint', 'status'])
-identity_duration = Histogram('http_request_duration_seconds', 'Request duration',
-                             ['service', 'method', 'endpoint'],
-                             buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0])
-
-# Auth-specific metrics
-identity_logins = Counter('login_attempts_total', 'Login attempts', ['service', 'status'])
-identity_registrations = Counter('user_registrations_total', 'User registrations', ['service'])
-identity_password_resets = Counter('password_reset_total', 'Password resets', ['service'])
-
-# PostgreSQL for identity
-identity_pg_connections = Gauge('pg_stat_database_numbackends', 'Active connections',
-                               ['service', 'datname'])
-identity_pg_max_conn = Gauge('pg_settings_max_connections', 'Max connections', ['service'])
-
-# Redis for sessions
-identity_redis_keys = Gauge('redis_db_keys', 'Total keys', ['service', 'db'])
-identity_redis_memory = Gauge('redis_memory_used_bytes', 'Memory used', ['service'])
-
-# ECS for identity service
-identity_ecs_tasks = Gauge('ecs_service_running_count', 'Running tasks', ['service', 'cluster'])
-identity_ecs_cpu = Gauge('ecs_task_cpu_utilization', 'CPU utilization %', ['service', 'task'])
-
-# =============================================================================
-# Simulation Functions
-# =============================================================================
-
-def simulate_payment_api():
-    """Simulate payment-api metrics"""
-    # HTTP traffic
-    for _ in range(random.randint(5, 15)):
-        status = random.choices([200, 201, 400, 500], weights=[85, 10, 3, 2])[0]
-        endpoint = random.choice(['/payments', '/checkout', '/refund'])
-        duration = random.uniform(0.05, 0.3) if status == 200 else random.uniform(0.5, 2.0)
-        
-        payment_requests.labels(service='payment-api', method='POST', endpoint=endpoint, status=status).inc()
-        payment_duration.labels(service='payment-api', method='POST', endpoint=endpoint).observe(duration)
-    
-    # PostgreSQL
-    payment_pg_connections.labels(service='payment-api', datname='payments').set(random.randint(15, 35))
-    payment_pg_max_conn.labels(service='payment-api').set(100)
-    payment_pg_blks_hit.labels(service='payment-api', datname='payments').inc(random.randint(1000, 5000))
-    payment_pg_blks_read.labels(service='payment-api', datname='payments').inc(random.randint(10, 100))
-    payment_pg_query_duration.labels(service='payment-api').observe(random.uniform(0.001, 0.05))
-    
-    # Redis cache
-    payment_cache_hits.labels(service='payment-api').inc(random.randint(80, 120))
-    payment_cache_misses.labels(service='payment-api').inc(random.randint(5, 15))
-    
-    # Kubernetes pods
-    for i in range(1, 4):
-        pod_name = f'payment-api-{i}'
-        payment_pod_status.labels(service='payment-api', pod=pod_name, phase='Running').set(1)
-        payment_cpu_usage.labels(service='payment-api', pod=pod_name, container='payment-api').inc(random.uniform(0.01, 0.05))
-        payment_memory_usage.labels(service='payment-api', pod=pod_name, container='payment-api').set(random.randint(200_000_000, 400_000_000))
-
-def simulate_checkout_service():
-    """Simulate checkout-service metrics"""
-    # HTTP traffic
-    for _ in range(random.randint(3, 10)):
-        status = random.choices([200, 400, 500], weights=[90, 7, 3])[0]
-        endpoint = random.choice(['/cart', '/checkout', '/order'])
-        duration = random.uniform(0.1, 0.5) if status == 200 else random.uniform(1.0, 3.0)
-        
-        checkout_requests.labels(service='checkout-service', method='POST', endpoint=endpoint, status=status).inc()
-        checkout_duration.labels(service='checkout-service', method='POST', endpoint=endpoint).observe(duration)
-    
-    # MySQL
-    checkout_mysql_connections.labels(service='checkout-service').set(random.randint(10, 25))
-    checkout_mysql_max_conn.labels(service='checkout-service').set(150)
-    checkout_mysql_queries.labels(service='checkout-service').inc(random.randint(50, 200))
-    
-    # RabbitMQ
-    checkout_rabbitmq_messages.labels(service='checkout-service', queue='order_queue').set(random.randint(0, 50))
-    checkout_rabbitmq_consumers.labels(service='checkout-service', queue='order_queue').set(3)
-    checkout_rabbitmq_published.labels(service='checkout-service', queue='order_queue').inc(random.randint(5, 20))
-    
-    # ECS
-    checkout_ecs_tasks.labels(service='checkout-service', cluster='production').set(4)
-    for i in range(1, 5):
-        task_id = f'task-{i}'
-        checkout_ecs_cpu.labels(service='checkout-service', task=task_id).set(random.uniform(20, 50))
-        checkout_ecs_memory.labels(service='checkout-service', task=task_id).set(random.uniform(30, 60))
-
-def simulate_notification_worker():
-    """Simulate notification-worker metrics"""
-    # Notifications sent
-    for _ in range(random.randint(10, 30)):
-        status = random.choices(['delivered', 'failed'], weights=[95, 5])[0]
-        notif_sent.labels(service='notification-worker', status=status).inc()
-        notif_duration.labels(service='notification-worker').observe(random.uniform(0.5, 3.0))
-    
-    # Kafka
-    notif_kafka_lag.labels(service='notification-worker', topic='notifications').set(random.uniform(0.1, 2.0))
-    for partition in range(3):
-        notif_kafka_offset.labels(service='notification-worker', topic='notifications', partition=str(partition)).inc(random.randint(10, 50))
-    
-    # Redis
-    notif_redis_connections.labels(service='notification-worker').set(random.randint(5, 15))
-    notif_redis_memory.labels(service='notification-worker').set(random.randint(50_000_000, 100_000_000))
-    
-    # Kubernetes
-    for i in range(1, 4):
-        pod_name = f'notification-worker-{i}'
-        notif_pod_status.labels(service='notification-worker', pod=pod_name, phase='Running').set(1)
-        notif_cpu_usage.labels(service='notification-worker', pod=pod_name, container='worker').inc(random.uniform(0.02, 0.08))
-        notif_memory_usage.labels(service='notification-worker', pod=pod_name, container='worker').set(random.randint(150_000_000, 300_000_000))
-
-def simulate_analytics_stream():
-    """Simulate analytics-stream metrics"""
-    # Events processed
-    for _ in range(random.randint(20, 50)):
-        status = random.choices(['success', 'error'], weights=[98, 2])[0]
-        analytics_events.labels(service='analytics-stream', status=status).inc()
-        analytics_duration.labels(service='analytics-stream').observe(random.uniform(0.001, 0.05))
-    
-    analytics_throughput.labels(service='analytics-stream').set(random.uniform(500, 1500))
-    
-    # MongoDB
-    analytics_mongo_connections.labels(service='analytics-stream', state='current').set(random.randint(8, 20))
-    analytics_mongo_ops.labels(service='analytics-stream', type='insert').inc(random.randint(50, 200))
-    analytics_mongo_query_time.labels(service='analytics-stream').observe(random.uniform(0.005, 0.05))
-    
-    # Kafka
-    analytics_kafka_lag.labels(service='analytics-stream', topic='events').set(random.uniform(0.05, 0.5))
-    analytics_kafka_throughput.labels(service='analytics-stream', topic='events').set(random.uniform(800, 1200))
-    
-    # Kubernetes
-    for i in range(1, 5):
-        pod_name = f'analytics-stream-{i}'
-        analytics_pod_status.labels(service='analytics-stream', pod=pod_name, phase='Running').set(1)
-        analytics_cpu_usage.labels(service='analytics-stream', pod=pod_name, container='stream-processor').inc(random.uniform(0.05, 0.15))
-        analytics_memory_usage.labels(service='analytics-stream', pod=pod_name, container='stream-processor').set(random.randint(300_000_000, 600_000_000))
-
-def simulate_identity_service():
-    """Simulate identity-service metrics"""
-    # HTTP traffic
-    for _ in range(random.randint(5, 20)):
-        status = random.choices([200, 401, 500], weights=[85, 12, 3])[0]
-        endpoint = random.choice(['/login', '/register', '/verify'])
-        duration = random.uniform(0.05, 0.2) if status == 200 else random.uniform(0.3, 1.0)
-        
-        identity_requests.labels(service='identity-service', method='POST', endpoint=endpoint, status=status).inc()
-        identity_duration.labels(service='identity-service', method='POST', endpoint=endpoint).observe(duration)
-    
-    # Auth metrics
-    identity_logins.labels(service='identity-service', status='success').inc(random.randint(10, 30))
-    identity_logins.labels(service='identity-service', status='failed').inc(random.randint(1, 5))
-    identity_registrations.labels(service='identity-service').inc(random.randint(0, 3))
-    identity_password_resets.labels(service='identity-service').inc(random.randint(0, 2))
-    
-    # PostgreSQL
-    identity_pg_connections.labels(service='identity-service', datname='identity').set(random.randint(10, 20))
-    identity_pg_max_conn.labels(service='identity-service').set(100)
-    
-    # Redis
-    identity_redis_keys.labels(service='identity-service', db='0').set(random.randint(1000, 5000))
-    identity_redis_memory.labels(service='identity-service').set(random.randint(80_000_000, 150_000_000))
-    
-    # ECS
-    identity_ecs_tasks.labels(service='identity-service', cluster='production').set(3)
-    for i in range(1, 4):
-        task_id = f'task-{i}'
-        identity_ecs_cpu.labels(service='identity-service', task=task_id).set(random.uniform(15, 40))
-
-# =============================================================================
-# Flask Routes
-# =============================================================================
 
 @app.route('/')
-def index():
-    return """
-    <h1>NthLayer Multi-Service Demo</h1>
-    <p>Emitting metrics for 5 services:</p>
-    <ul>
-        <li><strong>payment-api</strong> - PostgreSQL, Redis, Kubernetes</li>
-        <li><strong>checkout-service</strong> - MySQL, RabbitMQ, ECS</li>
-        <li><strong>notification-worker</strong> - Redis, Kafka, Kubernetes</li>
-        <li><strong>analytics-stream</strong> - MongoDB, Kafka, Kubernetes</li>
-        <li><strong>identity-service</strong> - PostgreSQL, Redis, ECS</li>
-    </ul>
-    <p><a href="/metrics">View Prometheus metrics</a> (requires auth)</p>
-    """
+def home():
+    """Home page."""
+    return jsonify({
+        "service": "NthLayer Demo API",
+        "version": "2.0.0",
+        "description": "Demo with PostgreSQL and Kubernetes mock metrics",
+        "endpoints": {
+            "/health": "Health check",
+            "/metrics": "Prometheus metrics (auth required)",
+            "/api/payment": "POST - Simulate payment"
+        },
+        "metrics": {
+            "http": "Service metrics (requests, latency, errors)",
+            "postgresql": "Database metrics (connections, queries, cache hits)",
+            "kubernetes": "Pod metrics (status, CPU, memory)"
+        }
+    })
+
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'services': 5}
+    """Health check."""
+    return jsonify({
+        "status": "healthy",
+        "service": SERVICE_NAME,
+        "timestamp": datetime.utcnow().isoformat()
+    }), 200
+
 
 @app.route('/metrics')
+@requires_auth
 def metrics():
-    from flask import request
-    auth = request.authorization
-    if not auth or not check_auth(auth.username, auth.password):
-        return authenticate()
+    """Prometheus metrics endpoint."""
+    return generate_latest(registry), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+
+
+@app.route('/api/payment', methods=['POST'])
+def create_payment():
+    """Simulate payment creation."""
+    start = time.time()
     
-    # Simulate all services
-    simulate_payment_api()
-    simulate_checkout_service()
-    simulate_notification_worker()
-    simulate_analytics_stream()
-    simulate_identity_service()
-    
-    return Response(generate_latest(REGISTRY), mimetype='text/plain')
+    try:
+        # Simulate database query
+        time.sleep(random.uniform(0.01, 0.03))
+        
+        # Simulate error
+        if random.random() < ERROR_RATE:
+            http_requests_total.labels(
+                service=SERVICE_NAME,
+                method='POST',
+                endpoint='/api/payment',
+                status='500'
+            ).inc()
+            return jsonify({"error": "Payment failed"}), 500
+        
+        duration = time.time() - start
+        
+        http_requests_total.labels(
+            service=SERVICE_NAME,
+            method='POST',
+            endpoint='/api/payment',
+            status='200'
+        ).inc()
+        
+        http_request_duration_seconds.labels(
+            service=SERVICE_NAME,
+            method='POST',
+            endpoint='/api/payment'
+        ).observe(duration)
+        
+        return jsonify({
+            "payment_id": f"pay_{int(time.time() * 1000)}",
+            "status": "completed",
+            "duration_ms": int(duration * 1000)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    print(f"🚀 NthLayer Demo App (with PostgreSQL & K8s mocks)")
+    print(f"📊 Service: {SERVICE_NAME}")
+    print(f"📈 Metrics: /metrics")
+    print(f"💚 Health: /health")
+    print(f"🗄️  PostgreSQL metrics: ENABLED")
+    print(f"☸️  Kubernetes metrics: ENABLED")
+    
+    app.run(host='0.0.0.0', port=8080, debug=False)

@@ -89,3 +89,4 @@ test-output/
 # Docker volumes
 postgres-data/
 redis-data/
+.env
