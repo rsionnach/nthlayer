@@ -73,6 +73,43 @@ pg_query_duration = Histogram(
 # Alias for consistency
 pg_query_time = pg_query_duration
 
+# Additional PostgreSQL metrics
+pg_activity_count = Gauge(
+    'pg_stat_activity_count', 'Connections by state',
+    ['service', 'state'],
+    registry=registry
+)
+pg_xact_commit = Gauge(
+    'pg_stat_database_xact_commit', 'Committed transactions',
+    ['service', 'datname'],
+    registry=registry
+)
+pg_xact_rollback = Gauge(
+    'pg_stat_database_xact_rollback', 'Rolled back transactions',
+    ['service', 'datname'],
+    registry=registry
+)
+pg_database_size = Gauge(
+    'pg_database_size_bytes', 'Database size',
+    ['service', 'datname'],
+    registry=registry
+)
+pg_deadlocks = Gauge(
+    'pg_stat_database_deadlocks', 'Deadlocks',
+    ['service', 'datname'],
+    registry=registry
+)
+pg_replication_lag = Gauge(
+    'pg_replication_lag_seconds', 'Replication lag',
+    ['service'],
+    registry=registry
+)
+pg_dead_tuples = Gauge(
+    'pg_stat_user_tables_n_dead_tup', 'Dead tuples (bloat)',
+    ['service', 'schemaname', 'relname'],
+    registry=registry
+)
+
 # Redis metrics (payment-api, notification-worker, identity-service)
 redis_connections = Gauge(
     'redis_connected_clients', 'Connected clients',
