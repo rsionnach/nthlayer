@@ -3,13 +3,19 @@
 Comprehensive dashboard audit - check ALL panels against actual metrics
 """
 import json
+import os
 import subprocess
 import sys
+
+METRICS_PASSWORD = os.environ.get("METRICS_PASSWORD")
+if not METRICS_PASSWORD:
+    print("Error: METRICS_PASSWORD environment variable not set")
+    sys.exit(1)
 
 # Fetch all metrics from Fly.io
 print("Fetching metrics from Fly.io...")
 result = subprocess.run([
-    'curl', '-s', '-u', 'nthlayer:NthLayerDemo2025!',
+    'curl', '-s', '-u', f'nthlayer:{METRICS_PASSWORD}',
     'https://nthlayer-demo.fly.dev/metrics'
 ], capture_output=True, text=True)
 

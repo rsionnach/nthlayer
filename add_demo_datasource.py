@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """Add nthlayer-demo.fly.dev as a Prometheus datasource in Grafana Cloud."""
 
+import os
+import sys
 import requests
 import json
 
-GRAFANA_URL = "https://nthlayer.grafana.net"
-GRAFANA_API_KEY = "REDACTED"
+GRAFANA_URL = os.environ.get("NTHLAYER_GRAFANA_URL", "https://nthlayer.grafana.net")
+GRAFANA_API_KEY = os.environ.get("NTHLAYER_GRAFANA_API_KEY")
+METRICS_PASSWORD = os.environ.get("METRICS_PASSWORD")
+
+if not GRAFANA_API_KEY:
+    print("Error: NTHLAYER_GRAFANA_API_KEY environment variable not set")
+    sys.exit(1)
+
+if not METRICS_PASSWORD:
+    print("Error: METRICS_PASSWORD environment variable not set")
+    sys.exit(1)
 
 headers = {
     "Authorization": f"Bearer {GRAFANA_API_KEY}",
@@ -26,7 +37,7 @@ datasource = {
     "basicAuth": True,
     "basicAuthUser": "nthlayer",
     "secureJsonData": {
-        "basicAuthPassword": "NthLayerDemo2025!"
+        "basicAuthPassword": METRICS_PASSWORD
     },
     "jsonData": {
         "httpMethod": "POST",
