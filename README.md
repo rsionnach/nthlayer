@@ -1,10 +1,14 @@
 <a id="readme-top"></a>
 
 <!-- PROJECT SHIELDS -->
+[![Alpha](https://img.shields.io/badge/Status-Alpha-orange?style=flat-square)](https://github.com/rsionnach/nthlayer)
+[![PyPI](https://img.shields.io/pypi/v/nthlayer?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/nthlayer/)
 [![Tests][tests-shield]][tests-url]
 [![Python][python-shield]][python-url]
 [![License][license-shield]][license-url]
 [![Contributors][contributors-shield]][contributors-url]
+
+> **Early Access** - NthLayer is in active development. We're looking for early adopters to try it and share feedback! [Join the discussion](https://github.com/rsionnach/nthlayer/discussions) or [report issues](https://github.com/rsionnach/nthlayer/issues).
 
 <!-- PROJECT LOGO -->
 <br />
@@ -134,7 +138,7 @@ $ nthlayer check-deploy payment-api.yaml
 $ nthlayer apply payment-api.yaml --env prod
 ```
 
-**Time saved:** 20 hours → 5 minutes ⚡  
+**Time saved:** 20 hours → 5 minutes ⚡
 **Commands:** 7 → 2 (like Terraform!) 🚀
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -197,6 +201,13 @@ You only need:
 * **Make** - For convenient shortcuts (optional)
 
 ### Installation
+
+**Option 1: pip install (recommended)**
+```bash
+pip install nthlayer
+```
+
+**Option 2: From source (for development)**
 
 1. Clone the repo
    ```bash

@@ -65,7 +65,7 @@ typecheck: ## Run type checking
 	mypy src/
 
 pre-commit-install: ## Install pre-commit hooks
-	pip install pre-commit
+	pip3 install pre-commit
 	pre-commit install
 	@echo "✅ Pre-commit hooks installed. Linting will run automatically on commit."
 
