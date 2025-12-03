@@ -3,9 +3,10 @@
 Handles deep merging of base service config with environment-specific overrides.
 """
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List
-from copy import deepcopy
+
 import yaml
 
 

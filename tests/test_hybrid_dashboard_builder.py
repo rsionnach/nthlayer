@@ -1,7 +1,5 @@
 """Tests for Hybrid Dashboard Builder (SDK-based with intent resolution)."""
 
-import pytest
-from unittest.mock import Mock, patch
 
 
 class TestDashboardBuilderSDK:
@@ -9,8 +7,8 @@ class TestDashboardBuilderSDK:
 
     def test_builds_dashboard_for_api_service(self):
         """Test dashboard generation for API service type."""
-        from nthlayer.specs.models import ServiceContext, Resource
         from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
+        from nthlayer.specs.models import Resource, ServiceContext
 
         context = ServiceContext(
             name="test-api",
@@ -36,8 +34,8 @@ class TestDashboardBuilderSDK:
 
     def test_builds_dashboard_for_worker_service(self):
         """Test dashboard generation for worker service type."""
-        from nthlayer.specs.models import ServiceContext, Resource
         from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
+        from nthlayer.specs.models import Resource, ServiceContext
 
         context = ServiceContext(
             name="test-worker",
@@ -66,8 +64,8 @@ class TestDashboardBuilderSDK:
 
     def test_builds_dashboard_for_stream_service(self):
         """Test dashboard generation for stream service type."""
-        from nthlayer.specs.models import ServiceContext, Resource
         from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
+        from nthlayer.specs.models import Resource, ServiceContext
 
         context = ServiceContext(
             name="test-stream",

@@ -1,6 +1,7 @@
 """Kafka dashboard template."""
 
 from typing import List
+
 from nthlayer.dashboards.models import Panel, Target
 from nthlayer.dashboards.templates.base import TechnologyTemplate
 

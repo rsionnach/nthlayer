@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nthlayer.api.routes import health, teams
-from nthlayer.config import Settings, get_settings
+from nthlayer.config import get_settings
 from nthlayer.db.session import init_engine
 from nthlayer.logging import configure_logging
 

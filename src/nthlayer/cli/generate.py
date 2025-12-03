@@ -45,7 +45,7 @@ def generate_slo_command(
     # For MVP, only support sloth format
     if format not in ["sloth"]:
         print(f"❌ Unsupported format: {format}")
-        print(f"   Supported formats: sloth")
+        print("   Supported formats: sloth")
         print()
         return 1
     
@@ -86,7 +86,7 @@ def generate_slo_command(
         print("💡 Next steps:")
         print(f"   1. Review generated spec: {result.output_file}")
         print(f"   2. Generate Prometheus rules: sloth generate -i {result.output_file}")
-        print(f"   3. Deploy rules to Prometheus")
+        print("   3. Deploy rules to Prometheus")
         print()
     
     return 0

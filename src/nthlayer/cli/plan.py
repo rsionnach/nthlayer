@@ -2,11 +2,11 @@
 CLI command for planning (dry-run) service resource generation.
 """
 
+import json
 from pathlib import Path
 from typing import Optional
-import json
 
-from nthlayer.orchestrator import ServiceOrchestrator, PlanResult
+from nthlayer.orchestrator import PlanResult, ServiceOrchestrator
 
 
 def print_plan_summary(plan: PlanResult) -> None:

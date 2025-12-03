@@ -9,23 +9,23 @@ Enhanced with Hybrid Model:
 """
 
 from nthlayer.dashboards.intents import (
-    MetricIntent,
     ALL_INTENTS,
+    MetricIntent,
     get_intent,
     get_intents_for_technology,
     list_technologies,
+)
+from nthlayer.dashboards.panel_spec import (
+    GuidancePanelSpec,
+    PanelSpec,
+    PanelType,
+    QuerySpec,
 )
 from nthlayer.dashboards.resolver import (
     MetricResolver,
     ResolutionResult,
     ResolutionStatus,
     create_resolver,
-)
-from nthlayer.dashboards.panel_spec import (
-    PanelSpec,
-    QuerySpec,
-    PanelType,
-    GuidancePanelSpec,
 )
 
 __all__ = [

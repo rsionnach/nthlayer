@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # Pattern matches ${variable}
 VARIABLE_PATTERN = re.compile(r"\$\{(\w+)\}")
 

@@ -1,19 +1,14 @@
 """CLI command for validating dashboard metric resolution."""
 
-import sys
-from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 
-from nthlayer.specs.parser import parse_service_file
-from nthlayer.dashboards.resolver import MetricResolver, ResolutionStatus, create_resolver
 from nthlayer.dashboards.intents import (
     ALL_INTENTS,
     get_intents_for_technology,
     list_technologies,
-    POSTGRESQL_INTENTS,
-    REDIS_INTENTS,
-    HTTP_INTENTS,
 )
+from nthlayer.dashboards.resolver import ResolutionStatus, create_resolver
+from nthlayer.specs.parser import parse_service_file
 
 
 def validate_dashboard_command(

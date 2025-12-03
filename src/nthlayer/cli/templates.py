@@ -1,6 +1,5 @@
 """CLI command for listing service templates."""
 
-from nthlayer.specs.template_loader import TemplateLoader
 from nthlayer.specs.custom_templates import CustomTemplateLoader
 
 

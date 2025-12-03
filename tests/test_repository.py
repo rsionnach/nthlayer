@@ -1,10 +1,9 @@
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-
 from nthlayer.db.models import Base
 from nthlayer.db.repositories import IdempotencyConflict, RunRepository
 from nthlayer.domain.models import Finding, Run, RunStatus
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture

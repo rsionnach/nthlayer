@@ -4,12 +4,12 @@ Integration tests for SLO functionality.
 Tests SLO parsing, storage, and error budget calculation.
 """
 
-import pytest
 from datetime import datetime, timedelta
 
-from nthlayer.slos.models import SLO, ErrorBudget, SLOStatus, TimeWindow, TimeWindowType
-from nthlayer.slos.parser import parse_slo_file, parse_slo_dict, OpenSLOParserError
+import pytest
 from nthlayer.slos.calculator import ErrorBudgetCalculator
+from nthlayer.slos.models import SLO, ErrorBudget, SLOStatus, TimeWindow, TimeWindowType
+from nthlayer.slos.parser import OpenSLOParserError, parse_slo_dict, parse_slo_file
 
 
 class TestOpenSLOParser:

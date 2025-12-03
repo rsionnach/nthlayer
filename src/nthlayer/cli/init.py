@@ -1,7 +1,7 @@
 """CLI command for initializing new NthLayer services."""
 
 from pathlib import Path
-from nthlayer.specs.template_loader import TemplateLoader
+
 from nthlayer.specs.custom_templates import CustomTemplateLoader
 
 

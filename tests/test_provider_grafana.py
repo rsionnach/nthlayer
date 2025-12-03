@@ -1,10 +1,9 @@
 import pytest
-
 from nthlayer.providers.grafana import (
-    GrafanaProvider,
-    GrafanaFolderResource,
     GrafanaDashboardResource,
     GrafanaDatasourceResource,
+    GrafanaFolderResource,
+    GrafanaProvider,
 )
 
 

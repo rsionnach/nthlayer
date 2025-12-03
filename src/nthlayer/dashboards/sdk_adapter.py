@@ -5,14 +5,15 @@ This module converts NthLayer service specifications into Grafana Foundation SDK
 builders, providing type-safe dashboard generation with official Grafana support.
 """
 
-from typing import List, Optional, Dict, Any
-from grafana_foundation_sdk.builders import dashboard, timeseries, stat, gauge, prometheus
+from typing import Any, List, Optional
+
+from grafana_foundation_sdk.builders import dashboard, gauge, prometheus, stat, timeseries
 from grafana_foundation_sdk.builders.dashboard import Row
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
-from nthlayer.specs.models import ServiceContext
+from nthlayer.dashboards.models import Panel, TemplateVariable
 from nthlayer.slos.models import SLO
-from nthlayer.dashboards.models import Panel, Target, TemplateVariable
+from nthlayer.specs.models import ServiceContext
 
 
 class SDKAdapter:

@@ -10,13 +10,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nthlayer.config import get_settings
 from nthlayer.db.models import SLOModel
 from nthlayer.db.session import get_session, init_engine
-from nthlayer.slos.calculator import ErrorBudgetCalculator
 from nthlayer.slos.models import SLO
 from nthlayer.slos.storage import SLORepository
 

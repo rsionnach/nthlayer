@@ -4,8 +4,8 @@ Different environments get different alert coverage based on their needs.
 """
 
 from typing import List, Optional
-from nthlayer.alerts.models import AlertRule
 
+from nthlayer.alerts.models import AlertRule
 
 # Alert severity levels to include per environment
 ENVIRONMENT_ALERT_SEVERITIES = {
@@ -117,7 +117,7 @@ def explain_alert_filtering(
         ENVIRONMENT_ALERT_SEVERITIES["prod"]
     )
     
-    print(f"🔍 Alert Filtering Strategy:")
+    print("🔍 Alert Filtering Strategy:")
     print(f"   Environment: {env}")
     if tier:
         print(f"   Tier: {tier}")
@@ -135,7 +135,7 @@ def explain_alert_filtering(
     if tier:
         tier_lower = tier.lower()
         print()
-        print(f"   Additional tier filtering:")
+        print("   Additional tier filtering:")
         if tier_lower == "critical":
             print("   • Critical tier: No additional filtering")
         elif tier_lower == "standard":

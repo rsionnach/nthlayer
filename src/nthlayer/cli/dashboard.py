@@ -1,12 +1,11 @@
 """CLI command for generating Grafana dashboards."""
 
 import json
-import sys
 from pathlib import Path
 from typing import Optional
 
-from nthlayer.specs.parser import parse_service_file
 from nthlayer.dashboards.builder import build_dashboard
+from nthlayer.specs.parser import parse_service_file
 
 
 def generate_dashboard_command(
@@ -113,10 +112,10 @@ def generate_dashboard_command(
         print("✅ Dashboard generated successfully!")
         print()
         print("📊 Next steps:")
-        print(f"   1. Import to Grafana:")
-        print(f"      curl -X POST http://grafana:3000/api/dashboards/db \\")
-        print(f"           -H 'Content-Type: application/json' \\")
-        print(f"           -H 'Authorization: Bearer $GRAFANA_TOKEN' \\")
+        print("   1. Import to Grafana:")
+        print("      curl -X POST http://grafana:3000/api/dashboards/db \\")
+        print("           -H 'Content-Type: application/json' \\")
+        print("           -H 'Authorization: Bearer $GRAFANA_TOKEN' \\")
         print(f"           -d @{output_path}")
         print()
         print(f"   2. Or manually import {output_path} in Grafana UI")
@@ -124,7 +123,7 @@ def generate_dashboard_command(
         
         return 0
         
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         print(f"❌ Error: Service file not found: {service_file}")
         return 1
     except Exception as e:

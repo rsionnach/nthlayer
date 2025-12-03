@@ -11,16 +11,15 @@ Enhanced with the Hybrid Model:
 - Custom metric overrides from service YAML
 """
 
-from typing import List, Optional, Any, Dict
 import logging
+from typing import Any, Dict, List, Optional
 
-from grafana_foundation_sdk.builders import dashboard, timeseries, stat, gauge, prometheus
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
-from nthlayer.specs.models import Resource, ServiceContext
+from nthlayer.dashboards.resolver import MetricResolver, create_resolver
 from nthlayer.dashboards.sdk_adapter import SDKAdapter
 from nthlayer.dashboards.templates import get_template
-from nthlayer.dashboards.resolver import MetricResolver, create_resolver, ResolutionStatus
+from nthlayer.specs.models import Resource, ServiceContext
 
 logger = logging.getLogger(__name__)
 
@@ -533,7 +532,7 @@ class DashboardBuilderSDK:
                 intent_template.resolver = self.resolver
             
             # Get panels (resolved through intent system)
-            template_panels = intent_template.get_panels(f"$service")
+            template_panels = intent_template.get_panels("$service")
             
             # Convert to SDK panels
             for old_panel in template_panels:
@@ -566,7 +565,9 @@ class DashboardBuilderSDK:
                 from nthlayer.dashboards.templates.kafka_intent import KafkaIntentTemplate
                 return KafkaIntentTemplate()
             elif technology == 'elasticsearch':
-                from nthlayer.dashboards.templates.elasticsearch_intent import ElasticsearchIntentTemplate
+                from nthlayer.dashboards.templates.elasticsearch_intent import (
+                    ElasticsearchIntentTemplate,
+                )
                 return ElasticsearchIntentTemplate()
             return None
         except ImportError as e:

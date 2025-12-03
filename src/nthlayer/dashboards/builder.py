@@ -9,15 +9,14 @@ Automatically creates dashboards with:
 Now powered by Grafana Foundation SDK for type-safe dashboard generation.
 """
 
-from typing import List, Optional, Any, Dict
-from grafana_foundation_sdk.builders import dashboard as sdk_dashboard
-from grafana_foundation_sdk.builders.dashboard import Row
-from grafana_foundation_sdk.cog.encoder import JSONEncoder
+from typing import Any, Dict, List
 
-from nthlayer.specs.models import Resource, ServiceContext
+from grafana_foundation_sdk.builders.dashboard import Row
+
+from nthlayer.dashboards.models import Panel, Target, TemplateVariable
 from nthlayer.dashboards.sdk_adapter import SDKAdapter
 from nthlayer.dashboards.templates import get_template
-from nthlayer.dashboards.models import TemplateVariable, Panel, Target
+from nthlayer.specs.models import Resource, ServiceContext
 
 
 class DashboardBuilder:
@@ -232,19 +231,19 @@ class DashboardBuilder:
             # Fallback based on service type
             if self.context.type == 'worker':
                 expr = (
-                    f'sum(rate(notifications_sent_total{{service="$service",status!="failed"}}[5m])) / '
-                    f'sum(rate(notifications_sent_total{{service="$service"}}[5m])) * 100'
+                    'sum(rate(notifications_sent_total{service="$service",status!="failed"}[5m])) / '
+                    'sum(rate(notifications_sent_total{service="$service"}[5m])) * 100'
                 )
             elif self.context.type == 'stream':
                 expr = (
-                    f'sum(rate(events_processed_total{{service="$service",status!="error"}}[5m])) / '
-                    f'sum(rate(events_processed_total{{service="$service"}}[5m])) * 100'
+                    'sum(rate(events_processed_total{service="$service",status!="error"}[5m])) / '
+                    'sum(rate(events_processed_total{service="$service"}[5m])) * 100'
                 )
             else:
                 # Default: HTTP metrics for API services
                 expr = (
-                    f'sum(rate(http_requests_total{{service="$service",status!~"5.."}}[5m])) / '
-                    f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                    'sum(rate(http_requests_total{service="$service",status!~"5.."}[5m])) / '
+                    'sum(rate(http_requests_total{service="$service"}[5m])) * 100'
                 )
         
         return Panel(
@@ -357,8 +356,8 @@ class DashboardBuilder:
             targets=[
                 Target(
                     expr=(
-                        f'sum(rate(http_requests_total{{service="$service",status=~"5.."}}[5m])) / '
-                        f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                        'sum(rate(http_requests_total{service="$service",status=~"5.."}[5m])) / '
+                        'sum(rate(http_requests_total{service="$service"}[5m])) * 100'
                     ),
                     legend_format="Error Rate %",
                 )
@@ -432,7 +431,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'sum(rate(http_requests_total{{service="$service"}}[5m]))',
+                        expr='sum(rate(http_requests_total{service="$service"}[5m]))',
                         legend_format="Requests/sec",
                     )
                 ],
@@ -449,8 +448,8 @@ class DashboardBuilder:
                 targets=[
                     Target(
                         expr=(
-                            f'sum(rate(http_requests_total{{service="$service",status=~"5.."}}[5m])) / '
-                            f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                            'sum(rate(http_requests_total{service="$service",status=~"5.."}[5m])) / '
+                            'sum(rate(http_requests_total{service="$service"}[5m])) * 100'
                         ),
                         legend_format="Error %",
                     )
@@ -473,7 +472,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{{service="$service"}}[5m]))) * 1000',
+                        expr='histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="$service"}[5m]))) * 1000',
                         legend_format="p95 latency",
                     )
                 ],
@@ -491,7 +490,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'sum(rate(events_processed_total{{service="$service"}}[5m]))',
+                        expr='sum(rate(events_processed_total{service="$service"}[5m]))',
                         legend_format="Events/sec",
                     )
                 ],
@@ -508,8 +507,8 @@ class DashboardBuilder:
                 targets=[
                     Target(
                         expr=(
-                            f'sum(rate(events_processed_total{{service="$service",status="error"}}[5m])) / '
-                            f'sum(rate(events_processed_total{{service="$service"}}[5m])) * 100'
+                            'sum(rate(events_processed_total{service="$service",status="error"}[5m])) / '
+                            'sum(rate(events_processed_total{service="$service"}[5m])) * 100'
                         ),
                         legend_format="Error %",
                     )
@@ -527,7 +526,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'histogram_quantile(0.95, sum by (le) (rate(event_processing_duration_seconds_bucket{{service="$service"}}[5m]))) * 1000',
+                        expr='histogram_quantile(0.95, sum by (le) (rate(event_processing_duration_seconds_bucket{service="$service"}[5m]))) * 1000',
                         legend_format="p95 latency",
                     )
                 ],
@@ -545,7 +544,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'sum(rate(notifications_sent_total{{service="$service"}}[5m]))',
+                        expr='sum(rate(notifications_sent_total{service="$service"}[5m]))',
                         legend_format="Jobs/sec",
                     )
                 ],
@@ -562,8 +561,8 @@ class DashboardBuilder:
                 targets=[
                     Target(
                         expr=(
-                            f'sum(rate(notifications_sent_total{{service="$service",status="failed"}}[5m])) / '
-                            f'sum(rate(notifications_sent_total{{service="$service"}}[5m])) * 100'
+                            'sum(rate(notifications_sent_total{service="$service",status="failed"}[5m])) / '
+                            'sum(rate(notifications_sent_total{service="$service"}[5m])) * 100'
                         ),
                         legend_format="Failure %",
                     )
@@ -581,7 +580,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'histogram_quantile(0.95, sum by (le) (rate(notification_processing_duration_seconds_bucket{{service="$service"}}[5m]))) * 1000',
+                        expr='histogram_quantile(0.95, sum by (le) (rate(notification_processing_duration_seconds_bucket{service="$service"}[5m]))) * 1000',
                         legend_format="p95 latency",
                     )
                 ],
@@ -673,7 +672,7 @@ class DashboardBuilder:
         return panels
 
 
-def build_dashboard(service_context: ServiceContext, resources: List[Resource], full_panels: bool = False) -> Dashboard:
+def build_dashboard(service_context: ServiceContext, resources: List[Resource], full_panels: bool = False) -> Dict[str, Any]:
     """Convenience function to build a dashboard.
     
     Args:

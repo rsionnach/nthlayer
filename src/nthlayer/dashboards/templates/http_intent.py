@@ -6,8 +6,9 @@ using the intent system for metric resolution.
 """
 
 from typing import List
+
+from nthlayer.dashboards.panel_spec import PanelSpec, PanelType, QuerySpec
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
-from nthlayer.dashboards.panel_spec import PanelSpec, QuerySpec, PanelType
 
 
 class HTTPIntentTemplate(IntentBasedTemplate):

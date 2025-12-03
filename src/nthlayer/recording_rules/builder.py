@@ -1,8 +1,9 @@
 """Builder for generating Prometheus recording rules from SLO specifications."""
 
 from typing import List
-from nthlayer.specs.models import Resource, ServiceContext
+
 from nthlayer.recording_rules.models import RecordingRule, RecordingRuleGroup
+from nthlayer.specs.models import Resource, ServiceContext
 
 
 class RecordingRuleBuilder:
@@ -114,7 +115,7 @@ class RecordingRuleBuilder:
         
         # Availability percentage
         rules.append(RecordingRule(
-            record=f"slo:availability:ratio",
+            record="slo:availability:ratio",
             expr=(
                 f'slo:requests_success:{window}{{service="{service}",slo="{slo_name}"}} / '
                 f'slo:requests_total:{window}{{service="{service}",slo="{slo_name}"}}'
@@ -128,7 +129,7 @@ class RecordingRuleBuilder:
         
         # Error budget remaining (as ratio)
         rules.append(RecordingRule(
-            record=f"slo:error_budget:ratio",
+            record="slo:error_budget:ratio",
             expr=(
                 f'1 - ((1 - slo:availability:ratio{{service="{service}",slo="{slo_name}"}}) / '
                 f'(1 - {objective / 100}))'
@@ -184,7 +185,7 @@ class RecordingRuleBuilder:
         
         # Latency SLO compliance (percentage under threshold)
         rules.append(RecordingRule(
-            record=f"slo:latency:ratio",
+            record="slo:latency:ratio",
             expr=(
                 f'slo:latency_requests_fast:{window}{{service="{service}",slo="{slo_name}"}} / '
                 f'slo:latency_requests_total:{window}{{service="{service}",slo="{slo_name}"}}'
@@ -247,7 +248,7 @@ class RecordingRuleBuilder:
         
         # Error rate
         rules.append(RecordingRule(
-            record=f"slo:error_rate:ratio",
+            record="slo:error_rate:ratio",
             expr=(
                 f'slo:error_requests_failed:{window}{{service="{service}",slo="{slo_name}"}} / '
                 f'slo:error_requests_total:{window}{{service="{service}",slo="{slo_name}"}}'

@@ -1,7 +1,6 @@
 import pytest
-
-from nthlayer.demo import build_prometheus_alerts_demo, run_grafana_demo
 from nthlayer.alerts.models import AlertRule
+from nthlayer.demo import build_prometheus_alerts_demo, run_grafana_demo
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 
 

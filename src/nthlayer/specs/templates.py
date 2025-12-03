@@ -5,7 +5,8 @@ reused across services with optional overrides.
 """
 
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Dict, List
+
 from .models import Resource
 
 

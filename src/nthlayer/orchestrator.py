@@ -5,10 +5,11 @@ Coordinates generation of all resources (SLOs, alerts, dashboards, etc.)
 from a single service definition file.
 """
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-import time
+from typing import Any, Dict, List, Optional
+
 import yaml
 
 # TODO: Import these when implementing actual generation
@@ -262,9 +263,9 @@ class ServiceOrchestrator:
                 result.resources_created["dashboard"] = count
                 if verbose:
                     if self.push_to_grafana:
-                        print(f"✅ Dashboard created and pushed to Grafana")
+                        print("✅ Dashboard created and pushed to Grafana")
                     else:
-                        print(f"✅ Dashboard created")
+                        print("✅ Dashboard created")
             except Exception as e:
                 result.errors.append(f"Dashboard generation failed: {e}")
             step += 1
@@ -288,7 +289,7 @@ class ServiceOrchestrator:
                 count = self._generate_pagerduty()
                 result.resources_created["pagerduty"] = count
                 if verbose:
-                    print(f"✅ PagerDuty service created")
+                    print("✅ PagerDuty service created")
             except Exception as e:
                 result.errors.append(f"PagerDuty setup failed: {e}")
             step += 1
@@ -436,11 +437,11 @@ class ServiceOrchestrator:
         Args:
             dashboard_file: Path to generated dashboard JSON
         """
-        import json
         import asyncio
+        import json
         import os
+
         from nthlayer.providers.grafana import GrafanaProvider
-        from pydantic_settings import BaseSettings
         
         # Get configuration directly from environment (simpler and more reliable)
         grafana_url = os.getenv('NTHLAYER_GRAFANA_URL')
@@ -475,7 +476,7 @@ class ServiceOrchestrator:
         dashboard_uid = dashboard_json.get("uid", self.service_name)
         
         # Push dashboard
-        print(f"📤 Pushing dashboard to Grafana...")
+        print("📤 Pushing dashboard to Grafana...")
         
         async def do_push():
             """Async function to push dashboard."""

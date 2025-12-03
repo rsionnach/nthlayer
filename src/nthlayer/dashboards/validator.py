@@ -6,11 +6,12 @@ preventing the creation of panels that query non-existent metrics.
 """
 
 import logging
-from typing import Dict, List, Optional, Set
 import re
+from typing import Dict, List, Optional, Set
 
-from nthlayer.discovery import MetricDiscoveryClient, DiscoveryResult
-from .models import Panel, Target
+from nthlayer.discovery import DiscoveryResult, MetricDiscoveryClient
+
+from .models import Panel
 
 logger = logging.getLogger(__name__)
 

@@ -1,10 +1,7 @@
 """Tests for custom template system."""
 
-import pytest
-from pathlib import Path
 from nthlayer.specs.custom_templates import CustomTemplateLoader
 from nthlayer.specs.parser import parse_service_file
-from nthlayer.specs.templates import ServiceTemplate
 
 
 class TestCustomTemplateLoader:
@@ -221,8 +218,8 @@ class TestTemplateSearchOrder:
     def test_custom_templates_directory_not_found(self):
         """Should return empty dict if no custom templates directory."""
         # Change to temp directory without .nthlayer
-        import tempfile
         import os
+        import tempfile
         
         with tempfile.TemporaryDirectory() as tmpdir:
             original_dir = os.getcwd()

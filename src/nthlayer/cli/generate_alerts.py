@@ -1,6 +1,7 @@
 """CLI command for generating alerts from awesome-prometheus-alerts."""
 
 from pathlib import Path
+
 from nthlayer.generators.alerts import generate_alerts_for_service
 from nthlayer.specs.environment_alerts import explain_alert_filtering
 

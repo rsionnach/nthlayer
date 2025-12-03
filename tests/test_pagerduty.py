@@ -2,10 +2,9 @@
 Tests for PagerDuty integration.
 """
 
-import pytest
 from unittest.mock import Mock, patch
 
-from nthlayer.integrations.pagerduty import PagerDutyClient, PagerDutySetupResult
+from nthlayer.integrations.pagerduty import PagerDutyClient
 
 
 class TestPagerDutyClient:

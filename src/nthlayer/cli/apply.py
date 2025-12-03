@@ -2,12 +2,12 @@
 CLI command for applying (generating) all service resources.
 """
 
-from pathlib import Path
-from typing import Optional, List
 import json
+from pathlib import Path
+from typing import List, Optional
 
-from nthlayer.orchestrator import ServiceOrchestrator, ApplyResult
 from nthlayer.cli.plan import plan_command
+from nthlayer.orchestrator import ApplyResult, ServiceOrchestrator
 
 
 def print_apply_summary(result: ApplyResult) -> None:

@@ -2,7 +2,6 @@
 Tests for deployment gates.
 """
 
-import pytest
 
 from nthlayer.slos.gates import DeploymentGate, GateResult
 

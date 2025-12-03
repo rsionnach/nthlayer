@@ -2,10 +2,9 @@
 Tests for alert generation module.
 """
 
-import pytest
-from pathlib import Path
 
-from nthlayer.alerts import AlertTemplateLoader, AlertRule
+import pytest
+from nthlayer.alerts import AlertRule, AlertTemplateLoader
 
 
 def test_alert_rule_from_dict():
@@ -146,8 +145,8 @@ def test_extract_dependencies_no_type():
 
 def test_filter_by_tier():
     """Test tier-based alert filtering"""
-    from nthlayer.generators.alerts import filter_by_tier
     from nthlayer.alerts import AlertRule
+    from nthlayer.generators.alerts import filter_by_tier
     
     alerts = [
         AlertRule(name="Critical", expr="up==0", severity="critical", technology="postgres"),
@@ -173,7 +172,6 @@ def test_filter_by_tier():
 def test_generate_alerts_integration(tmp_path):
     """Test full alert generation workflow"""
     from nthlayer.generators.alerts import generate_alerts_for_service
-    from pathlib import Path
     
     # Create temp service file
     service_file = tmp_path / "test-service.yaml"

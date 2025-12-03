@@ -1,9 +1,10 @@
 """Tests for Grafana dashboard generation."""
 
+import json
 import tempfile
 from pathlib import Path
+
 import pytest
-import json
 
 
 @pytest.mark.skip(reason="Legacy tests - use test_hybrid_dashboard_builder.py for current functionality")
@@ -12,8 +13,8 @@ class TestDashboardBuilder:
     
     def test_builds_dashboard_from_service_spec(self):
         """Test that dashboard builder creates valid dashboard."""
-        from nthlayer.specs.models import ServiceContext, Resource
         from nthlayer.dashboards.builder import build_dashboard
+        from nthlayer.specs.models import Resource, ServiceContext
         
         context = ServiceContext(
             name="payment-api",
@@ -48,8 +49,8 @@ class TestDashboardBuilder:
     
     def test_dashboard_has_slo_panels(self):
         """Test that SLOs generate appropriate panels."""
-        from nthlayer.specs.models import ServiceContext, Resource
         from nthlayer.dashboards.builder import build_dashboard
+        from nthlayer.specs.models import Resource, ServiceContext
         
         context = ServiceContext(
             name="test-api",
@@ -82,8 +83,8 @@ class TestDashboardBuilder:
     
     def test_dashboard_has_health_panels(self):
         """Test that service health panels are included."""
-        from nthlayer.specs.models import ServiceContext
         from nthlayer.dashboards.builder import build_dashboard
+        from nthlayer.specs.models import ServiceContext
         
         context = ServiceContext(
             name="test-api",
@@ -101,8 +102,8 @@ class TestDashboardBuilder:
     
     def test_dashboard_includes_technology_panels(self):
         """Test that technology-specific panels are added."""
-        from nthlayer.specs.models import ServiceContext, Resource
         from nthlayer.dashboards.builder import build_dashboard
+        from nthlayer.specs.models import Resource, ServiceContext
         
         context = ServiceContext(
             name="test-api",
@@ -133,8 +134,8 @@ class TestDashboardBuilder:
     
     def test_dashboard_json_is_valid(self):
         """Test that generated JSON is valid Grafana format."""
-        from nthlayer.specs.models import ServiceContext
         from nthlayer.dashboards.builder import build_dashboard
+        from nthlayer.specs.models import ServiceContext
         
         context = ServiceContext(
             name="test-api",

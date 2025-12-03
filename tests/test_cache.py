@@ -2,7 +2,6 @@ import asyncio
 from typing import Any
 
 import pytest
-
 from nthlayer.cache import RedisCache
 
 

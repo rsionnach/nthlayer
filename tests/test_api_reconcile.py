@@ -4,7 +4,6 @@ from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 from nthlayer.api.deps import get_job_enqueuer, session_dependency
 from nthlayer.api.main import create_app
 

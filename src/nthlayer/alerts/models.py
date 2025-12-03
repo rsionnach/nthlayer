@@ -5,7 +5,7 @@ Data models for representing alerting rules.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 @dataclass
