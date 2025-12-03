@@ -516,6 +516,38 @@ def build_parser() -> argparse.ArgumentParser:
     recording_parser.add_argument("--auto-env", action="store_true", help="Auto-detect environment from context (CI/CD env vars)")
     recording_parser.add_argument("--dry-run", action="store_true", help="Print YAML without writing file")
 
+    # Configuration commands
+    config_parser = subparsers.add_parser("config", help="Configuration management")
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+    
+    config_show_parser = config_subparsers.add_parser("show", help="Show current configuration")
+    config_show_parser.add_argument("--reveal-secrets", action="store_true", help="Show secret values (redacted by default)")
+    
+    config_set_parser = config_subparsers.add_parser("set", help="Set a configuration value")
+    config_set_parser.add_argument("key", help="Configuration key (e.g., grafana.url)")
+    config_set_parser.add_argument("value", nargs="?", help="Value to set")
+    config_set_parser.add_argument("--secret", action="store_true", help="Prompt for secret value")
+    
+    config_subparsers.add_parser("init", help="Interactive configuration wizard")
+    
+    # Secrets commands
+    secrets_parser = subparsers.add_parser("secrets", help="Secrets management")
+    secrets_subparsers = secrets_parser.add_subparsers(dest="secrets_command")
+    
+    secrets_subparsers.add_parser("list", help="List available secrets")
+    
+    secrets_verify_parser = secrets_subparsers.add_parser("verify", help="Verify required secrets exist")
+    secrets_verify_parser.add_argument("--secrets", nargs="+", help="Specific secrets to verify")
+    
+    secrets_set_parser = secrets_subparsers.add_parser("set", help="Set a secret")
+    secrets_set_parser.add_argument("path", help="Secret path (e.g., grafana/api_key)")
+    secrets_set_parser.add_argument("value", nargs="?", help="Secret value (will prompt if not provided)")
+    secrets_set_parser.add_argument("--backend", help="Backend to use (env, file, vault, aws)")
+    
+    secrets_get_parser = secrets_subparsers.add_parser("get", help="Get a secret value")
+    secrets_get_parser.add_argument("path", help="Secret path")
+    secrets_get_parser.add_argument("--reveal", action="store_true", help="Show full value (redacted by default)")
+
     subparsers.add_parser("list-services", help="List available services")
     subparsers.add_parser("list-teams", help="List available teams")
 
@@ -741,6 +773,43 @@ def main(argv: Sequence[str] | None = None) -> None:
             directory=args.directory,
             strict=args.strict,
         ))
+    
+    if args.command == "config":
+        from nthlayer.config.cli import (
+            config_show_command,
+            config_set_command,
+            config_init_command,
+        )
+        
+        if args.config_command == "show":
+            sys.exit(config_show_command(reveal_secrets=args.reveal_secrets))
+        elif args.config_command == "set":
+            sys.exit(config_set_command(args.key, args.value, secret=args.secret))
+        elif args.config_command == "init":
+            sys.exit(config_init_command())
+        else:
+            print("Usage: nthlayer config [show|set|init]")
+            sys.exit(1)
+    
+    if args.command == "secrets":
+        from nthlayer.config.cli import (
+            secrets_list_command,
+            secrets_verify_command,
+            secrets_set_command,
+            secrets_get_command,
+        )
+        
+        if args.secrets_command == "list":
+            sys.exit(secrets_list_command())
+        elif args.secrets_command == "verify":
+            sys.exit(secrets_verify_command(secrets=args.secrets))
+        elif args.secrets_command == "set":
+            sys.exit(secrets_set_command(args.path, args.value, backend=args.backend))
+        elif args.secrets_command == "get":
+            sys.exit(secrets_get_command(args.path, reveal=args.reveal))
+        else:
+            print("Usage: nthlayer secrets [list|verify|set|get]")
+            sys.exit(1)
     
     if args.command == "generate-dashboard":
         from nthlayer.cli.dashboard import generate_dashboard_command
