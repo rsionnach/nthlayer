@@ -64,6 +64,14 @@ format: ## Format code
 typecheck: ## Run type checking
 	mypy src/
 
+pre-commit-install: ## Install pre-commit hooks
+	pip install pre-commit
+	pre-commit install
+	@echo "✅ Pre-commit hooks installed. Linting will run automatically on commit."
+
+pre-commit-run: ## Run pre-commit on all files
+	pre-commit run --all-files
+
 # Mock server for testing
 mock-server: ## Start mock API server (simulates PagerDuty, Grafana, etc.)
 	@echo "Starting mock server on http://localhost:8001"
