@@ -18,8 +18,8 @@
                 <img src="../presentations/public/nthlayer_dark_logo.png" alt="NthLayer" height="32">
             </div>
             <div class="nav-links">
-                <a href="https://github.com/yourorg/nthlayer" target="_blank">GitHub</a>
-                <a href="https://github.com/yourorg/nthlayer#getting-started" target="_blank">Docs</a>
+                <a href="https://github.com/rsionnach/nthlayer" target="_blank">GitHub</a>
+                <a href="https://github.com/rsionnach/nthlayer#getting-started" target="_blank">Docs</a>
                 <a href="#demo" class="nav-cta">Try Demo</a>
             </div>
         </div>
@@ -59,7 +59,7 @@
             </div>
             <div class="hero-cta">
                 <a href="#demo" class="button-primary">See It In Action</a>
-                <a href="https://github.com/yourorg/nthlayer" class="button-secondary" target="_blank">
+                <a href="https://github.com/rsionnach/nthlayer" class="button-secondary" target="_blank">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
                     </svg>
@@ -180,38 +180,44 @@
                 <div class="step-content">
                     <p>Real dashboard running in Grafana Cloud, powered by live metrics from our demo app:</p>
                     
-                    <div class="dashboard-placeholder">
-                        <div class="placeholder-content">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                <line x1="9" y1="9" x2="15" y2="9"></line>
-                                <line x1="9" y1="15" x2="15" y2="15"></line>
-                                <polyline points="12 9 12 15"></polyline>
-                            </svg>
-                            <h4>Grafana Dashboard Placeholder</h4>
-                            <p>Replace this with your Grafana Cloud public dashboard iframe:</p>
-                            <code>&lt;iframe src="https://yourorg.grafana.net/public-dashboards/abc123"&gt;</code>
+                    <div class="dashboard-preview">
+                        <div class="dashboard-services">
+                            <h4>6 Live Services with Auto-Generated Dashboards</h4>
+                            <div class="service-grid">
+                                <a href="https://nthlayer.grafana.net/d/payment-api-overview/payment-api-service-dashboard" target="_blank" class="service-card">
+                                    <span class="service-icon">💳</span>
+                                    <span class="service-name">payment-api</span>
+                                    <span class="service-type">API + PostgreSQL + Redis</span>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/d/checkout-service-overview/checkout-service-service-dashboard" target="_blank" class="service-card">
+                                    <span class="service-icon">🛒</span>
+                                    <span class="service-name">checkout-service</span>
+                                    <span class="service-type">API + MySQL + Redis</span>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/d/identity-service-overview/identity-service-service-dashboard" target="_blank" class="service-card">
+                                    <span class="service-icon">🔐</span>
+                                    <span class="service-name">identity-service</span>
+                                    <span class="service-type">API + PostgreSQL + Redis</span>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/d/analytics-stream-overview/analytics-stream-service-dashboard" target="_blank" class="service-card">
+                                    <span class="service-icon">📊</span>
+                                    <span class="service-name">analytics-stream</span>
+                                    <span class="service-type">Stream + MongoDB + Redis</span>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/d/notification-worker-overview/notification-worker-service-dashboard" target="_blank" class="service-card">
+                                    <span class="service-icon">📬</span>
+                                    <span class="service-name">notification-worker</span>
+                                    <span class="service-type">Worker + Redis</span>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/d/search-api-overview/search-api-service-dashboard" target="_blank" class="service-card">
+                                    <span class="service-icon">🔍</span>
+                                    <span class="service-name">search-api</span>
+                                    <span class="service-type">API + Elasticsearch + Redis</span>
+                                </a>
+                            </div>
+                            <p class="dashboard-note">Each dashboard is organized into: <strong>SLO Metrics</strong> → <strong>Service Health</strong> → <strong>Dependencies</strong></p>
                         </div>
                     </div>
-                    
-                    <!-- Uncomment and replace URL when you have Grafana Cloud dashboard -->
-                    <!--
-                    <div class="dashboard-embed">
-                        <iframe 
-                            src="https://yourorg.grafana.net/public-dashboards/abc123"
-                            width="100%" 
-                            height="600"
-                            frameborder="0">
-                        </iframe>
-                    </div>
-                    <div class="dashboard-actions">
-                        <a href="https://yourorg.grafana.net/public-dashboards/abc123" 
-                           target="_blank" 
-                           class="button-secondary">
-                            Open Full Dashboard →
-                        </a>
-                    </div>
-                    -->
                     
                     <div class="value-callout" style="margin-top: var(--spacing-lg);">
                         <strong>🎯 Unified Workflow Benefits:</strong>
@@ -238,25 +244,25 @@
                             <div class="file-icon">📊</div>
                             <h4>Dashboard</h4>
                             <p>12 panels covering health, SLOs, latency, errors, and dependencies</p>
-                            <a href="https://github.com/yourorg/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View JSON →</a>
+                            <a href="https://github.com/rsionnach/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View JSON →</a>
                         </div>
                         <div class="file-card">
                             <div class="file-icon">🎯</div>
                             <h4>SLOs</h4>
                             <p>3 SLOs with 30-day error budgets and burn rate calculations</p>
-                            <a href="https://github.com/yourorg/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View YAML →</a>
+                            <a href="https://github.com/rsionnach/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View YAML →</a>
                         </div>
                         <div class="file-card">
                             <div class="file-icon">🚨</div>
                             <h4>Alerts</h4>
                             <p>28 Prometheus alerts with smart routing and severity levels</p>
-                            <a href="https://github.com/yourorg/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View YAML →</a>
+                            <a href="https://github.com/rsionnach/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View YAML →</a>
                         </div>
                         <div class="file-card">
                             <div class="file-icon">⚡</div>
                             <h4>Recording Rules</h4>
                             <p>21 pre-aggregated metrics for 10x faster dashboard queries</p>
-                            <a href="https://github.com/yourorg/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View YAML →</a>
+                            <a href="https://github.com/rsionnach/nthlayer/tree/main/generated/examples/payment-api" target="_blank">View YAML →</a>
                         </div>
                     </div>
                 </div>
@@ -287,10 +293,10 @@
                 </div>
 
                 <div class="cta-buttons">
-                    <a href="https://github.com/yourorg/nthlayer#getting-started" class="button-primary" target="_blank">
+                    <a href="https://github.com/rsionnach/nthlayer#getting-started" class="button-primary" target="_blank">
                         Get Started
                     </a>
-                    <a href="https://github.com/yourorg/nthlayer" class="button-secondary" target="_blank">
+                    <a href="https://github.com/rsionnach/nthlayer" class="button-secondary" target="_blank">
                         View Documentation
                     </a>
                 </div>
@@ -306,10 +312,10 @@
                     <img src="../presentations/public/nthlayer_dark_logo.png" alt="NthLayer" height="24">
                 </div>
                 <div class="footer-links">
-                    <a href="https://github.com/yourorg/nthlayer">GitHub</a>
-                    <a href="https://github.com/yourorg/nthlayer#documentation">Docs</a>
-                    <a href="https://github.com/yourorg/nthlayer/issues">Issues</a>
-                    <a href="https://github.com/yourorg/nthlayer/blob/main/LICENSE">License</a>
+                    <a href="https://github.com/rsionnach/nthlayer">GitHub</a>
+                    <a href="https://github.com/rsionnach/nthlayer#documentation">Docs</a>
+                    <a href="https://github.com/rsionnach/nthlayer/issues">Issues</a>
+                    <a href="https://github.com/rsionnach/nthlayer/blob/main/LICENSE">License</a>
                 </div>
             </div>
             <div class="footer-credits">
