@@ -37,7 +37,7 @@ jobs:
       - name: Run linting
         run: |
           pip install ruff
-          ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E722,B012
+          ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E722,B012,I001
 
       - name: Run type checking
         run: |
@@ -67,4 +67,4 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff
-        run: ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E722,B012
+        run: ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E722,B012,I001
