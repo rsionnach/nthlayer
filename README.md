@@ -142,12 +142,15 @@ $ nthlayer apply payment-api.yaml --env prod
 ### Built With
 
 [![Python][python-badge]][python-url]
+[![Pydantic][pydantic-badge]][pydantic-url]
 [![FastAPI][fastapi-badge]][fastapi-url]
+[![SQLAlchemy][sqlalchemy-badge]][sqlalchemy-url]
+[![Alembic][alembic-badge]][alembic-url]
 [![PostgreSQL][postgresql-badge]][postgresql-url]
 [![Redis][redis-badge]][redis-url]
-[![Docker][docker-badge]][docker-url]
 [![Prometheus][prometheus-badge]][prometheus-url]
 [![Grafana][grafana-badge]][grafana-url]
+[![Docker][docker-badge]][docker-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -437,16 +440,23 @@ nthlayer apply examples/services/payment-api.yaml
 [contributors-url]: https://github.com/rsionnach/nthlayer/graphs/contributors
 
 <!-- Tech Stack Badges -->
-[python-badge]: https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white
-[fastapi-badge]: https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi&logoColor=white
+[python-badge]: https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white
+[python-url]: https://python.org
+[pydantic-badge]: https://img.shields.io/badge/Pydantic-2.7+-E92063?style=for-the-badge&logo=pydantic&logoColor=white
+[pydantic-url]: https://docs.pydantic.dev
+[fastapi-badge]: https://img.shields.io/badge/FastAPI-0.111+-009688?style=for-the-badge&logo=fastapi&logoColor=white
 [fastapi-url]: https://fastapi.tiangolo.com
+[sqlalchemy-badge]: https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white
+[sqlalchemy-url]: https://sqlalchemy.org
+[alembic-badge]: https://img.shields.io/badge/Alembic-1.13+-6BA81E?style=for-the-badge&logo=sqlalchemy&logoColor=white
+[alembic-url]: https://alembic.sqlalchemy.org
 [postgresql-badge]: https://img.shields.io/badge/PostgreSQL-14+-316192?style=for-the-badge&logo=postgresql&logoColor=white
 [postgresql-url]: https://postgresql.org
 [redis-badge]: https://img.shields.io/badge/Redis-7+-DC382D?style=for-the-badge&logo=redis&logoColor=white
 [redis-url]: https://redis.io
-[docker-badge]: https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white
-[docker-url]: https://docker.com
 [prometheus-badge]: https://img.shields.io/badge/Prometheus-Alerts-E6522C?style=for-the-badge&logo=prometheus&logoColor=white
 [prometheus-url]: https://prometheus.io
 [grafana-badge]: https://img.shields.io/badge/Grafana-Dashboards-F46800?style=for-the-badge&logo=grafana&logoColor=white
 [grafana-url]: https://grafana.com
+[docker-badge]: https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white
+[docker-url]: https://docker.com
