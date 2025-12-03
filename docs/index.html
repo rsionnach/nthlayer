@@ -217,6 +217,194 @@
                             </div>
                             <p class="dashboard-note">Each dashboard is organized into: <strong>SLO Metrics</strong> → <strong>Service Health</strong> → <strong>Dependencies</strong></p>
                         </div>
+                        
+                        <!-- Live Dashboard Gallery -->
+                        <div class="dashboard-gallery">
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/GnDR7SU4YPkpMPFgFMUb94Z87NAI7USS" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">💳</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">payment-api</div>
+                                    <div class="tile-tech">PostgreSQL + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/TOnoDbGP8O3cJCGNI44IprF10oHr8uo8" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">🛒</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">checkout-service</div>
+                                    <div class="tile-tech">MySQL + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/tbDDNW5D3Yf4GkDVipSGWW3wBRKSwxJu" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">📬</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">notification-worker</div>
+                                    <div class="tile-tech">Worker + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/3TfGKKWaUlr4JiDTYcaopopnKUPcMuBP" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">📊</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">analytics-stream</div>
+                                    <div class="tile-tech">Stream + MongoDB</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/kzgo1UwIysfXVrSbj5hKKtP5i12saAgy" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">🔐</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">identity-service</div>
+                                    <div class="tile-tech">PostgreSQL + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/5K9lhCTnAfNtXE3KhcNC4gt0J5ysj7Tj" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">🔍</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">search-api</div>
+                                    <div class="tile-tech">Elasticsearch + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                        </div>
+                        <p class="dashboard-cta-note">Click any service to view its auto-generated Grafana dashboard</p>
+                        
+                        <!-- Auto-Generated Alerts -->
+                        <div class="demo-showcase" style="margin-top: var(--spacing-xl);">
+                            <h4 class="showcase-title">🚨 Auto-Generated Prometheus Alerts</h4>
+                            <p class="dashboard-note">118 production-ready alerts across 6 services, sourced from <a href="https://github.com/samber/awesome-prometheus-alerts" target="_blank">awesome-prometheus-alerts</a></p>
+                        </div>
+                        
+                        <div class="alert-gallery">
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/payment-api/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">💳</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">payment-api</div>
+                                    <div class="tile-tech">15 PostgreSQL alerts</div>
+                                    <div class="alert-preview">PostgresqlDown, PostgresqlRestarted, SlowQueries...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/checkout-service/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">🛒</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">checkout-service</div>
+                                    <div class="tile-tech">26 MySQL + Redis alerts</div>
+                                    <div class="alert-preview">MysqlDown, RedisMemoryHigh, ReplicationLag...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/notification-worker/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">📬</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">notification-worker</div>
+                                    <div class="tile-tech">12 Redis alerts</div>
+                                    <div class="alert-preview">RedisDown, RedisMemoryHigh, TooManyConnections...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/analytics-stream/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">📊</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">analytics-stream</div>
+                                    <div class="tile-tech">19 MongoDB + Redis alerts</div>
+                                    <div class="alert-preview">MongodbDown, CursorsTimeouts, ReplicasetLag...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/identity-service/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">🔐</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">identity-service</div>
+                                    <div class="tile-tech">27 PostgreSQL + Redis alerts</div>
+                                    <div class="alert-preview">PostgresqlDown, DeadLocks, RedisRejected...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/search-api/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">🔍</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">search-api</div>
+                                    <div class="tile-tech">19 Elasticsearch alerts</div>
+                                    <div class="alert-preview">ClusterRed, JvmHeapHigh, DiskSpaceLow...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                        </div>
+                        <p class="dashboard-cta-note">Click any service to view its generated Prometheus alert rules on GitHub</p>
+                        
+                        <!-- Deploy Your Alerts -->
+                        <div class="deploy-section">
+                            <h4 class="deploy-title">🚀 Deploy Your Alerts</h4>
+                            <p class="deploy-subtitle">Generated alerts are standard Prometheus format — deploy anywhere</p>
+                            
+                            <div class="deploy-tabs">
+                                <button class="deploy-tab active" data-tab="k8s">Kubernetes</button>
+                                <button class="deploy-tab" data-tab="mimir">Mimir / Cortex</button>
+                                <button class="deploy-tab" data-tab="gitops">GitOps</button>
+                                <button class="deploy-tab" data-tab="prometheus">Prometheus</button>
+                            </div>
+                            
+                            <div class="deploy-content">
+                                <div class="deploy-panel active" id="panel-k8s">
+                                    <p class="deploy-desc">Using Prometheus Operator? Apply as a PrometheusRule CRD:</p>
+                                    <pre><code># Wrap in PrometheusRule CRD
+cat &lt;&lt;EOF | kubectl apply -f -
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: payment-api-alerts
+  labels:
+    release: prometheus
+spec:
+$(cat generated/payment-api/alerts.yaml | sed 's/^/  /')
+EOF</code></pre>
+                                </div>
+                                
+                                <div class="deploy-panel" id="panel-mimir">
+                                    <p class="deploy-desc">Push directly to Grafana Mimir or Cortex ruler:</p>
+                                    <pre><code># Using mimirtool
+mimirtool rules load \
+  --address=https://mimir.example.com \
+  --id=your-tenant \
+  generated/payment-api/alerts.yaml
+
+# Or via API
+curl -X POST https://mimir.example.com/prometheus/config/v1/rules/payment-api \
+  -H "X-Scope-OrgID: your-tenant" \
+  --data-binary @generated/payment-api/alerts.yaml</code></pre>
+                                </div>
+                                
+                                <div class="deploy-panel" id="panel-gitops">
+                                    <p class="deploy-desc">Commit to your GitOps repo — ArgoCD or Flux handles the rest:</p>
+                                    <pre><code># Add to your GitOps repository
+cp generated/payment-api/alerts.yaml \
+   k8s/monitoring/rules/payment-api.yaml
+
+git add k8s/monitoring/rules/
+git commit -m "Add payment-api alerting rules"
+git push
+
+# ArgoCD/Flux automatically syncs to cluster
+# No manual kubectl required!</code></pre>
+                                </div>
+                                
+                                <div class="deploy-panel" id="panel-prometheus">
+                                    <p class="deploy-desc">Traditional Prometheus? Copy to rules directory and reload:</p>
+                                    <pre><code># Copy to Prometheus rules directory
+cp generated/payment-api/alerts.yaml \
+   /etc/prometheus/rules/payment-api.yaml
+
+# Validate syntax
+promtool check rules /etc/prometheus/rules/*.yaml
+
+# Reload Prometheus config
+curl -X POST http://localhost:9090/-/reload</code></pre>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="value-callout" style="margin-top: var(--spacing-lg);">
@@ -255,7 +443,7 @@
                         <div class="file-card">
                             <div class="file-icon">🚨</div>
                             <h4>Alerts</h4>
-                            <p>28 Prometheus alerts with smart routing and severity levels</p>
+                            <p>15 PostgreSQL alerts with service labels and severity routing</p>
                             <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/payment-api/alerts.yaml" target="_blank">View YAML →</a>
                         </div>
                         <div class="file-card">

@@ -1,5 +1,7 @@
 """
-Application settings and configuration.
+Application settings using Pydantic.
+
+Provides environment-based configuration loading with NTHLAYER_ prefix.
 """
 
 from functools import lru_cache
@@ -19,6 +21,13 @@ class Settings(BaseSettings):
     # AWS
     aws_region: str = "us-east-1"
     
+    # Environment
+    environment: str = "development"
+    
+    # API
+    api_prefix: str = "/api/v1"
+    cors_origins: list[str] = []
+    
     # Prometheus
     prometheus_url: str = "http://localhost:9090"
     
@@ -36,12 +45,15 @@ class Settings(BaseSettings):
     # Grafana API configuration (for auto-push dashboards)
     grafana_url: str | None = None
     grafana_api_key: str | None = None
-    grafana_org_id: int | None = None
     
     # Metric discovery configuration (for dashboard validation)
     metrics_url: str | None = None
     metrics_user: str | None = None
     metrics_password: str | None = None
+    
+    # Cognito (for API authentication)
+    cognito_user_pool_id: str | None = None
+    jwt_jwks_url: str | None = None
     
     class Config:
         env_file = ".env"

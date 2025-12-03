@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Regenerate all dashboards using the Enhanced Hybrid Model.
+Regenerate all dashboards and alerts using the Enhanced Hybrid Model.
 
 This script:
 1. Uses LIVE metric discovery from Prometheus/metrics endpoint
 2. Uses intent-based templates for metric resolution
 3. Generates dashboards that work with any exporter version
-4. Pushes updated dashboards to Grafana Cloud
-5. Shows resolution summary for each service
+4. Generates Prometheus alerts from awesome-prometheus-alerts templates
+5. Pushes updated dashboards to Grafana Cloud
+6. Shows resolution summary for each service
 """
 
 import json
@@ -23,6 +24,8 @@ from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
 from nthlayer.dashboards.resolver import MetricResolver, create_resolver
 from nthlayer.discovery.client import MetricDiscoveryClient
 from nthlayer.specs.models import ServiceContext, Resource
+from nthlayer.generators.alerts import generate_alerts_for_service
+from nthlayer.specs.parser import parse_service_file
 
 # Grafana Cloud configuration
 GRAFANA_URL = os.getenv('NTHLAYER_GRAFANA_URL', 'https://nthlayer.grafana.net')
@@ -390,3 +393,75 @@ if len(successful) == len(results):
     print("\n" + "=" * 70)
     print("  🎉 ALL DASHBOARDS UPDATED WITH HYBRID MODEL!")
     print("=" * 70)
+
+# Generate alerts for all services
+print("\n" + "=" * 70)
+print("  GENERATING ALERTS")
+print("=" * 70)
+
+EXAMPLE_SERVICES = [
+    'payment-api',
+    'checkout-service',
+    'notification-worker',
+    'analytics-stream',
+    'identity-service',
+    'search-api',
+]
+
+alert_results = []
+total_alerts = 0
+
+for service_name in EXAMPLE_SERVICES:
+    service_file = Path(f"examples/services/{service_name}.yaml")
+    if not service_file.exists():
+        print(f"⚠️  {service_name}: service file not found")
+        continue
+    
+    print(f"\n📋 {service_name}")
+    
+    try:
+        # Parse service file
+        service, resources = parse_service_file(str(service_file))
+        
+        # Generate alerts
+        alerts = generate_alerts_for_service(service, resources)
+        
+        if alerts:
+            # Write to generated/alerts/{service}.yaml
+            alerts_dir = Path("generated/alerts")
+            alerts_dir.mkdir(parents=True, exist_ok=True)
+            
+            from nthlayer.generators.alerts import write_prometheus_yaml
+            output_file = alerts_dir / f"{service_name}.yaml"
+            write_prometheus_yaml(alerts, output_file, service_name)
+            
+            # Also copy to service folder
+            service_dir = Path(f"generated/{service_name}")
+            service_dir.mkdir(parents=True, exist_ok=True)
+            service_alert_file = service_dir / "alerts.yaml"
+            write_prometheus_yaml(alerts, service_alert_file, service_name)
+            
+            print(f"   ✅ {len(alerts)} alerts generated")
+            
+            # Show breakdown by technology
+            by_tech = {}
+            for alert in alerts:
+                tech = alert.technology or 'general'
+                by_tech[tech] = by_tech.get(tech, 0) + 1
+            
+            breakdown = ", ".join(f"{t}={c}" for t, c in sorted(by_tech.items()))
+            print(f"      Breakdown: {breakdown}")
+            
+            total_alerts += len(alerts)
+            alert_results.append({'service': service_name, 'count': len(alerts), 'success': True})
+        else:
+            print(f"   ⚠️  No alerts generated (no dependencies found)")
+            alert_results.append({'service': service_name, 'count': 0, 'success': True})
+            
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        alert_results.append({'service': service_name, 'count': 0, 'success': False, 'error': str(e)})
+
+print("\n" + "-" * 70)
+print(f"Total alerts generated: {total_alerts}")
+print(f"Services with alerts: {sum(1 for r in alert_results if r.get('count', 0) > 0)}/{len(alert_results)}")

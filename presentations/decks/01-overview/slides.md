@@ -652,6 +652,66 @@ $ nthlayer generate-recording-rules service.yaml
 layout: default
 ---
 
+# Hybrid Dashboard Model: Intent + Discovery
+
+**The best of both worlds: Define intent, discover metrics**
+
+<div class="grid grid-cols-2 gap-8 mt-6">
+
+<div>
+
+### 1. Intent Templates
+
+```yaml
+# What you WANT to see
+intents:
+  - http_latency_p95
+  - http_error_rate
+  - database_connections
+  - cache_hit_ratio
+```
+
+**Templates define:**
+- What panels SHOULD exist
+- What metrics are CANDIDATES
+- Fallback options if metrics missing
+
+</div>
+
+<div>
+
+### 2. Live Discovery
+
+```bash
+# What actually EXISTS
+$ curl prometheus:9090/api/v1/label/__name__/values
+
+# Discovered:
+- http_request_duration_seconds_bucket ✅
+- http_requests_total ✅
+- pg_stat_connections ✅
+- redis_keyspace_hits ✅
+```
+
+**Discovery provides:**
+- Real metric names from your exporters
+- Automatic exporter version handling
+- No false "No Data" panels
+
+</div>
+
+</div>
+
+<div class="mt-6 p-4 bg-green-900 rounded text-center">
+
+**Result:** Dashboards work on first deploy — no manual metric hunting
+
+</div>
+
+---
+layout: default
+---
+
 # Performance: 10x Faster Dashboards
 
 **Recording rules pre-compute expensive queries for instant dashboards**

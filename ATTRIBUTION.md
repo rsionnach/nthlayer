@@ -4,6 +4,28 @@ NthLayer uses third-party content that requires attribution.
 
 ---
 
+## Dashboard SDK
+
+**Source:** grafana-foundation-sdk by Grafana Labs  
+**Repository:** https://github.com/grafana/grafana-foundation-sdk  
+**License:** Apache License 2.0  
+**License URL:** https://www.apache.org/licenses/LICENSE-2.0
+
+### What We Use
+
+NthLayer uses the grafana-foundation-sdk for type-safe dashboard generation. This SDK powers our Hybrid Dashboard Model, enabling:
+- Intent-based panel building
+- Type-safe Grafana JSON generation
+- Programmatic dashboard construction
+
+### How We Use It
+
+1. **Import SDK builders** - `from grafana_foundation_sdk.builders.dashboard import Dashboard`
+2. **Construct panels programmatically** - Type-safe API for all panel types
+3. **Export valid Grafana JSON** - SDK ensures correct schema
+
+---
+
 ## Alert Templates
 
 **Source:** awesome-prometheus-alerts by samber  

@@ -142,12 +142,15 @@ $ nthlayer apply payment-api.yaml --env prod
 ### Built With
 
 [![Python][python-badge]][python-url]
+[![Pydantic][pydantic-badge]][pydantic-url]
 [![FastAPI][fastapi-badge]][fastapi-url]
+[![SQLAlchemy][sqlalchemy-badge]][sqlalchemy-url]
+[![Alembic][alembic-badge]][alembic-url]
 [![PostgreSQL][postgresql-badge]][postgresql-url]
 [![Redis][redis-badge]][redis-url]
-[![Docker][docker-badge]][docker-url]
 [![Prometheus][prometheus-badge]][prometheus-url]
 [![Grafana][grafana-badge]][grafana-url]
+[![Docker][docker-badge]][docker-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -172,11 +175,12 @@ $ nthlayer apply payment-api.yaml --env prod
 - ✅ **Template Variables** - Portable queries with `${service}`, `${team}`, etc.
 
 ### Observability Suite
+- ✅ **Hybrid Dashboard Model** - Intent-based templates + live metric discovery for zero "No Data" panels
 - ✅ **Dashboard Generation** - Auto-generate Grafana dashboards (12-28 panels per service)
-- ✅ **Technology Templates** - 40 production-grade panels for PostgreSQL, Redis, Kubernetes, HTTP/API
+- ✅ **Technology Templates** - 40+ production-grade panels for PostgreSQL, Redis, Elasticsearch, MongoDB, HTTP/API
+- ✅ **118 Auto-Generated Alerts** - Production-ready Prometheus alerts with smart routing
 - ✅ **Recording Rules** - 20+ pre-computed metrics for 10x faster dashboards
-- ✅ **Full/Overview Modes** - Choose between comprehensive or focused dashboards
-- ✅ **Auto-Detection** - Technology panels auto-added based on dependencies
+- ✅ **4 Deployment Methods** - Kubernetes, Mimir/Cortex, GitOps, or traditional Prometheus
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -389,10 +393,18 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 NthLayer builds on the shoulders of giants:
 
-* **[awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts)** - 400+ battle-tested alert rules (CC BY 4.0 license)
-* **[Sloth](https://github.com/slok/sloth)** - SLO specification format
+### Core Dependencies
+* **[grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk)** - Grafana dashboard generation SDK (Apache 2.0). Powers our Hybrid Model for intent-based dashboard generation with type-safe panel building.
+* **[awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts)** - 580+ battle-tested alert rules (CC BY 4.0). Our alert templates for PostgreSQL, Redis, Elasticsearch, and 40+ technologies.
+
+### Architecture Inspiration
+* **[Sloth](https://github.com/slok/sloth)** - SLO specification format and burn rate calculations
+* **[OpenSLO](https://github.com/openslo/openslo)** - SLO specification standard
+
+### Tooling
 * **[Best-README-Template](https://github.com/othneildrew/Best-README-Template)** - This README structure
 * **[Shields.io](https://shields.io/)** - Badges used in this README
+* **[Slidev](https://sli.dev/)** - Presentation framework for our decks
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -428,16 +440,23 @@ nthlayer apply examples/services/payment-api.yaml
 [contributors-url]: https://github.com/rsionnach/nthlayer/graphs/contributors
 
 <!-- Tech Stack Badges -->
-[python-badge]: https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white
-[fastapi-badge]: https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi&logoColor=white
+[python-badge]: https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white
+[python-url]: https://python.org
+[pydantic-badge]: https://img.shields.io/badge/Pydantic-2.7+-E92063?style=for-the-badge&logo=pydantic&logoColor=white
+[pydantic-url]: https://docs.pydantic.dev
+[fastapi-badge]: https://img.shields.io/badge/FastAPI-0.111+-009688?style=for-the-badge&logo=fastapi&logoColor=white
 [fastapi-url]: https://fastapi.tiangolo.com
+[sqlalchemy-badge]: https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white
+[sqlalchemy-url]: https://sqlalchemy.org
+[alembic-badge]: https://img.shields.io/badge/Alembic-1.13+-6BA81E?style=for-the-badge&logo=sqlalchemy&logoColor=white
+[alembic-url]: https://alembic.sqlalchemy.org
 [postgresql-badge]: https://img.shields.io/badge/PostgreSQL-14+-316192?style=for-the-badge&logo=postgresql&logoColor=white
 [postgresql-url]: https://postgresql.org
 [redis-badge]: https://img.shields.io/badge/Redis-7+-DC382D?style=for-the-badge&logo=redis&logoColor=white
 [redis-url]: https://redis.io
-[docker-badge]: https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white
-[docker-url]: https://docker.com
 [prometheus-badge]: https://img.shields.io/badge/Prometheus-Alerts-E6522C?style=for-the-badge&logo=prometheus&logoColor=white
 [prometheus-url]: https://prometheus.io
 [grafana-badge]: https://img.shields.io/badge/Grafana-Dashboards-F46800?style=for-the-badge&logo=grafana&logoColor=white
 [grafana-url]: https://grafana.com
+[docker-badge]: https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white
+[docker-url]: https://docker.com

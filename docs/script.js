@@ -58,6 +58,21 @@ window.addEventListener('scroll', () => {
     });
 });
 
+// Deploy tabs switching
+document.querySelectorAll('.deploy-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        const targetTab = this.getAttribute('data-tab');
+        
+        // Update active tab
+        document.querySelectorAll('.deploy-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        
+        // Update active panel
+        document.querySelectorAll('.deploy-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('panel-' + targetTab).classList.add('active');
+    });
+});
+
 // Log demo page load (for analytics)
 console.log('🚀 NthLayer Demo Site Loaded');
-console.log('📊 GitHub: https://github.com/yourorg/nthlayer');
+console.log('📊 GitHub: https://github.com/rsionnach/nthlayer');
