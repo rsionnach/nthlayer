@@ -9,26 +9,28 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/yourusername/nthlayer">
+  <a href="https://github.com/rsionnach/nthlayer">
     <img src="presentations/public/nthlayer_dark_logo.png" alt="NthLayer Logo" width="200">
   </a>
 
 <h3 align="center">NthLayer</h3>
 
   <p align="center">
-    The Missing Layer of Reliability
+    <strong>The Missing Layer of Reliability</strong>
     <br />
-    From service definition to SLOs in 5 minutes. Zero toil.
+    One YAML file. Complete reliability stack. Zero toil.
+    <br />
+    <em>Auto-generate dashboards, SLOs, alerts, runbooks, and deployment gates from a single service definition.</em>
     <br />
     <br />
-    <a href="https://github.com/yourusername/nthlayer"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/rsionnach/nthlayer"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="#usage">View Demo</a>
     ·
-    <a href="https://github.com/yourusername/nthlayer/issues/new?labels=bug">Report Bug</a>
+    <a href="https://github.com/rsionnach/nthlayer/issues/new?labels=bug">Report Bug</a>
     ·
-    <a href="https://github.com/yourusername/nthlayer/issues/new?labels=enhancement">Request Feature</a>
+    <a href="https://github.com/rsionnach/nthlayer/issues/new?labels=enhancement">Request Feature</a>
   </p>
 </div>
 
@@ -68,8 +70,8 @@
 
 **See NthLayer-generated observability in action:**
 
-[![Live Dashboard](https://img.shields.io/badge/Live-Dashboard-blue?logo=grafana&style=for-the-badge)](https://yourorg.grafana.net/public-dashboards/abc123)
-[![Interactive Demo](https://img.shields.io/badge/Try-Interactive%20Demo-green?style=for-the-badge)](https://yourorg.github.io/nthlayer)
+[![Live Dashboard](https://img.shields.io/badge/Live-Dashboard-blue?logo=grafana&style=for-the-badge)](https://nthlayer.grafana.net/d/payment-api-overview/payment-api-service-dashboard)
+[![Interactive Demo](https://img.shields.io/badge/Try-Interactive%20Demo-green?style=for-the-badge)](https://rsionnach.github.io/nthlayer)
 
 ### Quick Preview
 
@@ -84,7 +86,7 @@ Want to see what NthLayer generates? We have a live demo running 24/7 with real 
 
 ```html
 <iframe 
-    src="https://yourorg.grafana.net/public-dashboards/abc123" 
+    src="https://nthlayer.grafana.net/d/payment-api-overview/payment-api-service-dashboard" 
     width="100%" 
     height="600px"
     frameborder="0">
@@ -96,7 +98,7 @@ Want to see what NthLayer generates? We have a live demo running 24/7 with real 
 </details>
 
 **🎮 Explore More:**
-- [**Interactive Demo Site**](https://yourorg.github.io/nthlayer) - Step-by-step walkthrough with live dashboards
+- [**Interactive Demo Site**](https://rsionnach.github.io/nthlayer) - Step-by-step walkthrough with live dashboards
 - [**Demo App API**](https://nthlayer-demo.fly.dev) - Live metrics generator
 - [**Example Generated Configs**](./generated/examples/) - See what NthLayer creates
 
@@ -222,7 +224,7 @@ You only need:
 
 1. Clone the repo
    ```bash
-   git clone https://github.com/yourusername/nthlayer.git
+   git clone https://github.com/rsionnach/nthlayer.git
    cd nthlayer
    ```
 
@@ -381,7 +383,7 @@ _For more examples and detailed usage, please refer to the [Getting Started Guid
 - [ ] Datadog integration
 - [ ] Slack notifications
 
-See the [open issues](https://github.com/yourusername/nthlayer/issues) for a full list of proposed features and known issues.
+See the [open issues](https://github.com/rsionnach/nthlayer/issues) for a full list of proposed features and known issues.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -438,7 +440,7 @@ nthlayer apply examples/services/payment-api.yaml
 
 **Need Help?**
 - 📖 [Quick Start Guide](GETTING_STARTED.md)
-- 💬 [Open an Issue](https://github.com/yourusername/nthlayer/issues)
+- 💬 [Open an Issue](https://github.com/rsionnach/nthlayer/issues)
 - 🎯 [View Roadmap](#roadmap)
 
 **Happy coding!** 🚀
@@ -450,8 +452,8 @@ nthlayer apply examples/services/payment-api.yaml
 [python-url]: https://python.org
 [license-shield]: https://img.shields.io/badge/license-MIT-green?style=for-the-badge
 [license-url]: LICENSE.txt
-[contributors-shield]: https://img.shields.io/github/contributors/yourusername/nthlayer.svg?style=for-the-badge
-[contributors-url]: https://github.com/yourusername/nthlayer/graphs/contributors
+[contributors-shield]: https://img.shields.io/github/contributors/rsionnach/nthlayer.svg?style=for-the-badge
+[contributors-url]: https://github.com/rsionnach/nthlayer/graphs/contributors
 
 <!-- Tech Stack Badges -->
 [python-badge]: https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white
