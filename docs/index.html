@@ -218,28 +218,64 @@
                             <p class="dashboard-note">Each dashboard is organized into: <strong>SLO Metrics</strong> → <strong>Service Health</strong> → <strong>Dependencies</strong></p>
                         </div>
                         
-                        <!-- Embedded Dashboard Preview -->
-                        <div class="embedded-dashboard">
-                            <div class="dashboard-tabs">
-                                <button class="dashboard-tab active" data-dashboard="payment-api">💳 payment-api</button>
-                                <button class="dashboard-tab" data-dashboard="checkout-service">🛒 checkout-service</button>
-                                <button class="dashboard-tab" data-dashboard="notification-worker">📬 notification-worker</button>
-                                <button class="dashboard-tab" data-dashboard="analytics-stream">📊 analytics-stream</button>
-                                <button class="dashboard-tab" data-dashboard="identity-service">🔐 identity-service</button>
-                                <button class="dashboard-tab" data-dashboard="search-api">🔍 search-api</button>
-                            </div>
-                            <div class="dashboard-iframe-container">
-                                <iframe 
-                                    id="dashboard-iframe"
-                                    src="https://nthlayer.grafana.net/public-dashboards/b85f7be155184779ad4200b20f0411b4"
-                                    frameborder="0"
-                                    allowfullscreen
-                                ></iframe>
-                                <div class="dashboard-overlay">
-                                    <a href="https://nthlayer.grafana.net/public-dashboards/b85f7be155184779ad4200b20f0411b4" target="_blank" class="button-secondary">
-                                        Open Full Dashboard ↗
-                                    </a>
-                                </div>
+                        <!-- Live Dashboard Links -->
+                        <div class="live-dashboards">
+                            <h4 style="text-align: center; margin-bottom: var(--spacing-md);">🔴 Live Dashboards - Click to View</h4>
+                            <div class="dashboard-cards">
+                                <a href="https://nthlayer.grafana.net/public-dashboards/b85f7be155184779ad4200b20f0411b4" target="_blank" class="dashboard-card">
+                                    <div class="dashboard-card-header">
+                                        <span class="dashboard-card-icon">💳</span>
+                                        <span class="dashboard-card-name">payment-api</span>
+                                        <span class="live-indicator"></span>
+                                    </div>
+                                    <div class="dashboard-card-tech">PostgreSQL + Redis</div>
+                                    <div class="dashboard-card-cta">View Live Dashboard →</div>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/public-dashboards/64b290b48321499c885998958eec7c87" target="_blank" class="dashboard-card">
+                                    <div class="dashboard-card-header">
+                                        <span class="dashboard-card-icon">🛒</span>
+                                        <span class="dashboard-card-name">checkout-service</span>
+                                        <span class="live-indicator"></span>
+                                    </div>
+                                    <div class="dashboard-card-tech">MySQL + Redis</div>
+                                    <div class="dashboard-card-cta">View Live Dashboard →</div>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/public-dashboards/cfe879ff590141279b6ab570fc2aaab0" target="_blank" class="dashboard-card">
+                                    <div class="dashboard-card-header">
+                                        <span class="dashboard-card-icon">📬</span>
+                                        <span class="dashboard-card-name">notification-worker</span>
+                                        <span class="live-indicator"></span>
+                                    </div>
+                                    <div class="dashboard-card-tech">Worker + Redis</div>
+                                    <div class="dashboard-card-cta">View Live Dashboard →</div>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/public-dashboards/c20f9658441c47358127b6dae28663b5" target="_blank" class="dashboard-card">
+                                    <div class="dashboard-card-header">
+                                        <span class="dashboard-card-icon">📊</span>
+                                        <span class="dashboard-card-name">analytics-stream</span>
+                                        <span class="live-indicator"></span>
+                                    </div>
+                                    <div class="dashboard-card-tech">Stream + MongoDB</div>
+                                    <div class="dashboard-card-cta">View Live Dashboard →</div>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/public-dashboards/c20f9658441c47358127b6dae28663b5" target="_blank" class="dashboard-card">
+                                    <div class="dashboard-card-header">
+                                        <span class="dashboard-card-icon">🔐</span>
+                                        <span class="dashboard-card-name">identity-service</span>
+                                        <span class="live-indicator"></span>
+                                    </div>
+                                    <div class="dashboard-card-tech">PostgreSQL + Redis</div>
+                                    <div class="dashboard-card-cta">View Live Dashboard →</div>
+                                </a>
+                                <a href="https://nthlayer.grafana.net/public-dashboards/20afe15ca3f24da98025abf093ae96f4" target="_blank" class="dashboard-card">
+                                    <div class="dashboard-card-header">
+                                        <span class="dashboard-card-icon">🔍</span>
+                                        <span class="dashboard-card-name">search-api</span>
+                                        <span class="live-indicator"></span>
+                                    </div>
+                                    <div class="dashboard-card-tech">Elasticsearch + Redis</div>
+                                    <div class="dashboard-card-cta">View Live Dashboard →</div>
+                                </a>
                             </div>
                         </div>
                     </div>
