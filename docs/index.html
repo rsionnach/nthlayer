@@ -270,6 +270,70 @@
                             </a>
                         </div>
                         <p class="dashboard-cta-note">Click any service to view its auto-generated Grafana dashboard</p>
+                        
+                        <!-- Auto-Generated Alerts -->
+                        <div class="demo-showcase" style="margin-top: var(--spacing-xl);">
+                            <h4 class="showcase-title">🚨 Auto-Generated Prometheus Alerts</h4>
+                            <p class="dashboard-note">118 production-ready alerts across 6 services, sourced from <a href="https://github.com/samber/awesome-prometheus-alerts" target="_blank">awesome-prometheus-alerts</a></p>
+                        </div>
+                        
+                        <div class="alert-gallery">
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/payment-api/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">💳</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">payment-api</div>
+                                    <div class="tile-tech">15 PostgreSQL alerts</div>
+                                    <div class="alert-preview">PostgresqlDown, PostgresqlRestarted, SlowQueries...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/checkout-service/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">🛒</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">checkout-service</div>
+                                    <div class="tile-tech">26 MySQL + Redis alerts</div>
+                                    <div class="alert-preview">MysqlDown, RedisMemoryHigh, ReplicationLag...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/notification-worker/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">📬</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">notification-worker</div>
+                                    <div class="tile-tech">12 Redis alerts</div>
+                                    <div class="alert-preview">RedisDown, RedisMemoryHigh, TooManyConnections...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/analytics-stream/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">📊</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">analytics-stream</div>
+                                    <div class="tile-tech">19 MongoDB + Redis alerts</div>
+                                    <div class="alert-preview">MongodbDown, CursorsTimeouts, ReplicasetLag...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/identity-service/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">🔐</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">identity-service</div>
+                                    <div class="tile-tech">27 PostgreSQL + Redis alerts</div>
+                                    <div class="alert-preview">PostgresqlDown, DeadLocks, RedisRejected...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/search-api/alerts.yaml" target="_blank" class="alert-tile">
+                                <div class="tile-icon">🔍</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">search-api</div>
+                                    <div class="tile-tech">19 Elasticsearch alerts</div>
+                                    <div class="alert-preview">ClusterRed, JvmHeapHigh, DiskSpaceLow...</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                        </div>
+                        <p class="dashboard-cta-note">Click any service to view its generated Prometheus alert rules on GitHub</p>
                     </div>
                     
                     <div class="value-callout" style="margin-top: var(--spacing-lg);">
@@ -308,7 +372,7 @@
                         <div class="file-card">
                             <div class="file-icon">🚨</div>
                             <h4>Alerts</h4>
-                            <p>28 Prometheus alerts with smart routing and severity levels</p>
+                            <p>15 PostgreSQL alerts with service labels and severity routing</p>
                             <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/payment-api/alerts.yaml" target="_blank">View YAML →</a>
                         </div>
                         <div class="file-card">
