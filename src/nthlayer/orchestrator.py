@@ -117,9 +117,10 @@ class ResourceDetector:
 class ServiceOrchestrator:
     """Orchestrates generation of all resources for a service."""
     
-    def __init__(self, service_yaml: Path, env: Optional[str] = None):
+    def __init__(self, service_yaml: Path, env: Optional[str] = None, push_to_grafana: bool = False):
         self.service_yaml = service_yaml
         self.env = env
+        self.push_to_grafana = push_to_grafana
         self.service_def: Optional[Dict[str, Any]] = None
         self.service_name: Optional[str] = None
         self.output_dir: Optional[Path] = None
@@ -257,10 +258,13 @@ class ServiceOrchestrator:
             if verbose:
                 print(f"[{step}/{total_steps}] Generating dashboard...")
             try:
-                count = self._generate_dashboard()
+                count = self._generate_dashboard(push_to_grafana=self.push_to_grafana)
                 result.resources_created["dashboard"] = count
                 if verbose:
-                    print(f"✅ Dashboard created")
+                    if self.push_to_grafana:
+                        print(f"✅ Dashboard created and pushed to Grafana")
+                    else:
+                        print(f"✅ Dashboard created")
             except Exception as e:
                 result.errors.append(f"Dashboard generation failed: {e}")
             step += 1
@@ -399,15 +403,109 @@ class ServiceOrchestrator:
         
         return count
     
-    def _generate_dashboard(self) -> int:
-        """Generate dashboard file."""
-        # TODO: Implement actual dashboard generation using DashboardBuilder
-        # For now, write placeholder
+    def _generate_dashboard(self, push_to_grafana: bool = False) -> int:
+        """Generate dashboard file and optionally push to Grafana.
+        
+        Args:
+            push_to_grafana: If True, push dashboard to Grafana via API
+            
+        Returns:
+            Number of dashboards created
+        """
+        from nthlayer.cli.dashboard import generate_dashboard_command
+        
+        # Generate dashboard JSON file
         output_file = self.output_dir / "dashboard.json"
-        with open(output_file, 'w') as f:
-            f.write('{"dashboard": "placeholder"}\n')
+        generate_dashboard_command(
+            str(self.service_yaml),
+            output=str(output_file),
+            environment=self.env,
+            dry_run=False,
+            full_panels=False
+        )
+        
+        # If push to Grafana is enabled, use the provider
+        if push_to_grafana:
+            self._push_dashboard_to_grafana(output_file)
         
         return 1
+    
+    def _push_dashboard_to_grafana(self, dashboard_file: Path) -> None:
+        """Push generated dashboard to Grafana via API.
+        
+        Args:
+            dashboard_file: Path to generated dashboard JSON
+        """
+        import json
+        import asyncio
+        import os
+        from nthlayer.providers.grafana import GrafanaProvider
+        from pydantic_settings import BaseSettings
+        
+        # Get configuration directly from environment (simpler and more reliable)
+        grafana_url = os.getenv('NTHLAYER_GRAFANA_URL')
+        grafana_api_key = os.getenv('NTHLAYER_GRAFANA_API_KEY')
+        grafana_org_id = int(os.getenv('NTHLAYER_GRAFANA_ORG_ID', '1'))
+        
+        # Check if Grafana is configured
+        if not grafana_url or not grafana_api_key:
+            print("⚠️  Grafana not configured. Skipping push to Grafana.")
+            print("   Set NTHLAYER_GRAFANA_URL and NTHLAYER_GRAFANA_API_KEY to enable auto-push.")
+            return
+        
+        # Load generated dashboard
+        with open(dashboard_file) as f:
+            dashboard_data = json.load(f)
+        
+        # Extract dashboard JSON (the 'dashboard' key from wrapper)
+        dashboard_json = dashboard_data.get("dashboard", {})
+        
+        if not dashboard_json:
+            print("⚠️  Dashboard JSON is empty, skipping push")
+            return
+        
+        # Create Grafana provider
+        provider = GrafanaProvider(
+            url=grafana_url,
+            token=grafana_api_key,
+            org_id=grafana_org_id
+        )
+        
+        # Get dashboard UID from JSON
+        dashboard_uid = dashboard_json.get("uid", self.service_name)
+        
+        # Push dashboard
+        print(f"📤 Pushing dashboard to Grafana...")
+        
+        async def do_push():
+            """Async function to push dashboard."""
+            dashboard_resource = provider.dashboard(dashboard_uid)
+            await dashboard_resource.apply({
+                "dashboard": dashboard_json,
+                "folderUid": None,  # Use default folder
+                "title": dashboard_json.get("title", f"{self.service_name} Dashboard")
+            })
+        
+        try:
+            # Check if there's already an event loop running
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, create a task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, do_push())
+                    future.result()
+            except RuntimeError:
+                # No loop running, safe to use asyncio.run()
+                asyncio.run(do_push())
+            
+            print(f"✅ Dashboard pushed to Grafana: {grafana_url}/d/{dashboard_uid}")
+        except Exception as e:
+            print(f"⚠️  Failed to push dashboard to Grafana: {e}")
+            print(f"   Error type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
+            print("   Dashboard file saved locally, you can import manually.")
     
     def _generate_recording_rules(self) -> int:
         """Generate recording rule files."""

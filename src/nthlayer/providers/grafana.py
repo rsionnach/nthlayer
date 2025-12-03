@@ -76,7 +76,7 @@ class GrafanaProvider(Provider):
         headers.setdefault("Content-Type", "application/json")
         headers.setdefault("User-Agent", self._user_agent)
 
-        async def _call() -> dict[str, Any]:
+        def _call() -> dict[str, Any]:  # Regular function, not async
             try:
                 with httpx.Client(timeout=self._timeout) as client:
                     resp = client.request(method, url, headers=headers, **kwargs)

@@ -1,0 +1,90 @@
+apiVersion: nthlayer.dev/v1
+kind: Service
+
+service:
+  name: analytics-stream
+  team: data
+  tier: high
+  type: stream-processor
+  description: Real-time analytics event processing pipeline
+  owner: data-team@company.com
+
+resources:
+  - kind: SLO
+    name: processing-availability
+    spec:
+      objective: 99.5
+      window: 30d
+      indicators:
+        - type: availability
+          success_ratio:
+            total_query: sum(rate(events_processed_total{service="analytics-stream"}[5m]))
+            good_query: sum(rate(events_processed_total{service="analytics-stream",status="success"}[5m]))
+
+  - kind: SLO
+    name: stream-lag
+    spec:
+      objective: 99.0
+      window: 30d
+      indicators:
+        - type: custom
+          threshold: 60
+          metric: max(kafka_consumer_lag_seconds{service="analytics-stream",topic="events"})
+
+  - kind: SLO
+    name: event-latency-p99
+    spec:
+      objective: 95.0
+      window: 30d
+      indicators:
+        - type: latency
+          threshold_ms: 10000
+          percentile: 99
+          latency_query: histogram_quantile(0.99, rate(event_processing_duration_seconds_bucket{service="analytics-stream"}[5m]))
+
+  - kind: Dependencies
+    name: dependencies
+    spec:
+      databases:
+        - type: mongodb
+          name: analytics_db
+          version: "7.0"
+          
+        - type: redis
+          name: stream_cache
+          version: "7.0"
+          
+      message_queues:
+        - type: kafka
+          name: event_streams
+          version: "3.5"
+          topics:
+            - events
+            - events.processed
+            - events.dlq
+          
+      orchestration:
+        - type: kubernetes
+          cluster: data-production
+          namespace: analytics
+          
+      external_services:
+        - name: s3
+          type: storage
+
+  - kind: Observability
+    name: observability
+    spec:
+      metrics:
+        - events_processed_total
+        - events_failed_total
+        - event_processing_duration_seconds
+        - kafka_consumer_lag_seconds
+        - stream_throughput_events_per_second
+        
+  - kind: PagerDuty
+    name: pagerduty
+    spec:
+      service_key: analytics-stream
+      escalation_policy: data-services
+      urgency: high

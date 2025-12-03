@@ -34,12 +34,27 @@ class Settings(BaseSettings):
     # PagerDuty
     pagerduty_api_key: str | None = None
     
+    # Grafana API configuration (for auto-push dashboards)
+    grafana_url: str | None = None
+    grafana_api_key: str | None = None
+    grafana_org_id: int | None = None
+    
+    # Metric discovery configuration (for dashboard validation)
+    metrics_url: str | None = None
+    metrics_user: str | None = None
+    metrics_password: str | None = None
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        env_prefix = "NTHLAYER_"
 
 
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+# Global settings instance
+settings = get_settings()

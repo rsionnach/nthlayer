@@ -1,0 +1,85 @@
+apiVersion: nthlayer.dev/v1
+kind: Service
+
+service:
+  name: identity-service
+  team: identity
+  tier: critical
+  type: api
+  description: User authentication and profile management API
+  owner: identity-team@company.com
+
+resources:
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.99
+      window: 30d
+      indicators:
+        - type: availability
+          success_ratio:
+            total_query: sum(rate(http_requests_total{service="identity-service"}[5m]))
+            good_query: sum(rate(http_requests_total{service="identity-service",status!~"5.."}[5m]))
+
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.5
+      window: 30d
+      indicators:
+        - type: latency
+          threshold_ms: 200
+          percentile: 95
+          latency_query: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="identity-service"}[5m]))
+
+  - kind: SLO
+    name: latency-p99
+    spec:
+      objective: 98.0
+      window: 30d
+      indicators:
+        - type: latency
+          threshold_ms: 500
+          percentile: 99
+          latency_query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="identity-service"}[5m]))
+
+  - kind: Dependencies
+    name: dependencies
+    spec:
+      databases:
+        - type: postgresql
+          name: users_db
+          version: "15.0"
+          
+        - type: redis
+          name: session_cache
+          version: "7.0"
+          
+      orchestration:
+        - type: ecs
+          cluster: identity-production
+          region: us-east-1
+          
+      external_services:
+        - name: auth0
+          type: authentication
+          
+        - name: ses
+          type: email
+
+  - kind: Observability
+    name: observability
+    spec:
+      metrics:
+        - login_attempts_total
+        - login_success_total
+        - login_failed_total
+        - session_created_total
+        - password_reset_total
+        
+  - kind: PagerDuty
+    name: pagerduty
+    spec:
+      service_key: identity-service
+      escalation_policy: critical-services
+      urgency: high

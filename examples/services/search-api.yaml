@@ -1,32 +1,84 @@
 # Search API Service Definition
-#
-# Critical tier API with template-based configuration
+# 
+# High-tier search service with Elasticsearch backend
+# Powers product search, full-text search, and autocomplete
 
 service:
   name: search-api
   team: search
-  tier: critical
+  tier: high
   type: api
-  language: go
-  template: critical-api  # Uses template for standard SLOs
+  language: python
+  framework: fastapi
 
-# Minimal resources - most inherited from template
 resources:
-  # Override template's latency threshold
+  # Search Availability SLO - 99.5% uptime
   - kind: SLO
-    name: latency-p95
+    name: search-availability
     spec:
-      threshold_ms: 300  # Stricter than template's 500ms
-      
-  # Custom dependency configuration
+      objective: 99.5
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="${service}",status!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{service="${service}"}[5m]))
+  
+  # Search Latency SLO - p95 under 300ms
+  - kind: SLO
+    name: search-latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 300
+        query: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{service="${service}"}[5m])
+          )
+  
+  # Search Quality SLO - 95% of searches return results
+  - kind: SLO
+    name: search-quality
+    spec:
+      objective: 95.0
+      window: 7d
+      indicator:
+        type: custom
+        query: |
+          sum(rate(search_results_total{service="${service}",status="found"}[5m]))
+          /
+          sum(rate(search_results_total{service="${service}"}[5m]))
+          * 100
+  
+  # PagerDuty integration
+  - kind: PagerDuty
+    name: primary
+    spec:
+      escalation_policy: search-high
+      urgency: high
+      auto_create: true
+  
+  # Service dependencies
   - kind: Dependencies
+    name: search-stack
     spec:
-      upstream:
-        - name: catalog-service
+      services:
+        - name: product-catalog
           criticality: high
-        - name: recommendation-service
-          criticality: low  # Search works without recommendations
+        - name: user-profile
+          criticality: medium
       databases:
         - name: search-index
           type: elasticsearch
           criticality: high
+      caches:
+        - name: query-cache
+          type: redis
+          criticality: medium
+      external_apis:
+        - name: ml-ranking-service
+          criticality: low

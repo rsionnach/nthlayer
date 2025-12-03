@@ -15,6 +15,10 @@ from nthlayer.cli.environments import (
 )
 from nthlayer.cli.dashboard import generate_dashboard_command
 from nthlayer.cli.recording_rules import generate_recording_rules_command
+from nthlayer.cli.dashboard_validate import (
+    validate_dashboard_command,
+    list_intents_command,
+)
 
 __all__ = [
     "generate_slo_command",
@@ -28,4 +32,7 @@ __all__ = [
     "validate_env_command",
     "generate_dashboard_command",
     "generate_recording_rules_command",
+    # Hybrid model validation
+    "validate_dashboard_command",
+    "list_intents_command",
 ]

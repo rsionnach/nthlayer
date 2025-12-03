@@ -1,0 +1,87 @@
+apiVersion: nthlayer.dev/v1
+kind: Service
+
+service:
+  name: notification-worker
+  team: platform
+  tier: high
+  type: worker
+  description: Background worker for email, SMS, and push notifications
+  owner: platform-team@company.com
+
+resources:
+  - kind: SLO
+    name: delivery-success
+    spec:
+      objective: 99.5
+      window: 30d
+      indicators:
+        - type: availability
+          success_ratio:
+            total_query: sum(rate(notifications_sent_total{service="notification-worker"}[5m]))
+            good_query: sum(rate(notifications_sent_total{service="notification-worker",status="delivered"}[5m]))
+
+  - kind: SLO
+    name: processing-latency-p95
+    spec:
+      objective: 98.0
+      window: 30d
+      indicators:
+        - type: latency
+          threshold_ms: 5000
+          percentile: 95
+          latency_query: histogram_quantile(0.95, rate(notification_processing_duration_seconds_bucket{service="notification-worker"}[5m]))
+
+  - kind: SLO
+    name: queue-lag
+    spec:
+      objective: 99.0
+      window: 30d
+      indicators:
+        - type: custom
+          threshold: 100
+          metric: max(kafka_consumer_lag_seconds{service="notification-worker",topic="notifications"})
+
+  - kind: Dependencies
+    name: dependencies
+    spec:
+      databases:
+        - type: redis
+          name: notification_cache
+          version: "7.0"
+          
+      message_queues:
+        - type: kafka
+          name: notification_events
+          version: "3.5"
+          topics:
+            - notifications
+            - notifications.dlq
+          
+      orchestration:
+        - type: kubernetes
+          cluster: production
+          namespace: platform
+          
+      external_services:
+        - name: sendgrid
+          type: email
+          
+        - name: twilio
+          type: sms
+
+  - kind: Observability
+    name: observability
+    spec:
+      metrics:
+        - notifications_sent_total
+        - notifications_failed_total
+        - notification_processing_duration_seconds
+        - kafka_consumer_lag_seconds
+        
+  - kind: PagerDuty
+    name: pagerduty
+    spec:
+      service_key: notification-worker
+      escalation_policy: platform-services
+      urgency: high

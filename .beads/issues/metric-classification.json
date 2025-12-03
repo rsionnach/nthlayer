@@ -1,0 +1,12 @@
+{
+  "id": "metric-classification",
+  "type": "task",
+  "title": "Create metric grouping logic",
+  "description": "Successfully classifies metrics by technology (PostgreSQL, Redis, HTTP, Kubernetes, etc.) and type (Counter, Gauge, Histogram, Summary) using pattern matching.",
+  "status": "completed",
+  "priority": "P0",
+  "parent": "metric-discovery-epic",
+  "tags": ["classification", "pattern-matching"],
+  "created_at": "2025-12-02T20:00:00Z",
+  "completed_at": "2025-12-02T20:30:00Z"
+}

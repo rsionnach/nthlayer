@@ -46,20 +46,15 @@ class RedisTemplate(TechnologyTemplate):
         """Redis memory usage."""
         return Panel(
             title="Redis Memory Usage",
-            panel_type="timeseries",
+            panel_type="stat",
             targets=[
                 Target(
                     expr=f'redis_memory_used_bytes{{service="{service}"}}',
                     legend_format="Used memory",
                     ref_id="A"
-                ),
-                Target(
-                    expr=f'redis_memory_max_bytes{{service="{service}"}}',
-                    legend_format="Max memory",
-                    ref_id="B"
-                ),
+                )
             ],
-            description="Redis memory consumption vs configured maximum",
+            description="Redis memory consumption",
             unit="bytes",
             decimals=0,
             grid_pos={"h": 8, "w": 12, "x": 0, "y": 0}
@@ -73,9 +68,9 @@ class RedisTemplate(TechnologyTemplate):
             targets=[
                 Target(
                     expr=(
-                        f'rate(redis_keyspace_hits_total{{service="{service}"}}[5m]) / '
-                        f'(rate(redis_keyspace_hits_total{{service="{service}"}}[5m]) + '
-                        f'rate(redis_keyspace_misses_total{{service="{service}"}}[5m])) * 100'
+                        f'sum(rate(cache_hits_total{{service="{service}"}}[5m])) / '
+                        f'(sum(rate(cache_hits_total{{service="{service}"}}[5m])) + '
+                        f'sum(rate(cache_misses_total{{service="{service}"}}[5m]))) * 100'
                     ),
                     legend_format="Hit rate %",
                     ref_id="A"
@@ -95,19 +90,19 @@ class RedisTemplate(TechnologyTemplate):
         )
     
     def _commands_per_sec_panel(self, service: str) -> Panel:
-        """Redis commands executed per second."""
+        """Redis connections."""
         return Panel(
-            title="Commands/sec",
-            panel_type="timeseries",
+            title="Redis Connections",
+            panel_type="stat",
             targets=[
                 Target(
-                    expr=f'rate(redis_commands_processed_total{{service="{service}"}}[5m])',
-                    legend_format="Commands/sec",
+                    expr=f'redis_connected_clients{{service="{service}"}}',
+                    legend_format="Connections",
                     ref_id="A"
                 ),
             ],
-            description="Total Redis commands per second",
-            unit="ops",
+            description="Number of client connections",
+            unit="short",
             decimals=0,
             grid_pos={"h": 8, "w": 12, "x": 0, "y": 0}
         )

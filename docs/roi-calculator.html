@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROI Calculator - NthLayer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <img src="../presentations/public/nthlayer_dark_logo.png" alt="NthLayer" height="32">
+            </div>
+            <div class="nav-links">
+                <a href="index.html">Demo</a>
+                <a href="demo-comparison.html">Before & After</a>
+                <a href="https://github.com/rsionnach/nthlayer">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <section style="padding: 8rem var(--spacing-lg) 4rem;">
+        <div class="container" style="max-width: 800px;">
+            <h1 style="text-align: center; font-size: 2.5rem; margin-bottom: var(--spacing-md);">
+                Calculate Your Savings
+            </h1>
+            <p style="text-align: center; color: var(--color-text-secondary); font-size: 1.125rem; margin-bottom: var(--spacing-2xl);">
+                See how much time and money NthLayer would save your team
+            </p>
+
+            <div style="background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-xl); padding: var(--spacing-xl);">
+                <div style="margin-bottom: var(--spacing-xl);">
+                    <label style="display: block; margin-bottom: var(--spacing-sm); color: var(--color-text); font-weight: 600;">
+                        How many services do you deploy per year?
+                    </label>
+                    <input 
+                        type="number" 
+                        id="services" 
+                        value="12" 
+                        min="1" 
+                        style="width: 100%; padding: var(--spacing-sm); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); font-size: 1rem;"
+                        oninput="calculate()"
+                    >
+                </div>
+
+                <div style="margin-bottom: var(--spacing-xl);">
+                    <label style="display: block; margin-bottom: var(--spacing-sm); color: var(--color-text); font-weight: 600;">
+                        Average engineer hourly cost?
+                    </label>
+                    <input 
+                        type="number" 
+                        id="hourly_cost" 
+                        value="100" 
+                        min="50" 
+                        style="width: 100%; padding: var(--spacing-sm); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); font-size: 1rem;"
+                        oninput="calculate()"
+                    >
+                </div>
+
+                <div id="results" style="padding: var(--spacing-xl); background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1)); border-radius: var(--radius-lg);">
+                    <!-- Results populated by JavaScript -->
+                </div>
+            </div>
+
+            <div style="margin-top: var(--spacing-2xl); text-align: center;">
+                <a href="index.html" class="button-primary">See Live Demo</a>
+                <a href="https://github.com/rsionnach/nthlayer" class="button-secondary">Try NthLayer</a>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        function calculate() {
+            const services = parseInt(document.getElementById('services').value) || 0;
+            const hourlyCost = parseInt(document.getElementById('hourly_cost').value) || 0;
+            
+            // Calculations
+            const manualHours = services * 20; // 20 hours per service
+            const nthlayerHours = services * 0.083; // 5 minutes = 0.083 hours
+            const hoursSaved = manualHours - nthlayerHours;
+            const costSaved = hoursSaved * hourlyCost;
+            const percentSaved = ((hoursSaved / manualHours) * 100).toFixed(1);
+            
+            // Render results
+            document.getElementById('results').innerHTML = `
+                <div style="text-align: center; margin-bottom: var(--spacing-xl);">
+                    <h3 style="font-size: 1.5rem; margin-bottom: var(--spacing-sm);">Your Annual Savings</h3>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); margin-bottom: var(--spacing-xl);">
+                    <div>
+                        <div style="font-size: 0.875rem; color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Time Saved</div>
+                        <div style="font-size: 2.5rem; font-weight: 700; color: var(--color-success);">${hoursSaved.toLocaleString()} hours</div>
+                        <div style="font-size: 0.875rem; color: var(--color-text-secondary);">${percentSaved}% reduction</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.875rem; color: var(--color-text-secondary); margin-bottom: var(--spacing-xs);">Money Saved</div>
+                        <div style="font-size: 2.5rem; font-weight: 700; color: var(--color-success);">$${costSaved.toLocaleString()}</div>
+                        <div style="font-size: 0.875rem; color: var(--color-text-secondary);">at $${hourlyCost}/hour</div>
+                    </div>
+                </div>
+                
+                <div style="padding: var(--spacing-lg); background: var(--color-surface); border-radius: var(--radius-md);">
+                    <h4 style="margin-bottom: var(--spacing-md); font-size: 1.125rem;">Breakdown:</h4>
+                    <table style="width: 100%; font-size: 0.9375rem;">
+                        <tr style="border-bottom: 1px solid var(--color-border);">
+                            <td style="padding: var(--spacing-sm); color: var(--color-text-secondary);">Manual setup</td>
+                            <td style="padding: var(--spacing-sm); text-align: right;">${manualHours.toLocaleString()} hours</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--color-border);">
+                            <td style="padding: var(--spacing-sm); color: var(--color-text-secondary);">With NthLayer</td>
+                            <td style="padding: var(--spacing-sm); text-align: right;">${nthlayerHours.toFixed(1)} hours</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: var(--spacing-sm); font-weight: 600; color: var(--color-success);">Time saved</td>
+                            <td style="padding: var(--spacing-sm); text-align: right; font-weight: 600; color: var(--color-success);">${hoursSaved.toLocaleString()} hours</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div style="margin-top: var(--spacing-lg); text-align: center; font-size: 0.875rem; color: var(--color-text-secondary);">
+                    That's ${(hoursSaved / 40).toFixed(1)} weeks of engineering time reclaimed for innovation.
+                </div>
+            `;
+        }
+        
+        // Initial calculation
+        calculate();
+    </script>
+</body>
+</html>

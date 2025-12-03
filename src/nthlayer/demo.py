@@ -432,6 +432,8 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Show detailed progress")
     apply_parser.add_argument("--output", choices=["text", "json"], default="text",
                              help="Output format")
+    apply_parser.add_argument("--push-grafana", action="store_true",
+                             help="Automatically push dashboard to Grafana via API (requires NTHLAYER_GRAFANA_URL and NTHLAYER_GRAFANA_API_KEY)")
 
     # === EXISTING COMMANDS ===
     
@@ -615,7 +617,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             only=args.only,
             force=args.force,
             verbose=args.verbose,
-            output_format=args.output
+            output_format=args.output,
+            push_grafana=args.push_grafana
         ))
 
     # Handle existing commands

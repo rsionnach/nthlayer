@@ -103,7 +103,8 @@ def apply_command(
     only: Optional[List[str]] = None,
     force: bool = False,
     verbose: bool = False,
-    output_format: str = "text"
+    output_format: str = "text",
+    push_grafana: bool = False
 ) -> int:
     """
     Generate all resources for a service.
@@ -127,7 +128,7 @@ def apply_command(
         return plan_command(service_yaml, env=env, verbose=verbose)
     
     # Create orchestrator
-    orchestrator = ServiceOrchestrator(Path(service_yaml), env=env)
+    orchestrator = ServiceOrchestrator(Path(service_yaml), env=env, push_to_grafana=push_grafana)
     
     # Override output directory if specified
     if output_dir:

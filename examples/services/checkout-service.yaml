@@ -1,0 +1,82 @@
+apiVersion: nthlayer.dev/v1
+kind: Service
+
+service:
+  name: checkout-service
+  team: commerce
+  tier: critical
+  type: api
+  description: Order checkout and payment processing service
+  owner: commerce-team@company.com
+
+resources:
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.95
+      window: 30d
+      indicators:
+        - type: availability
+          success_ratio:
+            total_query: sum(rate(http_requests_total{service="checkout-service"}[5m]))
+            good_query: sum(rate(http_requests_total{service="checkout-service",status!~"5.."}[5m]))
+
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      indicators:
+        - type: latency
+          threshold_ms: 800
+          percentile: 95
+          latency_query: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="checkout-service"}[5m]))
+
+  - kind: SLO
+    name: latency-p99
+    spec:
+      objective: 95.0
+      window: 30d
+      indicators:
+        - type: latency
+          threshold_ms: 1500
+          percentile: 99
+          latency_query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="checkout-service"}[5m]))
+
+  - kind: Dependencies
+    name: dependencies
+    spec:
+      databases:
+        - type: mysql
+          name: checkout_db
+          version: "8.0"
+          
+        - type: redis
+          name: checkout_cache
+          version: "7.0"
+          
+      message_queues:
+        - type: rabbitmq
+          name: order_queue
+          version: "3.12"
+          
+      orchestration:
+        - type: ecs
+          cluster: production
+          region: us-east-1
+
+  - kind: Observability
+    name: observability
+    spec:
+      metrics:
+        - checkout_started_total
+        - checkout_completed_total
+        - checkout_abandoned_total
+        - order_value_dollars
+        
+  - kind: PagerDuty
+    name: pagerduty
+    spec:
+      service_key: checkout-service
+      escalation_policy: critical-services
+      urgency: high
