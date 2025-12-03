@@ -145,7 +145,7 @@ class PostgreSQLIntentTemplate(IntentBasedTemplate):
             title="Query Duration (p95)",
             panel_type=PanelType.TIMESERIES,
             intent="postgresql.query_duration",
-            query_template=f'histogram_quantile(0.95, rate({{{{metric}}}}{{service="{service}"}}[5m]))',
+            query_template=f'histogram_quantile(0.95, sum by (le) (rate({{{{metric}}}}{{service="{service}"}}[5m])))',
             unit="s",
             description="Query execution time (95th percentile)",
             # Skip if histogram metrics not available

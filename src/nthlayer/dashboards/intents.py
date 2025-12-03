@@ -324,6 +324,7 @@ REDIS_INTENTS = {
         candidates=[
             "redis_evicted_keys_total",
             "redis_evicted_keys",
+            "redis_keyspace_evicted_keys",
         ],
         unit="short"
     ),
@@ -335,6 +336,7 @@ REDIS_INTENTS = {
         candidates=[
             "redis_expired_keys_total",
             "redis_expired_keys",
+            "redis_keyspace_expired_keys",
         ],
         unit="short"
     ),
@@ -375,6 +377,7 @@ MONGODB_INTENTS = {
         candidates=[
             "mongodb_op_counters_total",
             "mongodb_opcounters_total",
+            "mongodb_operations_total",
             "mongo_operations_total",
         ],
         unit="ops"
@@ -635,6 +638,8 @@ STREAM_INTENTS = {
         candidates=[
             "event_processing_duration_seconds_bucket",
             "stream_processing_duration_bucket",
+            "message_processing_duration_seconds_bucket",
+            "kafka_consumer_processing_duration_bucket",
         ],
         unit="s"
     ),
@@ -649,6 +654,8 @@ WORKER_INTENTS = {
             "notifications_sent_total",
             "jobs_processed_total",
             "tasks_completed_total",
+            "background_jobs_total",
+            "worker_jobs_processed_total",
         ],
         unit="short"
     ),
@@ -660,6 +667,8 @@ WORKER_INTENTS = {
         candidates=[
             "notification_processing_duration_seconds_bucket",
             "job_duration_seconds_bucket",
+            "task_duration_seconds_bucket",
+            "worker_job_duration_seconds_bucket",
         ],
         unit="s"
     ),

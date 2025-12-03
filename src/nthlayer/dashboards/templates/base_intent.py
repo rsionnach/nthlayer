@@ -189,12 +189,15 @@ class IntentBasedTemplate(TechnologyTemplate):
         """
         Build a guidance panel for unresolved intents.
         
+        Creates a panel that displays helpful guidance in Grafana's "No data"
+        message area, making it clear what instrumentation is needed.
+        
         Args:
             spec: Original panel specification
             unresolved_intents: List of intents that couldn't be resolved
             
         Returns:
-            Text panel with instrumentation guidance
+            Panel with guidance for missing instrumentation
         """
         technology = unresolved_intents[0].split('.')[0] if unresolved_intents else self.name
         
@@ -203,7 +206,16 @@ class IntentBasedTemplate(TechnologyTemplate):
         if self.resolver:
             exporter_rec = self.resolver.get_exporter_recommendation(technology)
         
-        # Build guidance content
+        # Build short guidance for noValue display
+        if exporter_rec:
+            install_cmd = exporter_rec.helm or exporter_rec.docker or ""
+            short_guidance = f"Install {exporter_rec.name}: {install_cmd}"
+        else:
+            short_guidance = f"Add metrics: {', '.join(unresolved_intents[:2])}"
+            if len(unresolved_intents) > 2:
+                short_guidance += f" (+{len(unresolved_intents) - 2} more)"
+        
+        # Build detailed content for description/tooltip
         lines = [
             f"### {spec.title} - Needs Instrumentation",
             "",
@@ -242,13 +254,21 @@ class IntentBasedTemplate(TechnologyTemplate):
         
         content = "\n".join(lines)
         
-        return Panel(
-            title=f"{spec.title} (Instrumentation Needed)",
-            panel_type="text",
-            targets=[],
+        # Create panel with guidance metadata for noValue configuration
+        panel = Panel(
+            title=f"{spec.title}",
+            panel_type="stat",  # Use stat panel - it shows noValue message clearly
+            targets=[],  # No targets = triggers noValue display
             description=content,
+            unit=spec.unit,
             grid_pos={"h": spec.height, "w": spec.width, "x": 0, "y": 0}
         )
+        
+        # Add custom attribute for noValue message (used during SDK conversion)
+        panel.no_value_message = short_guidance
+        panel.is_guidance_panel = True
+        
+        return panel
     
     def _panel_type_to_string(self, panel_type: PanelType) -> str:
         """Convert PanelType enum to string for Panel model."""

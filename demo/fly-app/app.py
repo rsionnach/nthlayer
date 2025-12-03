@@ -42,6 +42,11 @@ http_duration = Histogram(
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
     registry=registry
 )
+http_in_flight = Gauge(
+    'http_requests_in_flight', 'Current in-flight requests',
+    ['service'],
+    registry=registry
+)
 
 # PostgreSQL metrics (payment-api, identity-service)
 pg_connections = Gauge(
@@ -109,6 +114,11 @@ pg_dead_tuples = Gauge(
     ['service', 'schemaname', 'relname'],
     registry=registry
 )
+pg_index_scans = Counter(
+    'pg_stat_user_indexes_idx_scan', 'Index scans',
+    ['service', 'schemaname', 'relname', 'indexrelname'],
+    registry=registry
+)
 
 # Redis metrics (payment-api, notification-worker, identity-service)
 redis_connections = Gauge(
@@ -135,6 +145,23 @@ cache_hits = Counter(
 )
 cache_misses = Counter(
     'cache_misses_total', 'Cache misses',
+    ['service'],
+    registry=registry
+)
+
+# Additional Redis metrics
+redis_evicted_keys = Counter(
+    'redis_evicted_keys_total', 'Evicted keys due to memory pressure',
+    ['service'],
+    registry=registry
+)
+redis_expired_keys = Counter(
+    'redis_expired_keys_total', 'Keys expired by TTL',
+    ['service'],
+    registry=registry
+)
+redis_commands = Counter(
+    'redis_commands_processed_total', 'Commands processed',
     ['service'],
     registry=registry
 )
@@ -236,6 +263,11 @@ kafka_throughput = Gauge(
     ['service', 'topic'],
     registry=registry
 )
+kafka_partitions = Gauge(
+    'kafka_topic_partitions', 'Number of partitions',
+    ['service', 'topic'],
+    registry=registry
+)
 
 # Analytics stream metrics
 events_processed = Counter(
@@ -290,6 +322,64 @@ password_resets = Counter(
     registry=registry
 )
 
+# Elasticsearch metrics (search-api)
+es_cluster_health = Gauge(
+    'elasticsearch_cluster_health_status', 'Cluster health (0=red, 1=yellow, 2=green)',
+    ['service', 'cluster'],
+    registry=registry
+)
+es_active_shards = Gauge(
+    'elasticsearch_cluster_health_active_shards', 'Active shards',
+    ['service', 'cluster'],
+    registry=registry
+)
+es_relocating_shards = Gauge(
+    'elasticsearch_cluster_health_relocating_shards', 'Relocating shards',
+    ['service', 'cluster'],
+    registry=registry
+)
+es_search_total = Counter(
+    'elasticsearch_indices_search_query_total', 'Search queries',
+    ['service', 'index'],
+    registry=registry
+)
+es_search_time = Histogram(
+    'elasticsearch_indices_search_query_time_seconds', 'Search latency',
+    ['service', 'index'],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+    registry=registry
+)
+es_indexing_total = Counter(
+    'elasticsearch_indices_indexing_index_total', 'Indexing operations',
+    ['service', 'index'],
+    registry=registry
+)
+es_index_size = Gauge(
+    'elasticsearch_indices_store_size_bytes', 'Index size',
+    ['service', 'index'],
+    registry=registry
+)
+es_docs_count = Gauge(
+    'elasticsearch_indices_docs', 'Document count',
+    ['service', 'index'],
+    registry=registry
+)
+es_jvm_heap_used = Gauge(
+    'elasticsearch_jvm_memory_used_bytes', 'JVM heap used',
+    ['service', 'area'],
+    registry=registry
+)
+es_jvm_heap_max = Gauge(
+    'elasticsearch_jvm_memory_max_bytes', 'JVM heap max',
+    ['service', 'area'],
+    registry=registry
+)
+es_gc_time = Counter(
+    'elasticsearch_jvm_gc_collection_seconds_sum', 'GC time',
+    ['service', 'gc'],
+    registry=registry
+)
+
 # =============================================================================
 # Simulation Functions
 # =============================================================================
@@ -299,6 +389,7 @@ def simulate_payment_api():
     svc = 'payment-api'
     
     # HTTP traffic
+    http_in_flight.labels(service=svc).set(random.randint(2, 15))
     for _ in range(random.randint(5, 15)):
         status = random.choices([200, 201, 400, 500], weights=[85, 10, 3, 2])[0]
         endpoint = random.choice(['/payments', '/checkout', '/refund'])
@@ -326,12 +417,17 @@ def simulate_payment_api():
     pg_replication_lag.labels(service=svc).set(random.uniform(0.0, 3.0))
     for table in ['users', 'orders', 'sessions', 'audit_log']:
         pg_dead_tuples.labels(service=svc, schemaname='public', relname=table).set(random.randint(100, 15000))
+        pg_index_scans.labels(service=svc, schemaname='public', relname=table, indexrelname=f'{table}_pkey').inc(random.randint(100, 500))
     
     # Redis
     cache_hits.labels(service=svc).inc(random.randint(80, 120))
     cache_misses.labels(service=svc).inc(random.randint(5, 15))
     redis_connections.labels(service=svc).set(random.randint(10, 20))
     redis_memory.labels(service=svc).set(random.randint(100_000_000, 200_000_000))
+    redis_keys.labels(service=svc, db='0').set(random.randint(2000, 8000))
+    redis_evicted_keys.labels(service=svc).inc(random.randint(0, 5))
+    redis_expired_keys.labels(service=svc).inc(random.randint(10, 50))
+    redis_commands.labels(service=svc).inc(random.randint(500, 1500))
     
     # Kubernetes
     for i in range(1, 4):
@@ -345,6 +441,7 @@ def simulate_checkout_service():
     svc = 'checkout-service'
     
     # HTTP traffic
+    http_in_flight.labels(service=svc).set(random.randint(1, 10))
     for _ in range(random.randint(3, 10)):
         status = random.choices([200, 400, 500], weights=[90, 7, 3])[0]
         endpoint = random.choice(['/cart', '/checkout', '/order'])
@@ -361,8 +458,12 @@ def simulate_checkout_service():
     # Redis (session cache)
     redis_memory.labels(service=svc).set(random.randint(60_000_000, 120_000_000))
     redis_connections.labels(service=svc).set(random.randint(8, 20))
+    redis_keys.labels(service=svc, db='0').set(random.randint(800, 3000))
     cache_hits.labels(service=svc).inc(random.randint(80, 150))
     cache_misses.labels(service=svc).inc(random.randint(3, 10))
+    redis_evicted_keys.labels(service=svc).inc(random.randint(0, 3))
+    redis_expired_keys.labels(service=svc).inc(random.randint(5, 30))
+    redis_commands.labels(service=svc).inc(random.randint(300, 800))
     
     # RabbitMQ
     rabbitmq_messages.labels(service=svc, queue='order_queue').set(random.randint(0, 50))
@@ -389,14 +490,19 @@ def simulate_notification_worker():
     # Kafka
     kafka_lag.labels(service=svc, topic='notifications').set(random.uniform(0.1, 2.0))
     kafka_throughput.labels(service=svc, topic='notifications').set(random.uniform(500, 900))
+    kafka_partitions.labels(service=svc, topic='notifications').set(3)
     for partition in range(3):
         kafka_offset.labels(service=svc, topic='notifications', partition=str(partition)).inc(random.randint(10, 50))
     
     # Redis (cache for notification templates)
+    # NOTE: redis_keys intentionally omitted to demo guidance panels
     redis_connections.labels(service=svc).set(random.randint(5, 15))
     redis_memory.labels(service=svc).set(random.randint(50_000_000, 100_000_000))
     cache_hits.labels(service=svc).inc(random.randint(50, 100))
     cache_misses.labels(service=svc).inc(random.randint(2, 8))
+    redis_evicted_keys.labels(service=svc).inc(random.randint(0, 2))
+    redis_expired_keys.labels(service=svc).inc(random.randint(5, 20))
+    redis_commands.labels(service=svc).inc(random.randint(200, 600))
     
     # Kubernetes
     for i in range(1, 4):
@@ -420,17 +526,24 @@ def simulate_analytics_stream():
     # MongoDB
     mongo_connections.labels(service=svc, state='current').set(random.randint(8, 20))
     mongo_ops.labels(service=svc, type='insert').inc(random.randint(50, 200))
+    mongo_ops.labels(service=svc, type='query').inc(random.randint(100, 400))
+    mongo_ops.labels(service=svc, type='update').inc(random.randint(20, 100))
     mongo_query_time.labels(service=svc).observe(random.uniform(0.005, 0.05))
     
     # Redis (stream cache)
     redis_memory.labels(service=svc).set(random.randint(80_000_000, 150_000_000))
     redis_connections.labels(service=svc).set(random.randint(5, 12))
+    redis_keys.labels(service=svc, db='0').set(random.randint(1000, 5000))
     cache_hits.labels(service=svc).inc(random.randint(100, 200))
     cache_misses.labels(service=svc).inc(random.randint(5, 15))
+    redis_evicted_keys.labels(service=svc).inc(random.randint(0, 5))
+    redis_expired_keys.labels(service=svc).inc(random.randint(10, 40))
+    redis_commands.labels(service=svc).inc(random.randint(400, 1000))
     
     # Kafka
     kafka_lag.labels(service=svc, topic='events').set(random.uniform(0.05, 0.5))
     kafka_throughput.labels(service=svc, topic='events').set(random.uniform(800, 1200))
+    kafka_partitions.labels(service=svc, topic='events').set(3)
     for partition in range(3):
         kafka_offset.labels(service=svc, topic='events', partition=str(partition)).inc(random.randint(100, 300))
     
@@ -446,6 +559,7 @@ def simulate_identity_service():
     svc = 'identity-service'
     
     # HTTP traffic
+    http_in_flight.labels(service=svc).set(random.randint(1, 12))
     for _ in range(random.randint(5, 20)):
         status = random.choices([200, 401, 500], weights=[85, 12, 3])[0]
         endpoint = random.choice(['/login', '/register', '/verify'])
@@ -480,6 +594,7 @@ def simulate_identity_service():
     pg_replication_lag.labels(service=svc).set(random.uniform(0.0, 3.0))
     for table in ['users', 'orders', 'sessions', 'audit_log']:
         pg_dead_tuples.labels(service=svc, schemaname='public', relname=table).set(random.randint(100, 15000))
+        pg_index_scans.labels(service=svc, schemaname='public', relname=table, indexrelname=f'{table}_pkey').inc(random.randint(50, 300))
     
     # Redis (session cache)
     redis_keys.labels(service=svc, db='0').set(random.randint(1000, 5000))
@@ -487,12 +602,64 @@ def simulate_identity_service():
     redis_connections.labels(service=svc).set(random.randint(10, 25))
     cache_hits.labels(service=svc).inc(random.randint(60, 120))
     cache_misses.labels(service=svc).inc(random.randint(3, 12))
+    redis_evicted_keys.labels(service=svc).inc(random.randint(0, 3))
+    redis_expired_keys.labels(service=svc).inc(random.randint(20, 60))
+    redis_commands.labels(service=svc).inc(random.randint(300, 900))
     
     # ECS
     ecs_tasks.labels(service=svc, cluster='production').set(3)
     for i in range(1, 4):
         task = f'task-{i}'
         ecs_cpu.labels(service=svc, task=task).set(random.uniform(15, 40))
+
+
+def simulate_search_api():
+    """search-api: Elasticsearch, Redis, Kubernetes"""
+    svc = 'search-api'
+    
+    # HTTP traffic
+    http_in_flight.labels(service=svc).set(random.randint(2, 20))
+    for _ in range(random.randint(10, 30)):
+        status = random.choices([200, 400, 500], weights=[92, 5, 3])[0]
+        endpoint = random.choice(['/search', '/suggest', '/index'])
+        duration = random.uniform(0.02, 0.2) if status < 400 else random.uniform(0.5, 2.0)
+        
+        http_requests.labels(service=svc, method='GET', endpoint=endpoint, status=status).inc()
+        http_duration.labels(service=svc, method='GET', endpoint=endpoint).observe(duration)
+    
+    # Elasticsearch
+    es_cluster_health.labels(service=svc, cluster='search-cluster').set(2)  # 2 = green
+    es_active_shards.labels(service=svc, cluster='search-cluster').set(random.randint(20, 30))
+    es_relocating_shards.labels(service=svc, cluster='search-cluster').set(random.randint(0, 2))
+    
+    for index in ['products', 'users', 'content']:
+        es_search_total.labels(service=svc, index=index).inc(random.randint(50, 200))
+        es_search_time.labels(service=svc, index=index).observe(random.uniform(0.01, 0.15))
+        es_indexing_total.labels(service=svc, index=index).inc(random.randint(10, 50))
+        es_index_size.labels(service=svc, index=index).set(random.randint(500_000_000, 5_000_000_000))
+        es_docs_count.labels(service=svc, index=index).set(random.randint(100_000, 10_000_000))
+    
+    # NOTE: es_jvm_heap_used and es_jvm_heap_max intentionally omitted to demo guidance panels
+    es_gc_time.labels(service=svc, gc='young').inc(random.uniform(0.01, 0.1))
+    es_gc_time.labels(service=svc, gc='old').inc(random.uniform(0.001, 0.05))
+    
+    # Redis (search cache)
+    redis_memory.labels(service=svc).set(random.randint(100_000_000, 300_000_000))
+    redis_connections.labels(service=svc).set(random.randint(10, 30))
+    redis_keys.labels(service=svc, db='0').set(random.randint(50000, 200000))
+    cache_hits.labels(service=svc).inc(random.randint(200, 500))
+    cache_misses.labels(service=svc).inc(random.randint(20, 80))
+    redis_evicted_keys.labels(service=svc).inc(random.randint(5, 20))
+    redis_expired_keys.labels(service=svc).inc(random.randint(50, 150))
+    redis_commands.labels(service=svc).inc(random.randint(1000, 3000))
+    
+    # Kubernetes
+    for i in range(1, 4):
+        pod = f'search-api-{i}'
+        kube_pod_status.labels(service=svc, pod=pod, phase='Running').set(1)
+        container_cpu.labels(service=svc, pod=pod, container='search-api').inc(random.uniform(0.02, 0.1))
+        container_memory.labels(service=svc, pod=pod, container='search-api').set(random.randint(400_000_000, 800_000_000))
+
 
 # =============================================================================
 # Flask Routes
@@ -502,20 +669,21 @@ def simulate_identity_service():
 def index():
     return """
     <h1>NthLayer Multi-Service Demo</h1>
-    <p>Emitting metrics for 5 services:</p>
+    <p>Emitting metrics for 6 services:</p>
     <ul>
         <li><strong>payment-api</strong> - PostgreSQL, Redis, Kubernetes</li>
         <li><strong>checkout-service</strong> - MySQL, RabbitMQ, ECS</li>
         <li><strong>notification-worker</strong> - Redis, Kafka, Kubernetes</li>
         <li><strong>analytics-stream</strong> - MongoDB, Kafka, Kubernetes</li>
         <li><strong>identity-service</strong> - PostgreSQL, Redis, ECS</li>
+        <li><strong>search-api</strong> - Elasticsearch, Redis, Kubernetes</li>
     </ul>
     <p><a href="/metrics">View Prometheus metrics</a> (requires auth)</p>
     """
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'services': 5}
+    return {'status': 'healthy', 'services': 6}
 
 @app.route('/metrics')
 def metrics():
@@ -530,6 +698,7 @@ def metrics():
     simulate_notification_worker()
     simulate_analytics_stream()
     simulate_identity_service()
+    simulate_search_api()
     
     return Response(generate_latest(registry), mimetype='text/plain')
 

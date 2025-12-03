@@ -227,11 +227,23 @@ class DashboardBuilder:
             
             expr = f'({good_query}) / ({total_query}) * 100'
         else:
-            # Fallback to HTTP metrics for API services
-            expr = (
-                f'sum(rate(http_requests_total{{service="$service",status!~"5.."}}[5m])) / '
-                f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
-            )
+            # Fallback based on service type
+            if self.context.type == 'worker':
+                expr = (
+                    f'sum(rate(notifications_sent_total{{service="$service",status!="failed"}}[5m])) / '
+                    f'sum(rate(notifications_sent_total{{service="$service"}}[5m])) * 100'
+                )
+            elif self.context.type == 'stream':
+                expr = (
+                    f'sum(rate(events_processed_total{{service="$service",status!="error"}}[5m])) / '
+                    f'sum(rate(events_processed_total{{service="$service"}}[5m])) * 100'
+                )
+            else:
+                # Default: HTTP metrics for API services
+                expr = (
+                    f'sum(rate(http_requests_total{{service="$service",status!~"5.."}}[5m])) / '
+                    f'sum(rate(http_requests_total{{service="$service"}}[5m])) * 100'
+                )
         
         return Panel(
             title=f"{name.title()} SLO",
@@ -275,36 +287,43 @@ class DashboardBuilder:
             
             targets = [
                 Target(
-                    expr=f'histogram_quantile(0.50, rate({metric}{{service="$service"}}[5m])) * 1000',
+                    expr=f'histogram_quantile(0.50, sum by (le) (rate({metric}{{service="$service"}}[5m]))) * 1000',
                     legend_format="p50",
                     ref_id="A"
                 ),
                 Target(
-                    expr=f'histogram_quantile(0.95, rate({metric}{{service="$service"}}[5m])) * 1000',
+                    expr=f'histogram_quantile(0.95, sum by (le) (rate({metric}{{service="$service"}}[5m]))) * 1000',
                     legend_format="p95",
                     ref_id="B"
                 ),
                 Target(
-                    expr=f'histogram_quantile(0.99, rate({metric}{{service="$service"}}[5m])) * 1000',
+                    expr=f'histogram_quantile(0.99, sum by (le) (rate({metric}{{service="$service"}}[5m]))) * 1000',
                     legend_format="p99",
                     ref_id="C"
                 ),
             ]
         else:
-            # Fallback to HTTP metrics
+            # Fallback based on service type
+            if self.context.type == 'worker':
+                metric = "notification_processing_duration_seconds_bucket"
+            elif self.context.type == 'stream':
+                metric = "event_processing_duration_seconds_bucket"
+            else:
+                metric = "http_request_duration_seconds_bucket"
+            
             targets = [
                 Target(
-                    expr=f'histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    expr=f'histogram_quantile(0.50, sum by (le) (rate({metric}{{service="$service"}}[5m]))) * 1000',
                     legend_format="p50",
                     ref_id="A"
                 ),
                 Target(
-                    expr=f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    expr=f'histogram_quantile(0.95, sum by (le) (rate({metric}{{service="$service"}}[5m]))) * 1000',
                     legend_format="p95",
                     ref_id="B"
                 ),
                 Target(
-                    expr=f'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                    expr=f'histogram_quantile(0.99, sum by (le) (rate({metric}{{service="$service"}}[5m]))) * 1000',
                     legend_format="p99",
                     ref_id="C"
                 ),
@@ -452,7 +471,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                        expr=f'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{{service="$service"}}[5m]))) * 1000',
                         legend_format="p95 latency",
                     )
                 ],
@@ -506,7 +525,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'histogram_quantile(0.95, rate(event_processing_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                        expr=f'histogram_quantile(0.95, sum by (le) (rate(event_processing_duration_seconds_bucket{{service="$service"}}[5m]))) * 1000',
                         legend_format="p95 latency",
                     )
                 ],
@@ -560,7 +579,7 @@ class DashboardBuilder:
                 panel_type="timeseries",
                 targets=[
                     Target(
-                        expr=f'histogram_quantile(0.95, rate(notification_processing_duration_seconds_bucket{{service="$service"}}[5m])) * 1000',
+                        expr=f'histogram_quantile(0.95, sum by (le) (rate(notification_processing_duration_seconds_bucket{{service="$service"}}[5m]))) * 1000',
                         legend_format="p95 latency",
                     )
                 ],

@@ -235,6 +235,9 @@ class MetricDiscoveryClient:
         service = self._extract_service_from_selector(selector)
         url = f"{self.prometheus_url}/metrics"
         
+        # If selector is empty or '{}', get ALL metrics
+        filter_by_service = service and service != "unknown"
+        
         try:
             response = requests.get(
                 url,
@@ -250,13 +253,17 @@ class MetricDiscoveryClient:
                 if not line or line.startswith('#'):
                     continue
                 
-                # Check if line contains our service
-                if f'service="{service}"' not in line:
+                # Check if line contains our service (if filtering)
+                if filter_by_service and f'service="{service}"' not in line:
                     continue
                 
-                # Extract metric name (before {)
+                # Extract metric name (before { or space)
                 if '{' in line:
                     metric_name = line.split('{')[0]
+                    metric_names.add(metric_name)
+                elif ' ' in line:
+                    # Handle metrics without labels
+                    metric_name = line.split(' ')[0]
                     metric_names.add(metric_name)
             
             logger.info(f"Parsed {len(metric_names)} metrics from /metrics endpoint")

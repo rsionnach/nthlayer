@@ -55,7 +55,7 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             title="Cluster Health Status",
             panel_type=PanelType.STAT,
             intent="elasticsearch.cluster_health",
-            query_template=f'{{{{metric}}}}{{cluster="{service}"}}',
+            query_template=f'{{{{metric}}}}{{service="{service}"}}',
             unit="short",
             description="Elasticsearch cluster health (0=green, 1=yellow, 2=red)"
         )
@@ -68,13 +68,13 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             queries=[
                 QuerySpec(
                     intent="elasticsearch.active_shards",
-                    query_template=f'{{{{metric}}}}{{cluster="{service}"}}',
+                    query_template=f'{{{{metric}}}}{{service="{service}"}}',
                     legend="Active",
                     ref_id="A"
                 ),
                 QuerySpec(
                     intent="elasticsearch.relocating_shards",
-                    query_template=f'{{{{metric}}}}{{cluster="{service}"}}',
+                    query_template=f'{{{{metric}}}}{{service="{service}"}}',
                     legend="Relocating",
                     ref_id="B"
                 ),
@@ -89,7 +89,7 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             title="Search Rate",
             panel_type=PanelType.TIMESERIES,
             intent="elasticsearch.search_rate",
-            query_template=f'rate({{{{metric}}}}{{cluster="{service}"}}[5m])',
+            query_template=f'sum(rate({{{{metric}}}}{{service="{service}"}}[5m]))',
             unit="short",
             description="Search queries per second"
         )
@@ -100,7 +100,7 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             title="Search Latency (p95)",
             panel_type=PanelType.TIMESERIES,
             intent="elasticsearch.search_latency",
-            query_template=f'histogram_quantile(0.95, rate({{{{metric}}}}{{cluster="{service}"}}[5m]))',
+            query_template=f'histogram_quantile(0.95, sum by (le) (rate({{{{metric}}}}{{service="{service}"}}[5m])))',
             unit="s",
             description="Search query latency (95th percentile)",
             skip_if_unavailable=True
@@ -112,7 +112,7 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             title="Indexing Rate",
             panel_type=PanelType.TIMESERIES,
             intent="elasticsearch.indexing_rate",
-            query_template=f'rate({{{{metric}}}}{{cluster="{service}"}}[5m])',
+            query_template=f'sum(rate({{{{metric}}}}{{service="{service}"}}[5m]))',
             unit="ops",
             description="Documents indexed per second"
         )
@@ -123,7 +123,7 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             title="Index Size",
             panel_type=PanelType.TIMESERIES,
             intent="elasticsearch.index_size",
-            query_template=f'{{{{metric}}}}{{cluster="{service}"}}',
+            query_template=f'sum({{{{metric}}}}{{service="{service}"}})',
             unit="bytes",
             description="Total size of all indices"
         )
@@ -134,7 +134,7 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             title="Document Count",
             panel_type=PanelType.STAT,
             intent="elasticsearch.docs_count",
-            query_template=f'{{{{metric}}}}{{cluster="{service}"}}',
+            query_template=f'sum({{{{metric}}}}{{service="{service}"}})',
             unit="short",
             description="Total number of documents across all indices"
         )
@@ -147,8 +147,8 @@ class ElasticsearchIntentTemplate(IntentBasedTemplate):
             queries=[
                 QuerySpec(
                     intent="elasticsearch.jvm_heap_used",
-                    query_template=f'''{{{{metric}}}}{{cluster="{service}",area="heap"}} / 
-on() elasticsearch_jvm_memory_max_bytes{{cluster="{service}",area="heap"}} * 100''',
+                    query_template=f'''{{{{metric}}}}{{service="{service}",area="heap"}} / 
+on() elasticsearch_jvm_memory_max_bytes{{service="{service}",area="heap"}} * 100''',
                     legend="Heap %",
                     ref_id="A"
                 ),
@@ -163,7 +163,7 @@ on() elasticsearch_jvm_memory_max_bytes{{cluster="{service}",area="heap"}} * 100
             title="GC Time",
             panel_type=PanelType.TIMESERIES,
             intent="elasticsearch.gc_time",
-            query_template=f'rate({{{{metric}}}}{{cluster="{service}"}}[5m])',
+            query_template=f'rate({{{{metric}}}}{{service="{service}"}}[5m])',
             unit="s",
             description="Garbage collection time per second"
         )

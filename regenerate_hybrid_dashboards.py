@@ -3,9 +3,11 @@
 Regenerate all dashboards using the Enhanced Hybrid Model.
 
 This script:
-1. Uses intent-based templates for metric resolution
-2. Generates dashboards that work with any exporter version
-3. Pushes updated dashboards to Grafana Cloud
+1. Uses LIVE metric discovery from Prometheus/metrics endpoint
+2. Uses intent-based templates for metric resolution
+3. Generates dashboards that work with any exporter version
+4. Pushes updated dashboards to Grafana Cloud
+5. Shows resolution summary for each service
 """
 
 import json
@@ -18,35 +20,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
-from nthlayer.dashboards.resolver import MetricResolver
+from nthlayer.dashboards.resolver import MetricResolver, create_resolver
+from nthlayer.discovery.client import MetricDiscoveryClient
 from nthlayer.specs.models import ServiceContext, Resource
 
 # Grafana Cloud configuration
 GRAFANA_URL = os.getenv('NTHLAYER_GRAFANA_URL', 'https://nthlayer.grafana.net')
 GRAFANA_API_KEY = os.getenv('NTHLAYER_GRAFANA_API_KEY')
 
+# Prometheus/Metrics endpoint for live discovery
+METRICS_URL = os.getenv('METRICS_URL', 'https://nthlayer-demo.fly.dev')
+METRICS_USER = os.getenv('METRICS_USER', 'nthlayer')
+METRICS_PASSWORD = os.getenv('METRICS_PASSWORD')
+
 if not GRAFANA_API_KEY:
     print("❌ NTHLAYER_GRAFANA_API_KEY not set")
     sys.exit(1)
 
-# Demo metrics (from fly-app/app.py)
-DEMO_METRICS = {
-    'http_requests_total', 'http_request_duration_seconds_bucket',
-    'pg_stat_database_numbackends', 'pg_settings_max_connections',
-    'pg_stat_database_blks_hit', 'pg_stat_database_blks_read',
-    'pg_stat_statements_mean_exec_time_seconds_bucket',
-    'pg_stat_activity_count', 'pg_stat_database_xact_commit',
-    'pg_stat_database_xact_rollback', 'pg_database_size_bytes',
-    'pg_stat_database_deadlocks', 'pg_replication_lag_seconds',
-    'pg_stat_user_tables_n_dead_tup',
-    'redis_connected_clients', 'redis_memory_used_bytes',
-    'redis_db_keys', 'cache_hits_total', 'cache_misses_total',
-    'mysql_global_status_threads_connected',
-    'mysql_global_variables_max_connections',
-    'mysql_global_status_queries_total',
-    'events_processed_total', 'event_processing_duration_seconds_bucket',
-    'notifications_sent_total', 'notification_processing_duration_seconds_bucket',
-}
+if not METRICS_PASSWORD:
+    print("⚠️  METRICS_PASSWORD not set - will use offline mode")
+    USE_LIVE_DISCOVERY = False
+else:
+    USE_LIVE_DISCOVERY = True
 
 # Service configurations
 SERVICES = [
@@ -104,13 +99,43 @@ print("=" * 70)
 print("  Regenerating Dashboards with Enhanced Hybrid Model")
 print("=" * 70)
 print(f"\nGrafana URL: {GRAFANA_URL}")
+print(f"Metrics URL: {METRICS_URL}")
 print(f"Services: {len(SERVICES)}")
 print(f"Using intent-based templates: YES")
+print(f"Live discovery: {'YES' if USE_LIVE_DISCOVERY else 'NO (offline mode)'}")
 print()
 
-# Create resolver with demo metrics
-resolver = MetricResolver()
-resolver.set_discovered_metrics(DEMO_METRICS)
+# Create discovery client for live metric discovery
+discovery_client = None
+discovered_metrics = set()
+
+if USE_LIVE_DISCOVERY:
+    print("🔍 Discovering metrics from live endpoint...")
+    try:
+        discovery_client = MetricDiscoveryClient(
+            prometheus_url=METRICS_URL,
+            username=METRICS_USER,
+            password=METRICS_PASSWORD
+        )
+        # Discover all metrics (no service filter)
+        result = discovery_client.discover('{}')
+        discovered_metrics = {m.name for m in result.metrics}
+        print(f"   Found {len(discovered_metrics)} metrics")
+        
+        # Show metric categories
+        by_tech = result.metrics_by_technology
+        for tech, metrics in by_tech.items():
+            print(f"   - {tech}: {len(metrics)} metrics")
+        print()
+    except Exception as e:
+        print(f"   ⚠️ Discovery failed: {e}")
+        print("   Continuing without live discovery...")
+        USE_LIVE_DISCOVERY = False
+
+# Create resolver with discovered metrics
+resolver = MetricResolver(discovery_client=discovery_client)
+if discovered_metrics:
+    resolver.set_discovered_metrics(discovered_metrics)
 
 headers = {
     "Authorization": f"Bearer {GRAFANA_API_KEY}",
@@ -222,6 +247,9 @@ for svc in SERVICES:
     print(f"   Building with Hybrid Model...")
     
     try:
+        # Clear resolution cache for fresh resolution per service
+        resolver._resolution_cache.clear()
+        
         # Build with hybrid model
         builder = DashboardBuilderSDK(
             service_context=context,
@@ -256,6 +284,23 @@ for svc in SERVICES:
         print(f"   Title: {dashboard_json.get('title')}")
         print(f"   UID: {dashboard_json.get('uid')}")
         print(f"   Panels: {panel_count}")
+        
+        # Show resolution summary
+        if resolver:
+            summary = resolver.get_resolution_summary()
+            resolved = summary.get('resolved', 0)
+            fallback = summary.get('fallback', 0)
+            unresolved = summary.get('unresolved', 0)
+            
+            if resolved + fallback + unresolved > 0:
+                print(f"   Resolution: ✓{resolved} resolved, ↩{fallback} fallback, ✗{unresolved} unresolved")
+            
+            if unresolved > 0:
+                unresolved_list = resolver.get_unresolved_intents()
+                for ur in unresolved_list[:3]:  # Show first 3
+                    print(f"      - {ur.intent}: {ur.message[:50]}...")
+                if len(unresolved_list) > 3:
+                    print(f"      ... and {len(unresolved_list) - 3} more")
         
         # Save to file
         output_dir = Path(f"generated/{svc['name']}")

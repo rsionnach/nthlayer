@@ -115,8 +115,9 @@ class DashboardBuilderSDK:
         Returns:
             Dictionary with dashboard JSON for Grafana
         """
-        # Step 1: Discover metrics if resolver available
-        if self.resolver and self.resolver.discovery:
+        # Step 1: Discover metrics if resolver available AND no metrics already discovered
+        # Skip discovery if metrics were pre-loaded (e.g., from global discovery)
+        if self.resolver and self.resolver.discovery and not self.resolver.discovered_metrics:
             try:
                 metric_count = self.resolver.discover_for_service(self.context.name)
                 logger.info(f"Discovered {metric_count} metrics for {self.context.name}")
@@ -129,31 +130,30 @@ class DashboardBuilderSDK:
             editable=True
         )
         
-        # Collect all panels
+        # Collect all panels organized by section
         all_panels = []
         
-        # Add SLO panels
+        # Build SLO panels
+        slo_panels = []
         if self.slo_resources:
             slo_panels = self._build_slo_panels()
-            all_panels.extend(slo_panels)
             logger.info(f"Added {len(slo_panels)} SLO panels")
         
-        # Add service health panels
+        # Build service health panels
         health_panels = self._build_health_panels()
-        all_panels.extend(health_panels)
         logger.info(f"Added {len(health_panels)} health panels")
         
-        # Add technology panels
+        # Build technology/dependency panels
+        tech_panels = []
         if self.dependency_resources:
             tech_panels = self._build_technology_panels()
-            all_panels.extend(tech_panels)
             logger.info(f"Added {len(tech_panels)} technology panels")
         
         # Validate panels if enabled
         if self.validator:
-            validated_panels = self._validate_panels(all_panels)
-            logger.info(f"Validation: {len(validated_panels)}/{len(all_panels)} panels valid")
-            all_panels = validated_panels
+            slo_panels = self._validate_panels(slo_panels) if slo_panels else []
+            health_panels = self._validate_panels(health_panels)
+            tech_panels = self._validate_panels(tech_panels) if tech_panels else []
         
         # Log resolution summary if hybrid model active
         if self.resolver:
@@ -165,9 +165,32 @@ class DashboardBuilderSDK:
                     f"{summary.get('unresolved', 0)} unresolved"
                 )
         
-        # Add panels to dashboard
-        for panel_builder in all_panels:
-            dash.with_panel(panel_builder)
+        # Add panels organized into rows (expanded by default)
+        # For expanded rows, panels go at root level AFTER the row header
+        
+        # Row 1: SLO Metrics
+        if slo_panels:
+            slo_row = self.adapter.create_row("SLO Metrics")
+            dash.with_row(slo_row)
+            for panel in slo_panels:
+                dash.with_panel(panel)
+            all_panels.extend(slo_panels)
+        
+        # Row 2: Service Health
+        if health_panels:
+            health_row = self.adapter.create_row("Service Health")
+            dash.with_row(health_row)
+            for panel in health_panels:
+                dash.with_panel(panel)
+            all_panels.extend(health_panels)
+        
+        # Row 3: Dependencies
+        if tech_panels:
+            deps_row = self.adapter.create_row("Dependencies")
+            dash.with_row(deps_row)
+            for panel in tech_panels:
+                dash.with_panel(panel)
+            all_panels.extend(tech_panels)
         
         # Build and serialize
         dash_model = dash.build()
@@ -177,12 +200,58 @@ class DashboardBuilderSDK:
         import json
         dashboard_dict = json.loads(json_str)
         
+        # Post-process panels to add noValue messages for guidance panels
+        self._apply_no_value_messages(dashboard_dict, all_panels)
+        
         # Wrap in Grafana API format
         return {
             "dashboard": dashboard_dict,
             "overwrite": True,
             "message": f"Auto-generated dashboard for {self.context.name}"
         }
+    
+    def _apply_no_value_messages(self, dashboard_dict: Dict[str, Any], panels: List[Any]) -> None:
+        """Apply noValue messages to panels in the dashboard JSON.
+        
+        This post-processes the dashboard JSON to add Grafana's noValue
+        configuration for guidance panels, making it clear what
+        instrumentation is needed when metrics are missing.
+        """
+        if 'panels' not in dashboard_dict:
+            return
+        
+        # Build a mapping of panel titles to noValue messages
+        no_value_map = {}
+        for panel in panels:
+            if hasattr(panel, '_no_value_message') and panel._no_value_message:
+                # Get title from panel builder
+                try:
+                    panel_model = panel.build() if hasattr(panel, 'build') else None
+                    if panel_model and hasattr(panel_model, 'title'):
+                        no_value_map[panel_model.title] = panel._no_value_message
+                except:
+                    pass
+        
+        # Apply noValue messages to matching panels in JSON
+        for panel_json in dashboard_dict.get('panels', []):
+            if not isinstance(panel_json, dict):
+                continue
+            title = panel_json.get('title', '')
+            if title in no_value_map:
+                # Add noValue configuration to fieldConfig
+                if 'fieldConfig' not in panel_json or panel_json['fieldConfig'] is None:
+                    panel_json['fieldConfig'] = {}
+                if 'defaults' not in panel_json['fieldConfig'] or panel_json['fieldConfig']['defaults'] is None:
+                    panel_json['fieldConfig']['defaults'] = {}
+                
+                panel_json['fieldConfig']['defaults']['noValue'] = no_value_map[title]
+                
+                # Also add to options for stat panels
+                if panel_json.get('type') == 'stat':
+                    if 'options' not in panel_json or panel_json['options'] is None:
+                        panel_json['options'] = {}
+                    panel_json['options']['colorMode'] = 'background'
+                    panel_json['options']['graphMode'] = 'none'
     
     def _build_slo_panels(self) -> List[Any]:
         """Build SLO panels using SDK."""
@@ -214,8 +283,8 @@ class DashboardBuilderSDK:
                     legend_format=slo_name
                 )
             else:
-                # Generate query from SLO type using adapter
-                prom_query = self.adapter.convert_slo_to_query(slo_spec)
+                # Generate query from SLO type using adapter (service-type-aware)
+                prom_query = self.adapter.convert_slo_to_query(slo_spec, service_type=self.context.type)
             
             # Create panel
             panel = self.adapter.create_timeseries_panel(
@@ -232,11 +301,65 @@ class DashboardBuilderSDK:
     def _build_health_panels(self) -> List[Any]:
         """Build service health panels using SDK.
         
-        Uses service-type-appropriate metrics:
-        - api/web: HTTP request metrics
-        - stream: Event processing metrics
-        - worker: Job/notification processing metrics
+        With Hybrid Model (use_intent_templates=True):
+        - Uses intent-based templates for service-type-appropriate metrics
+        - Provides fallback chains and guidance panels
+        
+        Without Hybrid Model (use_intent_templates=False):
+        - Uses hardcoded metric names (legacy behavior)
         """
+        if self.use_intent_templates:
+            return self._build_intent_health_panels()
+        else:
+            return self._build_legacy_health_panels()
+    
+    def _build_intent_health_panels(self) -> List[Any]:
+        """Build health panels using intent-based templates."""
+        panels = []
+        service_type = self.context.type
+        
+        # Get appropriate intent template for service type
+        health_template = self._get_health_intent_template(service_type)
+        
+        if health_template:
+            # Set resolver if available
+            if self.resolver:
+                health_template.resolver = self.resolver
+            
+            # Get panels (resolved through intent system)
+            template_panels = health_template.get_health_panels("$service")
+            
+            # Convert to SDK panels
+            for old_panel in template_panels:
+                sdk_panel = self._convert_panel_to_sdk(old_panel)
+                if sdk_panel:
+                    panels.append(sdk_panel)
+        else:
+            # Fall back to legacy behavior
+            logger.debug(f"No intent template for service type {service_type}, using legacy")
+            panels = self._build_legacy_health_panels()
+        
+        return panels
+    
+    def _get_health_intent_template(self, service_type: str):
+        """Get intent-based health template for service type."""
+        try:
+            if service_type == 'stream':
+                from nthlayer.dashboards.templates.stream_intent import StreamIntentTemplate
+                return StreamIntentTemplate()
+            elif service_type == 'worker':
+                from nthlayer.dashboards.templates.worker_intent import WorkerIntentTemplate
+                return WorkerIntentTemplate()
+            else:
+                # Default: HTTP-based services (api, web, service)
+                from nthlayer.dashboards.templates.http_intent import HTTPIntentTemplate
+                return HTTPIntentTemplate()
+        except ImportError as e:
+            logger.debug(f"Health intent template not available for {service_type}: {e}")
+            return None
+    
+    def _build_legacy_health_panels(self) -> List[Any]:
+        """Build health panels using hardcoded metrics (legacy behavior)."""
         panels = []
         service_type = self.context.type
         
@@ -293,7 +416,7 @@ class DashboardBuilderSDK:
             panels.append(rate_panel)
             
             error_query = self.adapter.create_prometheus_query(
-                expr='sum(rate(notifications_sent_total{service="$service",status="error"}[5m])) / sum(rate(notifications_sent_total{service="$service"}[5m])) * 100',
+                expr='sum(rate(notifications_sent_total{service="$service",status="failed"}[5m])) / sum(rate(notifications_sent_total{service="$service"}[5m])) * 100',
                 legend_format="error %"
             )
             error_panel = self.adapter.create_timeseries_panel(
@@ -470,8 +593,17 @@ class DashboardBuilderSDK:
         return panels
     
     def _convert_panel_to_sdk(self, old_panel) -> Optional[Any]:
-        """Convert a legacy Panel to SDK panel."""
+        """Convert a legacy Panel to SDK panel.
+        
+        Handles:
+        - Regular panels with queries
+        - Guidance panels (no queries, with noValue message)
+        """
         try:
+            # Check if this is a guidance panel (no targets, has guidance metadata)
+            is_guidance = getattr(old_panel, 'is_guidance_panel', False)
+            no_value_msg = getattr(old_panel, 'no_value_message', None)
+            
             # Create queries with proper RefId assignment
             queries = []
             ref_id_counter = ord('A')  # Start with 'A'
@@ -488,6 +620,19 @@ class DashboardBuilderSDK:
                     ref_id=target_ref_id
                 )
                 queries.append(q)
+            
+            # Handle guidance panels specially
+            if is_guidance or (not queries and no_value_msg):
+                # Create a stat panel that will show noValue message
+                panel = self.adapter.create_stat_panel(
+                    title=old_panel.title,
+                    description=getattr(old_panel, 'description', ''),
+                    query=None
+                )
+                # Store noValue message for post-processing
+                if no_value_msg:
+                    panel._no_value_message = no_value_msg
+                return panel
             
             if not queries:
                 return None
@@ -508,7 +653,7 @@ class DashboardBuilderSDK:
                     query=queries[0]
                 )
             elif panel_type == 'text':
-                # Guidance panel - create as text panel
+                # Text panel for documentation/guidance
                 return self.adapter.create_text_panel(
                     title=old_panel.title,
                     content=getattr(old_panel, 'description', '')

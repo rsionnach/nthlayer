@@ -7,6 +7,7 @@ builders, providing type-safe dashboard generation with official Grafana support
 
 from typing import List, Optional, Dict, Any
 from grafana_foundation_sdk.builders import dashboard, timeseries, stat, gauge, prometheus
+from grafana_foundation_sdk.builders.dashboard import Row
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
 from nthlayer.specs.models import ServiceContext
@@ -65,6 +66,26 @@ class SDKAdapter:
         dash.timezone("browser")
         
         return dash
+    
+    @staticmethod
+    def create_row(
+        title: str,
+        collapsed: bool = False
+    ) -> Row:
+        """
+        Create a dashboard row for organizing panels.
+        
+        Args:
+            title: Row title (e.g., "SLO Metrics", "Service Health", "Dependencies")
+            collapsed: Whether the row should be collapsed by default
+            
+        Returns:
+            Row builder
+        """
+        row = Row(title)
+        if collapsed:
+            row.collapsed(True)
+        return row
     
     @staticmethod
     def create_timeseries_panel(
@@ -204,6 +225,50 @@ class SDKAdapter:
             return panel
     
     @staticmethod
+    def create_guidance_panel(
+        title: str,
+        missing_intents: list,
+        exporter_recommendation: str = "",
+        technology: str = ""
+    ) -> Any:
+        """
+        Create a guidance panel with noValue message for missing metrics.
+        
+        Uses Grafana's built-in "No data" message configuration to provide
+        clear instructions when metrics are unavailable.
+        
+        Args:
+            title: Panel title
+            missing_intents: List of unresolved intent names
+            exporter_recommendation: Helm/docker command to install exporter
+            technology: Technology name for context
+            
+        Returns:
+            Stat panel configured with noValue guidance message
+        """
+        # Build guidance message for noValue
+        if exporter_recommendation:
+            no_value_msg = f"Install {technology} exporter: {exporter_recommendation}"
+        else:
+            intent_list = ", ".join(missing_intents[:3])
+            if len(missing_intents) > 3:
+                intent_list += f" (+{len(missing_intents) - 3} more)"
+            no_value_msg = f"Missing metrics: {intent_list}. Add instrumentation."
+        
+        # Create stat panel with noValue configuration
+        panel = stat.Panel()
+        panel.title(f"{title}")
+        panel.description(
+            f"This panel requires metrics that aren't currently available.\n\n"
+            f"**Missing:** {', '.join(missing_intents)}\n\n"
+            f"**Solution:** {exporter_recommendation or 'Add custom metrics to service YAML'}"
+        )
+        
+        # Note: The noValue configuration will be added post-build
+        # since the SDK may not support all options directly
+        return panel, no_value_msg
+    
+    @staticmethod
     def create_prometheus_query(
         expr: str,
         legend_format: Optional[str] = None,
@@ -284,13 +349,14 @@ class SDKAdapter:
         return sdk_panel
     
     @staticmethod
-    def convert_slo_to_query(slo: Any, time_window: str = "5m") -> prometheus.Dataquery:
+    def convert_slo_to_query(slo: Any, time_window: str = "5m", service_type: str = "api") -> prometheus.Dataquery:
         """
         Convert SLO specification to Prometheus query.
         
         Args:
             slo: SLO model or dict spec
             time_window: Time window for rate calculations
+            service_type: Service type (api, worker, stream) for metric selection
             
         Returns:
             Prometheus query for SLO metric
@@ -309,20 +375,40 @@ class SDKAdapter:
         if slo_query:
             expr = slo_query
         else:
-            # Build query based on SLO name/type
+            # Build query based on SLO name/type AND service type
             # For availability SLOs (success rate)
             if "availability" in slo_name.lower() or "success" in slo_name.lower():
-                expr = f"sum(rate(http_requests_total{{service=\"$service\",status!~\"5..\"}}[{time_window}])) / sum(rate(http_requests_total{{service=\"$service\"}}[{time_window}])) * 100"
+                if service_type == 'worker':
+                    expr = f"sum(rate(notifications_sent_total{{service=\"$service\",status!=\"failed\"}}[{time_window}])) / sum(rate(notifications_sent_total{{service=\"$service\"}}[{time_window}])) * 100"
+                elif service_type == 'stream':
+                    expr = f"sum(rate(events_processed_total{{service=\"$service\",status!=\"error\"}}[{time_window}])) / sum(rate(events_processed_total{{service=\"$service\"}}[{time_window}])) * 100"
+                else:
+                    expr = f"sum(rate(http_requests_total{{service=\"$service\",status!~\"5..\"}}[{time_window}])) / sum(rate(http_requests_total{{service=\"$service\"}}[{time_window}])) * 100"
             # For latency SLOs (percentile)
             elif "latency" in slo_name.lower() or "p95" in slo_name.lower() or "p99" in slo_name.lower():
                 percentile = "0.95" if "p95" in slo_name.lower() else "0.99"
-                expr = f"histogram_quantile({percentile}, rate(http_request_duration_seconds_bucket{{service=\"$service\"}}[{time_window}])) * 1000"
+                if service_type == 'worker':
+                    expr = f"histogram_quantile({percentile}, sum by (le) (rate(notification_processing_duration_seconds_bucket{{service=\"$service\"}}[{time_window}]))) * 1000"
+                elif service_type == 'stream':
+                    expr = f"histogram_quantile({percentile}, sum by (le) (rate(event_processing_duration_seconds_bucket{{service=\"$service\"}}[{time_window}]))) * 1000"
+                else:
+                    expr = f"histogram_quantile({percentile}, sum by (le) (rate(http_request_duration_seconds_bucket{{service=\"$service\"}}[{time_window}]))) * 1000"
             # For error rate SLOs
             elif "error" in slo_name.lower():
-                expr = f"sum(rate(http_requests_total{{service=\"$service\",status=~\"5..\"}}[{time_window}])) / sum(rate(http_requests_total{{service=\"$service\"}}[{time_window}])) * 100"
+                if service_type == 'worker':
+                    expr = f"sum(rate(notifications_sent_total{{service=\"$service\",status=\"failed\"}}[{time_window}])) / sum(rate(notifications_sent_total{{service=\"$service\"}}[{time_window}])) * 100"
+                elif service_type == 'stream':
+                    expr = f"sum(rate(events_processed_total{{service=\"$service\",status=\"error\"}}[{time_window}])) / sum(rate(events_processed_total{{service=\"$service\"}}[{time_window}])) * 100"
+                else:
+                    expr = f"sum(rate(http_requests_total{{service=\"$service\",status=~\"5..\"}}[{time_window}])) / sum(rate(http_requests_total{{service=\"$service\"}}[{time_window}])) * 100"
             else:
-                # Default: simple rate of http requests
-                expr = f"sum(rate(http_requests_total{{service=\"$service\"}}[{time_window}]))"
+                # Default: simple rate
+                if service_type == 'worker':
+                    expr = f"sum(rate(notifications_sent_total{{service=\"$service\"}}[{time_window}]))"
+                elif service_type == 'stream':
+                    expr = f"sum(rate(events_processed_total{{service=\"$service\"}}[{time_window}]))"
+                else:
+                    expr = f"sum(rate(http_requests_total{{service=\"$service\"}}[{time_window}]))"
         
         query = SDKAdapter.create_prometheus_query(
             expr=expr,
