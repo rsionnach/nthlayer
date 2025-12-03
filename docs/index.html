@@ -218,39 +218,58 @@
                             <p class="dashboard-note">Each dashboard is organized into: <strong>SLO Metrics</strong> → <strong>Service Health</strong> → <strong>Dependencies</strong></p>
                         </div>
                         
-                        <!-- Embedded Dashboard Snapshots -->
-                        <div class="embedded-dashboards">
-                            <div class="dashboard-selector">
-                                <button class="dashboard-btn active" data-service="payment-api" data-snapshot="GnDR7SU4YPkpMPFgFMUb94Z87NAI7USS">
-                                    <span>💳</span> payment-api
-                                </button>
-                                <button class="dashboard-btn" data-service="checkout-service" data-snapshot="TOnoDbGP8O3cJCGNI44IprF10oHr8uo8">
-                                    <span>🛒</span> checkout-service
-                                </button>
-                                <button class="dashboard-btn" data-service="notification-worker" data-snapshot="tbDDNW5D3Yf4GkDVipSGWW3wBRKSwxJu">
-                                    <span>📬</span> notification-worker
-                                </button>
-                                <button class="dashboard-btn" data-service="analytics-stream" data-snapshot="3TfGKKWaUlr4JiDTYcaopopnKUPcMuBP">
-                                    <span>📊</span> analytics-stream
-                                </button>
-                                <button class="dashboard-btn" data-service="identity-service" data-snapshot="kzgo1UwIysfXVrSbj5hKKtP5i12saAgy">
-                                    <span>🔐</span> identity-service
-                                </button>
-                                <button class="dashboard-btn" data-service="search-api" data-snapshot="5K9lhCTnAfNtXE3KhcNC4gt0J5ysj7Tj">
-                                    <span>🔍</span> search-api
-                                </button>
-                            </div>
-                            <div class="dashboard-frame-wrapper">
-                                <iframe 
-                                    id="dashboard-frame"
-                                    src="https://nthlayer.grafana.net/dashboard/snapshot/GnDR7SU4YPkpMPFgFMUb94Z87NAI7USS?kiosk"
-                                    frameborder="0"
-                                ></iframe>
-                                <a id="dashboard-fullscreen-link" href="https://nthlayer.grafana.net/dashboard/snapshot/GnDR7SU4YPkpMPFgFMUb94Z87NAI7USS" target="_blank" class="fullscreen-link">
-                                    Open Fullscreen ↗
-                                </a>
-                            </div>
+                        <!-- Live Dashboard Gallery -->
+                        <div class="dashboard-gallery">
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/GnDR7SU4YPkpMPFgFMUb94Z87NAI7USS" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">💳</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">payment-api</div>
+                                    <div class="tile-tech">PostgreSQL + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/TOnoDbGP8O3cJCGNI44IprF10oHr8uo8" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">🛒</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">checkout-service</div>
+                                    <div class="tile-tech">MySQL + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/tbDDNW5D3Yf4GkDVipSGWW3wBRKSwxJu" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">📬</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">notification-worker</div>
+                                    <div class="tile-tech">Worker + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/3TfGKKWaUlr4JiDTYcaopopnKUPcMuBP" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">📊</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">analytics-stream</div>
+                                    <div class="tile-tech">Stream + MongoDB</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/kzgo1UwIysfXVrSbj5hKKtP5i12saAgy" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">🔐</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">identity-service</div>
+                                    <div class="tile-tech">PostgreSQL + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
+                            <a href="https://nthlayer.grafana.net/dashboard/snapshot/5K9lhCTnAfNtXE3KhcNC4gt0J5ysj7Tj" target="_blank" class="dashboard-tile">
+                                <div class="tile-icon">🔍</div>
+                                <div class="tile-content">
+                                    <div class="tile-name">search-api</div>
+                                    <div class="tile-tech">Elasticsearch + Redis</div>
+                                </div>
+                                <div class="tile-arrow">→</div>
+                            </a>
                         </div>
+                        <p class="dashboard-cta-note">Click any service to view its auto-generated Grafana dashboard</p>
                     </div>
                     
                     <div class="value-callout" style="margin-top: var(--spacing-lg);">

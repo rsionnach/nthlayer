@@ -58,27 +58,6 @@ window.addEventListener('scroll', () => {
     });
 });
 
-// Dashboard snapshot switching
-document.querySelectorAll('.dashboard-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const snapshot = this.getAttribute('data-snapshot');
-        const iframe = document.getElementById('dashboard-frame');
-        const fullscreenLink = document.getElementById('dashboard-fullscreen-link');
-        
-        // Update active button
-        document.querySelectorAll('.dashboard-btn').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        
-        // Update iframe and link
-        if (iframe && snapshot) {
-            iframe.src = `https://nthlayer.grafana.net/dashboard/snapshot/${snapshot}?kiosk`;
-            if (fullscreenLink) {
-                fullscreenLink.href = `https://nthlayer.grafana.net/dashboard/snapshot/${snapshot}`;
-            }
-        }
-    });
-});
-
 // Log demo page load (for analytics)
 console.log('🚀 NthLayer Demo Site Loaded');
 console.log('📊 GitHub: https://github.com/rsionnach/nthlayer');
