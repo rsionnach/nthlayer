@@ -1,3 +1,6 @@
+# Archive (internal development notes and one-off scripts)
+archive/
+
 # Python
 __pycache__/
 *.py[cod]

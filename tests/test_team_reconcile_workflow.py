@@ -2,7 +2,6 @@ import sys
 import types
 
 import pytest
-
 from nthlayer.domain.models import Finding
 
 

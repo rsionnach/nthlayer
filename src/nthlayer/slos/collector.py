@@ -6,14 +6,14 @@ Collects SLI metrics from Prometheus and calculates error budgets.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import structlog
 
 from nthlayer.providers.prometheus import PrometheusProvider, PrometheusProviderError
 from nthlayer.slos.calculator import ErrorBudgetCalculator
-from nthlayer.slos.models import ErrorBudget, SLO
+from nthlayer.slos.models import SLO, ErrorBudget
 from nthlayer.slos.storage import SLORepository
 
 logger = structlog.get_logger()

@@ -6,8 +6,9 @@ that override or extend the built-in templates.
 
 from pathlib import Path
 from typing import Dict, Optional
-from .templates import ServiceTemplate, TemplateRegistry
+
 from .template_loader import TemplateLoader
+from .templates import ServiceTemplate, TemplateRegistry
 
 
 class CustomTemplateLoader:

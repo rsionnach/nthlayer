@@ -1,10 +1,10 @@
 """Integration tests for end-to-end workflows."""
 
+
 import pytest
-from pathlib import Path
+from nthlayer.cli.generate import generate_slo_command
 from nthlayer.cli.init import init_command
 from nthlayer.cli.validate import validate_command
-from nthlayer.cli.generate import generate_slo_command
 from nthlayer.specs.parser import parse_service_file
 
 

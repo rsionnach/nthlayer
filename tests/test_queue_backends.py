@@ -1,5 +1,4 @@
 import pytest
-
 from nthlayer.queue.memory import InMemoryJobEnqueuer
 from nthlayer.queue.models import JobMessage
 

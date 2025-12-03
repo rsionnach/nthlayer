@@ -10,7 +10,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/rsionnach/nthlayer">
-    <img src="presentations/public/nthlayer_dark_logo.png" alt="NthLayer Logo" width="200">
+    <img src="presentations/public/nthlayer_dark_banner.png" alt="NthLayer Logo" width="400">
   </a>
 
 <h3 align="center">NthLayer</h3>
@@ -68,43 +68,15 @@
 
 ## 🌐 Live Demo
 
-**See NthLayer-generated observability in action:**
+**See what NthLayer generates — real dashboards, real metrics, real configs:**
 
-[![Live Dashboard](https://img.shields.io/badge/Live-Dashboard-blue?logo=grafana&style=for-the-badge)](https://nthlayer.grafana.net/d/payment-api-overview/payment-api-service-dashboard)
-[![Interactive Demo](https://img.shields.io/badge/Try-Interactive%20Demo-green?style=for-the-badge)](https://rsionnach.github.io/nthlayer)
+[![Live Dashboards](https://img.shields.io/badge/Live-Dashboards-blue?logo=grafana&style=for-the-badge)](https://nthlayer.grafana.net/d/payment-api-overview/payment-api-service-dashboard)
+[![Demo Site](https://img.shields.io/badge/Demo-Site-green?style=for-the-badge)](https://rsionnach.github.io/nthlayer)
 
-### Quick Preview
-
-Want to see what NthLayer generates? We have a live demo running 24/7 with real metrics:
-
-<details>
-<summary>📊 Click to view live embedded dashboard</summary>
-
-<br>
-
-> **Note:** Once you deploy the demo following [demo/ZERO_COST_SETUP.md](demo/ZERO_COST_SETUP.md), replace the URL below with your Grafana Cloud public dashboard URL.
-
-```html
-<iframe 
-    src="https://nthlayer.grafana.net/d/payment-api-overview/payment-api-service-dashboard" 
-    width="100%" 
-    height="600px"
-    frameborder="0">
-</iframe>
-```
-
-*Live dashboard showing auto-generated SLO tracking, health metrics, and technology-specific monitoring. Data updates in real-time from our demo app running on Fly.io.*
-
-</details>
-
-**🎮 Explore More:**
-- [**Interactive Demo Site**](https://rsionnach.github.io/nthlayer) - Step-by-step walkthrough with live dashboards
-- [**Demo App API**](https://nthlayer-demo.fly.dev) - Live metrics generator
-- [**Example Generated Configs**](./generated/examples/) - See what NthLayer creates
-
-**💰 Host Your Own Demo:**
-- [**Zero-Cost Setup**](demo/ZERO_COST_SETUP.md) - Free tier (Grafana Cloud + Fly.io + GitHub Pages) - $0/month
-- [**Low-Cost Setup**](demo/hetzner/LOW_COST_SETUP.md) - Full stack (Hetzner VPS) - €3.49/month
+**What's in the demo:**
+- [**Live Grafana Dashboards**](https://nthlayer.grafana.net) - 6 auto-generated dashboards with real metrics from our demo app
+- [**Generated Configs**](./generated/payment-api/) - Real dashboard JSON, SLO definitions, alert rules, and recording rules
+- [**Demo Site**](https://rsionnach.github.io/nthlayer) - Overview of NthLayer capabilities with links to live examples
 
 ---
 
@@ -446,9 +418,9 @@ nthlayer apply examples/services/payment-api.yaml
 **Happy coding!** 🚀
 
 <!-- MARKDOWN LINKS & IMAGES -->
-[tests-shield]: https://img.shields.io/badge/tests-84%20passing-success?style=for-the-badge
-[tests-url]: #
-[python-shield]: https://img.shields.io/badge/python-3.9%2B-blue?style=for-the-badge&logo=python
+[tests-shield]: https://img.shields.io/github/actions/workflow/status/rsionnach/nthlayer/ci.yml?style=for-the-badge&logo=github&label=tests
+[tests-url]: https://github.com/rsionnach/nthlayer/actions/workflows/ci.yml
+[python-shield]: https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python
 [python-url]: https://python.org
 [license-shield]: https://img.shields.io/badge/license-MIT-green?style=for-the-badge
 [license-url]: LICENSE.txt

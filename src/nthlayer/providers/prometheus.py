@@ -6,8 +6,7 @@ Implements provider interface for Prometheus/VictoriaMetrics.
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import httpx

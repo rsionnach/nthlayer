@@ -1,8 +1,6 @@
 """Tests for init command."""
 
-import pytest
-from pathlib import Path
-from nthlayer.cli.init import init_command, _is_valid_service_name
+from nthlayer.cli.init import _is_valid_service_name, init_command
 
 
 class TestInitCommand:

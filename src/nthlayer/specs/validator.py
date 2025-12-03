@@ -31,7 +31,7 @@ class ValidationResult:
             lines.append(f"✅ Valid service definition: {self.service}")
             lines.append(f"   Resources: {self.resource_count}")
         else:
-            lines.append(f"❌ Invalid service definition")
+            lines.append("❌ Invalid service definition")
         
         if self.errors:
             lines.append("\nErrors:")

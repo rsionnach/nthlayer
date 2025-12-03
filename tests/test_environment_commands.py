@@ -5,8 +5,8 @@ Tests for list-environments, diff-envs, and validate-env commands.
 
 import tempfile
 from pathlib import Path
+
 import pytest
-import yaml
 
 
 class TestListEnvironmentsCommand:

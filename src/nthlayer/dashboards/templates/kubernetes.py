@@ -4,6 +4,7 @@ Comprehensive monitoring panels for Kubernetes deployments.
 """
 
 from typing import List
+
 from nthlayer.dashboards.models import Panel, Target
 from nthlayer.dashboards.templates.base import TechnologyTemplate
 

@@ -5,11 +5,12 @@ Automatically generates production-ready alert rules based on service dependenci
 
 from pathlib import Path
 from typing import List
+
 import yaml
 
-from nthlayer.specs.parser import parse_service_file
+from nthlayer.alerts import AlertRule, AlertTemplateLoader
 from nthlayer.specs.models import Resource
-from nthlayer.alerts import AlertTemplateLoader, AlertRule
+from nthlayer.specs.parser import parse_service_file
 
 
 def extract_dependencies(resources: List[Resource]) -> List[str]:

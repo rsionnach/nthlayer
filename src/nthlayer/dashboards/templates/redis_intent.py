@@ -8,8 +8,9 @@ This template uses the intent system for metric resolution, enabling:
 """
 
 from typing import List
+
+from nthlayer.dashboards.panel_spec import PanelSpec, PanelType, QuerySpec
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
-from nthlayer.dashboards.panel_spec import PanelSpec, QuerySpec, PanelType
 
 
 class RedisIntentTemplate(IntentBasedTemplate):

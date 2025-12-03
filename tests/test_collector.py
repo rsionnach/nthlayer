@@ -4,10 +4,10 @@ Tests for SLO metrics collector.
 Tests collection from Prometheus and error budget calculation.
 """
 
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
+import pytest
 from nthlayer.providers.prometheus import PrometheusProvider
 from nthlayer.slos.collector import SLOCollector
 from nthlayer.slos.models import SLO, TimeWindow, TimeWindowType

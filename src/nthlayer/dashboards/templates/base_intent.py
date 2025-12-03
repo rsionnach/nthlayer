@@ -5,18 +5,14 @@ This module provides the base class for intent-based templates that use
 the metric resolution system instead of hardcoded metric names.
 """
 
-from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Any
 import logging
+from abc import abstractmethod
+from typing import Any, Dict, List, Optional
 
 from nthlayer.dashboards.models import Panel, Target
+from nthlayer.dashboards.panel_spec import PanelSpec, PanelType
+from nthlayer.dashboards.resolver import MetricResolver, ResolutionResult, ResolutionStatus
 from nthlayer.dashboards.templates.base import TechnologyTemplate
-from nthlayer.dashboards.panel_spec import (
-    PanelSpec, QuerySpec, PanelType, GuidancePanelSpec
-)
-from nthlayer.dashboards.resolver import (
-    MetricResolver, ResolutionResult, ResolutionStatus
-)
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +231,7 @@ class IntentBasedTemplate(TechnologyTemplate):
             lines.extend([
                 "",
                 "**To enable, install exporter:**",
-                f"```",
+                "```",
                 exporter_rec.helm or exporter_rec.docker or "",
                 "```",
                 "",

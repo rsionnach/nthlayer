@@ -11,13 +11,12 @@ from typing import Any
 
 import yaml
 
+from nthlayer.specs.custom_templates import CustomTemplateLoader
+from nthlayer.specs.environment_merger import EnvironmentMerger
+from nthlayer.specs.environments import EnvironmentLoader
 from nthlayer.specs.models import Resource, ServiceContext
 from nthlayer.specs.template import substitute_variables
 from nthlayer.specs.templates import TemplateRegistry
-from nthlayer.specs.template_loader import TemplateLoader
-from nthlayer.specs.custom_templates import CustomTemplateLoader
-from nthlayer.specs.environments import EnvironmentLoader
-from nthlayer.specs.environment_merger import EnvironmentMerger
 from nthlayer.specs.variable_substitution import substitute_variables as substitute_env_variables
 
 

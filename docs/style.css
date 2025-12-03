@@ -586,6 +586,16 @@ code {
     text-align: left;
 }
 
+.coming-soon-badge {
+    background: var(--color-accent);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
 .cta-buttons {
     display: flex;
     gap: var(--spacing-md);

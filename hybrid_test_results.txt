@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/robfox/trellis/test_hybrid_dashboard.py", line 10, in <module>
-    from src.nthlayer.specs import load_service_spec
-ImportError: cannot import name 'load_service_spec' from 'src.nthlayer.specs' (/Users/robfox/trellis/src/nthlayer/specs/__init__.py)

@@ -4,13 +4,12 @@ Deployment gate check command.
 
 from __future__ import annotations
 
-from nthlayer.slos.gates import DeploymentGate, GateResult
-from nthlayer.specs.parser import parse_service_file
+from nthlayer.slos.gates import DeploymentGate
 from nthlayer.specs.environment_gates import (
-    get_deployment_gate_thresholds,
     explain_thresholds,
-    should_block_deployment,
+    get_deployment_gate_thresholds,
 )
+from nthlayer.specs.parser import parse_service_file
 
 
 def check_deploy_command(
@@ -161,7 +160,7 @@ def check_deploy_command(
     if result.blocking_threshold:
         print(f"   Blocking: <{result.blocking_threshold}%")
     else:
-        print(f"   Blocking: None (advisory only)")
+        print("   Blocking: None (advisory only)")
     print()
     
     if result.high_criticality_downstream:

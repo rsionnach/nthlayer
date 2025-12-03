@@ -1,7 +1,8 @@
 """Data models for Prometheus recording rules."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
+
 import yaml
 
 

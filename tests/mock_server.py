@@ -17,7 +17,6 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -124,7 +123,7 @@ async def grafana_get_dashboard(uid: str, authorization: str = Header(None)):
 async def grafana_create_dashboard(request: Request, authorization: str = Header(None)):
     """Create Grafana dashboard"""
     body = await request.json()
-    logger.info(f"[Grafana] POST /api/dashboards/db")
+    logger.info("[Grafana] POST /api/dashboards/db")
     logger.info(f"  Title: {body.get('dashboard', {}).get('title')}")
     
     uid = body.get("dashboard", {}).get("uid", str(uuid4())[:8])
@@ -167,7 +166,7 @@ async def datadog_list_monitors(authorization: str = Header(None)):
 async def datadog_create_monitor(request: Request, authorization: str = Header(None)):
     """Create Datadog monitor"""
     body = await request.json()
-    logger.info(f"[Datadog] POST /api/v1/monitor")
+    logger.info("[Datadog] POST /api/v1/monitor")
     logger.info(f"  Name: {body.get('name')}")
     logger.info(f"  Query: {body.get('query')}")
     
@@ -260,7 +259,7 @@ async def cortex_list_services(authorization: str = Header(None)):
 async def slack_post_message(request: Request, authorization: str = Header(None)):
     """Post Slack message"""
     body = await request.json()
-    logger.info(f"[Slack] POST /chat.postMessage")
+    logger.info("[Slack] POST /chat.postMessage")
     logger.info(f"  Channel: {body.get('channel')}")
     logger.info(f"  Text: {body.get('text', '')[:100]}...")
     

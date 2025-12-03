@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import os
 import sys
+from datetime import datetime
 from typing import Any, Sequence
 
 import structlog
@@ -21,19 +22,18 @@ import yaml
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
-from nthlayer.slos.parser import parse_slo_file, OpenSLOParserError
 from nthlayer.slos.cli_helpers import (
     get_cli_session,
     get_current_budget_from_db,
-    get_slo_from_db,
     get_slos_by_service_from_db,
     list_all_slos_from_db,
     run_async,
     save_slo_to_db,
 )
 from nthlayer.slos.collector import collect_service_budgets
-from nthlayer.slos.correlator import DeploymentCorrelator, HIGH_CONFIDENCE, MEDIUM_CONFIDENCE
+from nthlayer.slos.correlator import HIGH_CONFIDENCE, MEDIUM_CONFIDENCE, DeploymentCorrelator
 from nthlayer.slos.deployment import DeploymentRecorder
+from nthlayer.slos.parser import OpenSLOParserError, parse_slo_file
 from nthlayer.slos.storage import SLORepository
 
 logger = structlog.get_logger()
@@ -863,7 +863,7 @@ def demo_reslayer_init(service: str, file_path: str) -> None:
         
         print("Next steps:")
         print(f"  1. View SLO details: nthlayer reslayer show {service}")
-        print(f"  2. List all SLOs: nthlayer reslayer list")
+        print("  2. List all SLOs: nthlayer reslayer list")
         
     except OpenSLOParserError as exc:
         print(f"❌ Error parsing SLO file: {exc}")
@@ -1035,7 +1035,7 @@ def demo_reslayer_collect(service: str, prometheus_url: str) -> None:
         print()
         print("Next steps:")
         print(f"  • View details: nthlayer reslayer show {service}")
-        print(f"  • List all SLOs: nthlayer reslayer list")
+        print("  • List all SLOs: nthlayer reslayer list")
         
     except Exception as exc:
         print(f"❌ Error collecting metrics: {exc}")
@@ -1090,7 +1090,7 @@ def demo_reslayer_record_deploy(
         
         deployment = run_async(record())
         
-        print(f"✅ Deployment recorded")
+        print("✅ Deployment recorded")
         print(f"   ID: {deployment.id}")
         print(f"   Service: {deployment.service}")
         print(f"   Commit: {deployment.commit_sha}")
@@ -1183,7 +1183,7 @@ def demo_reslayer_correlate(service: str, hours: int) -> None:
         print()
         print("Next steps:")
         print(f"  • View blame report: nthlayer reslayer blame {service}")
-        print(f"  • Investigate high-confidence deploys")
+        print("  • Investigate high-confidence deploys")
         
     except Exception as exc:
         print(f"❌ Error running correlation: {exc}")
@@ -1347,9 +1347,9 @@ def demo_reslayer_alert_config(args: argparse.Namespace) -> None:
                 print(f"   Severity: {rule.severity.value}")
                 print(f"   Threshold: {rule.threshold}")
                 if rule.slack_webhook:
-                    print(f"   Slack: configured")
+                    print("   Slack: configured")
                 if rule.pagerduty_key:
-                    print(f"   PagerDuty: configured")
+                    print("   PagerDuty: configured")
                 print()
             
             return
@@ -1377,13 +1377,13 @@ def demo_reslayer_alert_config(args: argparse.Namespace) -> None:
             
             storage.add_rule(rule)
             
-            print(f"✅ Threshold alert configured")
+            print("✅ Threshold alert configured")
             print(f"   Threshold: {args.threshold*100:.0f}%")
             print(f"   Severity: {severity.value.upper()}")
             if args.slack_webhook:
-                print(f"   Slack: enabled")
+                print("   Slack: enabled")
             if args.pagerduty_key:
-                print(f"   PagerDuty: enabled")
+                print("   PagerDuty: enabled")
             print()
         
         # Configure burn rate alert
@@ -1409,13 +1409,13 @@ def demo_reslayer_alert_config(args: argparse.Namespace) -> None:
             
             storage.add_rule(rule)
             
-            print(f"✅ Burn rate alert configured")
+            print("✅ Burn rate alert configured")
             print(f"   Threshold: {args.burn_rate}x baseline")
             print(f"   Severity: {severity.value.upper()}")
             if args.slack_webhook:
-                print(f"   Slack: enabled")
+                print("   Slack: enabled")
             if args.pagerduty_key:
-                print(f"   PagerDuty: enabled")
+                print("   PagerDuty: enabled")
             print()
         
         print("Next steps:")

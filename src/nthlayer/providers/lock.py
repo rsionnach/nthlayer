@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
-
 DEFAULT_LOCK_PATH = Path("providers.lock")
 
 

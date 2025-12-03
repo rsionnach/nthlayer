@@ -13,8 +13,8 @@ This enables:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Callable
 from enum import Enum
+from typing import Dict, List, Optional
 
 
 class PanelType(Enum):

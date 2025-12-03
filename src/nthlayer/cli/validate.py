@@ -4,8 +4,6 @@ Validate command.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from nthlayer.specs.validator import validate_service_file
 
 
@@ -37,7 +35,7 @@ def validate_command(
     result = validate_service_file(service_file, environment=environment, strict=strict)
     
     if result.valid:
-        print(f"✅ Valid service definition")
+        print("✅ Valid service definition")
         print()
         print(f"Service: {result.service}")
         print(f"Resources: {result.resource_count}")
@@ -58,7 +56,7 @@ def validate_command(
         return 0
     
     else:
-        print(f"❌ Invalid service definition")
+        print("❌ Invalid service definition")
         print()
         
         if result.errors:

@@ -1,6 +1,7 @@
 """Elasticsearch monitoring template."""
 
 from typing import List
+
 from nthlayer.dashboards.models import Panel, Target
 
 

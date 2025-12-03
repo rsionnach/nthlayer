@@ -14,10 +14,10 @@ Resolution Waterfall:
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
+from typing import Dict, List, Optional, Set
 
-from nthlayer.dashboards.intents import MetricIntent, ALL_INTENTS, get_intent
+from nthlayer.dashboards.intents import MetricIntent, get_intent
 from nthlayer.discovery.client import MetricDiscoveryClient
 from nthlayer.discovery.models import DiscoveryResult
 

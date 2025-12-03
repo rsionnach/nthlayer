@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from nthlayer.slos.models import ErrorBudget, SLO, SLOStatus
+from nthlayer.slos.models import SLO, ErrorBudget, SLOStatus
 
 
 class ErrorBudgetCalculator:

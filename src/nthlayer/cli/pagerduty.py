@@ -5,7 +5,6 @@ PagerDuty setup command.
 from __future__ import annotations
 
 import os
-import sys
 
 from nthlayer.integrations.pagerduty import PagerDutyClient
 from nthlayer.specs.parser import parse_service_file
@@ -132,16 +131,16 @@ def setup_pagerduty_command(
         
         # Display results
         if result.created_service:
-            print(f"✅ Created PagerDuty service")
+            print("✅ Created PagerDuty service")
         else:
-            print(f"✅ PagerDuty service already exists")
+            print("✅ PagerDuty service already exists")
         
         print(f"   Service ID: {result.service_id}")
         print(f"   Service URL: {result.service_url}")
         print()
         
         if result.created_escalation_policy:
-            print(f"✅ Created escalation policy")
+            print("✅ Created escalation policy")
             print(f"   Policy ID: {result.escalation_policy_id}")
             print()
         
@@ -163,7 +162,7 @@ def setup_pagerduty_command(
         print()
         print("💡 Next steps:")
         print(f"   1. Visit: {result.service_url}")
-        print(f"   2. Configure integrations (email, webhooks, etc.)")
+        print("   2. Configure integrations (email, webhooks, etc.)")
         print(f"   3. Test alerting with: nthlayer reslayer test-alert {service_context.name}")
         print()
         

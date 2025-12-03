@@ -6,11 +6,12 @@ Queries Prometheus to discover actual metrics for a service, inspired by autogra
 
 import logging
 from typing import Dict, List, Optional
+
 import requests
 from requests.auth import HTTPBasicAuth
 
-from .models import DiscoveredMetric, MetricType, DiscoveryResult
 from .classifier import MetricClassifier
+from .models import DiscoveredMetric, DiscoveryResult, MetricType
 
 logger = logging.getLogger(__name__)
 

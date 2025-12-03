@@ -15,9 +15,9 @@ Intent Format:
     e.g., "postgresql.connections", "redis.memory", "http.requests"
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, List, Optional
 
 
 class MetricType(Enum):

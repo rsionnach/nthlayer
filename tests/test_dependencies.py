@@ -4,8 +4,6 @@ Tests for dependency correlation.
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from nthlayer.slos.dependencies import (
     Dependency,
     DependencyCorrelator,

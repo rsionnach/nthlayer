@@ -6,7 +6,6 @@ Classifies discovered metrics into technology groups based on naming patterns.
 
 import logging
 import re
-from typing import Optional
 
 from .models import DiscoveredMetric, MetricType, TechnologyGroup
 

@@ -15,7 +15,7 @@
     <nav class="nav">
         <div class="nav-container">
             <div class="nav-logo">
-                <img src="nthlayer_dark_logo.png" alt="NthLayer" height="64">
+                <img src="nthlayer_dark_banner.png" alt="NthLayer" height="62">
             </div>
             <div class="nav-links">
                 <a href="https://github.com/rsionnach/nthlayer" target="_blank">GitHub</a>
@@ -274,30 +274,36 @@
     <section class="cta-section">
         <div class="container">
             <div class="cta-box">
-                <h2>Try It Yourself</h2>
-                <p>Get started with NthLayer in under 5 minutes</p>
+                <h2>Get Started</h2>
+                <p>NthLayer will be available on PyPI soon:</p>
                 
                 <div class="install-steps">
                     <div class="install-step">
                         <span class="install-number">1</span>
                         <pre><code>pip install nthlayer</code></pre>
+                        <span class="coming-soon-badge">Coming Soon</span>
                     </div>
                     <div class="install-step">
                         <span class="install-number">2</span>
-                        <pre><code>nthlayer apply examples/services/payment-api.yaml</code></pre>
+                        <pre><code>nthlayer init my-service --template api</code></pre>
                     </div>
                     <div class="install-step">
                         <span class="install-number">3</span>
-                        <pre><code>ls generated/payment-api/</code></pre>
+                        <pre><code>nthlayer apply my-service.yaml</code></pre>
                     </div>
                 </div>
 
+                <p style="margin-top: var(--spacing-md); color: var(--color-text-muted);">
+                    In the meantime, clone the repo and install locally:
+                    <code style="display: block; margin-top: var(--spacing-sm);">git clone https://github.com/rsionnach/nthlayer.git && pip install -e ".[dev]"</code>
+                </p>
+
                 <div class="cta-buttons">
                     <a href="https://github.com/rsionnach/nthlayer#getting-started" class="button-primary" target="_blank">
-                        Get Started
+                        View on GitHub
                     </a>
-                    <a href="https://github.com/rsionnach/nthlayer" class="button-secondary" target="_blank">
-                        View Documentation
+                    <a href="https://github.com/rsionnach/nthlayer/tree/main/generated/payment-api" class="button-secondary" target="_blank">
+                        See Generated Examples
                     </a>
                 </div>
             </div>
@@ -309,7 +315,7 @@
         <div class="container">
             <div class="footer-content">
                 <div class="footer-logo">
-                    <img src="nthlayer_dark_logo.png" alt="NthLayer" height="36">
+                    <img src="nthlayer_dark_banner.png" alt="NthLayer" height="72">
                 </div>
                 <div class="footer-links">
                     <a href="https://github.com/rsionnach/nthlayer">GitHub</a>

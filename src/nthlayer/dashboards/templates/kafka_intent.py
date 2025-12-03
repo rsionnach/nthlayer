@@ -6,8 +6,9 @@ discovery and fallback handling for Kafka metrics.
 """
 
 from typing import List
+
+from nthlayer.dashboards.panel_spec import PanelSpec, PanelType
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
-from nthlayer.dashboards.panel_spec import PanelSpec, QuerySpec, PanelType
 
 
 class KafkaIntentTemplate(IntentBasedTemplate):

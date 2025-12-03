@@ -10,7 +10,7 @@ Features:
 - Multi-platform support (Prometheus, Datadog, CloudWatch)
 """
 
-from .models import AlertRule
 from .loader import AlertTemplateLoader
+from .models import AlertRule
 
 __all__ = ["AlertRule", "AlertTemplateLoader"]

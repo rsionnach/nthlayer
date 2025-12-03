@@ -4,9 +4,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from nthlayer.specs.parser import parse_service_file
 from nthlayer.recording_rules.builder import build_recording_rules
 from nthlayer.recording_rules.models import create_rule_groups
+from nthlayer.specs.parser import parse_service_file
 
 
 def generate_recording_rules_command(
@@ -102,7 +102,7 @@ def generate_recording_rules_command(
             print()
             print("📊 Next steps:")
             print("   1. Add to Prometheus configuration:")
-            print(f"      rule_files:")
+            print("      rule_files:")
             print(f"        - {output}")
             print()
             print("   2. Reload Prometheus:")

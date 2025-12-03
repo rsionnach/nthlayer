@@ -7,7 +7,9 @@ Handles database operations for SLOs and error budgets.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
+
+# Import Deployment dataclass (avoid circular import)
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +21,7 @@ from nthlayer.db.models import (
     SLOHistoryModel,
     SLOModel,
 )
-from nthlayer.slos.models import ErrorBudget, SLO, TimeWindowType
-
-# Import Deployment dataclass (avoid circular import)
-from typing import TYPE_CHECKING
+from nthlayer.slos.models import SLO, ErrorBudget, TimeWindowType
 
 if TYPE_CHECKING:
     from nthlayer.slos.deployment import Deployment

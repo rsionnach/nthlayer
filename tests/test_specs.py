@@ -1,14 +1,10 @@
 """Tests for service specification parsing and validation."""
 
-from pathlib import Path
 
 import pytest
-import yaml
-
 from nthlayer.specs import (
     Resource,
     ServiceContext,
-    ValidationResult,
     parse_service_file,
     validate_service_file,
 )

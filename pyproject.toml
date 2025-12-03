@@ -7,8 +7,9 @@ name = "nthlayer"
 version = "0.1.0"
 description = "NthLayer - The Missing Layer of Reliability"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
+    "grafana-foundation-sdk>=0.0.11",
     "fastapi>=0.111.0,<1.0.0",
     "uvicorn[standard]>=0.27.0,<0.29",
     "mangum>=0.17.0,<0.18.0",

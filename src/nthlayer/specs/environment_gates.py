@@ -5,7 +5,6 @@ Provides different error budget thresholds based on environment.
 
 from typing import Dict, Optional
 
-
 # Default thresholds by environment
 DEFAULT_ENVIRONMENT_THRESHOLDS = {
     "dev": {
@@ -90,18 +89,18 @@ def explain_thresholds(tier: str, environment: Optional[str] = None) -> None:
     thresholds = get_deployment_gate_thresholds(tier, environment)
     env_display = environment or "prod (default)"
     
-    print(f"📊 Deployment Gate Thresholds:")
+    print("📊 Deployment Gate Thresholds:")
     print(f"   Environment: {env_display}")
     print(f"   Tier: {tier}")
     print()
     
     if "block" in thresholds:
         print(f"   🔴 Block: >{thresholds['block']*100:.0f}% budget consumed")
-        print(f"      Deploy will be blocked")
+        print("      Deploy will be blocked")
     
     if "warn" in thresholds:
         print(f"   🟡 Warn: >{thresholds['warn']*100:.0f}% budget consumed")
-        print(f"      Deploy allowed but with warning")
+        print("      Deploy allowed but with warning")
     
     print(f"   ✅ Pass: <{thresholds.get('warn', thresholds.get('block', 1.0))*100:.0f}% budget consumed")
     print()

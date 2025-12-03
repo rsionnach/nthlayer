@@ -5,27 +5,27 @@ Includes both legacy templates and intent-based templates for the hybrid model.
 """
 
 from typing import Dict, Type
+
 from nthlayer.dashboards.templates.base import TechnologyTemplate
-from nthlayer.dashboards.templates.postgresql import PostgreSQLTemplate
-from nthlayer.dashboards.templates.redis import RedisTemplate
-from nthlayer.dashboards.templates.kubernetes import KubernetesTemplate
-from nthlayer.dashboards.templates.http_api import HTTPAPITemplate
-from nthlayer.dashboards.templates.mongodb import MongoDBTemplate
-from nthlayer.dashboards.templates.kafka import KafkaTemplate
-from nthlayer.dashboards.templates.elasticsearch import ElasticsearchTemplate
 
 # Intent-based templates (hybrid model)
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
-from nthlayer.dashboards.templates.http_intent import HTTPIntentTemplate
-from nthlayer.dashboards.templates.worker_intent import WorkerIntentTemplate
-from nthlayer.dashboards.templates.stream_intent import StreamIntentTemplate
-from nthlayer.dashboards.templates.postgresql_intent import PostgreSQLIntentTemplate
-from nthlayer.dashboards.templates.redis_intent import RedisIntentTemplate
-from nthlayer.dashboards.templates.mysql_intent import MySQLIntentTemplate
-from nthlayer.dashboards.templates.mongodb_intent import MongoDBIntentTemplate
-from nthlayer.dashboards.templates.kafka_intent import KafkaIntentTemplate
+from nthlayer.dashboards.templates.elasticsearch import ElasticsearchTemplate
 from nthlayer.dashboards.templates.elasticsearch_intent import ElasticsearchIntentTemplate
-
+from nthlayer.dashboards.templates.http_api import HTTPAPITemplate
+from nthlayer.dashboards.templates.http_intent import HTTPIntentTemplate
+from nthlayer.dashboards.templates.kafka import KafkaTemplate
+from nthlayer.dashboards.templates.kafka_intent import KafkaIntentTemplate
+from nthlayer.dashboards.templates.kubernetes import KubernetesTemplate
+from nthlayer.dashboards.templates.mongodb import MongoDBTemplate
+from nthlayer.dashboards.templates.mongodb_intent import MongoDBIntentTemplate
+from nthlayer.dashboards.templates.mysql_intent import MySQLIntentTemplate
+from nthlayer.dashboards.templates.postgresql import PostgreSQLTemplate
+from nthlayer.dashboards.templates.postgresql_intent import PostgreSQLIntentTemplate
+from nthlayer.dashboards.templates.redis import RedisTemplate
+from nthlayer.dashboards.templates.redis_intent import RedisIntentTemplate
+from nthlayer.dashboards.templates.stream_intent import StreamIntentTemplate
+from nthlayer.dashboards.templates.worker_intent import WorkerIntentTemplate
 
 # Registry of available templates
 TECHNOLOGY_TEMPLATES: Dict[str, Type[TechnologyTemplate]] = {

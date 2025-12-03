@@ -1,11 +1,11 @@
 """Tests for service template system."""
 
+
 import pytest
-from pathlib import Path
-from nthlayer.specs.template_loader import TemplateLoader
-from nthlayer.specs.templates import ServiceTemplate, TemplateRegistry
 from nthlayer.specs.parser import parse_service_file
 from nthlayer.specs.template import substitute_variables
+from nthlayer.specs.template_loader import TemplateLoader
+from nthlayer.specs.templates import ServiceTemplate, TemplateRegistry
 
 
 class TestTemplateLoader:

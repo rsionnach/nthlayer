@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
 import yaml
 
-from nthlayer.specs.environments import EnvironmentLoader, normalize_environment_name
 from nthlayer.specs.parser import parse_service_file
 
 

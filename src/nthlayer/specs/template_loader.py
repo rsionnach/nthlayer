@@ -1,10 +1,12 @@
 """Template loader for NthLayer service templates."""
 
-import yaml
 from pathlib import Path
 from typing import Dict
-from .templates import ServiceTemplate, TemplateRegistry
+
+import yaml
+
 from .models import Resource
+from .templates import ServiceTemplate, TemplateRegistry
 
 
 class TemplateLoader:

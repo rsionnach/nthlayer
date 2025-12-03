@@ -1,8 +1,7 @@
 import pytest
 import respx
 from httpx import Response
-
-from nthlayer.clients.base import PermanentHTTPError, RetryableHTTPError
+from nthlayer.clients.base import PermanentHTTPError
 from nthlayer.clients.cortex import CortexClient
 from nthlayer.clients.pagerduty import PagerDutyClient
 
