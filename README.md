@@ -118,6 +118,8 @@ pagerduty:
 | 📋 Write recording rules | 3 hours | 20+ pre-computed metrics |
 | **Total per service** | **20 hours** | **5 minutes** |
 
+<sub>*Hours based on typical SRE team experience for production-grade setup. Actual times vary by team expertise and existing tooling.</sub>
+
 ### At Scale
 
 | Scale | Manual Hours | With NthLayer | Hours Saved | Value* |
