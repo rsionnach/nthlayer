@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from nthlayer.alertmanager import generate_alertmanager_config
 from nthlayer.pagerduty import EventOrchestrationManager, PagerDutyResourceManager
 
 
@@ -624,6 +625,27 @@ class ServiceOrchestrator:
                 sre_escalation_policy_id=sre_ep_id,
             )
 
+        # Generate Alertmanager config if integration key available
+        pd_resource = next(
+            (r for r in self.service_def.get("resources", []) if r.get("kind") == "PagerDuty"),
+            None,
+        )
+        integration_key = None
+        sre_integration_key = None
+        if pd_resource:
+            spec = pd_resource.get("spec", {})
+            integration_key = spec.get("integration_key")
+            sre_integration_key = spec.get("sre_integration_key")
+
+        if integration_key:
+            self._generate_alertmanager_config(
+                team=team,
+                tier=tier,
+                support_model=support_model,
+                integration_key=integration_key,
+                sre_integration_key=sre_integration_key,
+            )
+
         return len(result.created_resources) or 1
 
     def _setup_event_orchestration(
@@ -648,3 +670,26 @@ class ServiceOrchestrator:
                 print(f"⚠️  Event Orchestration setup failed: {result.error}")
             elif result.rules_created > 0:
                 print(f"✅ Event Orchestration: {result.rules_created} routing rule(s) created")
+
+    def _generate_alertmanager_config(
+        self,
+        team: str,
+        tier: str,
+        support_model: str,
+        integration_key: str,
+        sre_integration_key: str | None = None,
+    ) -> None:
+        """Generate Alertmanager configuration with PagerDuty receiver."""
+        config = generate_alertmanager_config(
+            service_name=self.service_name,
+            team=team,
+            pagerduty_integration_key=integration_key,
+            support_model=support_model,
+            tier=tier,
+            sre_integration_key=sre_integration_key,
+        )
+
+        # Write Alertmanager config
+        output_file = self.output_dir / "alertmanager.yaml"
+        config.write(output_file)
+        print(f"✅ Alertmanager config: {output_file}")
