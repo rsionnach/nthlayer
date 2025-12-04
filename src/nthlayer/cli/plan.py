@@ -16,22 +16,22 @@ def print_plan_summary(plan: PlanResult) -> None:
     print(f"║  📋 Plan: {plan.service_name:<50} ║")
     print("╚" + "═" * 62 + "╝")
     print()
-    
+
     if plan.errors:
         print("❌ Errors:")
         for error in plan.errors:
             print(f"   • {error}")
         print()
         return
-    
+
     if not plan.resources:
         print("⚠️  No resources detected in service definition")
         print()
         return
-    
+
     print("The following resources will be created:")
     print()
-    
+
     # SLOs
     if "slos" in plan.resources:
         slos = plan.resources["slos"]
@@ -43,7 +43,7 @@ def print_plan_summary(plan: PlanResult) -> None:
         if len(slos) > 5:
             print(f"   ... and {len(slos) - 5} more")
         print()
-    
+
     # Alerts
     if "alerts" in plan.resources:
         alerts = plan.resources["alerts"]
@@ -54,7 +54,7 @@ def print_plan_summary(plan: PlanResult) -> None:
             count = alert.get("count", 0)
             print(f"   + {tech.capitalize()} ({count} alerts)")
         print()
-    
+
     # Dashboard
     if "dashboard" in plan.resources:
         dashboards = plan.resources["dashboard"]
@@ -63,7 +63,7 @@ def print_plan_summary(plan: PlanResult) -> None:
             panels = dashboard.get("panels", "?")
             print(f"   + {dashboard['name']} ({panels} panels)")
         print()
-    
+
     # Recording Rules
     if "recording-rules" in plan.resources:
         rules = plan.resources["recording-rules"]
@@ -74,16 +74,26 @@ def print_plan_summary(plan: PlanResult) -> None:
             count = rule.get("count", 0)
             print(f"   + {rule_type} ({count} rules)")
         print()
-    
+
     # PagerDuty
     if "pagerduty" in plan.resources:
-        pd_services = plan.resources["pagerduty"]
-        print(f"✅ PagerDuty Service ({len(pd_services)})")
-        for service in pd_services:
-            urgency = service.get("urgency", "high")
-            print(f"   + {service['name']} ({urgency} urgency)")
+        pd_resources = plan.resources["pagerduty"]
+        print(f"✅ PagerDuty ({len(pd_resources)} resources)")
+        for resource in pd_resources:
+            res_type = resource.get("type", "unknown")
+            if res_type == "team":
+                print(f"   + Team: {resource.get('name')}")
+            elif res_type == "schedules":
+                names = resource.get("names", [])
+                print(f"   + Schedules: {', '.join(names)}")
+            elif res_type == "escalation_policy":
+                print(f"   + Escalation Policy: {resource.get('name')}")
+            elif res_type == "service":
+                tier = resource.get("tier", "medium")
+                model = resource.get("support_model", "self")
+                print(f"   + Service: {resource.get('name')} (tier={tier}, support={model})")
         print()
-    
+
     # Summary
     print(f"📊 Total: {plan.total_resources} resources")
     print()
@@ -100,35 +110,32 @@ def print_plan_json(plan: PlanResult) -> None:
         "resources": plan.resources,
         "total_resources": plan.total_resources,
         "errors": plan.errors,
-        "success": plan.success
+        "success": plan.success,
     }
     print(json.dumps(output, indent=2))
 
 
 def plan_command(
-    service_yaml: str,
-    env: Optional[str] = None,
-    output_format: str = "text",
-    verbose: bool = False
+    service_yaml: str, env: Optional[str] = None, output_format: str = "text", verbose: bool = False
 ) -> int:
     """
     Preview what resources would be generated (dry-run).
-    
+
     Args:
         service_yaml: Path to service YAML file
         env: Environment name (dev, staging, prod)
         output_format: Output format (text, json, yaml)
         verbose: Show detailed information
-    
+
     Returns:
         Exit code (0 for success, 1 for error)
     """
     orchestrator = ServiceOrchestrator(Path(service_yaml), env=env)
     result = orchestrator.plan()
-    
+
     if output_format == "json":
         print_plan_json(result)
     else:  # text (default)
         print_plan_summary(result)
-    
+
     return 0 if result.success else 1

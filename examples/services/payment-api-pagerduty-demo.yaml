@@ -1,0 +1,68 @@
+# Payment API Service Definition - PagerDuty Demo
+#
+# Demonstrates NthLayer's PagerDuty integration:
+# - Tier-based escalation policies (critical = 5/15/30min)
+# - Team-prefixed naming (payments-primary, payments-escalation)
+# - Support model routing (shared = team + SRE backup)
+# - Event Orchestration for alert routing
+
+service:
+  name: payment-api
+  team: payments
+  tier: critical
+  type: api
+  support_model: shared  # Team handles day, SRE backup off-hours
+  language: java
+  framework: spring-boot
+
+resources:
+  # PagerDuty integration with full config
+  - kind: PagerDuty
+    name: primary
+    spec:
+      # Integration keys (from PagerDuty service integrations)
+      # These are set via environment or secrets in production
+      # integration_key: ${PAGERDUTY_INTEGRATION_KEY}
+      # sre_integration_key: ${PAGERDUTY_SRE_INTEGRATION_KEY}
+
+      # Escalation timing (overrides tier defaults if set)
+      # Default for critical: 5min -> 15min -> 30min
+      urgency: high
+      auto_resolve_timeout: 14400  # 4 hours
+
+      # Create resources if they don't exist
+      auto_create: true
+
+  # Dependencies for alert generation
+  - kind: Dependencies
+    name: upstream
+    spec:
+      databases:
+        - name: payments-db
+          type: postgresql
+          criticality: high
+        - name: session-cache
+          type: redis
+          criticality: medium
+      external_apis:
+        - name: stripe
+          criticality: high
+
+  # SLOs
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.95
+      window: 30d
+      indicator:
+        type: availability
+
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 500
