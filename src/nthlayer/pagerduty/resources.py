@@ -94,6 +94,7 @@ class PagerDutyResourceManager:
         self.default_from = default_from
         self.timeout = timeout
         self._client: RestApiV2Client | None = None
+        self._default_user_id: str | None = None
 
     @property
     def client(self) -> RestApiV2Client:
@@ -116,6 +117,22 @@ class PagerDutyResourceManager:
 
     def __exit__(self, *args: Any) -> None:
         self.close()
+
+    def get_default_user_id(self) -> str | None:
+        """Get the first user's ID to use as placeholder in schedules."""
+        if self._default_user_id is not None:
+            return self._default_user_id
+
+        try:
+            response = self.client.get("/users", params={"limit": 1})
+            response.raise_for_status()
+            users = response.json().get("users", [])
+            if users:
+                self._default_user_id = users[0]["id"]
+                return self._default_user_id
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
+            pass
+        return None
 
     def setup_service(
         self,
@@ -149,20 +166,19 @@ class PagerDutyResourceManager:
         result = SetupResult(success=True)
 
         try:
-            # Step 1: Create or find team
+            # Step 1: Create or find team (required for service)
             team_result = self.ensure_team(team)
-            if not team_result.success:
-                result.success = False
-                result.errors.append(f"Team creation failed: {team_result.error}")
-                return result
+            if team_result.success:
+                result.team_id = team_result.resource_id
+                if team_result.created:
+                    result.created_resources.append(f"team:{team_result.resource_name}")
+                result.warnings.extend(team_result.warnings)
+            else:
+                result.warnings.append(f"Team creation failed: {team_result.error}")
 
-            result.team_id = team_result.resource_id
-            if team_result.created:
-                result.created_resources.append(f"team:{team_result.resource_name}")
-            result.warnings.extend(team_result.warnings)
-
-            # Step 2: Create schedules for this tier
+            # Step 2: Create schedules for this tier (optional - continue if fails)
             schedule_types = get_schedules_for_tier(tier)
+            schedule_failures = []
             for schedule_type in schedule_types:
                 schedule_result = self.ensure_schedule(
                     team=team,
@@ -171,54 +187,66 @@ class PagerDutyResourceManager:
                     support_model=support_model,
                     timezone=tz,
                 )
-                if not schedule_result.success:
-                    result.success = False
-                    result.errors.append(f"Schedule creation failed: {schedule_result.error}")
-                    return result
+                if schedule_result.success:
+                    result.schedule_ids[schedule_type] = schedule_result.resource_id or ""
+                    if schedule_result.created:
+                        result.created_resources.append(f"schedule:{schedule_result.resource_name}")
+                    result.warnings.extend(schedule_result.warnings)
+                else:
+                    schedule_failures.append(f"{schedule_type}: {schedule_result.error}")
 
-                result.schedule_ids[schedule_type] = schedule_result.resource_id or ""
-                if schedule_result.created:
-                    result.created_resources.append(f"schedule:{schedule_result.resource_name}")
-                result.warnings.extend(schedule_result.warnings)
+            if schedule_failures:
+                result.warnings.append(f"Some schedules failed: {'; '.join(schedule_failures)}")
 
-            # Step 3: Create escalation policy
+            # Step 3: Create escalation policy or use default
             ep_result = self.ensure_escalation_policy(
                 team=team,
                 tier=tier,
                 schedule_ids=result.schedule_ids,
             )
-            if not ep_result.success:
-                result.success = False
-                result.errors.append(f"Escalation policy failed: {ep_result.error}")
-                return result
+            if ep_result.success:
+                result.escalation_policy_id = ep_result.resource_id
+                if ep_result.created:
+                    result.created_resources.append(f"escalation_policy:{ep_result.resource_name}")
+                result.warnings.extend(ep_result.warnings)
+            else:
+                # Try to find default escalation policy
+                default_ep = self._find_escalation_policy("Default")
+                if default_ep:
+                    result.escalation_policy_id = default_ep["id"]
+                    result.warnings.append(
+                        f"Custom escalation policy failed ({ep_result.error}), "
+                        "using 'Default' policy"
+                    )
+                else:
+                    result.errors.append(f"Escalation policy failed: {ep_result.error}")
 
-            result.escalation_policy_id = ep_result.resource_id
-            if ep_result.created:
-                result.created_resources.append(f"escalation_policy:{ep_result.resource_name}")
-            result.warnings.extend(ep_result.warnings)
-
-            # Step 4: Create service
-            service_result = self.ensure_service(
-                service_name=service_name,
-                escalation_policy_id=result.escalation_policy_id or "",
-                team_id=result.team_id or "",
-                tier=tier,
-            )
-            if not service_result.success:
-                result.success = False
-                result.errors.append(f"Service creation failed: {service_result.error}")
-                return result
-
-            result.service_id = service_result.resource_id
-            if service_result.created:
-                result.created_resources.append(f"service:{service_result.resource_name}")
-            result.warnings.extend(service_result.warnings)
+            # Step 4: Create service (requires escalation policy)
+            if result.escalation_policy_id:
+                service_result = self.ensure_service(
+                    service_name=service_name,
+                    escalation_policy_id=result.escalation_policy_id,
+                    team_id=result.team_id or "",
+                    tier=tier,
+                )
+                if service_result.success:
+                    result.service_id = service_result.resource_id
+                    if service_result.created:
+                        result.created_resources.append(f"service:{service_result.resource_name}")
+                    result.warnings.extend(service_result.warnings)
+                else:
+                    result.errors.append(f"Service creation failed: {service_result.error}")
+            else:
+                result.errors.append("Cannot create service: no escalation policy available")
 
             # Get service URL
             if result.service_id:
                 service_data = self._find_service_by_id(result.service_id)
                 if service_data:
                     result.service_url = service_data.get("html_url")
+
+            # Set overall success based on whether service was created
+            result.success = result.service_id is not None
 
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             result.success = False
@@ -321,6 +349,14 @@ class PagerDutyResourceManager:
             microsecond=0,
         )
 
+        # Get a default user for the schedule (PagerDuty requires at least one user)
+        default_user_id = self.get_default_user_id()
+        if not default_user_id:
+            return ResourceResult(
+                success=False,
+                error="No users found in PagerDuty - cannot create schedule",
+            )
+
         schedule_payload: dict[str, Any] = {
             "schedule": {
                 "name": schedule_name,
@@ -333,7 +369,7 @@ class PagerDutyResourceManager:
                         "start": start_time.isoformat(),
                         "rotation_virtual_start": start_time.isoformat(),
                         "rotation_turn_length_seconds": config.rotation_length_seconds,
-                        "users": [],  # Empty - users added manually or via sync
+                        "users": [{"user": {"id": default_user_id, "type": "user_reference"}}],
                     }
                 ],
             }
@@ -349,7 +385,8 @@ class PagerDutyResourceManager:
                 resource_name=schedule_name,
                 created=True,
                 warnings=[
-                    f"Schedule '{schedule_name}' created with empty rotation - add users manually"
+                    f"Schedule '{schedule_name}' created with placeholder user "
+                    "- update rotation as needed"
                 ],
             )
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
