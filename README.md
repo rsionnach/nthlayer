@@ -156,6 +156,16 @@ $ nthlayer apply payment-api.yaml --env prod
 [![Grafana][grafana-badge]][grafana-url]
 [![Docker][docker-badge]][docker-url]
 
+### Compatibility
+
+| Component | Tested | Expected to Work |
+|-----------|--------|------------------|
+| **Prometheus** | Prometheus, Grafana Cloud | Mimir, Thanos, Cortex, VictoriaMetrics |
+| **Grafana** | Grafana Cloud, Grafana 10.x | Grafana 9.x, Grafana Enterprise |
+| **Python** | 3.11, 3.12 | 3.11+ |
+
+NthLayer uses standard Prometheus `/api/v1/` query endpoints and the official [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) for dashboard generation.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- KEY FEATURES -->

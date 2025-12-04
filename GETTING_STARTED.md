@@ -6,12 +6,14 @@
 
 ## Prerequisites
 
-- Python 3.9 or higher
+- **Python 3.11+** (required - check with `python3 --version`)
 - Docker Desktop (for Postgres + Redis)
 - Git
 - Text editor (VS Code, PyCharm, etc.)
 
 **That's it!** No PagerDuty, Grafana, AWS, or other accounts needed.
+
+> **Note:** If your system Python is older, use `brew install python@3.11` or [pyenv](https://github.com/pyenv/pyenv) to install Python 3.11+.
 
 ---
 
@@ -245,12 +247,12 @@ from httpx import Response
 @pytest.mark.asyncio
 async def test_my_feature():
     client = MyClient("token")
-    
+
     with respx.mock:
         respx.get("https://api.example.com/data").mock(
             return_value=Response(200, json={"result": "success"})
         )
-        
+
         result = await client.get_data()
         assert result["result"] == "success"
 ```
