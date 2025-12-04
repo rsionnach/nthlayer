@@ -346,7 +346,8 @@ class PagerDutyResourceManager:
             ResourceResult indicating success/failure
         """
         try:
-            response = self.client.post(
+            # PagerDuty uses PUT for adding/updating team membership
+            response = self.client.put(
                 f"/teams/{team_id}/users/{user_id}",
                 json={"role": role},
             )
