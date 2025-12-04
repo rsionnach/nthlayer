@@ -284,3 +284,58 @@ DMs open for feedback!
 6. **"Early alpha, seeking feedback"** - Set expectations, invite collaboration
 7. **"Live demo"** - Let them see before installing
 8. **"No lock-in, open source"** - Generates configs you own
+
+---
+
+## Why NthLayer? (Pain Points Section)
+
+Use this section to address common r/sre frustrations directly:
+
+```markdown
+## Why NthLayer?
+
+**Tired of:**
+- Observability bills higher than your infra costs?
+- AI SRE platforms that shotgun your logs into LLMs and send you the bill?
+- Dashboard sprawl (2,700 dashboards and counting)?
+- Copying Grafana JSON for every new service?
+- Manually configuring PagerDuty teams and escalations?
+- Alert fatigue from poorly tuned thresholds?
+- 27% of your alerts being ignored?
+
+**NthLayer is different:**
+- Free and open source. No SaaS fees. No inference costs.
+- One YAML file → complete reliability stack you own.
+- 400+ battle-tested alerts with tier-based thresholds.
+- Auto-generated PagerDuty teams, escalation policies, services.
+- Consistent dashboard layout per service (no sprawl).
+- Works with your existing tools (Grafana, Prometheus, PagerDuty).
+- You own the generated configs. No vendor lock-in.
+```
+
+### Pain Points Data (for credibility)
+
+| Pain Point | Source | Stat |
+|------------|--------|------|
+| High observability costs | r/sre post | "72 upvotes: bills > infra costs" |
+| Tool sprawl | Grafana Survey 2024 | "80% seeking to consolidate" |
+| Dashboard sprawl | Flexport case study | "Reduced 2,700 → 60 dashboards" |
+| Alert fatigue | IDC 2021 | "27% of alerts ignored" |
+| AI SRE hype | r/sre post | "Shotgun logs into LLMs, send you the bill" |
+| MTTR increasing | Logz.io 2024 | "82% MTTR > 1 hour" |
+
+### Reddit-Specific Talking Points
+
+When posting to r/sre, use these responses to common complaints:
+
+**"Observability costs are out of control"**
+> "That's exactly why I built NthLayer as free/open source. It generates configs for Grafana, Prometheus, PagerDuty - tools you already have. No new SaaS fees."
+
+**"AI SRE tools are burning my budget"**
+> "NthLayer takes a different approach - config generation, not AI inference. No per-query LLM fees. The 'AI' is in knowing what PostgreSQL, Redis, Kafka metrics to track."
+
+**"Too many dashboards to manage"**
+> "NthLayer generates one consistent dashboard per service. Same layout, same panels. No copy-paste JSON, no sprawl."
+
+**"Alert fatigue is killing my team"**
+> "The 400+ alert rules in NthLayer come from awesome-prometheus-alerts - battle-tested by the community. Tier-based thresholds (critical services get tighter SLOs)."

@@ -74,6 +74,12 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 - `nthlayer slo collect` - Real-time Prometheus queries (stateless)
 - Blame deferred until CI/CD integration
 
+### Phase 2.5: Loki Integration (📋 PLANNED)
+**Goal:** Complete observability with logs (same Grafana ecosystem)
+- `trellis-loki-epic`: Loki/LogQL integration
+- `trellis-loki-alerts`: Generate LogQL alert rules from service.yaml
+- `trellis-loki-templates`: Technology-specific log patterns (PostgreSQL, Redis, Kafka)
+
 ### Phase 3: SLO Portfolio (🔨 NEXT - Differentiator)
 **Goal:** Cross-vendor, org-wide reliability portfolio
 - `trellis-portfolio-epic`: SLO Portfolio epic
@@ -108,6 +114,7 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 ### Technology Templates (Ongoing)
 - `trellis-0cd`: Kafka (consumer lag, partitions, replication)
 - `trellis-e8w`: MongoDB (connections, replication, locks)
+- `trellis-ai-services`: AI/ML service type (GPU utilization, model latency, inference queue)
 
 ## Core Commands
 
