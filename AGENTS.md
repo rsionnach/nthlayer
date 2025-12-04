@@ -4,58 +4,67 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 
 ## Product Vision & Scope
 
-NthLayer goes beyond just dashboards. The full platform includes:
+**Core Value Proposition:** "Generate the complete reliability stack from a service spec in 5 minutes"
+
+```
+Service Spec → SLOs → Alerts → Dashboards → PagerDuty → Runbooks
+                 ↓
+           Error Budgets → Deployment Gates
+```
 
 | Domain | What We Generate | Status |
 |--------|------------------|--------|
 | **Dashboards** | Grafana dashboards with intent-based panels, row organization | ✅ Complete |
-| **SLOs** | OpenSLO-compliant definitions, error budgets, burn rates | 🔨 In Progress |
-| **Alerts** | Prometheus alert rules, PagerDuty routing, Slack notifications | ✅ Complete |
+| **Alerts** | Prometheus alert rules, PagerDuty routing | ✅ Complete |
 | **Recording Rules** | Pre-aggregated metrics for dashboard performance | ✅ Complete |
-| **Runbooks** | Auto-generated troubleshooting guides from service metadata | 📋 Planned |
-| **Deployment Gates** | ArgoCD/GitHub Actions blocking based on error budgets | 📋 Planned |
-| **Policies** | OPA/Sentinel policies, RBAC, network policies | 📋 Planned |
-| **Compliance** | SOC2 control mappings, audit logging, GDPR configs | 📋 Planned |
+| **PagerDuty** | Teams, schedules, escalation policies, services | ✅ Complete |
+| **SLOs** | OpenSLO-compliant definitions, error budgets, burn rates | 🔨 Phase 4 |
+| **Deployment Gates** | ArgoCD blocking based on error budgets | 📋 Phase 6 |
+| **Runbooks** | Auto-generated troubleshooting guides from service metadata | 📋 Phase 7 |
 
-## Roadmap Phases
+**Out of Scope** (use specialized tools instead):
+- Compliance/Governance (SOC2, GDPR) - different customer segment
+- Cost Management (FinOps) - use OpenCost/Kubecost
+- IAM/RBAC/Network Policies - infrastructure, not observability
+- APM/Tracing/Profiling - use OTel, Datadog, Pyroscope directly
+
+## Roadmap Phases (Focused Core)
 
 ### Phase 1-3: Foundation (✅ COMPLETE)
 - CLI framework, service specs, technology templates
 - Dashboard generation with Grafana SDK
 - Alert generation, recording rules
-- PagerDuty, Slack integrations
+- PagerDuty integration (tier-based defaults)
 - Live demo infrastructure (Fly.io + Grafana Cloud)
 
 ### Phase 4: Error Budget Foundation (🔨 CURRENT FOCUS)
+**Goal:** "This deploy burned 8h of error budget"
 - `trellis-z6x`: OpenSLO parser and validator
-- `trellis-ygb`: Error budget calculator
+- `trellis-ygb`: Error budget calculator (30d rolling windows)
+- `trellis-0cp`: Prometheus SLI integration
 - `trellis-b54`: Time-series storage for budget tracking
 - `trellis-z2b`: Deploy → burn correlation engine
 - `trellis-yb5`: Deployment detection via ArgoCD
 
-### Phase 5: Intelligent Alerts & Scorecard
-- `trellis-4tu`: Alert engine with threshold-based rules
-- `trellis-9ri`: Template-based alert explanations
-- `trellis-0gr`: Reliability scorecard calculator
-- `trellis-6ue`: Anomaly detection alerts
+### Phase 5: Intelligent Alerts (Trimmed)
+**Goal:** "You're at 75% budget, 2 incidents burned 8h"
+- `trellis-4tu`: Threshold-based budget alerts (75%, 85%, 95%)
+- `trellis-9ri`: Template-based explanations with causes
 
-### Phase 6: Deployment Policies & Gates
-- `trellis-tnr`: Policy YAML DSL design
+### Phase 6: Deployment Gates (Trimmed)
+**Goal:** Deploy blocked when error budget < 10%
+- `trellis-tnr`: Policy YAML DSL (conditions, actions)
 - `trellis-a4d`: Condition evaluator engine
 - `trellis-0fl`: ArgoCD deployment blocking
-- `trellis-3ap`: Audit logging for policies
 
-### Phase 7: Documentation & Knowledge
-- `trellis-cpx`: Runbook generation from service metadata
-- `trellis-meh`: Runbook auto-generation
-- `trellis-cok`: Service documentation templates
-- `trellis-0a7`: Onboarding guide generation
+### Phase 7: Runbooks (Trimmed)
+**Goal:** Markdown runbook with troubleshooting per service
+- `trellis-cpx`: Runbook from service metadata
+- `trellis-meh`: Auto-generation with Mermaid diagrams
 
-### Future Phases
-- **Incident Management**: War room automation, post-incident automation
-- **Compliance & Governance**: SOC2 mappings, GDPR configs, IAM policies
-- **Cost Management**: Cost allocation, budget alerts
-- **Technology Expansion**: Kafka, MongoDB, RabbitMQ templates
+### Technology Templates (Ongoing)
+- `trellis-0cd`: Kafka (consumer lag, partitions, replication)
+- `trellis-e8w`: MongoDB (connections, replication, locks)
 
 ## Core Commands
 
