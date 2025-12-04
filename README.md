@@ -107,14 +107,6 @@ pagerduty:
   <h3>⏱️ 20 hours → 5 minutes per service</h3>
 </div>
 
-### At Scale
-
-| Scenario | Before NthLayer | After NthLayer | Savings |
-|----------|-----------------|----------------|---------|
-| 🚀 **Startup** (50 services) | 1,000 hours of ops work | 4 hours | Launch in 1 week vs 6 weeks |
-| 📈 **Scale-up** (200 services) | 2 FTEs maintaining configs | 0.2 FTE | 1.8 engineers → product work |
-| 🏢 **Enterprise** (1,000 services) | 20,000 hours, multi-quarter | 100 hours | $2M+ value, 3 months faster |
-
 ### What Gets Automated
 
 | Task | Manual Effort | With NthLayer |
@@ -124,7 +116,17 @@ pagerduty:
 | 📊 Build Grafana dashboards | 5 hours | 12-28 panels auto-generated |
 | 📟 PagerDuty escalation setup | 2 hours | Tier-based defaults |
 | 📋 Write recording rules | 3 hours | 20+ pre-computed metrics |
-| **Total per service** | **20+ hours** | **5 minutes** |
+| **Total per service** | **20 hours** | **5 minutes** |
+
+### At Scale
+
+| Scale | Manual Hours | With NthLayer | Hours Saved | Value* |
+|-------|--------------|---------------|-------------|--------|
+| 🚀 50 services | 1,000 hrs | 4 hrs | 996 hrs | $100K |
+| 📈 200 services | 4,000 hrs | 17 hrs | 3,983 hrs | $400K |
+| 🏢 1,000 services | 20,000 hrs | 83 hrs | 19,917 hrs | $2M |
+
+<sub>*Value calculated at $100/hr engineering cost. Your mileage may vary.</sub>
 
 ---
 
