@@ -90,7 +90,7 @@ def print_apply_json(result: ApplyResult) -> None:
         "duration_seconds": result.duration_seconds,
         "output_dir": str(result.output_dir),
         "errors": result.errors,
-        "success": result.success
+        "success": result.success,
     }
     print(json.dumps(output, indent=2))
 
@@ -105,11 +105,12 @@ def apply_command(
     force: bool = False,
     verbose: bool = False,
     output_format: str = "text",
-    push_grafana: bool = False
+    push_grafana: bool = False,
+    lint: bool = False,
 ) -> int:
     """
     Generate all resources for a service.
-    
+
     Args:
         service_yaml: Path to service YAML file
         env: Environment name (dev, staging, prod)
@@ -120,28 +121,75 @@ def apply_command(
         force: Force regeneration, ignore cache
         verbose: Show detailed progress
         output_format: Output format (text, json)
-    
+        push_grafana: Push dashboard to Grafana Cloud
+        lint: Validate generated alerts with pint
+
     Returns:
         Exit code (0 for success, 1 for error)
     """
     # Dry-run delegates to plan command
     if dry_run:
         return plan_command(service_yaml, env=env, verbose=verbose)
-    
+
     # Create orchestrator
     orchestrator = ServiceOrchestrator(Path(service_yaml), env=env, push_to_grafana=push_grafana)
-    
+
     # Override output directory if specified
     if output_dir:
         orchestrator.output_dir = Path(output_dir)
-    
+
     # Apply
     result = orchestrator.apply(skip=skip, only=only, force=force, verbose=verbose)
-    
+
     # Print result
     if output_format == "json":
         print_apply_json(result)
     else:  # text (default)
         print_apply_summary(result, verbose=verbose)
-    
+
+    # Lint generated alerts if requested
+    if lint and result.success:
+        lint_exit_code = _lint_generated_alerts(result.output_dir, verbose=verbose)
+        if lint_exit_code != 0:
+            return lint_exit_code
+
     return 0 if result.success else 1
+
+
+def _lint_generated_alerts(output_dir: Path, verbose: bool = False) -> int:
+    """Lint generated alerts with pint."""
+    from nthlayer.validation import PintLinter, is_pint_available
+
+    alerts_file = output_dir / "alerts.yaml"
+    if not alerts_file.exists():
+        if verbose:
+            print("  ℹ No alerts.yaml found, skipping lint")
+        return 0
+
+    if not is_pint_available():
+        print()
+        print("  ⚠ pint not installed - skipping alert validation")
+        print("    Install: brew install cloudflare/cloudflare/pint")
+        print("    Or download from: https://github.com/cloudflare/pint/releases")
+        return 0  # Don't fail, just warn
+
+    print()
+    print("Validating alerts with pint...")
+
+    linter = PintLinter()
+    result = linter.lint_file(alerts_file)
+
+    print(f"  {result.summary()}")
+
+    if result.issues:
+        for issue in result.issues:
+            icon = "✗" if issue.is_error else "⚠" if issue.is_warning else "ℹ"
+            line_info = f":{issue.line}" if issue.line else ""
+            print(f"    {icon} [{issue.check}]{line_info} {issue.message}")
+
+    if not result.passed:
+        print()
+        print("  Alert validation failed. Fix issues before deploying.")
+        return 1
+
+    return 0
