@@ -17,7 +17,7 @@ Generate your complete reliability stack from a single service spec.
 
 ---
 
-## Quick Start
+## ⚡ Quick Start
 
 ```bash
 pipx install nthlayer
@@ -33,7 +33,7 @@ nthlayer apply service.yaml
 
 ---
 
-## What You Put In
+## 📥 What You Put In
 
 ### 1. Service Spec (`service.yaml`)
 
@@ -49,15 +49,15 @@ dependencies:
 ### 2. Environment Variables (optional)
 
 ```bash
-# PagerDuty - auto-create team, escalation policy, service
+# 📟 PagerDuty - auto-create team, escalation policy, service
 export PAGERDUTY_API_KEY=...
 
-# Grafana - auto-push dashboards
+# 📊 Grafana - auto-push dashboards
 export NTHLAYER_GRAFANA_URL=...
 export NTHLAYER_GRAFANA_API_KEY=...
 export NTHLAYER_GRAFANA_ORG_ID=1              # Default: 1
 
-# Prometheus - metric discovery for intent resolution
+# 🔍 Prometheus - metric discovery for intent resolution
 export NTHLAYER_PROMETHEUS_URL=...
 export NTHLAYER_METRICS_USER=...              # If auth required
 export NTHLAYER_METRICS_PASSWORD=...
@@ -65,19 +65,19 @@ export NTHLAYER_METRICS_PASSWORD=...
 
 ---
 
-## What You Get Out
+## 📤 What You Get Out
 
 | Output | File | Deploy To |
 |--------|------|-----------|
-| Dashboard | `generated/<service>/dashboard.json` | Grafana |
-| Alerts | `generated/<service>/alerts.yaml` | Prometheus |
-| SLOs | `generated/<service>/slos.yaml` | OpenSLO-compatible |
-| Recording Rules | `generated/<service>/recording-rules.yaml` | Prometheus |
-| PagerDuty | Created via API | Team, escalation policy, service |
+| 📊 Dashboard | `generated/<service>/dashboard.json` | Grafana |
+| 🚨 Alerts | `generated/<service>/alerts.yaml` | Prometheus |
+| 🎯 SLOs | `generated/<service>/slos.yaml` | OpenSLO-compatible |
+| ⚡ Recording Rules | `generated/<service>/recording-rules.yaml` | Prometheus |
+| 📟 PagerDuty | Created via API | Team, escalation policy, service |
 
 ---
 
-## Full Service Example
+## 📝 Full Service Example
 
 ```yaml
 name: payment-api
@@ -101,51 +101,68 @@ pagerduty:
 
 ---
 
-## Time Saved
+## 💰 The Value
 
-| Task | Manual | NthLayer |
-|------|--------|----------|
-| PromQL for SLOs | 2-4 hrs | Generated |
-| Grafana dashboard | 4-8 hrs | Generated |
-| PagerDuty setup | 1-2 hrs | Generated |
-| Alert rules | 2-4 hrs | Generated |
-| **Total** | **10-20 hrs** | **5 min** |
+<div align="center">
+  <h3>⏱️ 20 hours → 5 minutes per service</h3>
+</div>
+
+### At Scale
+
+| Scenario | Before NthLayer | After NthLayer | Savings |
+|----------|-----------------|----------------|---------|
+| 🚀 **Startup** (50 services) | 1,000 hours of ops work | 4 hours | Launch in 1 week vs 6 weeks |
+| 📈 **Scale-up** (200 services) | 2 FTEs maintaining configs | 0.2 FTE | 1.8 engineers → product work |
+| 🏢 **Enterprise** (1,000 services) | 20,000 hours, multi-quarter | 100 hours | $2M+ value, 3 months faster |
+
+### What Gets Automated
+
+| Task | Manual Effort | With NthLayer |
+|------|---------------|---------------|
+| 🎯 Define SLOs & error budgets | 6 hours | Generated |
+| 🚨 Research & configure alerts | 4 hours | 400+ battle-tested rules |
+| 📊 Build Grafana dashboards | 5 hours | 12-28 panels auto-generated |
+| 📟 PagerDuty escalation setup | 2 hours | Tier-based defaults |
+| 📋 Write recording rules | 3 hours | 20+ pre-computed metrics |
+| **Total per service** | **20+ hours** | **5 minutes** |
 
 ---
 
-## How It Works
+## 🧠 How It Works
 
-1. **Metric Discovery** - Queries Prometheus to find what metrics actually exist
-2. **Intent Resolution** - Maps "availability SLO" → best matching PromQL query
-3. **Type Routing** - API services get HTTP metrics, workers get job metrics
-4. **Tier Defaults** - Critical = 5/15/30min escalation, Low = 60min
-5. **Technology Templates** - PostgreSQL, Redis, Kubernetes patterns built-in
+| Step | What Happens |
+|------|--------------|
+| 🔍 **Metric Discovery** | Queries Prometheus to find what metrics actually exist |
+| 🎯 **Intent Resolution** | Maps "availability SLO" → best matching PromQL query |
+| 🔀 **Type Routing** | API services get HTTP metrics, workers get job metrics |
+| ⚡ **Tier Defaults** | Critical = 5/15/30min escalation, Low = 60min |
+| 🏗️ **Technology Templates** | PostgreSQL, Redis, Kubernetes patterns built-in |
 
 ---
 
-## CLI Commands
+## 🛠️ CLI Commands
 
 ```bash
-nthlayer plan service.yaml      # Preview what will be generated
-nthlayer apply service.yaml     # Generate all artifacts
-nthlayer apply --push-grafana   # Also push dashboard to Grafana
-nthlayer apply --lint           # Validate generated alerts with pint
-nthlayer lint alerts.yaml       # Lint existing Prometheus rules
+nthlayer plan service.yaml      # 👀 Preview what will be generated
+nthlayer apply service.yaml     # ✨ Generate all artifacts
+nthlayer apply --push-grafana   # 📊 Also push dashboard to Grafana
+nthlayer apply --lint           # ✅ Validate generated alerts with pint
+nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
 ```
 
 ---
 
-## Coming Soon
+## 🔮 Coming Soon
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| **Error Budgets** | Track budget consumption, correlate with deploys | In Progress |
-| **Deployment Gates** | Block ArgoCD deploys when budget exhausted | Planned |
-| **Runbook Generation** | Auto-generate troubleshooting docs from service metadata | Planned |
+| 💰 **Error Budgets** | Track budget consumption, correlate with deploys | 🔨 In Progress |
+| 🚦 **Deployment Gates** | Block ArgoCD deploys when budget exhausted | 📋 Planned |
+| 📖 **Runbook Generation** | Auto-generate troubleshooting docs from service metadata | 📋 Planned |
 
 ---
 
-## Installation
+## 📦 Installation
 
 ```bash
 # Recommended
@@ -160,7 +177,7 @@ nthlayer --version
 
 ---
 
-## Live Demo
+## 🌐 Live Demo
 
 See NthLayer in action with real Grafana dashboards and generated configs:
 
@@ -169,18 +186,18 @@ See NthLayer in action with real Grafana dashboards and generated configs:
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Guide | Description |
 |-------|-------------|
-| [GETTING_STARTED.md](GETTING_STARTED.md) | 10-minute setup guide |
-| [docs/TEMPLATES.md](docs/TEMPLATES.md) | Service template reference |
-| [docs/ALERTS.md](docs/ALERTS.md) | Auto-generated alerts docs |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
+| 📖 [GETTING_STARTED.md](GETTING_STARTED.md) | 10-minute setup guide |
+| 🏗️ [docs/TEMPLATES.md](docs/TEMPLATES.md) | Service template reference |
+| 🚨 [docs/ALERTS.md](docs/ALERTS.md) | Auto-generated alerts docs |
+| 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 ```bash
 git clone https://github.com/rsionnach/nthlayer.git
@@ -193,13 +210,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 
-## License
+## 📄 License
 
 MIT - See [LICENSE.txt](LICENSE.txt)
 
 ---
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
 ### Core Dependencies
 - [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) - Dashboard generation SDK (Apache 2.0)
