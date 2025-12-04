@@ -46,12 +46,27 @@ dependencies:
   - postgresql
 ```
 
-### 2. API Keys (optional, enables auto-push)
+### 2. Environment Variables (optional)
 
 ```bash
-export PAGERDUTY_API_KEY=...         # Creates team, escalation, service
-export NTHLAYER_GRAFANA_URL=...      # Auto-push dashboards
+# PagerDuty - auto-create team, escalation policy, service
+export PAGERDUTY_API_KEY=...
+
+# Grafana - auto-push dashboards
+export NTHLAYER_GRAFANA_URL=...
 export NTHLAYER_GRAFANA_API_KEY=...
+export NTHLAYER_GRAFANA_ORG_ID=1              # Default: 1
+
+# Prometheus - metric discovery for intent resolution
+export NTHLAYER_PROMETHEUS_URL=...
+export NTHLAYER_METRICS_USER=...              # If auth required
+export NTHLAYER_METRICS_PASSWORD=...
+
+# Slack - notifications
+export NTHLAYER_SLACK_WEBHOOK_URL=...
+
+# Environment detection
+export NTHLAYER_ENV=production                # production|staging|development
 ```
 
 ---
