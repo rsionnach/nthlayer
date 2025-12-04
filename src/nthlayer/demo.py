@@ -21,6 +21,7 @@ import yaml
 
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
+from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 from nthlayer.slos.cli_helpers import (
     get_cli_session,
@@ -781,6 +782,9 @@ def build_parser() -> argparse.ArgumentParser:
     test_alert_parser.add_argument("--slack-webhook", help="Slack webhook URL")
     test_alert_parser.add_argument("--pagerduty-key", help="PagerDuty integration key")
 
+    # SLO commands (new unified interface)
+    register_slo_parser(subparsers)
+
     return parser
 
 
@@ -1083,6 +1087,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "reslayer":
         demo_reslayer(args)
         return
+
+    if args.command == "slo":
+        sys.exit(handle_slo_command(args))
 
     parser.print_help()
 
