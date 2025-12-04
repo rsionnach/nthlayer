@@ -135,7 +135,7 @@ scripts/           → Utility scripts (validation, migration)
 
 ### PromQL Query Patterns
 - Always use `service="$service"` label selector (NOT `cluster` or other labels)
-- histogram_quantile MUST include `sum by (le)`: 
+- histogram_quantile MUST include `sum by (le)`:
   ```promql
   histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="$service"}[5m])))
   ```
@@ -147,6 +147,22 @@ scripts/           → Utility scripts (validation, migration)
 - Use `structlog` for logging
 - Prefer composition over inheritance
 - Tests first when fixing bugs
+
+### External Service SDKs (CRITICAL)
+Always use official SDKs/clients for external service integrations. Do not create bespoke HTTP clients when official libraries exist.
+
+| Service | Official SDK | Package |
+|---------|--------------|---------|
+| **PagerDuty** | `pagerduty` | `pagerduty>=6.0.0` |
+| **Grafana** | `grafana-foundation-sdk` | `grafana-foundation-sdk>=0.0.11` |
+| **AWS** | `boto3` / `aioboto3` | `boto3>=1.34.0` |
+| **Slack** | `slack_sdk` | (add when needed) |
+
+When integrating a new external service:
+1. Research if an official SDK exists
+2. If yes, add to `pyproject.toml` and use it
+3. If no official SDK, check for well-maintained community libraries
+4. Only create custom HTTP clients as a last resort
 
 ### Technology Templates
 When adding a new database/cache template:
@@ -201,7 +217,7 @@ Check `.beads/issues.jsonl` for the latest priorities. Key epics:
 
 ### Technology Templates to Add
 - `trellis-0cd`: Kafka
-- `trellis-e8w`: MongoDB  
+- `trellis-e8w`: MongoDB
 - `trellis-ys8`: RabbitMQ
 - `trellis-uum`: Elasticsearch (✅ done)
 

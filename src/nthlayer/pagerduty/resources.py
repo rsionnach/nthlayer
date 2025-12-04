@@ -3,6 +3,8 @@ PagerDuty resource management.
 
 Creates and manages Teams, Schedules, Escalation Policies, and Services
 with tier-based defaults and team-prefixed naming.
+
+Uses the official PagerDuty Python SDK (pagerduty>=6.0.0).
 """
 
 from __future__ import annotations
@@ -13,7 +15,8 @@ from datetime import datetime
 from datetime import timezone as timezone_module
 from typing import Any
 
-import httpx
+import pagerduty
+from pagerduty import RestApiV2Client
 
 from nthlayer.pagerduty.defaults import (
     get_escalation_config,
@@ -28,6 +31,12 @@ from nthlayer.pagerduty.naming import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class PagerDutyAPIError(Exception):
+    """Raised when PagerDuty API returns an error."""
+
+    pass
 
 
 @dataclass
@@ -63,50 +72,41 @@ class PagerDutyResourceManager:
 
     Creates teams, schedules, escalation policies, and services
     following naming conventions and tier-appropriate configurations.
+
+    Uses the official PagerDuty Python SDK.
     """
 
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.pagerduty.com",
-        default_from: str | None = None,
+        default_from: str = "nthlayer@example.com",
         timeout: float = 30.0,
     ):
         """
-        Initialize the resource manager.
+        Initialize the resource manager with official PagerDuty SDK.
 
         Args:
-            api_key: PagerDuty API key
-            base_url: PagerDuty API base URL
-            default_from: Default 'From' email for write operations
+            api_key: PagerDuty API key (v2 REST API token)
+            default_from: Email for 'From' header (required for write operations)
             timeout: Request timeout in seconds
         """
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
         self.default_from = default_from
         self.timeout = timeout
-        self._client: httpx.Client | None = None
+        self._client: RestApiV2Client | None = None
 
     @property
-    def client(self) -> httpx.Client:
-        """Lazy-initialize HTTP client."""
+    def client(self) -> RestApiV2Client:
+        """Lazy-initialize official PagerDuty SDK client."""
         if self._client is None:
-            headers = {
-                "Authorization": f"Token token={self.api_key}",
-                "Accept": "application/vnd.pagerduty+json;version=2",
-                "Content-Type": "application/json",
-            }
-            if self.default_from:
-                headers["From"] = self.default_from
-            self._client = httpx.Client(
-                base_url=self.base_url,
-                headers=headers,
-                timeout=self.timeout,
+            self._client = RestApiV2Client(
+                self.api_key,
+                default_from=self.default_from,
             )
         return self._client
 
     def close(self) -> None:
-        """Close the HTTP client."""
+        """Close the SDK client."""
         if self._client:
             self._client.close()
             self._client = None
@@ -220,7 +220,7 @@ class PagerDutyResourceManager:
                 if service_data:
                     result.service_url = service_data.get("html_url")
 
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             result.success = False
             result.errors.append(f"PagerDuty API error: {e.response.status_code}")
         except Exception as e:
@@ -271,7 +271,7 @@ class PagerDutyResourceManager:
                 resource_name=team_name,
                 created=True,
             )
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             return ResourceResult(
                 success=False,
                 error=f"Failed to create team: {e.response.text}",
@@ -352,7 +352,7 @@ class PagerDutyResourceManager:
                     f"Schedule '{schedule_name}' created with empty rotation - add users manually"
                 ],
             )
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             return ResourceResult(
                 success=False,
                 error=f"Failed to create schedule: {e.response.text}",
@@ -436,7 +436,7 @@ class PagerDutyResourceManager:
                 resource_name=policy_name,
                 created=True,
             )
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             return ResourceResult(
                 success=False,
                 error=f"Failed to create escalation policy: {e.response.text}",
@@ -507,7 +507,7 @@ class PagerDutyResourceManager:
                 resource_name=pd_service_name,
                 created=True,
             )
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             return ResourceResult(
                 success=False,
                 error=f"Failed to create service: {e.response.text}",
@@ -521,7 +521,7 @@ class PagerDutyResourceManager:
             for team in response.json().get("teams", []):
                 if team["name"].lower() == team_name.lower():
                     return team
-        except httpx.HTTPStatusError:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
             pass
         return None
 
@@ -533,7 +533,7 @@ class PagerDutyResourceManager:
             for schedule in response.json().get("schedules", []):
                 if schedule["name"].lower() == schedule_name.lower():
                     return schedule
-        except httpx.HTTPStatusError:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
             pass
         return None
 
@@ -545,7 +545,7 @@ class PagerDutyResourceManager:
             for policy in response.json().get("escalation_policies", []):
                 if policy["name"].lower() == policy_name.lower():
                     return policy
-        except httpx.HTTPStatusError:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
             pass
         return None
 
@@ -557,7 +557,7 @@ class PagerDutyResourceManager:
             for service in response.json().get("services", []):
                 if service["name"].lower() == service_name.lower():
                     return service
-        except httpx.HTTPStatusError:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
             pass
         return None
 
@@ -567,6 +567,6 @@ class PagerDutyResourceManager:
             response = self.client.get(f"/services/{service_id}")
             response.raise_for_status()
             return response.json().get("service")
-        except httpx.HTTPStatusError:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
             pass
         return None

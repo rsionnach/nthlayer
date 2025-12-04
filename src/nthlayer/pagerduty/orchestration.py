@@ -3,6 +3,8 @@ PagerDuty Event Orchestration management.
 
 Creates service-level event orchestration rules for alert routing overrides.
 Uses service-level orchestrations which are available on all PagerDuty plans.
+
+Uses the official PagerDuty Python SDK (pagerduty>=6.0.0).
 """
 
 from __future__ import annotations
@@ -11,7 +13,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
+import pagerduty
+from pagerduty import RestApiV2Client
 
 logger = logging.getLogger(__name__)
 
@@ -48,39 +51,34 @@ class EventOrchestrationManager:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.pagerduty.com",
+        default_from: str = "nthlayer@example.com",
         timeout: float = 30.0,
     ):
         """
-        Initialize the orchestration manager.
+        Initialize the orchestration manager with official PagerDuty SDK.
 
         Args:
-            api_key: PagerDuty API key
-            base_url: PagerDuty API base URL
+            api_key: PagerDuty API key (v2 REST API token)
+            default_from: Email for 'From' header (required for write operations)
             timeout: Request timeout in seconds
         """
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        self.default_from = default_from
         self.timeout = timeout
-        self._client: httpx.Client | None = None
+        self._client: RestApiV2Client | None = None
 
     @property
-    def client(self) -> httpx.Client:
-        """Lazy-initialize HTTP client."""
+    def client(self) -> RestApiV2Client:
+        """Lazy-initialize official PagerDuty SDK client."""
         if self._client is None:
-            self._client = httpx.Client(
-                base_url=self.base_url,
-                headers={
-                    "Authorization": f"Token token={self.api_key}",
-                    "Accept": "application/vnd.pagerduty+json;version=2",
-                    "Content-Type": "application/json",
-                },
-                timeout=self.timeout,
+            self._client = RestApiV2Client(
+                self.api_key,
+                default_from=self.default_from,
             )
         return self._client
 
     def close(self) -> None:
-        """Close the HTTP client."""
+        """Close the SDK client."""
         if self._client:
             self._client.close()
             self._client = None
@@ -136,7 +134,7 @@ class EventOrchestrationManager:
                 error=result.get("error"),
             )
 
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             return OrchestrationResult(
                 success=False,
                 error=f"PagerDuty API error: {e.response.status_code} - {e.response.text}",
@@ -162,7 +160,7 @@ class EventOrchestrationManager:
             response = self.client.get(f"/event_orchestrations/services/{service_id}")
             if response.status_code == 200:
                 return response.json().get("orchestration_path", {})
-        except httpx.HTTPStatusError:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError):
             pass
 
         # Create new orchestration
@@ -173,7 +171,7 @@ class EventOrchestrationManager:
             response = self.client.get(f"/event_orchestrations/services/{service_id}")
             response.raise_for_status()
             return response.json().get("orchestration_path", {})
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             logger.error(f"Failed to get/create orchestration: {e}")
             return None
 
@@ -237,7 +235,7 @@ class EventOrchestrationManager:
             )
             response.raise_for_status()
             return {"success": True}
-        except httpx.HTTPStatusError as e:
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             return {
                 "success": False,
                 "error": f"Failed to update orchestration: {e.response.text}",
