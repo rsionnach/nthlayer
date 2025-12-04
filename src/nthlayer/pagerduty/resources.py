@@ -173,6 +173,20 @@ class PagerDutyResourceManager:
                 if team_result.created:
                     result.created_resources.append(f"team:{team_result.resource_name}")
                 result.warnings.extend(team_result.warnings)
+
+                # Add API key owner as team manager
+                current_user_id = self.get_current_user_id()
+                if current_user_id and result.team_id:
+                    member_result = self.add_team_member(
+                        team_id=result.team_id,
+                        user_id=current_user_id,
+                        role="manager",
+                    )
+                    if member_result.success and member_result.created:
+                        result.created_resources.append("team_membership:manager")
+                    elif not member_result.success:
+                        result.warnings.append(f"Team membership: {member_result.error}")
+                    result.warnings.extend(member_result.warnings)
             else:
                 result.warnings.append(f"Team creation failed: {team_result.error}")
 
@@ -303,6 +317,60 @@ class PagerDutyResourceManager:
             return ResourceResult(
                 success=False,
                 error=f"Failed to create team: {e.response.text}",
+            )
+
+    def get_current_user_id(self) -> str | None:
+        """
+        Get the user ID associated with the API key.
+
+        Uses the first user in the account as a fallback since
+        PagerDuty API tokens don't have a direct /me endpoint.
+        """
+        return self.get_default_user_id()
+
+    def add_team_member(
+        self,
+        team_id: str,
+        user_id: str,
+        role: str = "manager",
+    ) -> ResourceResult:
+        """
+        Add a user to a team with the specified role.
+
+        Args:
+            team_id: PagerDuty team ID
+            user_id: PagerDuty user ID
+            role: Team role (manager, observer, responder)
+
+        Returns:
+            ResourceResult indicating success/failure
+        """
+        try:
+            response = self.client.post(
+                f"/teams/{team_id}/users/{user_id}",
+                json={"role": role},
+            )
+            response.raise_for_status()
+            return ResourceResult(
+                success=True,
+                resource_id=user_id,
+                resource_name=f"team_member:{role}",
+                created=True,
+            )
+        except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
+            # Check if user is already a member (409 Conflict)
+            if hasattr(e, "response") and e.response.status_code == 409:
+                return ResourceResult(
+                    success=True,
+                    resource_id=user_id,
+                    resource_name=f"team_member:{role}",
+                    created=False,
+                    warnings=["User already member of team"],
+                )
+            err_text = e.response.text if hasattr(e, "response") else str(e)
+            return ResourceResult(
+                success=False,
+                error=f"Failed to add team member: {err_text}",
             )
 
     def ensure_schedule(

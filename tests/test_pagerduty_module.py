@@ -2,6 +2,7 @@
 Tests for the PagerDuty integration module.
 """
 
+from nthlayer.pagerduty.resources import ResourceResult
 from nthlayer.pagerduty.defaults import (
     SUPPORT_MODEL_DEFAULTS,
     TIER_ESCALATION_DEFAULTS,
@@ -214,3 +215,45 @@ class TestSpecsModels:
 
         assert config.sre_escalation_policy == "sre-escalation"
         assert config.timezone == "America/Los_Angeles"
+
+
+class TestResourceResult:
+    """Tests for ResourceResult dataclass."""
+
+    def test_resource_result_success(self):
+        """ResourceResult should track successful operations."""
+        result = ResourceResult(
+            success=True,
+            resource_id="PABCDEF",
+            resource_name="test-team",
+            created=True,
+        )
+        assert result.success
+        assert result.resource_id == "PABCDEF"
+        assert result.created
+        assert not result.warnings
+        assert result.error is None
+
+    def test_resource_result_failure(self):
+        """ResourceResult should track failed operations."""
+        result = ResourceResult(
+            success=False,
+            error="API rate limit exceeded",
+        )
+        assert not result.success
+        assert result.error == "API rate limit exceeded"
+        assert result.resource_id is None
+
+    def test_resource_result_with_warnings(self):
+        """ResourceResult should track warnings."""
+        result = ResourceResult(
+            success=True,
+            resource_id="PABCDEF",
+            resource_name="test-team",
+            created=False,
+            warnings=["Using existing team 'test-team'"],
+        )
+        assert result.success
+        assert not result.created
+        assert len(result.warnings) == 1
+        assert "existing team" in result.warnings[0]
