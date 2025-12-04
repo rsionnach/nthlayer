@@ -197,19 +197,68 @@ resources:
 class TestSloCollectCommand:
     """Tests for nthlayer slo collect command."""
 
-    def test_collect_shows_placeholder(self):
-        """Test that collect shows placeholder message (DB not connected)."""
-        from nthlayer.cli.slo import slo_collect_command
+    def test_collect_returns_error_for_missing_service(self):
+        """Test that collect returns error when service not found."""
+        import os
+        import tempfile
 
-        result = slo_collect_command("payment-api")
-        assert result == 0
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                from nthlayer.cli.slo import slo_collect_command
+
+                result = slo_collect_command("nonexistent-service")
+                assert result == 1
+            finally:
+                os.chdir(old_cwd)
+
+    def test_collect_with_explicit_file(self):
+        """Test that collect works with explicit file path."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            service_file = tmpdir / "test-service.yaml"
+            service_file.write_text("""
+service:
+  name: test-service
+  team: platform
+  tier: standard
+  type: api
+
+resources:
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.9
+      window: 7d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{status!~"5.."}[5m]))
+          / sum(rate(http_requests_total[5m]))
+""")
+
+            from nthlayer.cli.slo import slo_collect_command
+
+            # Will try to query Prometheus and fail, but should return 0
+            result = slo_collect_command(
+                "test-service",
+                prometheus_url="http://localhost:9999",  # Non-existent
+                service_file=str(service_file),
+            )
+            # Returns 0 even with connection error (displays error in output)
+            assert result == 0
 
 
 class TestSloBlameCommand:
     """Tests for nthlayer slo blame command."""
 
-    def test_blame_shows_placeholder(self):
-        """Test that blame shows placeholder message (DB not connected)."""
+    def test_blame_shows_coming_soon(self):
+        """Test that blame shows coming soon message (CI/CD integration needed)."""
         from nthlayer.cli.slo import slo_blame_command
 
         result = slo_blame_command("payment-api")

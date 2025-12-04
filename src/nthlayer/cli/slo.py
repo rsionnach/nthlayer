@@ -11,6 +11,8 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
@@ -171,28 +173,185 @@ def slo_list_command() -> int:
 
 def slo_collect_command(
     service: str,
-    prometheus_url: str = "http://localhost:9090",
+    prometheus_url: str | None = None,
+    service_file: str | None = None,
 ) -> int:
     """Collect metrics from Prometheus and calculate error budget."""
+    # Get Prometheus URL from env or arg
+    prom_url = prometheus_url or os.environ.get(
+        "NTHLAYER_PROMETHEUS_URL", "http://localhost:9090"
+    )
+
     print()
     print("=" * 60)
-    print(f"  Collect Metrics: {service}")
+    print(f"  Error Budget Status: {service}")
     print("=" * 60)
     print()
 
-    print(f"Prometheus: {prometheus_url}")
+    # Find service file
+    if service_file:
+        service_path = Path(service_file)
+    else:
+        for pattern in [
+            f"services/{service}.yaml",
+            f"examples/services/{service}.yaml",
+        ]:
+            if Path(pattern).exists():
+                service_path = Path(pattern)
+                break
+        else:
+            print(f"No service file found for: {service}")
+            return 1
+
+    try:
+        context, resources = parse_service_file(str(service_path))
+    except Exception as e:
+        print(f"Error parsing service file: {e}")
+        return 1
+
+    # Find SLO resources
+    slo_resources = [r for r in resources if r.kind == "SLO"]
+
+    if not slo_resources:
+        print(f"No SLOs defined in {service_path}")
+        return 1
+
+    # Query Prometheus for each SLO
+    print(f"Prometheus: {prom_url}")
     print()
 
-    # This requires database and Prometheus connection
-    # For now, show what would happen
-    print("This command requires:")
-    print("  1. Database connection (NTHLAYER_DATABASE_URL)")
-    print("  2. Prometheus connection")
-    print()
-    print("Coming soon: Full metrics collection and budget calculation")
+    try:
+        results = asyncio.run(_collect_slo_metrics(slo_resources, prom_url, context.name))
+    except Exception as e:
+        print(f"Error querying Prometheus: {e}")
+        print()
+        print("Check that Prometheus is reachable at:")
+        print(f"  {prom_url}")
+        print()
+        print("Set custom URL with:")
+        print("  export NTHLAYER_PROMETHEUS_URL=http://your-prometheus:9090")
+        return 1
+
+    # Display results
+    for result in results:
+        _print_slo_result(result)
+
+    print("-" * 60)
+    healthy = sum(1 for r in results if r["status"] == "HEALTHY")
+    print(f"Summary: {healthy}/{len(results)} SLOs healthy")
     print()
 
     return 0
+
+
+async def _collect_slo_metrics(
+    slo_resources: list[Any],
+    prometheus_url: str,
+    service_name: str,
+) -> list[dict[str, Any]]:
+    """Query Prometheus for SLO metrics."""
+    from nthlayer.providers.prometheus import PrometheusProvider, PrometheusProviderError
+
+    provider = PrometheusProvider(prometheus_url)
+    results = []
+
+    for slo in slo_resources:
+        spec = slo.spec or {}
+        objective = spec.get("objective", 99.9)
+        window = spec.get("window", "30d")
+        indicator = spec.get("indicator", {})
+
+        # Calculate budget
+        window_minutes = _parse_window_minutes(window)
+        error_budget_percent = (100 - objective) / 100
+        total_budget_minutes = window_minutes * error_budget_percent
+
+        result = {
+            "name": slo.name,
+            "objective": objective,
+            "window": window,
+            "total_budget_minutes": total_budget_minutes,
+            "current_sli": None,
+            "burned_minutes": None,
+            "percent_consumed": None,
+            "status": "UNKNOWN",
+            "error": None,
+        }
+
+        # Try to get SLI value from Prometheus
+        query = indicator.get("query")
+        if query:
+            # Substitute service name in query
+            query = query.replace("${service}", service_name)
+            query = query.replace("$service", service_name)
+
+            try:
+                sli_value = await provider.get_sli_value(query)
+
+                if sli_value > 0:
+                    result["current_sli"] = sli_value * 100  # Convert to percentage
+
+                    # Calculate burn
+                    error_rate = 1.0 - sli_value
+                    burned_minutes = window_minutes * error_rate
+                    result["burned_minutes"] = burned_minutes
+                    result["percent_consumed"] = (burned_minutes / total_budget_minutes) * 100
+
+                    # Determine status
+                    if result["percent_consumed"] >= 100:
+                        result["status"] = "EXHAUSTED"
+                    elif result["percent_consumed"] >= 80:
+                        result["status"] = "CRITICAL"
+                    elif result["percent_consumed"] >= 50:
+                        result["status"] = "WARNING"
+                    else:
+                        result["status"] = "HEALTHY"
+                else:
+                    result["error"] = "No data returned from Prometheus"
+                    result["status"] = "NO_DATA"
+
+            except PrometheusProviderError as e:
+                result["error"] = str(e)
+                result["status"] = "ERROR"
+        else:
+            result["error"] = "No query defined in SLO indicator"
+            result["status"] = "NO_QUERY"
+
+        results.append(result)
+
+    return results
+
+
+def _print_slo_result(result: dict[str, Any]) -> None:
+    """Print formatted SLO result."""
+    status_icons = {
+        "HEALTHY": "[OK]",
+        "WARNING": "[!]",
+        "CRITICAL": "[!!]",
+        "EXHAUSTED": "[X]",
+        "NO_DATA": "[?]",
+        "NO_QUERY": "[-]",
+        "ERROR": "[E]",
+        "UNKNOWN": "[?]",
+    }
+
+    icon = status_icons.get(result["status"], "[?]")
+    print(f"{icon} SLO: {result['name']} ({result['objective']}%)")
+    print(f"    Window: {result['window']} rolling")
+
+    if result["current_sli"] is not None:
+        print(f"    Current SLI: {result['current_sli']:.2f}%")
+        print()
+        print("    Error Budget:")
+        print(f"      Total: {result['total_budget_minutes']:.1f} min")
+        burned = result["burned_minutes"]
+        pct = result["percent_consumed"]
+        print(f"      Burned: {burned:.1f} min ({pct:.0f}%)")
+        print(f"      Status: {result['status']}")
+    elif result["error"]:
+        print(f"    Error: {result['error']}")
+
+    print()
 
 
 def slo_blame_command(
@@ -207,17 +366,15 @@ def slo_blame_command(
     print("=" * 60)
     print()
 
-    print(f"Lookback: {days} days")
-    print(f"Min confidence: {min_confidence * 100:.0f}%")
+    print("Deployment correlation requires CI/CD integration.")
     print()
-
-    # This requires database with deployment and burn data
-    print("This command requires:")
-    print("  1. Database with deployment records")
-    print("  2. Error budget burn history")
+    print("Coming soon:")
+    print("  - ArgoCD (Application CRD, webhook listener)")
+    print("  - GitHub Actions (deployment events API)")
+    print("  - Tekton (PipelineRun CRD)")
+    print("  - GitLab CI (pipeline webhooks)")
     print()
-    print("Record deployments with:")
-    print(f"  nthlayer deploy record {service} --commit <sha>")
+    print("For now, use 'nthlayer slo collect' to see current budget status.")
     print()
 
     return 0
@@ -256,10 +413,10 @@ def register_slo_parser(subparsers: argparse._SubParsersAction) -> None:
         "collect", help="Collect metrics and calculate error budget"
     )
     collect_parser.add_argument("service", help="Service name")
+    collect_parser.add_argument("--file", help="Path to service YAML file")
     collect_parser.add_argument(
         "--prometheus-url",
-        default="http://localhost:9090",
-        help="Prometheus server URL",
+        help="Prometheus server URL (or set NTHLAYER_PROMETHEUS_URL)",
     )
 
     # slo blame
@@ -290,7 +447,8 @@ def handle_slo_command(args: argparse.Namespace) -> int:
     elif command == "collect":
         return slo_collect_command(
             service=args.service,
-            prometheus_url=args.prometheus_url,
+            prometheus_url=getattr(args, "prometheus_url", None),
+            service_file=getattr(args, "file", None),
         )
     elif command == "blame":
         return slo_blame_command(
