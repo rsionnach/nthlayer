@@ -202,9 +202,9 @@ nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
 |---------|-------------|--------|
 | 💰 **Error Budgets** | Track budget consumption, correlate with deploys | ✅ Done |
 | 📊 **SLO Portfolio** | Org-wide reliability view across all services | ✅ Done |
+| 📝 **Loki Integration** | Generate LogQL alert rules, technology-specific log patterns | 🔨 Next |
 | 🚦 **Deployment Gates** | Block ArgoCD deploys when budget exhausted | 📋 Planned |
 | 🤖 **AI Generation** | Conversational service.yaml creation via MCP | 📋 Planned |
-| 📖 **Runbook Generation** | Auto-generate troubleshooting docs from service metadata | 📋 Planned |
 
 ---
 
