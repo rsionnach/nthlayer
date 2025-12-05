@@ -524,6 +524,284 @@ NGINX_PATTERNS = [
     ),
 ]
 
+# NATS log patterns
+NATS_PATTERNS = [
+    LogPattern(
+        name="NatsConnectionError",
+        pattern='|~ "connection.*error|disconnect|ECONNREFUSED"',
+        severity="critical",
+        for_duration="1m",
+        summary="NATS connection error",
+        description="Clients cannot connect to NATS.",
+    ),
+    LogPattern(
+        name="NatsSlowConsumer",
+        pattern='|~ "slow consumer|Slow Consumer"',
+        severity="warning",
+        for_duration="5m",
+        summary="NATS slow consumer detected",
+        description="A NATS consumer is not keeping up with messages.",
+    ),
+    LogPattern(
+        name="NatsAuthFailure",
+        pattern='|~ "authentication.*fail|Authorization.*Violation"',
+        severity="warning",
+        for_duration="5m",
+        summary="NATS authentication failures",
+        description="Authentication failures connecting to NATS.",
+        threshold=5,
+        window="5m",
+    ),
+    LogPattern(
+        name="NatsClusterError",
+        pattern='|~ "route.*error|cluster.*error|peer.*disconnect"',
+        severity="critical",
+        for_duration="1m",
+        summary="NATS cluster error",
+        description="NATS cluster connectivity issues.",
+    ),
+    LogPattern(
+        name="NatsStreamError",
+        pattern='|~ "JetStream.*error|stream.*error|consumer.*error"',
+        severity="warning",
+        for_duration="5m",
+        summary="NATS JetStream error",
+        description="NATS JetStream is experiencing errors.",
+    ),
+]
+
+# Pulsar log patterns
+PULSAR_PATTERNS = [
+    LogPattern(
+        name="PulsarBrokerError",
+        pattern='|~ "BrokerService.*error|broker.*exception"',
+        severity="critical",
+        for_duration="1m",
+        summary="Pulsar broker error",
+        description="Pulsar broker is experiencing errors.",
+    ),
+    LogPattern(
+        name="PulsarBookkeeperError",
+        pattern='|~ "BookKeeper.*error|bookie.*error|ledger.*error"',
+        severity="critical",
+        for_duration="1m",
+        summary="Pulsar BookKeeper error",
+        description="Pulsar storage layer is experiencing errors.",
+    ),
+    LogPattern(
+        name="PulsarTopicError",
+        pattern='|~ "topic.*error|Topic.*not found|subscription.*error"',
+        severity="warning",
+        for_duration="5m",
+        summary="Pulsar topic error",
+        description="Pulsar topic operations are failing.",
+    ),
+    LogPattern(
+        name="PulsarBacklogGrowing",
+        pattern='|~ "backlog.*growing|message.*backlog"',
+        severity="warning",
+        for_duration="10m",
+        summary="Pulsar backlog growing",
+        description="Pulsar message backlog is growing.",
+    ),
+    LogPattern(
+        name="PulsarZookeeperError",
+        pattern='|~ "ZooKeeper.*error|zk.*connection|metadata.*error"',
+        severity="critical",
+        for_duration="1m",
+        summary="Pulsar ZooKeeper error",
+        description="Pulsar cannot connect to ZooKeeper.",
+    ),
+]
+
+# HAProxy log patterns
+HAPROXY_PATTERNS = [
+    LogPattern(
+        name="HaproxyBackendDown",
+        pattern='|~ "backend.*DOWN|Server.*is DOWN"',
+        severity="critical",
+        for_duration="0m",
+        summary="HAProxy backend server down",
+        description="An HAProxy backend server is down.",
+    ),
+    LogPattern(
+        name="HaproxyConnectionError",
+        pattern='|~ "Connection refused|connect.*timeout|ECONNREFUSED"',
+        severity="critical",
+        for_duration="1m",
+        summary="HAProxy connection error",
+        description="HAProxy cannot connect to backend servers.",
+    ),
+    LogPattern(
+        name="Haproxy5xxErrors",
+        pattern='|~ " 50[0-9] | 5[0-9][0-9] "',
+        severity="warning",
+        for_duration="5m",
+        summary="HAProxy 5xx errors",
+        description="HAProxy is returning 5xx server errors.",
+        threshold=10,
+        window="5m",
+    ),
+    LogPattern(
+        name="HaproxyQueueFull",
+        pattern='|~ "queue.*full|no server available"',
+        severity="critical",
+        for_duration="0m",
+        summary="HAProxy queue full",
+        description="HAProxy request queue is full.",
+    ),
+    LogPattern(
+        name="HaproxyHighLatency",
+        pattern='|~ "Tr:.*[0-9]{5,}|backend.*timeout"',
+        severity="warning",
+        for_duration="5m",
+        summary="HAProxy high latency",
+        description="HAProxy is experiencing high backend latency.",
+        threshold=5,
+        window="5m",
+    ),
+]
+
+# Traefik log patterns
+TRAEFIK_PATTERNS = [
+    LogPattern(
+        name="TraefikServiceError",
+        pattern='|~ "service.*error|backend.*error|server.*error"',
+        severity="critical",
+        for_duration="1m",
+        summary="Traefik service error",
+        description="Traefik cannot reach backend service.",
+    ),
+    LogPattern(
+        name="Traefik5xxErrors",
+        pattern='|~ "" 50[0-9] |" 5[0-9][0-9] "',
+        severity="warning",
+        for_duration="5m",
+        summary="Traefik 5xx errors",
+        description="Traefik is returning 5xx server errors.",
+        threshold=10,
+        window="5m",
+    ),
+    LogPattern(
+        name="TraefikCertificateError",
+        pattern='|~ "certificate.*error|TLS.*error|ACME.*error"',
+        severity="warning",
+        for_duration="5m",
+        summary="Traefik certificate error",
+        description="Traefik is experiencing TLS certificate issues.",
+    ),
+    LogPattern(
+        name="TraefikProviderError",
+        pattern='|~ "provider.*error|configuration.*error|Docker.*error"',
+        severity="warning",
+        for_duration="5m",
+        summary="Traefik provider error",
+        description="Traefik configuration provider is failing.",
+    ),
+    LogPattern(
+        name="TraefikRateLimitHit",
+        pattern='|~ "rate.*limit|too many requests|429"',
+        severity="warning",
+        for_duration="5m",
+        summary="Traefik rate limit hit",
+        description="Clients are hitting Traefik rate limits.",
+        threshold=10,
+        window="5m",
+    ),
+]
+
+# etcd log patterns
+ETCD_PATTERNS = [
+    LogPattern(
+        name="EtcdLeaderChanged",
+        pattern='|~ "elected leader|leader changed|lost leader"',
+        severity="warning",
+        for_duration="0m",
+        summary="etcd leader changed",
+        description="etcd cluster leader election occurred.",
+    ),
+    LogPattern(
+        name="EtcdHighLatency",
+        pattern='|~ "slow.*request|apply.*took too long|database.*slow"',
+        severity="warning",
+        for_duration="5m",
+        summary="etcd high latency",
+        description="etcd is experiencing slow operations.",
+        threshold=5,
+        window="5m",
+    ),
+    LogPattern(
+        name="EtcdClusterError",
+        pattern='|~ "cluster.*error|member.*error|peer.*error"',
+        severity="critical",
+        for_duration="1m",
+        summary="etcd cluster error",
+        description="etcd cluster communication error.",
+    ),
+    LogPattern(
+        name="EtcdDiskError",
+        pattern='|~ "disk.*error|quota.*exceeded|no space"',
+        severity="critical",
+        for_duration="0m",
+        summary="etcd disk error",
+        description="etcd is experiencing disk issues.",
+    ),
+    LogPattern(
+        name="EtcdSnapshotError",
+        pattern='|~ "snapshot.*failed|backup.*error"',
+        severity="warning",
+        for_duration="0m",
+        summary="etcd snapshot failed",
+        description="etcd snapshot/backup operation failed.",
+    ),
+]
+
+# Consul log patterns
+CONSUL_PATTERNS = [
+    LogPattern(
+        name="ConsulLeaderError",
+        pattern='|~ "leader.*error|no cluster leader|leadership.*lost"',
+        severity="critical",
+        for_duration="1m",
+        summary="Consul leader error",
+        description="Consul cluster has no leader.",
+    ),
+    LogPattern(
+        name="ConsulAgentError",
+        pattern='|~ "agent.*error|agent.*failed|RPC.*error"',
+        severity="warning",
+        for_duration="5m",
+        summary="Consul agent error",
+        description="Consul agent is experiencing errors.",
+    ),
+    LogPattern(
+        name="ConsulServiceDeregistered",
+        pattern='|~ "deregister.*service|service.*critical|health.*critical"',
+        severity="warning",
+        for_duration="0m",
+        summary="Consul service deregistered",
+        description="A service was deregistered from Consul.",
+    ),
+    LogPattern(
+        name="ConsulSerfError",
+        pattern='|~ "serf.*error|memberlist.*error|gossip.*error"',
+        severity="critical",
+        for_duration="1m",
+        summary="Consul Serf/gossip error",
+        description="Consul cluster gossip protocol error.",
+    ),
+    LogPattern(
+        name="ConsulACLError",
+        pattern='|~ "ACL.*denied|permission.*denied|token.*error"',
+        severity="warning",
+        for_duration="5m",
+        summary="Consul ACL error",
+        description="Consul ACL permission errors.",
+        threshold=5,
+        window="5m",
+    ),
+]
+
 # Application-level patterns (generic)
 APPLICATION_PATTERNS = [
     LogPattern(
@@ -574,6 +852,12 @@ LOG_PATTERNS: dict[str, list[LogPattern]] = {
     "rabbitmq": RABBITMQ_PATTERNS,
     "rabbit": RABBITMQ_PATTERNS,
     "nginx": NGINX_PATTERNS,
+    "nats": NATS_PATTERNS,
+    "pulsar": PULSAR_PATTERNS,
+    "haproxy": HAPROXY_PATTERNS,
+    "traefik": TRAEFIK_PATTERNS,
+    "etcd": ETCD_PATTERNS,
+    "consul": CONSUL_PATTERNS,
     "application": APPLICATION_PATTERNS,
     "api": APPLICATION_PATTERNS,
     "worker": APPLICATION_PATTERNS,

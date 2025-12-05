@@ -9,17 +9,23 @@ from nthlayer.dashboards.templates.base import TechnologyTemplate
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
 
 # Intent-based templates (hybrid model) - primary implementation
+from nthlayer.dashboards.templates.consul_intent import ConsulIntentTemplate
 from nthlayer.dashboards.templates.elasticsearch_intent import ElasticsearchIntentTemplate
+from nthlayer.dashboards.templates.etcd_intent import EtcdIntentTemplate
+from nthlayer.dashboards.templates.haproxy_intent import HaproxyIntentTemplate
 from nthlayer.dashboards.templates.http_intent import HTTPIntentTemplate
 from nthlayer.dashboards.templates.kafka_intent import KafkaIntentTemplate
 from nthlayer.dashboards.templates.kubernetes import KubernetesTemplate  # No intent version yet
 from nthlayer.dashboards.templates.mongodb_intent import MongoDBIntentTemplate
 from nthlayer.dashboards.templates.mysql_intent import MySQLIntentTemplate
+from nthlayer.dashboards.templates.nats_intent import NatsIntentTemplate
 from nthlayer.dashboards.templates.nginx_intent import NginxIntentTemplate
 from nthlayer.dashboards.templates.postgresql_intent import PostgreSQLIntentTemplate
+from nthlayer.dashboards.templates.pulsar_intent import PulsarIntentTemplate
 from nthlayer.dashboards.templates.rabbitmq_intent import RabbitmqIntentTemplate
 from nthlayer.dashboards.templates.redis_intent import RedisIntentTemplate
 from nthlayer.dashboards.templates.stream_intent import StreamIntentTemplate
+from nthlayer.dashboards.templates.traefik_intent import TraefikIntentTemplate
 from nthlayer.dashboards.templates.worker_intent import WorkerIntentTemplate
 
 # Aliases for backwards compatibility
@@ -49,6 +55,12 @@ TECHNOLOGY_TEMPLATES: Dict[str, Type[TechnologyTemplate]] = {
     "rabbitmq": RabbitmqIntentTemplate,
     "rabbit": RabbitmqIntentTemplate,
     "nginx": NginxIntentTemplate,
+    "nats": NatsIntentTemplate,
+    "pulsar": PulsarIntentTemplate,
+    "haproxy": HaproxyIntentTemplate,
+    "traefik": TraefikIntentTemplate,
+    "etcd": EtcdIntentTemplate,
+    "consul": ConsulIntentTemplate,
 }
 
 
@@ -98,6 +110,12 @@ __all__ = [
     "ElasticsearchIntentTemplate",
     "RabbitmqIntentTemplate",
     "NginxIntentTemplate",
+    "NatsIntentTemplate",
+    "PulsarIntentTemplate",
+    "HaproxyIntentTemplate",
+    "TraefikIntentTemplate",
+    "EtcdIntentTemplate",
+    "ConsulIntentTemplate",
     "KubernetesTemplate",  # No intent version yet
     # Backwards compatibility aliases
     "PostgreSQLTemplate",
