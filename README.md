@@ -77,6 +77,46 @@ export NTHLAYER_METRICS_PASSWORD=...
 
 ---
 
+## 📊 SLO Portfolio
+
+Track reliability across your entire organization:
+
+```bash
+$ nthlayer portfolio
+
+======================================================================
+  NthLayer Reliability Portfolio
+======================================================================
+
+Overall Health: 78% (14/18 SLOs meeting target)
+
+By Tier:
+  Critical: 5/6 healthy (83%)
+  Standard: 6/8 healthy (75%)
+  Low: 3/4 healthy (75%)
+
+Top Budget Burners:
+  payment-api/availability: 12.5h burned (156%)
+  search-api/latency: 8.2h burned (95%)
+
+Insights:
+  ! payment-api needs reliability investment
+  * user-api exceeds SLO - consider tier promotion
+
+----------------------------------------------------------------------
+Services: 12 | SLOs: 18
+```
+
+```bash
+nthlayer slo list              # List all SLOs across services
+nthlayer slo show payment-api  # Show SLO details for a service
+nthlayer slo collect payment-api  # Query Prometheus for current budget
+nthlayer portfolio             # Org-wide reliability view
+nthlayer portfolio --details   # Full breakdown by service
+```
+
+---
+
 ## 📝 Full Service Example
 
 ```yaml
@@ -160,9 +200,11 @@ nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| 💰 **Error Budgets** | Track budget consumption, correlate with deploys | 🔨 In Progress |
+| 💰 **Error Budgets** | Track budget consumption, correlate with deploys | ✅ Done |
+| 📊 **SLO Portfolio** | Org-wide reliability view across all services | ✅ Done |
+| 📝 **Loki Integration** | Generate LogQL alert rules, technology-specific log patterns | 🔨 Next |
 | 🚦 **Deployment Gates** | Block ArgoCD deploys when budget exhausted | 📋 Planned |
-| 📖 **Runbook Generation** | Auto-generate troubleshooting docs from service metadata | 📋 Planned |
+| 🤖 **AI Generation** | Conversational service.yaml creation via MCP | 📋 Planned |
 
 ---
 

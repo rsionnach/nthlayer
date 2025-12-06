@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from nthlayer.dashboards.builder import build_dashboard
+from nthlayer.dashboards.builder_sdk import build_dashboard
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -29,6 +29,7 @@ def generate_dashboard_command(
     Returns:
         Exit code (0 for success, 1 for error)
     """
+
     def log(msg: str) -> None:
         if not quiet:
             print(msg)

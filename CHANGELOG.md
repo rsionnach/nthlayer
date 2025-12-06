@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.0a2 (December 5, 2025)
+
+### Code Quality - DRY Cleanup (~3,860 lines removed)
+- **Phase 1**: Removed duplicate dashboard builders (`builder.py` → `builder_sdk.py`) and 6 legacy template files (~2,900 lines)
+- **Phase 2**: Extracted secret backends to plugin system with lazy loading (~90 lines net reduction)
+- **Phase 3**: Removed deprecated reslayer demo functions (~869 lines)
+
+### New Features
+- **SLO Portfolio command** - `nthlayer portfolio` for org-wide reliability view
+- **Portfolio health scoring** - Tier-based weighting (tier-1: 3x, tier-2: 2x, tier-3: 1x)
+- **Portfolio insights** - Actionable recommendations for SLO improvements
+
+### Roadmap Updates
+- Added Loki integration to roadmap (Phase 2.5)
+- Added AI/ML service templates to roadmap
+- Updated positioning: complementary to PagerDuty (not competitive)
+
+### Improvements
+- Modular secrets package with lazy-loaded cloud backends
+- Faster startup (cloud backends only imported when needed)
+- Cleaner CLI without redundant commands
+
+---
+
+## v0.1.0a1 (December 3, 2025)
+
+Initial alpha release with core functionality.
+
+---
+
 ## Phase 4: PagerDuty Integration (December 2025)
 
 ### Complete PagerDuty Integration

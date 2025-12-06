@@ -53,48 +53,68 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 
 ## Roadmap
 
-### ResLayer Phase 1: Error Budget Foundation (🔨 CURRENT)
-**Goal:** "This deploy burned 8h of error budget"
-- `trellis-z6x`: OpenSLO parser and validator
-- `trellis-ygb`: Error budget calculator (30d rolling windows)
-- `trellis-0cp`: Prometheus SLI integration
-- `trellis-b54`: Time-series storage for budget tracking
-- `trellis-z2b`: Deploy → burn correlation engine
-- `trellis-deploy-correlation`: 3-factor confidence scoring
-- `trellis-yb5`: Deployment detection via ArgoCD
+### Strategic Differentiation
+**Compete where PagerDuty/Datadog won't go:**
+- Cross-vendor SLO Portfolio (they want lock-in)
+- AI-assisted config generation (they do incident response, not setup)
 
-### ResLayer Phase 2: Deployment Gates
+**Don't compete with:**
+- Incident pattern learning (PagerDuty Insights)
+- Automated incident response (PagerDuty SRE Agent)
+
+### Phase 1: Foundation (✅ DONE)
+- service.yaml spec and parser
+- Grafana dashboard generation
+- Prometheus alert generation
+- PagerDuty integration
+- pint PromQL linting
+
+### Phase 2: Error Budgets (✅ DONE)
+- `nthlayer slo show/list` - View SLOs from service.yaml
+- `nthlayer slo collect` - Real-time Prometheus queries (stateless)
+- Blame deferred until CI/CD integration
+
+### Phase 2.5: Loki Integration (📋 PLANNED)
+**Goal:** Complete observability with logs (same Grafana ecosystem)
+- `trellis-loki-epic`: Loki/LogQL integration
+- `trellis-loki-alerts`: Generate LogQL alert rules from service.yaml
+- `trellis-loki-templates`: Technology-specific log patterns (PostgreSQL, Redis, Kafka)
+
+### Phase 3: SLO Portfolio (🔨 NEXT - Differentiator)
+**Goal:** Cross-vendor, org-wide reliability portfolio
+- `trellis-portfolio-epic`: SLO Portfolio epic
+- `trellis-portfolio-aggregate`: `nthlayer portfolio` command
+- `trellis-portfolio-health`: Health scoring by tier
+- `trellis-portfolio-insights`: Actionable reliability insights
+- `trellis-portfolio-trends`: Local SQLite for historical data
+- `trellis-portfolio-web`: Local web dashboard
+- `trellis-portfolio-export`: JSON/CSV export for reporting
+
+### Phase 4: AI-Assisted Generation
+**Goal:** Conversational service.yaml creation (complements, doesn't compete with PD)
+- `trellis-ai-epic`: AI/MCP strategy
+- `trellis-mcp-server`: NthLayer as MCP tool for Claude/Cursor
+- `trellis-ai-spec-gen`: "Create a tier-1 API with Redis" → YAML
+- `trellis-ai-slo`: SLO target recommendations
+- `trellis-ai-suggestions`: Best practice recommendations
+
+### Phase 5: Deployment Gates (ResLayer Phase 2)
 **Goal:** Deploy blocked when error budget < 10%
-- `trellis-tnr`: Policy YAML DSL (conditions, actions)
-- `trellis-a4d`: Condition evaluator engine
-- `trellis-0fl`: ArgoCD deployment blocking
-- `trellis-mesh-discovery`: Istio/Linkerd dependency discovery
+- `trellis-tnr`: Policy YAML DSL
+- `trellis-a4d`: Condition evaluator
+- `trellis-0fl`: ArgoCD blocking
+- Requires CI/CD integration: ArgoCD, GitHub Actions, Tekton, GitLab CI
 
-### GovLayer: Policy Enforcement
-**Goal:** Governance guardrails for all services
-- `trellis-govlayer`: Policy engine epic
-- `trellis-policy-engine`: Core policy evaluation
-- `trellis-resource-limits`: Tier-based resource constraints
-- `trellis-approval-workflows`: Slack/Teams approval integration
-
-### ObserveLayer: Monitoring Automation
-**Goal:** Complete observability from service specs
-- `trellis-datadog`: Datadog integration epic
-- `trellis-datadog-monitors`: Monitor generation
-- `trellis-datadog-dashboards`: Dashboard generation
-- `trellis-cpx`: Runbook from service metadata
-- `trellis-meh`: Auto-generation with Mermaid diagrams
-
-### Service Catalog Integration
-**Goal:** Optional enrichment from existing catalogs
-- `trellis-catalog`: Catalog integration epic
-- `trellis-backstage-read`: Backstage API reader
-- `trellis-cortex-read`: Cortex API reader
-- `trellis-hybrid-mode`: Catalog + overrides
+### Phase 6: NthLayer Cloud (Future - Monetization)
+- Hosted portfolio dashboard
+- Multi-user / team views
+- Alerting on portfolio health
+- Enterprise features
 
 ### Technology Templates (Ongoing)
 - `trellis-0cd`: Kafka (consumer lag, partitions, replication)
 - `trellis-e8w`: MongoDB (connections, replication, locks)
+- `trellis-ai-services`: AI/ML service type (GPU utilization, model latency, inference queue)
 
 ## Core Commands
 
@@ -217,6 +237,64 @@ When adding a new database/cache template:
 2. Run `make lint && make typecheck && make test` before committing
 3. Commit messages: `<type>: <description>` (e.g., `fix: Add sum by (le) to histogram queries`)
 4. Update `.beads/issues.jsonl` when completing tasks
+
+## Beads Issue Tracking
+
+**Always update `.beads/issues.jsonl` when:**
+1. **Starting work** on a feature/improvement not already tracked - create a new issue
+2. **Completing work** - close the issue with `status: "closed"` and `close_reason`
+3. **Discovering new work** during implementation - add new issues for follow-ups
+
+**Issue format (JSONL - one JSON object per line):**
+```json
+{"id":"trellis-xxx","title":"Feature title","description":"What was done","status":"closed","priority":0,"issue_type":"feature","created_at":"2025-12-05T12:00:00Z","updated_at":"2025-12-05T12:00:00Z","closed_at":"2025-12-05T12:00:00Z","close_reason":"Complete: brief summary"}
+```
+
+**Priority levels:** 0 (highest) → 3 (lowest)
+**Issue types:** `epic`, `feature`, `task`
+**Status:** `open`, `in_progress`, `closed`
+
+**Key principle:** If you're doing significant work, it should be tracked in beads. This ensures roadmap visibility and historical record of changes.
+
+## PyPI Releases
+
+**Cadence:** Monthly releases + hotfixes as needed
+
+**Versioning:** `0.X.Y` (pre-1.0 alpha)
+- X = Feature releases (monthly)
+- Y = Patches/hotfixes (as needed)
+
+**Release Process (uses Trusted Publishing - no tokens needed):**
+
+```bash
+# 1. Update version in pyproject.toml
+# Example: "0.1.0a1" → "0.1.0a2"
+
+# 2. Update CHANGELOG.md with changes
+
+# 3. Commit and tag
+git add pyproject.toml CHANGELOG.md
+git commit -m "release: vX.Y.Z"
+git tag -a vX.Y.Z -m "Release vX.Y.Z - description"
+
+# 4. Push to GitHub
+git push origin develop
+git push origin vX.Y.Z
+
+# 5. Create GitHub Release (triggers PyPI publish)
+gh release create vX.Y.Z --title "vX.Y.Z - Title" --notes "Release notes here"
+```
+
+**What happens automatically:**
+- `.github/workflows/release.yml` triggers on release publish
+- Builds package with `python -m build`
+- Publishes to PyPI via trusted publishing (no API token needed)
+- Trusted publisher configured at: https://pypi.org/manage/project/nthlayer/settings/publishing/
+
+**Verify release:**
+```bash
+pip install nthlayer==X.Y.Z
+```
 
 ## Testing Requirements
 

@@ -25,7 +25,7 @@ def init_engine(settings: Settings | None = None) -> None:
         return
 
     _engine = create_async_engine(
-        cfg.db_dsn,
+        cfg.database_url,
         echo=cfg.debug,
         future=True,
         pool_size=cfg.db_pool_size,
