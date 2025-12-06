@@ -329,6 +329,46 @@ Before completing any task:
 3. Run `make typecheck` - no type errors
 4. For dashboard changes: run `python scripts/validate_dashboard_metrics.py`
 
+### CLI Command Testing (CRITICAL)
+
+**When adding or modifying CLI commands, you MUST:**
+
+1. **Manual CLI verification** - Run the command to ensure no errors:
+   ```bash
+   # Test help output
+   nthlayer <command> --help
+
+   # Test actual execution (use --dry-run where available)
+   nthlayer <command> [args]
+   ```
+
+2. **Add unit tests** - Create/update tests in `tests/test_cli_*.py`:
+   ```python
+   def test_my_command_runs_without_error():
+       result = runner.invoke(cli, ['my-command', '--help'])
+       assert result.exit_code == 0
+
+   def test_my_command_produces_expected_output():
+       result = runner.invoke(cli, ['my-command', 'arg'])
+       assert 'expected output' in result.output
+   ```
+
+3. **Test error handling** - Verify graceful failures:
+   - Missing required arguments
+   - Invalid input files
+   - Missing dependencies (e.g., pint not installed)
+   - Connection failures to external services
+
+4. **Update command documentation** - If adding new commands:
+   - Add to `docs-site/commands/` if significant
+   - Update `docs-site/reference/cli.md`
+
+**Common CLI bugs to avoid:**
+- Calling methods that don't exist (always verify the interface)
+- Missing imports in CLI modules
+- Incorrect argument parsing
+- Exit codes (0 for success, non-zero for errors)
+
 ### Test Patterns
 ```python
 # Use pytest fixtures for common setup
