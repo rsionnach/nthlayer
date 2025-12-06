@@ -31,8 +31,8 @@ async def health_check() -> HealthResponse:
 
 @router.get("/ready", response_model=ReadinessResponse, status_code=status.HTTP_200_OK)
 async def readiness_check(
-    session: AsyncSession = Depends(session_dependency),
-    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(session_dependency),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
 ) -> ReadinessResponse:
     """Readiness check with database and Redis connectivity."""
     db_status = "unknown"
@@ -42,7 +42,7 @@ async def readiness_check(
         result = await session.execute(text("SELECT 1"))
         if result.scalar() == 1:
             db_status = "connected"
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError) as e:  # noqa: F841
         db_status = "disconnected"
 
     try:
@@ -52,10 +52,12 @@ async def readiness_check(
         if value == "ok":
             redis_status = "connected"
         await cache.close()
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError) as e:  # noqa: F841
         redis_status = "disconnected"
 
-    overall_status = "ready" if db_status == "connected" and redis_status == "connected" else "not_ready"
+    overall_status = (
+        "ready" if db_status == "connected" and redis_status == "connected" else "not_ready"
+    )
 
     return ReadinessResponse(
         status=overall_status,

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
 from nthlayer.dashboards.builder_sdk import build_dashboard
 from nthlayer.specs.parser import parse_service_file
 
@@ -131,7 +133,7 @@ def generate_dashboard_command(
     except FileNotFoundError:
         print(f"Error: Service file not found: {service_file}")
         return 1
-    except Exception as e:
+    except (yaml.YAMLError, ValueError, KeyError, TypeError, OSError) as e:
         print(f"Error generating dashboard: {e}")
         import traceback
 
