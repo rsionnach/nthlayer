@@ -44,7 +44,11 @@ plugins:
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.details
@@ -80,6 +84,7 @@ nav:
   - Concepts:
     - Service Specs: concepts/service-specs.md
     - SLOs & Error Budgets: concepts/slos.md
+    - Architecture: architecture.md
   - Reference:
     - Service YAML Schema: reference/service-yaml.md
     - CLI Reference: reference/cli.md
@@ -90,3 +95,6 @@ extra:
       link: https://github.com/rsionnach/nthlayer
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/nthlayer/
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
