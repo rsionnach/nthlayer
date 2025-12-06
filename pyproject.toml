@@ -75,3 +75,23 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+
+[tool.sloppy]
+# Sloppylint configuration - AI code quality checker
+ignore = [
+    "tests/*",
+    "archive/*",
+    "scripts/*",
+    "src/nthlayer/workflows/*",  # langgraph incompatible with Python 3.14
+]
+disable = [
+    "debug_print",         # CLI uses print() for user output
+    "magic_number",        # Too noisy, handled by code review
+    "hallucinated_import", # False positives on relative imports
+    "wrong_stdlib_import", # False positives on optional deps (hvac, azure, gcp)
+    "dead_code",           # Too many false positives on class methods
+    "duplicate_code",      # Function structure similarity != duplication
+    "overlong_line",       # PromQL queries are intentionally long
+]
+severity = "high"  # Only report critical and high issues
+max-score = 500    # CI threshold
