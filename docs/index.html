@@ -121,14 +121,14 @@
   name: payment-api
   tier: critical
   description: Payment processing service
-  
+
   dependencies:
     databases:
       - type: postgresql
         name: payments-db
       - type: redis
         name: session-cache
-    
+
     external:
       - name: stripe-api
         critical: true</code></pre>
@@ -180,7 +180,7 @@
                 </div>
                 <div class="step-content">
                     <p>Real dashboard running in Grafana Cloud, powered by live metrics from our demo app:</p>
-                    
+
                     <div class="dashboard-preview">
                         <div class="dashboard-services">
                             <h4>6 Live Services with Auto-Generated Dashboards</h4>
@@ -218,7 +218,7 @@
                             </div>
                             <p class="dashboard-note">Each dashboard is organized into: <strong>SLO Metrics</strong> → <strong>Service Health</strong> → <strong>Dependencies</strong></p>
                         </div>
-                        
+
                         <!-- Live Dashboard Gallery -->
                         <div class="dashboard-gallery">
                             <a href="https://nthlayer.grafana.net/dashboard/snapshot/GnDR7SU4YPkpMPFgFMUb94Z87NAI7USS" target="_blank" class="dashboard-tile">
@@ -271,13 +271,13 @@
                             </a>
                         </div>
                         <p class="dashboard-cta-note">Click any service to view its auto-generated Grafana dashboard</p>
-                        
+
                         <!-- Auto-Generated Alerts -->
                         <div class="demo-showcase" style="margin-top: var(--spacing-xl);">
                             <h4 class="showcase-title">🚨 Auto-Generated Prometheus Alerts</h4>
                             <p class="dashboard-note">118 production-ready alerts across 6 services, sourced from <a href="https://github.com/samber/awesome-prometheus-alerts" target="_blank">awesome-prometheus-alerts</a></p>
                         </div>
-                        
+
                         <div class="alert-gallery">
                             <a href="https://github.com/rsionnach/nthlayer/blob/develop/generated/payment-api/alerts.yaml" target="_blank" class="alert-tile">
                                 <div class="tile-icon">💳</div>
@@ -335,19 +335,19 @@
                             </a>
                         </div>
                         <p class="dashboard-cta-note">Click any service to view its generated Prometheus alert rules on GitHub</p>
-                        
+
                         <!-- Deploy Your Alerts -->
                         <div class="deploy-section">
                             <h4 class="deploy-title">🚀 Deploy Your Alerts</h4>
                             <p class="deploy-subtitle">Generated alerts are standard Prometheus format — deploy anywhere</p>
-                            
+
                             <div class="deploy-tabs">
                                 <button class="deploy-tab active" data-tab="k8s">Kubernetes</button>
                                 <button class="deploy-tab" data-tab="mimir">Mimir / Cortex</button>
                                 <button class="deploy-tab" data-tab="gitops">GitOps</button>
                                 <button class="deploy-tab" data-tab="prometheus">Prometheus</button>
                             </div>
-                            
+
                             <div class="deploy-content">
                                 <div class="deploy-panel active" id="panel-k8s">
                                     <p class="deploy-desc">Using Prometheus Operator? Apply as a PrometheusRule CRD:</p>
@@ -363,7 +363,7 @@ spec:
 $(cat generated/payment-api/alerts.yaml | sed 's/^/  /')
 EOF</code></pre>
                                 </div>
-                                
+
                                 <div class="deploy-panel" id="panel-mimir">
                                     <p class="deploy-desc">Push directly to Grafana Mimir or Cortex ruler:</p>
                                     <pre><code># Using mimirtool
@@ -377,7 +377,7 @@ curl -X POST https://mimir.example.com/prometheus/config/v1/rules/payment-api \
   -H "X-Scope-OrgID: your-tenant" \
   --data-binary @generated/payment-api/alerts.yaml</code></pre>
                                 </div>
-                                
+
                                 <div class="deploy-panel" id="panel-gitops">
                                     <p class="deploy-desc">Commit to your GitOps repo — ArgoCD or Flux handles the rest:</p>
                                     <pre><code># Add to your GitOps repository
@@ -391,7 +391,7 @@ git push
 # ArgoCD/Flux automatically syncs to cluster
 # No manual kubectl required!</code></pre>
                                 </div>
-                                
+
                                 <div class="deploy-panel" id="panel-prometheus">
                                     <p class="deploy-desc">Traditional Prometheus? Copy to rules directory and reload:</p>
                                     <pre><code># Copy to Prometheus rules directory
@@ -406,13 +406,13 @@ curl -X POST http://localhost:9090/-/reload</code></pre>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- PagerDuty Integration -->
                         <div class="demo-showcase" style="margin-top: var(--spacing-xl);">
                             <h4 class="showcase-title">📟 PagerDuty Integration</h4>
                             <p class="dashboard-note">Complete incident response setup with tier-based escalation policies</p>
                         </div>
-                        
+
                         <div class="pagerduty-section">
                             <div class="pd-feature-grid">
                                 <div class="pd-feature">
@@ -444,7 +444,7 @@ curl -X POST http://localhost:9090/-/reload</code></pre>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="pd-screenshots">
                                 <div class="pd-screenshot">
                                     <img src="screenshots/team.png" alt="PagerDuty Team with Manager Role">
@@ -459,7 +459,7 @@ curl -X POST http://localhost:9090/-/reload</code></pre>
                                     <p class="screenshot-caption">Service linked to policy</p>
                                 </div>
                             </div>
-                            
+
                             <div class="pd-support-models">
                                 <h5>Support Models</h5>
                                 <div class="support-model-grid">
@@ -483,7 +483,76 @@ curl -X POST http://localhost:9090/-/reload</code></pre>
                             </div>
                         </div>
                     </div>
-                    
+
+                    <!-- SLO Portfolio Demo -->
+                    <div class="demo-showcase" style="margin-top: var(--spacing-xl);">
+                        <h4 class="showcase-title">📊 SLO Portfolio - Org-Wide Reliability View</h4>
+                        <p class="dashboard-note">Track SLO health across all your services in one command</p>
+                    </div>
+
+                    <div class="portfolio-demo">
+                        <div class="terminal-window">
+                            <div class="terminal-header">
+                                <span class="terminal-dot red"></span>
+                                <span class="terminal-dot yellow"></span>
+                                <span class="terminal-dot green"></span>
+                                <span class="terminal-title">nthlayer portfolio</span>
+                            </div>
+                            <div class="terminal-body">
+<pre class="terminal-output">
+================================================================================
+  NthLayer SLO Portfolio
+================================================================================
+
+Organization Health: <span class="health-warning">78%</span> (14/18 services meeting SLOs)
+
+By Tier:
+  Critical:  <span class="progress-bar">████████░░</span>  83% (5/6 services)
+  Standard:  <span class="progress-bar">███████░░░</span>  75% (6/8 services)
+  Low:       <span class="progress-bar">███████░░░</span>  75% (3/4 services)
+
+--------------------------------------------------------------------------------
+<span class="section-header">Services Needing Attention:</span>
+--------------------------------------------------------------------------------
+
+  <span class="service-critical">payment-api</span> (Tier 1)
+    availability: <span class="status-exhausted">156% budget burned - EXHAUSTED</span>
+    Remaining: -12.5 hours
+
+  <span class="service-warning">search-api</span> (Tier 2)
+    latency-p99: <span class="status-warning">95% budget burned - WARNING</span>
+    Remaining: 1.2 hours
+
+--------------------------------------------------------------------------------
+Total: 18 services, 16 with SLOs, 45 SLOs
+</pre>
+                            </div>
+                        </div>
+
+                        <div class="portfolio-features">
+                            <div class="portfolio-feature">
+                                <span class="feature-icon">🏢</span>
+                                <h5>Cross-Service View</h5>
+                                <p>All SLOs in one place - no switching between tools</p>
+                            </div>
+                            <div class="portfolio-feature">
+                                <span class="feature-icon">🎯</span>
+                                <h5>Tier-Based Health</h5>
+                                <p>Critical services highlighted, low-priority deprioritized</p>
+                            </div>
+                            <div class="portfolio-feature">
+                                <span class="feature-icon">📤</span>
+                                <h5>Export Ready</h5>
+                                <p>JSON/CSV export for stakeholder reports</p>
+                            </div>
+                        </div>
+
+                        <p class="portfolio-note">
+                            <strong>Why this matters:</strong> PagerDuty can't give you this view - they want you locked into their ecosystem.
+                            NthLayer aggregates SLOs across any backend (Prometheus, Datadog, etc.) in a single, vendor-neutral portfolio.
+                        </p>
+                    </div>
+
                     <div class="value-callout" style="margin-top: var(--spacing-lg);">
                         <strong>🎯 Unified Workflow Benefits:</strong>
                         <ul style="margin: var(--spacing-sm) 0 0 var(--spacing-lg); padding: 0;">
@@ -541,7 +610,7 @@ curl -X POST http://localhost:9090/-/reload</code></pre>
             <div class="cta-box">
                 <h2>Get Started</h2>
                 <p>Install NthLayer and generate your first reliability stack in minutes:</p>
-                
+
                 <div class="install-steps">
                     <div class="install-step">
                         <span class="install-number">1</span>
