@@ -12,13 +12,13 @@ Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Show SLO list (using local venv)
-Type ".venv/bin/nthlayer slo list --dir examples/services"
+# Show SLO list
+Type "nthlayer slo list --dir examples/services"
 Enter
 Sleep 2500ms
 
 # Show SLO details for a specific service
-Type ".venv/bin/nthlayer slo show examples/services/checkout-service.yaml"
+Type "nthlayer slo show examples/services/checkout-service.yaml"
 Enter
 Sleep 2500ms
 

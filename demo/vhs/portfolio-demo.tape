@@ -12,8 +12,8 @@ Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Run portfolio command on examples (using local venv)
-Type ".venv/bin/nthlayer portfolio --dir examples/services"
+# Run portfolio command on examples
+Type "nthlayer portfolio --dir examples/services"
 Enter
 Sleep 3s
 

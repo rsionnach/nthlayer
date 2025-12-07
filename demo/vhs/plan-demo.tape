@@ -12,8 +12,8 @@ Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Run plan command (using local venv)
-Type ".venv/bin/nthlayer plan examples/services/checkout-service.yaml"
+# Run plan command
+Type "nthlayer plan examples/services/checkout-service.yaml"
 Enter
 Sleep 2500ms
 
