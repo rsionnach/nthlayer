@@ -1,10 +1,11 @@
-<!-- GIF placeholder: nthlayer apply → files generated → dashboard -->
-<!-- TODO: Add CLI demo GIF here -->
-
 <div align="center">
   <a href="https://github.com/rsionnach/nthlayer">
     <img src="presentations/public/nthlayer_dark_banner.png" alt="NthLayer" width="400">
   </a>
+
+  <br><br>
+
+  <img src="demo/vhs/nthlayer-apply.gif" alt="nthlayer apply demo" width="700">
 </div>
 
 # NthLayer
@@ -80,6 +81,10 @@ export NTHLAYER_METRICS_PASSWORD=...
 ## 📊 SLO Portfolio
 
 Track reliability across your entire organization:
+
+<div align="center">
+  <img src="demo/vhs/portfolio-demo.gif" alt="nthlayer portfolio demo" width="700">
+</div>
 
 ```bash
 $ nthlayer portfolio
@@ -228,18 +233,31 @@ nthlayer --version
 See NthLayer in action with real Grafana dashboards and generated configs:
 
 [![Live Dashboards](https://img.shields.io/badge/Live-Dashboards-blue?logo=grafana&style=for-the-badge)](https://nthlayer.grafana.net)
-[![Demo Site](https://img.shields.io/badge/Demo-Site-green?style=for-the-badge)](https://rsionnach.github.io/nthlayer)
+[![Interactive Demo](https://img.shields.io/badge/Interactive-Demo-green?style=for-the-badge)](https://rsionnach.github.io/nthlayer/demo/)
 
 ---
 
 ## 📚 Documentation
 
-| Guide | Description |
-|-------|-------------|
-| 📖 [GETTING_STARTED.md](GETTING_STARTED.md) | 10-minute setup guide |
-| 🏗️ [docs/TEMPLATES.md](docs/TEMPLATES.md) | Service template reference |
-| 🚨 [docs/ALERTS.md](docs/ALERTS.md) | Auto-generated alerts docs |
-| 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
+**[Full Documentation](https://rsionnach.github.io/nthlayer/)** - Comprehensive guides and reference.
+
+| Quick Links | |
+|-------------|---|
+| 🚀 [Quick Start](https://rsionnach.github.io/nthlayer/getting-started/quick-start/) | Get running in 5 minutes |
+| 🔧 [Setup Wizard](https://rsionnach.github.io/nthlayer/commands/setup/) | Interactive configuration |
+| 📊 [SLO Portfolio](https://rsionnach.github.io/nthlayer/commands/portfolio/) | Org-wide reliability view |
+| 🔌 [18 Technologies](https://rsionnach.github.io/nthlayer/integrations/technologies/) | PostgreSQL, Redis, Kafka... |
+| 📖 [CLI Reference](https://rsionnach.github.io/nthlayer/reference/cli/) | All commands |
+| 🤝 [Contributing](CONTRIBUTING.md) | How to contribute |
+
+<details>
+<summary>Build docs locally</summary>
+
+```bash
+pip install -e ".[docs]"
+mkdocs serve  # Opens at http://localhost:8000
+```
+</details>
 
 ---
 

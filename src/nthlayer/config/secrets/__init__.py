@@ -360,6 +360,38 @@ class SecretResolver:
                 result[name] = secrets
         return result
 
+    def verify_secrets(self, paths: list[str]) -> dict[str, tuple[bool, str | None]]:
+        """Verify that secrets exist and return their resolution status.
+
+        Returns:
+            Dict mapping path to (found, backend_name) tuple
+        """
+        results = {}
+        for path in paths:
+            found = False
+            backend_name = None
+
+            # Try primary backend first
+            if self.config.backend in self._backends:
+                value = self._backends[self.config.backend].get_secret(path)
+                if value is not None:
+                    found = True
+                    backend_name = self.config.backend.value
+
+            # Try fallbacks if not found
+            if not found:
+                for fallback in self.config.fallback:
+                    if fallback in self._backends:
+                        value = self._backends[fallback].get_secret(path)
+                        if value is not None:
+                            found = True
+                            backend_name = fallback.value
+                            break
+
+            results[path] = (found, backend_name)
+
+        return results
+
 
 _resolver: SecretResolver | None = None
 

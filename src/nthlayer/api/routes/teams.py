@@ -45,10 +45,12 @@ class JobStatusResponse(BaseModel):
 async def reconcile_team(
     payload: TeamReconcileRequest,
     request: Request,
-    session: AsyncSession = Depends(session_dependency),
-    enqueuer: JobQueue = Depends(get_job_enqueuer),
-    settings: Settings = Depends(get_settings),
-    idempotency_key: str | None = Header(default=None, convert_underscores=False, alias="Idempotency-Key"),
+    session: AsyncSession = Depends(session_dependency),  # noqa: B008
+    enqueuer: JobQueue = Depends(get_job_enqueuer),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    idempotency_key: str | None = Header(
+        default=None, convert_underscores=False, alias="Idempotency-Key"
+    ),
 ) -> TeamReconcileResponse:
     job_id = str(uuid4())
     idem_key = idempotency_key or job_id
@@ -58,7 +60,9 @@ async def reconcile_team(
     try:
         await repo.register_idempotency(payload.team_id, idem_key)
     except IdempotencyConflict as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Idempotency conflict") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Idempotency conflict"
+        ) from exc
 
     run = Run(
         job_id=job_id,
@@ -83,7 +87,7 @@ async def reconcile_team(
     )
     try:
         await enqueuer.enqueue(message)
-    except Exception as exc:
+    except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         await session.rollback()
         logger.exception("job_enqueue_failed", job_id=job_id, team_id=payload.team_id)
         raise HTTPException(
@@ -104,17 +108,17 @@ async def reconcile_team(
 )
 async def get_job_status(
     job_id: str,
-    session: AsyncSession = Depends(session_dependency),
+    session: AsyncSession = Depends(session_dependency),  # noqa: B008
 ) -> JobStatusResponse:
     repo = RunRepository(session)
     run = await repo.get_run(job_id)
-    
+
     if not run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job {job_id} not found",
         )
-    
+
     return JobStatusResponse(
         job_id=run.job_id,
         type=run.type,

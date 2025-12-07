@@ -8,25 +8,34 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 
 ### The Three Layers
 
+```mermaid
+flowchart TB
+    subgraph Git["Git Repository"]
+        specs["services/*.yaml"]
+    end
+
+    subgraph NthLayer["NthLayer Platform"]
+        reslayer["ResLayer - SLOs & Error Budgets"]
+        govlayer["GovLayer - Policy Enforcement"]
+        obslayer["ObserveLayer - Monitoring"]
+    end
+
+    subgraph Observability["Observability Stack"]
+        prometheus["Prometheus"]
+        grafana["Grafana"]
+        pagerduty["PagerDuty"]
+    end
+
+    specs --> reslayer
+    specs --> govlayer
+    specs --> obslayer
+
+    reslayer --> prometheus
+    obslayer --> grafana
+    obslayer --> pagerduty
 ```
-                    ┌─────────────────────────────────┐
-                    │     Git: services/*.yaml        │
-                    └───────────────┬─────────────────┘
-                                    │
-                    ┌───────────────▼─────────────────┐
-                    │       NthLayer Platform         │
-                    └───┬───────────┬───────────┬─────┘
-                        │           │           │
-            ┌───────────▼───┐ ┌─────▼─────┐ ┌───▼───────────┐
-            │   ResLayer    │ │ GovLayer  │ │ ObserveLayer  │
-            │ Error Budgets │ │  Policy   │ │  Monitoring   │
-            │    & SLOs     │ │Enforcement│ │  Automation   │
-            └───────┬───────┘ └─────┬─────┘ └───────┬───────┘
-                    │               │               │
-            ┌───────▼───────────────▼───────────────▼───────┐
-            │  Prometheus │ Grafana │ PagerDuty │ Datadog   │
-            └───────────────────────────────────────────────┘
-```
+
+> **See also:** [Full Architecture Documentation](docs-site/architecture.md) for detailed diagrams of workflows and integrations.
 
 ### Usage Modes
 
@@ -54,13 +63,17 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 ## Roadmap
 
 ### Strategic Differentiation
-**Compete where PagerDuty/Datadog won't go:**
+**Current focus - Compete where PagerDuty/Datadog won't go:**
 - Cross-vendor SLO Portfolio (they want lock-in)
 - AI-assisted config generation (they do incident response, not setup)
 
-**Don't compete with:**
+**Don't compete with (for now):**
 - Incident pattern learning (PagerDuty Insights)
 - Automated incident response (PagerDuty SRE Agent)
+
+**Future consideration (Phase 7):**
+- Adaptive alert tuning, deployment risk scoring, closed-loop policies
+- Decision point: Review after Phase 5 completion
 
 ### Phase 1: Foundation (✅ DONE)
 - service.yaml spec and parser
@@ -110,6 +123,27 @@ NthLayer is the "missing layer of reliability" - an automation platform that gen
 - Multi-user / team views
 - Alerting on portfolio health
 - Enterprise features
+
+### Phase 7: Intelligent Reliability (Future - "New Class")
+**Goal:** Adaptive, learning reliability automation - transform from generation tool to intelligent platform
+
+- `trellis-adaptive-alerts`: Adaptive Alert Tuning
+  - Baseline learning from historical metrics
+  - Auto-adjust thresholds based on seasonality
+  - Anomaly-aware alerting (reduce noise)
+
+- `trellis-deploy-risk`: Deployment Risk Scoring
+  - ML model: error budget state + deploy history → risk score
+  - Pre-deploy risk assessment
+  - Integration with deployment gates (Phase 5)
+
+- `trellis-closed-loop`: Closed-Loop Policy Updates
+  - Auto-adjust SLO targets based on actual performance
+  - Suggest tier promotions/demotions
+  - Policy drift detection and correction
+
+**Prerequisites:** Phase 4 (AI foundation), Phase 5 (deployment gates)
+**Decision point:** Review after Phase 5 - compete or complement PagerDuty?
 
 ### Technology Templates (Ongoing)
 - `trellis-0cd`: Kafka (consumer lag, partitions, replication)
@@ -303,6 +337,46 @@ Before completing any task:
 2. Run `make lint` - no linting errors
 3. Run `make typecheck` - no type errors
 4. For dashboard changes: run `python scripts/validate_dashboard_metrics.py`
+
+### CLI Command Testing (CRITICAL)
+
+**When adding or modifying CLI commands, you MUST:**
+
+1. **Manual CLI verification** - Run the command to ensure no errors:
+   ```bash
+   # Test help output
+   nthlayer <command> --help
+
+   # Test actual execution (use --dry-run where available)
+   nthlayer <command> [args]
+   ```
+
+2. **Add unit tests** - Create/update tests in `tests/test_cli_*.py`:
+   ```python
+   def test_my_command_runs_without_error():
+       result = runner.invoke(cli, ['my-command', '--help'])
+       assert result.exit_code == 0
+
+   def test_my_command_produces_expected_output():
+       result = runner.invoke(cli, ['my-command', 'arg'])
+       assert 'expected output' in result.output
+   ```
+
+3. **Test error handling** - Verify graceful failures:
+   - Missing required arguments
+   - Invalid input files
+   - Missing dependencies (e.g., pint not installed)
+   - Connection failures to external services
+
+4. **Update command documentation** - If adding new commands:
+   - Add to `docs-site/commands/` if significant
+   - Update `docs-site/reference/cli.md`
+
+**Common CLI bugs to avoid:**
+- Calling methods that don't exist (always verify the interface)
+- Missing imports in CLI modules
+- Incorrect argument parsing
+- Exit codes (0 for success, non-zero for errors)
 
 ### Test Patterns
 ```python

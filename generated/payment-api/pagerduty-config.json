@@ -1,0 +1,18 @@
+{
+  "service_name": "payment-api",
+  "team": "payments",
+  "tier": "critical",
+  "support_model": "shared",
+  "timezone": "America/New_York",
+  "resources_to_create": {
+    "team": "payments",
+    "schedules": [
+      "payments-primary",
+      "payments-secondary",
+      "payments-manager"
+    ],
+    "escalation_policy": "payments-escalation",
+    "service": "payment-api"
+  },
+  "note": "Set PAGERDUTY_API_KEY to create resources in PagerDuty"
+}

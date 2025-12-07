@@ -1,0 +1,100 @@
+site_name: NthLayer Documentation
+site_url: https://rsionnach.github.io/nthlayer/
+site_description: Generate your complete reliability stack from a single service spec
+site_author: NthLayer
+docs_dir: docs-site
+site_dir: docs
+
+repo_name: rsionnach/nthlayer
+repo_url: https://github.com/rsionnach/nthlayer
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Live Demo: demo.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Your First Service: getting-started/first-service.md
+  - Commands:
+    - Overview: commands/index.md
+    - nthlayer apply: commands/apply.md
+    - nthlayer setup: commands/setup.md
+    - nthlayer portfolio: commands/portfolio.md
+    - nthlayer slo: commands/slo.md
+    - nthlayer config: commands/config.md
+  - Integrations:
+    - Prometheus: integrations/prometheus.md
+    - Grafana: integrations/grafana.md
+    - PagerDuty: integrations/pagerduty.md
+    - Technologies: integrations/technologies.md
+  - Concepts:
+    - Service Specs: concepts/service-specs.md
+    - SLOs & Error Budgets: concepts/slos.md
+    - Architecture: architecture.md
+  - Reference:
+    - Service YAML Schema: reference/service-yaml.md
+    - CLI Reference: reference/cli.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rsionnach/nthlayer
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/nthlayer/
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js

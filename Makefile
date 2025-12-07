@@ -1,4 +1,4 @@
-.PHONY: help dev-up dev-down dev-logs test test-cov lint typecheck format clean demo-reconcile mock-server
+.PHONY: help dev-up dev-down dev-logs test test-cov lint typecheck format clean demo-reconcile mock-server docs docs-serve demo-gifs
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -118,3 +118,20 @@ setup: dev-up install-dev migrate ## Complete setup: start services, install dep
 	@echo "  make mock-server   # Start mock APIs"
 	@echo "  make demo-reconcile # See demo workflow"
 	@echo "  make api           # Start NthLayer API"
+
+# Documentation
+docs: ## Build documentation site
+	.venv/bin/mkdocs build || mkdocs build
+	@echo "✅ Documentation built to docs/"
+
+docs-serve: ## Serve documentation locally
+	.venv/bin/mkdocs serve || mkdocs serve
+
+# Demo GIFs (requires VHS: https://github.com/charmbracelet/vhs)
+demo-gifs: ## Generate CLI demo GIFs using VHS
+	@echo "Generating CLI demo GIFs..."
+	vhs demo/vhs/apply-demo.tape
+	vhs demo/vhs/portfolio-demo.tape
+	vhs demo/vhs/plan-demo.tape
+	vhs demo/vhs/slo-demo.tape
+	@echo "✅ Demo GIFs generated in demo/vhs/"

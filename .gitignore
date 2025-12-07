@@ -1,6 +1,15 @@
 # Archive (internal development notes and one-off scripts)
 archive/
 
+# MkDocs build output
+site/
+
+# Large MkDocs assets (generated, not needed in git)
+docs/assets/javascripts/*.map
+docs/assets/stylesheets/*.map
+docs/assets/javascripts/lunr/wordcut.js
+**/nthlayer_dark_logo.png
+
 # Python
 __pycache__/
 *.py[cod]

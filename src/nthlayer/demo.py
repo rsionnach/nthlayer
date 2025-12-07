@@ -21,6 +21,7 @@ import yaml
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
+from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 
@@ -703,6 +704,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Portfolio command
     register_portfolio_parser(subparsers)
 
+    # Setup command
+    register_setup_parser(subparsers)
+
     return parser
 
 
@@ -1007,5 +1011,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "portfolio":
         sys.exit(handle_portfolio_command(args))
+
+    if args.command == "setup":
+        sys.exit(handle_setup_command(args))
 
     parser.print_help()
