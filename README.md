@@ -5,7 +5,7 @@
 
   <br><br>
 
-  <img src="demo/vhs/apply-demo.gif" alt="nthlayer apply demo" width="700">
+  <img src="demo/vhs/nthlayer-apply.gif" alt="nthlayer apply demo" width="700">
 </div>
 
 # NthLayer

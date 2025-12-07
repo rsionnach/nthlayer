@@ -1,7 +1,7 @@
 # NthLayer Apply Demo - Hero GIF
 # Shows the core value prop: "20 hours of SRE work in 5 minutes"
 
-Output apply-demo.gif
+Output nthlayer-apply.gif
 
 Require nthlayer
 
