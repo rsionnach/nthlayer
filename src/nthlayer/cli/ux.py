@@ -3,12 +3,20 @@ Hybrid CLI UX utilities using Charm tools (gum) with Python fallbacks.
 
 Progressive enhancement: Best UX when gum is installed, always works via pip.
 Uses rich/questionary as fallbacks when gum is not available.
+
+Environment handling:
+- Automatically detects TTY vs pipe/CI
+- Respects NO_COLOR and FORCE_COLOR environment variables
+- Falls back to plain text in non-interactive environments
+- Safe for CI/CD pipelines (GitHub Actions, Jenkins, etc.)
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -35,7 +43,36 @@ NTHLAYER_THEME = Theme(
     }
 )
 
-console = Console(theme=NTHLAYER_THEME)
+
+def _is_interactive() -> bool:
+    """Check if we're in an interactive terminal environment."""
+    # Check for CI environment variables
+    ci_vars = ["CI", "GITHUB_ACTIONS", "JENKINS_URL", "GITLAB_CI", "CIRCLECI", "TRAVIS"]
+    if any(os.environ.get(var) for var in ci_vars):
+        return False
+    # Check if stdout is a TTY
+    return sys.stdout.isatty()
+
+
+def _should_use_color() -> bool:
+    """Check if we should use colored output."""
+    # Respect NO_COLOR standard (https://no-color.org/)
+    if os.environ.get("NO_COLOR"):
+        return False
+    # Respect FORCE_COLOR for CI that supports it
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    # Default: use color if interactive
+    return _is_interactive()
+
+
+# Create console with environment-aware settings
+# Rich automatically handles most of this, but we're explicit for clarity
+console = Console(
+    theme=NTHLAYER_THEME,
+    force_terminal=os.environ.get("FORCE_COLOR") is not None,
+    no_color=os.environ.get("NO_COLOR") is not None,
+)
 
 # Questionary style matching our theme
 PROMPT_STYLE = QStyle(
@@ -314,3 +351,23 @@ def wizard_intro(title: str, description: str) -> None:
             )
         )
         console.print()
+
+
+# Simple ASCII banner - only shown in interactive mode
+NTHLAYER_BANNER = """
+[cyan]┏┓╻╺┳╸╻ ╻╻  ┏━┓╻ ╻┏━╸┏━┓[/cyan]
+[cyan]┃┗┫ ┃ ┣━┫┃  ┣━┫┗┳┛┣╸ ┣┳┛[/cyan]
+[cyan]╹ ╹ ╹ ╹ ╹┗━╸╹ ╹ ╹ ┗━╸╹┗╸[/cyan]
+[dim]The Missing Layer of Reliability[/dim]
+"""
+
+
+def print_banner() -> None:
+    """Print ASCII banner (only in interactive terminals, not CI)."""
+    if _is_interactive() and _should_use_color():
+        console.print(NTHLAYER_BANNER)
+
+
+def is_interactive() -> bool:
+    """Public function to check if running interactively."""
+    return _is_interactive()
