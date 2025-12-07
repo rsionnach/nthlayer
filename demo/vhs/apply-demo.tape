@@ -1,7 +1,8 @@
 # NthLayer Apply Demo - Hero GIF
 # Shows the core value prop: "20 hours of SRE work in 5 minutes"
+# Run from repo root: vhs demo/vhs/apply-demo.tape
 
-Output nthlayer-apply.gif
+Output demo/vhs/nthlayer-apply.gif
 
 Require nthlayer
 
@@ -13,17 +14,17 @@ Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Show the service spec
-Type "cat service.yaml"
+# Show a real service spec from examples
+Type "cat examples/services/checkout-service.yaml"
 Enter
-Sleep 2s
+Sleep 3s
 
 # Run nthlayer apply
-Type "nthlayer apply service.yaml"
+Type "nthlayer apply examples/services/checkout-service.yaml"
 Enter
 Sleep 2s
 
 # Show generated files
-Type "ls generated/payment-api/"
+Type "ls generated/checkout-service/"
 Enter
 Sleep 2s

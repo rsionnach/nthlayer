@@ -1,7 +1,8 @@
 # NthLayer Plan Demo
 # Shows preview of what would be generated
+# Run from repo root: vhs demo/vhs/plan-demo.tape
 
-Output plan-demo.gif
+Output demo/vhs/plan-demo.gif
 
 Require nthlayer
 
@@ -14,9 +15,8 @@ Set Padding 20
 Set Framerate 30
 
 # Run plan command
-Type "nthlayer plan service.yaml"
+Type "nthlayer plan examples/services/checkout-service.yaml"
 Enter
 Sleep 2500ms
 
-# Let user see the output
 Sleep 2s

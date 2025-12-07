@@ -130,8 +130,8 @@ docs-serve: ## Serve documentation locally
 # Demo GIFs (requires VHS: https://github.com/charmbracelet/vhs)
 demo-gifs: ## Generate CLI demo GIFs using VHS
 	@echo "Generating CLI demo GIFs..."
-	cd demo/vhs && vhs apply-demo.tape
-	cd demo/vhs && vhs portfolio-demo.tape
-	cd demo/vhs && vhs plan-demo.tape
-	cd demo/vhs && vhs slo-demo.tape
+	vhs demo/vhs/apply-demo.tape
+	vhs demo/vhs/portfolio-demo.tape
+	vhs demo/vhs/plan-demo.tape
+	vhs demo/vhs/slo-demo.tape
 	@echo "✅ Demo GIFs generated in demo/vhs/"

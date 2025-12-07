@@ -1,7 +1,8 @@
 # NthLayer SLO Demo
 # Shows SLO inspection commands
+# Run from repo root: vhs demo/vhs/slo-demo.tape
 
-Output slo-demo.gif
+Output demo/vhs/slo-demo.gif
 
 Require nthlayer
 
@@ -19,9 +20,8 @@ Enter
 Sleep 2500ms
 
 # Show SLO details for a specific service
-Type "nthlayer slo show examples/services/payment-api.yaml"
+Type "nthlayer slo show examples/services/checkout-service.yaml"
 Enter
 Sleep 2500ms
 
-# Let user see the output
 Sleep 2s

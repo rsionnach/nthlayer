@@ -1,7 +1,8 @@
 # NthLayer Portfolio Demo
 # Shows cross-vendor SLO aggregation across all services
+# Run from repo root: vhs demo/vhs/portfolio-demo.tape
 
-Output portfolio-demo.gif
+Output demo/vhs/portfolio-demo.gif
 
 Require nthlayer
 
@@ -13,10 +14,9 @@ Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Run portfolio command
+# Run portfolio command on examples
 Type "nthlayer portfolio --dir examples/services"
 Enter
 Sleep 3s
 
-# Let user see the output
 Sleep 2s
