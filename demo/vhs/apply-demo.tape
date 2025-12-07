@@ -5,6 +5,7 @@
 Output demo/vhs/nthlayer-apply.gif
 
 Set Shell "bash"
+Set FontFamily "Menlo"
 Set FontSize 15
 Set Width 800
 Set Height 500

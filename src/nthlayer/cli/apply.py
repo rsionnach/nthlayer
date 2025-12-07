@@ -33,7 +33,7 @@ def print_apply_summary(result: ApplyResult, verbose: bool = False) -> None:
             label = resource_type.replace("-", " ").title()
             detail = f"{count} created"
 
-        icon = "✓" if resource_type not in _get_warning_types(result) else "⚠"
+        icon = "✅" if resource_type not in _get_warning_types(result) else "⚠️"
         print(f"  {icon} {label:<12} {detail}")
 
     # Summary line
