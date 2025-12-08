@@ -369,13 +369,17 @@ NTHLAYER_BANNER = """
 [#88C0D0]██║╚██╗██║   ██║   ██╔══██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗[/#88C0D0]
 [#88C0D0]██║ ╚████║   ██║   ██║  ██║███████╗██║  ██║   ██║   ███████╗██║  ██║[/#88C0D0]
 [#88C0D0]╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝[/#88C0D0]
-[#4C566A]The Missing Layer of Reliability[/#4C566A]
+[#D8DEE9]The Missing Layer of Reliability[/#D8DEE9]
 """
 
 
 def print_banner() -> None:
-    """Print ASCII banner (only in interactive terminals, not CI)."""
-    if _is_interactive() and _should_use_color():
+    """Print ASCII banner (only in interactive terminals, not CI).
+
+    Respects FORCE_COLOR to show banner in VHS/demo recordings.
+    """
+    # Show banner if interactive OR if FORCE_COLOR is set (for demos)
+    if _is_interactive() or os.environ.get("FORCE_COLOR"):
         console.print(NTHLAYER_BANNER)
 
 
