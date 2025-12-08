@@ -31,15 +31,22 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.theme import Theme
 
-# Custom theme for nthlayer
+# Nord color palette (https://www.nordtheme.com/)
+# Polar Night: #2E3440, #3B4252, #434C5E, #4C566A
+# Snow Storm: #D8DEE9, #E5E9F0, #ECEFF4
+# Frost: #8FBCBB, #88C0D0, #81A1C1, #5E81AC
+# Aurora: #BF616A (red), #D08770 (orange), #EBCB8B (yellow), #A3BE8C (green), #B48EAD (purple)
+
 NTHLAYER_THEME = Theme(
     {
-        "info": "cyan",
-        "success": "green",
-        "warning": "yellow",
-        "error": "red bold",
-        "highlight": "magenta",
-        "muted": "dim",
+        "info": "#88C0D0",  # Nord frost - light blue
+        "success": "#A3BE8C",  # Nord aurora - green
+        "warning": "#EBCB8B",  # Nord aurora - yellow
+        "error": "#BF616A bold",  # Nord aurora - red
+        "highlight": "#B48EAD",  # Nord aurora - purple
+        "muted": "#4C566A",  # Nord polar night - grey
+        "frost": "#81A1C1",  # Nord frost - blue
+        "orange": "#D08770",  # Nord aurora - orange
     }
 )
 
@@ -74,15 +81,15 @@ console = Console(
     no_color=os.environ.get("NO_COLOR") is not None,
 )
 
-# Questionary style matching our theme
+# Questionary style matching Nord theme
 PROMPT_STYLE = QStyle(
     [
-        ("qmark", "fg:cyan bold"),
+        ("qmark", "fg:#88C0D0 bold"),  # Nord frost
         ("question", "bold"),
-        ("answer", "fg:green"),
-        ("pointer", "fg:cyan bold"),
-        ("highlighted", "fg:cyan bold"),
-        ("selected", "fg:green"),
+        ("answer", "fg:#A3BE8C"),  # Nord aurora green
+        ("pointer", "fg:#88C0D0 bold"),  # Nord frost
+        ("highlighted", "fg:#81A1C1 bold"),  # Nord frost blue
+        ("selected", "fg:#A3BE8C"),  # Nord aurora green
     ]
 )
 
@@ -345,8 +352,8 @@ def wizard_intro(title: str, description: str) -> None:
         console.print()
         console.print(
             Panel(
-                f"[bold magenta]{title}[/bold magenta]\n\n{description}",
-                border_style="magenta",
+                f"[bold #B48EAD]{title}[/bold #B48EAD]\n\n{description}",
+                border_style="#B48EAD",  # Nord aurora purple
                 padding=(1, 4),
             )
         )
@@ -354,14 +361,15 @@ def wizard_intro(title: str, description: str) -> None:
 
 
 # Blocky ASCII banner - only shown in interactive mode
+# Uses Nord frost colors (#88C0D0)
 NTHLAYER_BANNER = """
-[cyan]███╗   ██╗████████╗██╗  ██╗██╗      █████╗ ██╗   ██╗███████╗██████╗[/cyan]
-[cyan]████╗  ██║╚══██╔══╝██║  ██║██║     ██╔══██╗╚██╗ ██╔╝██╔════╝██╔══██╗[/cyan]
-[cyan]██╔██╗ ██║   ██║   ███████║██║     ███████║ ╚████╔╝ █████╗  ██████╔╝[/cyan]
-[cyan]██║╚██╗██║   ██║   ██╔══██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗[/cyan]
-[cyan]██║ ╚████║   ██║   ██║  ██║███████╗██║  ██║   ██║   ███████╗██║  ██║[/cyan]
-[cyan]╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝[/cyan]
-[dim]The Missing Layer of Reliability[/dim]
+[#88C0D0]███╗   ██╗████████╗██╗  ██╗██╗      █████╗ ██╗   ██╗███████╗██████╗[/#88C0D0]
+[#88C0D0]████╗  ██║╚══██╔══╝██║  ██║██║     ██╔══██╗╚██╗ ██╔╝██╔════╝██╔══██╗[/#88C0D0]
+[#88C0D0]██╔██╗ ██║   ██║   ███████║██║     ███████║ ╚████╔╝ █████╗  ██████╔╝[/#88C0D0]
+[#88C0D0]██║╚██╗██║   ██║   ██╔══██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗[/#88C0D0]
+[#88C0D0]██║ ╚████║   ██║   ██║  ██║███████╗██║  ██║   ██║   ███████╗██║  ██║[/#88C0D0]
+[#88C0D0]╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝[/#88C0D0]
+[#4C566A]The Missing Layer of Reliability[/#4C566A]
 """
 
 
