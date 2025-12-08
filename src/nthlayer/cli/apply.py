@@ -37,9 +37,9 @@ def print_apply_summary(result: ApplyResult, verbose: bool = False) -> None:
             detail = f"{count} created"
 
         if resource_type in warning_types:
-            console.print(f"  [yellow]⚠️  {label:<12}[/yellow] {detail}")
+            console.print(f"  [yellow]⚠ {label:<12}[/yellow] {detail}")
         else:
-            console.print(f"  [green]✅ {label:<12}[/green] {detail}")
+            console.print(f"  [green]✓ {label:<12}[/green] {detail}")
 
     # Summary line
     console.print()

@@ -38,7 +38,7 @@ def generate_alerts_command(
 
     # Validate input file exists
     if not service_path.exists():
-        print(f"❌ Service file not found: {service_file}")
+        print(f"✗ Service file not found: {service_file}")
         return 1
 
     # Determine output path
@@ -113,7 +113,7 @@ def generate_alerts_command(
         return 0
 
     except (FileNotFoundError, ValueError, KeyError, TypeError, OSError) as e:
-        print(f"\n❌ Error generating alerts: {e}")
+        print(f"\n✗ Error generating alerts: {e}")
         import traceback
 
         traceback.print_exc()

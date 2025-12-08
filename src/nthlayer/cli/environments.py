@@ -45,7 +45,7 @@ def list_environments_command(service_file: str | None = None, directory: str | 
     env_dir = search_path / "environments"
 
     if not env_dir.exists():
-        print("❌ No environments directory found")
+        print("✗ No environments directory found")
         print()
         print(f"Expected location: {env_dir}")
         print()
@@ -59,7 +59,7 @@ def list_environments_command(service_file: str | None = None, directory: str | 
     env_files = list(env_dir.glob("*.yaml")) + list(env_dir.glob("*.yml"))
 
     if not env_files:
-        print("❌ No environment files found")
+        print("✗ No environment files found")
         print()
         print(f"Directory exists but is empty: {env_dir}")
         print()
@@ -100,15 +100,15 @@ def list_environments_command(service_file: str | None = None, directory: str | 
                 environments[env_name]["shared_file"] = env_file.name
 
         except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError) as e:
-            print(f"⚠️  Warning: Could not parse {env_file.name}: {e}")
+            print(f"⚠  Warning: Could not parse {env_file.name}: {e}")
 
     if not environments:
-        print("❌ No valid environment files found")
+        print("✗ No valid environment files found")
         print()
         return 1
 
     # Display environments
-    print(f"✅ Found {len(environments)} environment(s):")
+    print(f"✓ Found {len(environments)} environment(s):")
     print()
 
     for env_name in sorted(environments.keys()):
@@ -161,7 +161,7 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
         context1, resources1 = parse_service_file(service_file, environment=env1)
         context2, resources2 = parse_service_file(service_file, environment=env2)
     except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
-        print(f"❌ Error parsing service: {e}")
+        print(f"✗ Error parsing service: {e}")
         print()
         return 1
 
@@ -186,7 +186,7 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
             print(f"  {field}: {val1} (same)")
 
     if not has_differences and not show_all:
-        print("  ✅ All fields are identical")
+        print("  ✓ All fields are identical")
         print()
 
     # Compare resources
@@ -206,10 +206,10 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
         r2 = resources2_map.get(name)
 
         if r1 and not r2:
-            print(f"  ⚠️  {name} (only in {env1})")
+            print(f"  ⚠  {name} (only in {env1})")
             resource_differences = True
         elif r2 and not r1:
-            print(f"  ⚠️  {name} (only in {env2})")
+            print(f"  ⚠  {name} (only in {env2})")
             resource_differences = True
         elif r1 and r2:
             # Compare specs
@@ -223,10 +223,10 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
                 print()
                 resource_differences = True
             elif show_all:
-                print(f"  ✅ {name} ({r1.kind}): identical")
+                print(f"  ✓ {name} ({r1.kind}): identical")
 
     if not resource_differences and not show_all:
-        print("  ✅ All resources are identical")
+        print("  ✓ All resources are identical")
         print()
 
     # Summary
@@ -282,7 +282,7 @@ def validate_env_command(
     env_dir = search_path / "environments"
 
     if not env_dir.exists():
-        print("❌ No environments directory found")
+        print("✗ No environments directory found")
         print()
         print(f"Expected: {env_dir}")
         print()
@@ -306,7 +306,7 @@ def validate_env_command(
             break
 
     if not env_file:
-        print(f"❌ Environment file not found: {environment}")
+        print(f"✗ Environment file not found: {environment}")
         print()
         print("Searched for:")
         for f in env_files:
@@ -314,7 +314,7 @@ def validate_env_command(
         print()
         return 1
 
-    print(f"✅ Found: {env_file.name}")
+    print(f"✓ Found: {env_file.name}")
     print()
 
     # Parse and validate
@@ -325,11 +325,11 @@ def validate_env_command(
         with open(env_file) as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        print(f"❌ Invalid YAML: {e}")
+        print(f"✗ Invalid YAML: {e}")
         print()
         return 1
     except (FileNotFoundError, OSError, PermissionError) as e:
-        print(f"❌ Error reading file: {e}")
+        print(f"✗ Error reading file: {e}")
         print()
         return 1
 
@@ -392,7 +392,7 @@ def validate_env_command(
         print("🧪 Testing with service file...")
         try:
             context, resources = parse_service_file(service_file, environment=environment)
-            print(f"✅ Successfully merged with {Path(service_file).name}")
+            print(f"✓ Successfully merged with {Path(service_file).name}")
             print(f"   Result: tier={context.tier}, {len(resources)} resource(s)")
         except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
             errors.append(f"Failed to merge with service: {e}")
@@ -400,7 +400,7 @@ def validate_env_command(
 
     # Display results
     if errors:
-        print("❌ Validation failed")
+        print("✗ Validation failed")
         print()
         print("Errors:")
         for error in errors:
@@ -409,7 +409,7 @@ def validate_env_command(
         return 1
 
     if warnings:
-        print("⚠️  Validation warnings")
+        print("⚠  Validation warnings")
         print()
         print("Warnings:")
         for warning in warnings:
@@ -417,15 +417,15 @@ def validate_env_command(
         print()
 
         if strict:
-            print("❌ Validation failed (strict mode)")
+            print("✗ Validation failed (strict mode)")
             print()
             return 1
 
     if not errors and not warnings:
-        print("✅ Validation passed")
+        print("✓ Validation passed")
         print()
     elif not errors:
-        print("✅ Validation passed (with warnings)")
+        print("✓ Validation passed (with warnings)")
         print()
 
     return 0

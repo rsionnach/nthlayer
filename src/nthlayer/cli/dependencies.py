@@ -92,12 +92,12 @@ def validate_dependencies_command(
 
             if errors:
                 for error in errors:
-                    print(f"  ❌ {error}")
+                    print(f"  ✗ {error}")
                     all_errors.append(f"{service_name}: {error}")
 
             if warnings:
                 for warning in warnings:
-                    print(f"  ⚠️  {warning}")
+                    print(f"  ⚠  {warning}")
                     all_warnings.append(f"{service_name}: {warning}")
 
             print()
@@ -106,7 +106,7 @@ def validate_dependencies_command(
     cycles = detect_circular_dependencies(service_deps)
 
     if cycles:
-        print("❌ Circular Dependencies Detected:")
+        print("✗ Circular Dependencies Detected:")
         print()
 
         for cycle in cycles:
@@ -120,15 +120,15 @@ def validate_dependencies_command(
     print("=" * 70)
 
     if all_errors:
-        print(f"❌ Validation failed with {len(all_errors)} error(s)")
+        print(f"✗ Validation failed with {len(all_errors)} error(s)")
         print()
         return 1
 
     if all_warnings:
-        print(f"⚠️  {len(all_warnings)} warning(s) found")
+        print(f"⚠  {len(all_warnings)} warning(s) found")
         print()
 
-    print("✅ All dependencies valid")
+    print("✓ All dependencies valid")
     print()
 
     # Display dependency graph summary

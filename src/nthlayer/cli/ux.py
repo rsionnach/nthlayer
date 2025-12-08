@@ -144,33 +144,33 @@ def progress_bar(items: list[Any], description: str = "Processing") -> Iterator[
 def success(message: str) -> None:
     """Print a success message."""
     if has_gum():
-        _run_gum(["style", "--foreground", "10", f"✅ {message}"])
+        _run_gum(["style", "--foreground", "10", f"✓ {message}"])
     else:
-        console.print(f"[success]✅ {message}[/success]")
+        console.print(f"[success]✓ {message}[/success]")
 
 
 def error(message: str) -> None:
     """Print an error message."""
     if has_gum():
-        _run_gum(["style", "--foreground", "9", f"❌ {message}"])
+        _run_gum(["style", "--foreground", "9", f"✗ {message}"])
     else:
-        console.print(f"[error]❌ {message}[/error]")
+        console.print(f"[error]✗ {message}[/error]")
 
 
 def warning(message: str) -> None:
     """Print a warning message."""
     if has_gum():
-        _run_gum(["style", "--foreground", "11", f"⚠️  {message}"])
+        _run_gum(["style", "--foreground", "11", f"⚠ {message}"])
     else:
-        console.print(f"[warning]⚠️  {message}[/warning]")
+        console.print(f"[warning]⚠ {message}[/warning]")
 
 
 def info(message: str) -> None:
     """Print an info message."""
     if has_gum():
-        _run_gum(["style", "--foreground", "14", f"ℹ️  {message}"])
+        _run_gum(["style", "--foreground", "14", f"ℹ {message}"])
     else:
-        console.print(f"[info]ℹ️  {message}[/info]")
+        console.print(f"[info]ℹ {message}[/info]")
 
 
 def header(title: str) -> None:

@@ -49,7 +49,7 @@ def check_deploy_command(
     try:
         service_context, resources = parse_service_file(service_file, environment=environment)
     except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
-        print(f"❌ Error parsing service file: {e}")
+        print(f"✗ Error parsing service file: {e}")
         print()
         return 2  # Block on parse errors
 
@@ -82,7 +82,7 @@ def check_deploy_command(
     if budget_total is None or budget_consumed is None:
         # In real implementation, fetch from database
         # For now, show what would happen with example values
-        print("ℹ️  No error budget data available")
+        print("ℹ  No error budget data available")
         print("   (In production, this would fetch from database)")
         print()
         print(f"Example scenarios for {service_context.tier} in {environment or 'prod'}:")
@@ -176,19 +176,19 @@ def check_deploy_command(
 
     # Exit with appropriate code
     if result.is_blocked:
-        print("❌ Deployment BLOCKED")
+        print("✗ Deployment BLOCKED")
         print("   Exit code: 2")
         print()
         return 2
 
     elif result.is_warning:
-        print("⚠️  Deployment allowed with WARNING")
+        print("⚠  Deployment allowed with WARNING")
         print("   Exit code: 1")
         print()
         return 1
 
     else:
-        print("✅ Deployment APPROVED")
+        print("✓ Deployment APPROVED")
         print("   Exit code: 0")
         print()
         return 0

@@ -131,7 +131,7 @@ def validate_dashboard_command(
             result = resolver.resolve(intent_name)
 
             if result.status == ResolutionStatus.RESOLVED:
-                print(f"  ✅ {intent_name}")
+                print(f"  ✓ {intent_name}")
                 print(f"     Resolved: {result.metric_name}")
                 resolved_count += 1
             elif result.status == ResolutionStatus.CUSTOM:
@@ -139,7 +139,7 @@ def validate_dashboard_command(
                 print(f"     Custom: {result.metric_name}")
                 custom_count += 1
             elif result.status == ResolutionStatus.FALLBACK:
-                print(f"  ⚠️  {intent_name}")
+                print(f"  ⚠  {intent_name}")
                 print(f"     Fallback: {result.metric_name}")
                 print(f"     Note: {result.message}")
                 fallback_count += 1
@@ -149,7 +149,7 @@ def validate_dashboard_command(
                 print(f"     Expression: {result.synthesis_expr}")
                 resolved_count += 1
             else:
-                print(f"  ❌ {intent_name}")
+                print(f"  ✗ {intent_name}")
                 print(f"     {result.message}")
                 unresolved_count += 1
 
@@ -160,12 +160,12 @@ def validate_dashboard_command(
         print("Summary:")
         total = resolved_count + fallback_count + unresolved_count + custom_count
         print(f"   Total intents: {total}")
-        print(f"   ✅ Resolved: {resolved_count}")
+        print(f"   ✓ Resolved: {resolved_count}")
         if custom_count:
             print(f"   🔧 Custom: {custom_count}")
         if fallback_count:
-            print(f"   ⚠️  Fallback: {fallback_count}")
-        print(f"   ❌ Unresolved: {unresolved_count}")
+            print(f"   ⚠  Fallback: {fallback_count}")
+        print(f"   ✗ Unresolved: {unresolved_count}")
         print()
 
         # Exit code based on results
@@ -178,14 +178,14 @@ def validate_dashboard_command(
                 print("Run with --prometheus-url to validate against real metrics.")
                 return 0
         else:
-            print("✅ All intents resolved successfully!")
+            print("✓ All intents resolved successfully!")
             return 0
 
     except FileNotFoundError:
-        print(f"❌ Error: Service file not found: {service_file}")
+        print(f"✗ Error: Service file not found: {service_file}")
         return 1
     except (yaml.YAMLError, ValueError, KeyError, TypeError, OSError) as e:
-        print(f"❌ Error: {e}")
+        print(f"✗ Error: {e}")
         import traceback
 
         traceback.print_exc()
