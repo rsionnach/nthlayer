@@ -6,9 +6,9 @@ Output demo/vhs/nthlayer-apply.gif
 
 Set Shell "bash"
 Set FontFamily "Menlo"
-Set FontSize 15
-Set Width 800
-Set Height 550
+Set FontSize 14
+Set Width 900
+Set Height 650
 Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
@@ -16,10 +16,10 @@ Set Framerate 30
 # Force color output for Rich
 Env FORCE_COLOR "1"
 
-# Show a real service spec from examples
-Type "cat examples/services/checkout-service.yaml"
+# Show the banner first
+Type ".venv/bin/nthlayer"
 Enter
-Sleep 4s
+Sleep 3s
 
 # Run nthlayer apply
 Type ".venv/bin/nthlayer apply examples/services/checkout-service.yaml"
