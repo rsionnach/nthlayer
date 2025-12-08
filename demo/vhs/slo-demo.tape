@@ -17,7 +17,7 @@ Set Framerate 30
 Env FORCE_COLOR "1"
 
 # Show SLO details for a specific service
-Type "FORCE_COLOR=1 .venv/bin/nthlayer slo show checkout-service --file examples/services/checkout-service.yaml"
+Type ".venv/bin/nthlayer slo show checkout-service --file examples/services/checkout-service.yaml"
 Enter
 Sleep 4s
 

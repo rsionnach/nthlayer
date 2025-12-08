@@ -17,7 +17,7 @@ Set Framerate 30
 Env FORCE_COLOR "1"
 
 # Run portfolio command on examples
-Type "FORCE_COLOR=1 .venv/bin/nthlayer portfolio --path examples/services"
+Type ".venv/bin/nthlayer portfolio --path examples/services"
 Enter
 Sleep 4s
 

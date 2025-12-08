@@ -17,7 +17,7 @@ Set Framerate 30
 Env FORCE_COLOR "1"
 
 # Run plan command
-Type "FORCE_COLOR=1 .venv/bin/nthlayer plan examples/services/checkout-service.yaml"
+Type ".venv/bin/nthlayer plan examples/services/checkout-service.yaml"
 Enter
 Sleep 4s
 

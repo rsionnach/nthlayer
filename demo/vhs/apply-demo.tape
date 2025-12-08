@@ -22,7 +22,7 @@ Enter
 Sleep 4s
 
 # Run nthlayer apply
-Type "FORCE_COLOR=1 .venv/bin/nthlayer apply examples/services/checkout-service.yaml"
+Type ".venv/bin/nthlayer apply examples/services/checkout-service.yaml"
 Enter
 Sleep 3s
 

@@ -44,7 +44,7 @@ NTHLAYER_THEME = Theme(
         "warning": "#EBCB8B",  # Nord aurora - yellow
         "error": "#BF616A bold",  # Nord aurora - red
         "highlight": "#B48EAD",  # Nord aurora - purple
-        "muted": "#4C566A",  # Nord polar night - grey
+        "muted": "#D8DEE9",  # Nord snow storm - light grey (readable on dark bg)
         "frost": "#81A1C1",  # Nord frost - blue
         "orange": "#D08770",  # Nord aurora - orange
     }

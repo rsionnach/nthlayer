@@ -76,18 +76,18 @@ def lint_command(
 def _print_result(result: LintResult, verbose: bool) -> None:
     """Print a single lint result."""
     if result.passed:
-        console.print(f"[success]✓[/success] {result.file_path}")
+        console.print(f"[success]✅[/success] {result.file_path}")
     else:
-        console.print(f"[error]✗[/error] {result.file_path}")
+        console.print(f"[error]❌[/error] {result.file_path}")
 
     if result.issues:
         for issue in result.issues:
             if issue.is_error:
-                icon = "[error]✗[/error]"
+                icon = "[error]❌[/error]"
             elif issue.is_warning:
-                icon = "[warning]⚠[/warning]"
+                icon = "[warning]⚠️[/warning]"
             else:
-                icon = "[info]ℹ[/info]"
+                icon = "[info]ℹ️[/info]"
             line_info = f":{issue.line}" if issue.line else ""
             rule_info = f" [muted]({issue.rule_name})[/muted]" if issue.rule_name else ""
             console.print(f"  {icon} [{issue.check}]{line_info}{rule_info} {issue.message}")
