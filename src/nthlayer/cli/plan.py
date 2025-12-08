@@ -6,100 +6,102 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from nthlayer.cli.ux import console, error, header, warning
 from nthlayer.orchestrator import PlanResult, ServiceOrchestrator
 
 
 def print_plan_summary(plan: PlanResult) -> None:
     """Print beautiful plan summary."""
-    print()
-    print("╔" + "═" * 62 + "╗")
-    print(f"║  📋 Plan: {plan.service_name:<50} ║")
-    print("╚" + "═" * 62 + "╝")
-    print()
+    console.print()
+    header(f"Plan: {plan.service_name}")
+    console.print()
 
     if plan.errors:
-        print("❌ Errors:")
-        for error in plan.errors:
-            print(f"   • {error}")
-        print()
+        error("Errors:")
+        for err in plan.errors:
+            console.print(f"   [error]•[/error] {err}")
+        console.print()
         return
 
     if not plan.resources:
-        print("⚠️  No resources detected in service definition")
-        print()
+        warning("No resources detected in service definition")
+        console.print()
         return
 
-    print("The following resources will be created:")
-    print()
+    console.print("[bold]The following resources will be created:[/bold]")
+    console.print()
 
     # SLOs
     if "slos" in plan.resources:
         slos = plan.resources["slos"]
-        print(f"✅ SLOs ({len(slos)})")
+        console.print(f"  [success]✓ SLOs[/success]         {len(slos)} defined")
         for slo in slos[:5]:  # Show first 5
             obj = slo.get("objective", "?")
             window = slo.get("window", "30d")
-            print(f"   + {slo['name']} ({obj}%, {window})")
+            console.print(f"     [muted]└[/muted] {slo['name']} ({obj}%, {window})")
         if len(slos) > 5:
-            print(f"   ... and {len(slos) - 5} more")
-        print()
+            console.print(f"     [muted]└ ... and {len(slos) - 5} more[/muted]")
+        console.print()
 
     # Alerts
     if "alerts" in plan.resources:
         alerts = plan.resources["alerts"]
         total_count = sum(a.get("count", 0) for a in alerts)
-        print(f"✅ Alerts ({total_count})")
+        console.print(f"  [success]✓ Alerts[/success]       {total_count} generated")
         for alert in alerts:
             tech = alert.get("technology", "unknown")
             count = alert.get("count", 0)
-            print(f"   + {tech.capitalize()} ({count} alerts)")
-        print()
+            console.print(f"     [muted]└[/muted] {tech.capitalize()} ({count} alerts)")
+        console.print()
 
     # Dashboard
     if "dashboard" in plan.resources:
         dashboards = plan.resources["dashboard"]
-        print(f"✅ Dashboard ({len(dashboards)})")
+        console.print(f"  [success]✓ Dashboard[/success]    {len(dashboards)} generated")
         for dashboard in dashboards:
             panels = dashboard.get("panels", "?")
-            print(f"   + {dashboard['name']} ({panels} panels)")
-        print()
+            console.print(f"     [muted]└[/muted] {dashboard['name']} ({panels} panels)")
+        console.print()
 
     # Recording Rules
     if "recording-rules" in plan.resources:
         rules = plan.resources["recording-rules"]
         total_count = sum(r.get("count", 0) for r in rules)
-        print(f"✅ Recording Rules ({total_count})")
+        console.print(f"  [success]✓ Recording[/success]    {total_count} rules")
         for rule in rules:
             rule_type = rule.get("type", "unknown")
             count = rule.get("count", 0)
-            print(f"   + {rule_type} ({count} rules)")
-        print()
+            console.print(f"     [muted]└[/muted] {rule_type} ({count} rules)")
+        console.print()
 
     # PagerDuty
     if "pagerduty" in plan.resources:
         pd_resources = plan.resources["pagerduty"]
-        print(f"✅ PagerDuty ({len(pd_resources)} resources)")
+        console.print("  [success]✓ PagerDuty[/success]    configured")
         for resource in pd_resources:
             res_type = resource.get("type", "unknown")
             if res_type == "team":
-                print(f"   + Team: {resource.get('name')}")
+                console.print(f"     [muted]└[/muted] Team: {resource.get('name')}")
             elif res_type == "schedules":
                 names = resource.get("names", [])
-                print(f"   + Schedules: {', '.join(names)}")
+                console.print(f"     [muted]└[/muted] Schedules: {', '.join(names)}")
             elif res_type == "escalation_policy":
-                print(f"   + Escalation Policy: {resource.get('name')}")
+                console.print(f"     [muted]└[/muted] Escalation: {resource.get('name')}")
             elif res_type == "service":
                 tier = resource.get("tier", "medium")
                 model = resource.get("support_model", "self")
-                print(f"   + Service: {resource.get('name')} (tier={tier}, support={model})")
-        print()
+                console.print(
+                    f"     [muted]└[/muted] Service: {resource.get('name')} "
+                    f"(tier={tier}, support={model})"
+                )
+        console.print()
 
     # Summary
-    print(f"📊 Total: {plan.total_resources} resources")
-    print()
-    print("To apply these changes, run:")
-    print(f"  nthlayer apply {plan.service_yaml}")
-    print()
+    console.print(f"[bold]Total:[/bold] {plan.total_resources} resources")
+    console.print()
+    console.print("[muted]To apply these changes, run:[/muted]")
+    console.print(f"  [info]nthlayer apply {plan.service_yaml}[/info]")
+    console.print()
 
 
 def print_plan_json(plan: PlanResult) -> None:

@@ -5,6 +5,7 @@
 Output demo/vhs/slo-demo.gif
 
 Set Shell "bash"
+Set FontFamily "Menlo"
 Set FontSize 16
 Set Width 900
 Set Height 600
@@ -12,14 +13,12 @@ Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Show SLO list
-Type "nthlayer slo list --dir examples/services"
-Enter
-Sleep 2500ms
+# Force color output for Rich
+Env FORCE_COLOR "1"
 
 # Show SLO details for a specific service
-Type "nthlayer slo show examples/services/checkout-service.yaml"
+Type ".venv/bin/nthlayer slo show checkout-service --file examples/services/checkout-service.yaml"
 Enter
-Sleep 2500ms
+Sleep 4s
 
 Sleep 2s

@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from nthlayer.cli.ux import console, header
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -24,11 +25,9 @@ def slo_show_command(
     service_file: str | None = None,
 ) -> int:
     """Show SLOs and current error budget for a service."""
-    print()
-    print("=" * 60)
-    print(f"  SLO Status: {service}")
-    print("=" * 60)
-    print()
+    console.print()
+    header(f"SLO Status: {service}")
+    console.print()
 
     # Try to find service file
     if service_file:
@@ -43,30 +42,30 @@ def slo_show_command(
                 service_path = Path(pattern)
                 break
         else:
-            print(f"No service file found for: {service}")
-            print()
-            print("Specify file with: nthlayer slo show <service> --file <path>")
+            console.print(f"[red]No service file found for:[/red] {service}")
+            console.print()
+            console.print("[dim]Specify file with:[/dim] nthlayer slo show <service> --file <path>")
             return 1
 
     try:
         context, resources = parse_service_file(str(service_path))
     except Exception as e:
-        print(f"Error parsing service file: {e}")
+        console.print(f"[red]Error parsing service file:[/red] {e}")
         return 1
 
     # Find SLO resources
     slo_resources = [r for r in resources if r.kind == "SLO"]
 
     if not slo_resources:
-        print(f"No SLOs defined in {service_path}")
-        print()
-        print("Add SLOs to your service.yaml:")
-        print("  resources:")
-        print("    - kind: SLO")
-        print("      name: availability")
-        print("      spec:")
-        print("        objective: 99.95")
-        print("        window: 30d")
+        console.print(f"[yellow]No SLOs defined in {service_path}[/yellow]")
+        console.print()
+        console.print("[dim]Add SLOs to your service.yaml:[/dim]")
+        console.print("  resources:")
+        console.print("    - kind: SLO")
+        console.print("      name: availability")
+        console.print("      spec:")
+        console.print("        objective: 99.95")
+        console.print("        window: 30d")
         return 1
 
     # Display each SLO
@@ -80,31 +79,34 @@ def slo_show_command(
         error_budget_percent = 100 - objective
         error_budget_minutes = window_minutes * (error_budget_percent / 100)
 
-        print(f"SLO: {slo.name}")
-        print(f"  Objective: {objective}%")
-        print(f"  Window: {window}")
-        print(f"  Error Budget: {error_budget_minutes:.1f} minutes ({error_budget_percent:.2f}%)")
-        print()
+        console.print(f"[bold cyan]SLO:[/bold cyan] {slo.name}")
+        console.print(f"  [green]Objective:[/green] {objective}%")
+        console.print(f"  [green]Window:[/green] {window}")
+        console.print(
+            f"  [green]Error Budget:[/green] {error_budget_minutes:.1f} minutes "
+            f"[dim]({error_budget_percent:.2f}%)[/dim]"
+        )
+        console.print()
 
         # Indicator details
         indicator = spec.get("indicator", {})
         indicator_type = indicator.get("type", "custom")
-        print(f"  Indicator: {indicator_type}")
+        console.print(f"  [dim]Indicator:[/dim] {indicator_type}")
 
         if indicator.get("query"):
             query = indicator["query"].strip()
             if len(query) > 60:
                 query = query[:57] + "..."
-            print(f"  Query: {query}")
+            console.print(f"  [dim]Query:[/dim] {query}")
 
-        print()
+        console.print()
 
-    print("-" * 60)
-    print(f"Total: {len(slo_resources)} SLO(s) defined")
-    print()
-    print("To collect metrics and calculate actual budget:")
-    print(f"  nthlayer slo collect {service}")
-    print()
+    console.rule(style="dim")
+    console.print(f"[bold]Total:[/bold] {len(slo_resources)} SLO(s) defined")
+    console.print()
+    console.print("[dim]To collect metrics and calculate actual budget:[/dim]")
+    console.print(f"  [cyan]nthlayer slo collect {service}[/cyan]")
+    console.print()
 
     return 0
 
@@ -178,9 +180,7 @@ def slo_collect_command(
 ) -> int:
     """Collect metrics from Prometheus and calculate error budget."""
     # Get Prometheus URL from env or arg
-    prom_url = prometheus_url or os.environ.get(
-        "NTHLAYER_PROMETHEUS_URL", "http://localhost:9090"
-    )
+    prom_url = prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL", "http://localhost:9090")
 
     print()
     print("=" * 60)
@@ -252,7 +252,11 @@ async def _collect_slo_metrics(
     """Query Prometheus for SLO metrics."""
     from nthlayer.providers.prometheus import PrometheusProvider, PrometheusProviderError
 
-    provider = PrometheusProvider(prometheus_url)
+    # Get auth credentials from environment (for Grafana Cloud, etc.)
+    username = os.environ.get("NTHLAYER_METRICS_USER")
+    password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
+
+    provider = PrometheusProvider(prometheus_url, username=username, password=password)
     results = []
 
     for slo in slo_resources:

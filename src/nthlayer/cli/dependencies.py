@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import yaml
 
+from nthlayer.cli.ux import console, header, success
 from nthlayer.slos.dependencies import (
     Dependency,
     DependencyCriticality,
@@ -32,10 +33,8 @@ def validate_dependencies_command(
     Returns:
         Exit code (0 = valid, 1 = errors found)
     """
-    print("=" * 70)
-    print("  NthLayer: Validate Dependencies")
-    print("=" * 70)
-    print()
+    header("Validate Dependencies")
+    console.console.print()
 
     # Parse all services
     services = {}
@@ -70,8 +69,8 @@ def validate_dependencies_command(
         except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
             all_errors.append(f"Error parsing {service_file}: {e}")
 
-    print(f"📋 Parsed {len(services)} services")
-    print()
+    console.print(f"[success]✓[/success] Parsed {len(services)} services")
+    console.print()
 
     # Validate each service's dependencies
     all_service_names = set(services.keys())
@@ -88,55 +87,55 @@ def validate_dependencies_command(
         )
 
         if errors or warnings:
-            print(f"Service: {service_name}")
+            console.print(f"[cyan]Service:[/cyan] {service_name}")
 
             if errors:
                 for error in errors:
-                    print(f"  ❌ {error}")
+                    console.print(f"  [error]✗[/error] {error}")
                     all_errors.append(f"{service_name}: {error}")
 
             if warnings:
                 for warning in warnings:
-                    print(f"  ⚠️  {warning}")
+                    console.print(f"  [warning]⚠[/warning] {warning}")
                     all_warnings.append(f"{service_name}: {warning}")
 
-            print()
+            console.print()
 
     # Check for circular dependencies
     cycles = detect_circular_dependencies(service_deps)
 
     if cycles:
-        print("❌ Circular Dependencies Detected:")
-        print()
+        error("Circular Dependencies Detected:")
+        console.print()
 
         for cycle in cycles:
             cycle_str = " → ".join(cycle)
-            print(f"  • {cycle_str}")
+            console.print(f"  [muted]•[/muted] {cycle_str}")
             all_errors.append(f"Circular dependency: {cycle_str}")
 
-        print()
+        console.print()
 
     # Summary
     print("=" * 70)
 
     if all_errors:
-        print(f"❌ Validation failed with {len(all_errors)} error(s)")
-        print()
+        error(f"Validation failed with {len(all_errors)} error(s)")
+        console.print()
         return 1
 
     if all_warnings:
-        print(f"⚠️  {len(all_warnings)} warning(s) found")
-        print()
+        warning(f"{len(all_warnings)} warning(s) found")
+        console.print()
 
-    print("✅ All dependencies valid")
-    print()
+    success("All dependencies valid")
+    console.print()
 
     # Display dependency graph summary
-    print("📊 Dependency Summary:")
+    console.print("[bold]Dependency Summary:[/bold]")
     for service_name, deps in service_deps.items():
         if deps:
-            print(f"  {service_name} → {', '.join(deps)}")
+            console.print(f"  [cyan]{service_name}[/cyan] → {', '.join(deps)}")
 
-    print()
+    console.print()
 
     return 0

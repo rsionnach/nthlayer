@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from nthlayer.cli.ux import console, error, header, success, warning
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -23,46 +24,46 @@ def list_environments_command(service_file: str | None = None, directory: str | 
     Returns:
         Exit code (0 for success, 1 for error)
     """
-    print("=" * 70)
-    print("  NthLayer: List Environments")
-    print("=" * 70)
-    print()
+    header("NthLayer: List Environments")
+
+    header("NthLayer: List Environments")
+    console.print()
 
     # Determine search location
     if service_file:
         search_path = Path(service_file).parent
-        print(f"📁 Service: {service_file}")
+        console.print(f"[cyan]Service:[/cyan] {service_file}")
     elif directory:
         search_path = Path(directory)
-        print(f"📁 Directory: {directory}")
+        console.print(f"[cyan]Directory:[/cyan] {directory}")
     else:
         search_path = Path.cwd()
-        print(f"📁 Directory: {search_path}")
+        console.print(f"[cyan]Directory:[/cyan] {search_path}")
 
-    print()
+    console.print()
 
     # Find environments directory
     env_dir = search_path / "environments"
 
     if not env_dir.exists():
-        print("❌ No environments directory found")
-        print()
-        print(f"Expected location: {env_dir}")
-        print()
-        print("To create environments:")
-        print(f"  mkdir -p {env_dir}")
-        print(f"  # Create environment files in {env_dir}/")
-        print()
+        error("No environments directory found")
+        console.print()
+        console.print(f"[muted]Expected location: {env_dir}[/muted]")
+        console.print()
+        console.print("[bold]To create environments:[/bold]")
+        console.print(f"  [cyan]mkdir -p {env_dir}[/cyan]")
+        console.print(f"  [muted]# Create environment files in {env_dir}/[/muted]")
+        console.print()
         return 1
 
     # Find all environment files
     env_files = list(env_dir.glob("*.yaml")) + list(env_dir.glob("*.yml"))
 
     if not env_files:
-        print("❌ No environment files found")
-        print()
-        print(f"Directory exists but is empty: {env_dir}")
-        print()
+        print("✗ No environment files found")
+        console.print()
+        console.print(f"[muted]Directory exists but is empty: {env_dir}[/muted]")
+        console.print()
         return 1
 
     # Parse environment files
@@ -100,37 +101,43 @@ def list_environments_command(service_file: str | None = None, directory: str | 
                 environments[env_name]["shared_file"] = env_file.name
 
         except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError) as e:
-            print(f"⚠️  Warning: Could not parse {env_file.name}: {e}")
+            warning(f"Could not parse {env_file.name}: {e}")
 
     if not environments:
-        print("❌ No valid environment files found")
-        print()
+        error("No valid environment files found")
+        console.print()
         return 1
 
     # Display environments
-    print(f"✅ Found {len(environments)} environment(s):")
-    print()
+    console.print(f"[success]✓[/success] Found {len(environments)} environment(s):")
+    console.print()
 
     for env_name in sorted(environments.keys()):
         env = environments[env_name]
 
-        print(f"📦 {env_name}")
+        console.print(f"[cyan]📦 {env_name}[/cyan]")
 
         if env["shared_file"]:
-            print(f"   Shared: {env['shared_file']}")
+            console.print(f"   [muted]Shared:[/muted] {env['shared_file']}")
 
         if env["service_files"]:
-            print(f"   Service-specific: {len(env['service_files'])} file(s)")
+            console.print(
+                f"   [muted]Service-specific:[/muted] {len(env['service_files'])} file(s)"
+            )
             for svc in sorted(env["service_files"], key=lambda x: x["service"]):
-                print(f"      • {svc['service']}: {svc['file']}")
+                console.print(f"      [muted]•[/muted] {svc['service']}: {svc['file']}")
 
-        print()
+        console.print()
 
     # Show usage examples
-    print("💡 Usage:")
-    print(f"   nthlayer generate-slo service.yaml --env {list(environments.keys())[0]}")
-    print(f"   nthlayer validate service.yaml --env {list(environments.keys())[0]}")
-    print()
+    console.print("[bold]Usage:[/bold]")
+    console.print(
+        f"   [cyan]nthlayer generate-slo[/cyan] service.yaml --env {list(environments.keys())[0]}"
+    )
+    console.print(
+        f"   [cyan]nthlayer validate[/cyan] service.yaml --env {list(environments.keys())[0]}"
+    )
+    console.print()
 
     return 0
 
@@ -147,29 +154,29 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
     Returns:
         Exit code (0 for success, 1 for error)
     """
-    print("=" * 70)
-    print("  NthLayer: Compare Environments")
-    print("=" * 70)
-    print()
+    header("NthLayer: List Environments")
 
-    print(f"📄 Service: {service_file}")
-    print(f"🔀 Comparing: {env1} vs {env2}")
-    print()
+    header("NthLayer: List Environments")
+    console.print()
+
+    console.print(f"[cyan]Service:[/cyan] {service_file}")
+    console.print(f"[cyan]Comparing:[/cyan] {env1} vs {env2}")
+    console.print()
 
     # Parse service with both environments
     try:
         context1, resources1 = parse_service_file(service_file, environment=env1)
         context2, resources2 = parse_service_file(service_file, environment=env2)
     except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
-        print(f"❌ Error parsing service: {e}")
-        print()
+        error(f"Error parsing service: {e}")
+        console.print()
         return 1
 
     has_differences = False
 
     # Compare service context
-    print("🔧 Service Configuration:")
-    print()
+    console.print("[bold]Service Configuration:[/bold]")
+    console.print()
 
     service_fields = ["tier", "type", "team", "template"]
     for field in service_fields:
@@ -177,21 +184,21 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
         val2 = getattr(context2, field, None)
 
         if val1 != val2:
-            print(f"  {field}:")
-            print(f"    {env1}: {val1}")
-            print(f"    {env2}: {val2}")
-            print()
+            console.print(f"  [cyan]{field}:[/cyan]")
+            console.print(f"    [muted]{env1}:[/muted] {val1}")
+            console.print(f"    [muted]{env2}:[/muted] {val2}")
+            console.print()
             has_differences = True
         elif show_all:
-            print(f"  {field}: {val1} (same)")
+            console.print(f"  [muted]{field}: {val1} (same)[/muted]")
 
     if not has_differences and not show_all:
-        print("  ✅ All fields are identical")
-        print()
+        print("  ✓ All fields are identical")
+        console.print()
 
     # Compare resources
-    print("📦 Resources:")
-    print()
+    console.print("[bold]Resources:[/bold]")
+    console.print()
 
     # Build resource maps
     resources1_map = {r.name: r for r in resources1}
@@ -206,37 +213,37 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
         r2 = resources2_map.get(name)
 
         if r1 and not r2:
-            print(f"  ⚠️  {name} (only in {env1})")
+            console.print(f"  [warning]⚠[/warning] {name} (only in {env1})")
             resource_differences = True
         elif r2 and not r1:
-            print(f"  ⚠️  {name} (only in {env2})")
+            console.print(f"  [warning]⚠[/warning] {name} (only in {env2})")
             resource_differences = True
         elif r1 and r2:
             # Compare specs
             spec_diff = _diff_dicts(r1.spec, r2.spec)
             if spec_diff:
-                print(f"  📋 {name} ({r1.kind}):")
+                console.print(f"  [cyan]{name}[/cyan] ({r1.kind}):")
                 for key, (v1, v2) in spec_diff.items():
-                    print(f"      {key}:")
-                    print(f"        {env1}: {v1}")
-                    print(f"        {env2}: {v2}")
-                print()
+                    console.print(f"      [cyan]{key}:[/cyan]")
+                    console.print(f"        [muted]{env1}:[/muted] {v1}")
+                    console.print(f"        [muted]{env2}:[/muted] {v2}")
+                console.print()
                 resource_differences = True
             elif show_all:
-                print(f"  ✅ {name} ({r1.kind}): identical")
+                console.print(f"  [success]✓[/success] {name} ({r1.kind}): identical")
 
     if not resource_differences and not show_all:
-        print("  ✅ All resources are identical")
-        print()
+        console.print("  [success]✓[/success] All resources are identical")
+        console.print()
 
     # Summary
-    print("=" * 70)
+    header("NthLayer: List Environments")
     if has_differences or resource_differences:
-        print("📊 Summary: Configurations differ")
+        console.print("[bold yellow]Summary: Configurations differ[/bold yellow]")
     else:
-        print("📊 Summary: Configurations are identical")
-    print("=" * 70)
-    print()
+        console.print("[bold green]Summary: Configurations are identical[/bold green]")
+    header("NthLayer: List Environments")
+    console.print()
 
     return 0
 
@@ -258,34 +265,34 @@ def validate_env_command(
     Returns:
         Exit code (0 for valid, 1 for invalid)
     """
-    print("=" * 70)
-    print("  NthLayer: Validate Environment")
-    print("=" * 70)
-    print()
+    header("NthLayer: List Environments")
 
-    print(f"🌍 Environment: {environment}")
+    header("NthLayer: List Environments")
+    console.print()
+
+    console.print(f"[cyan]Environment:[/cyan] {environment}")
 
     # Determine search location
     if service_file:
         search_path = Path(service_file).parent
-        print(f"📁 Service: {service_file}")
+        console.print(f"[cyan]Service:[/cyan] {service_file}")
     elif directory:
         search_path = Path(directory)
-        print(f"📁 Directory: {directory}")
+        console.print(f"[cyan]Directory:[/cyan] {directory}")
     else:
         search_path = Path.cwd()
-        print(f"📁 Directory: {search_path}")
+        console.print(f"[cyan]Directory:[/cyan] {search_path}")
 
-    print()
+    console.print()
 
     # Find environment file
     env_dir = search_path / "environments"
 
     if not env_dir.exists():
-        print("❌ No environments directory found")
-        print()
-        print(f"Expected: {env_dir}")
-        print()
+        error("No environments directory found")
+        console.print()
+        console.print(f"[muted]Expected: {env_dir}[/muted]")
+        console.print()
         return 1
 
     # Look for environment file
@@ -306,16 +313,16 @@ def validate_env_command(
             break
 
     if not env_file:
-        print(f"❌ Environment file not found: {environment}")
-        print()
-        print("Searched for:")
+        error(f"Environment file not found: {environment}")
+        console.print()
+        console.print("[muted]Searched for:[/muted]")
         for f in env_files:
-            print(f"  • {f.name}")
-        print()
+            console.print(f"  [muted]•[/muted] {f.name}")
+        console.print()
         return 1
 
-    print(f"✅ Found: {env_file.name}")
-    print()
+    success(f"Found: {env_file.name}")
+    console.print()
 
     # Parse and validate
     errors = []
@@ -325,12 +332,12 @@ def validate_env_command(
         with open(env_file) as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        print(f"❌ Invalid YAML: {e}")
-        print()
+        error(f"Invalid YAML: {e}")
+        console.print()
         return 1
     except (FileNotFoundError, OSError, PermissionError) as e:
-        print(f"❌ Error reading file: {e}")
-        print()
+        error(f"Error reading file: {e}")
+        console.print()
         return 1
 
     # Validate structure
@@ -389,44 +396,44 @@ def validate_env_command(
 
     # Test with service file if provided
     if service_file and not errors:
-        print("🧪 Testing with service file...")
+        console.print("[cyan]Testing with service file...[/cyan]")
         try:
             context, resources = parse_service_file(service_file, environment=environment)
-            print(f"✅ Successfully merged with {Path(service_file).name}")
-            print(f"   Result: tier={context.tier}, {len(resources)} resource(s)")
+            success(f"Successfully merged with {Path(service_file).name}")
+            console.print(f"   [muted]Result: tier={context.tier}, {len(resources)} resource(s)")
         except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
             errors.append(f"Failed to merge with service: {e}")
-        print()
+        console.print()
 
     # Display results
     if errors:
-        print("❌ Validation failed")
-        print()
-        print("Errors:")
-        for error in errors:
-            print(f"  • {error}")
-        print()
+        error("Validation failed")
+        console.print()
+        console.print("[bold red]Errors:[/bold red]")
+        for err in errors:
+            console.print(f"  [muted]•[/muted] {err}")
+        console.print()
         return 1
 
     if warnings:
-        print("⚠️  Validation warnings")
-        print()
-        print("Warnings:")
-        for warning in warnings:
-            print(f"  • {warning}")
-        print()
+        warning("Validation warnings")
+        console.print()
+        console.print("[bold yellow]Warnings:[/bold yellow]")
+        for warn in warnings:
+            console.print(f"  [muted]•[/muted] {warn}")
+        console.print()
 
         if strict:
-            print("❌ Validation failed (strict mode)")
-            print()
+            error("Validation failed (strict mode)")
+            console.print()
             return 1
 
     if not errors and not warnings:
-        print("✅ Validation passed")
-        print()
+        success("Validation passed")
+        console.print()
     elif not errors:
-        print("✅ Validation passed (with warnings)")
-        print()
+        success("Validation passed (with warnings)")
+        console.print()
 
     return 0
 

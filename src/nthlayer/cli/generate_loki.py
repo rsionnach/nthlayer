@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from nthlayer.cli.ux import console, error, header, success
+
 
 def generate_loki_command(
     service_file: str,
@@ -28,17 +30,17 @@ def generate_loki_command(
     service_path = Path(service_file)
 
     if not service_path.exists():
-        print(f"Error: Service file not found: {service_file}")
+        error(f"Service file not found: {service_file}")
         return 1
 
-    print("=" * 70)
-    print("  NthLayer: Generate Loki Alerts")
-    print("=" * 70)
-    print()
-    print(f"Service: {service_path}")
+    header("Generate Loki Alerts")
+
+    header("Generate Loki Alerts")
+    console.print()
+    console.print(f"[cyan]Service:[/cyan] {service_path}")
     if dry_run:
-        print("Mode: Dry run (preview only)")
-    print()
+        console.print("[muted]Mode: Dry run (preview only)[/muted]")
+    console.print()
 
     try:
         from nthlayer.loki import LokiAlertGenerator
@@ -58,44 +60,46 @@ def generate_loki_command(
             labels={"team": context.team} if context.team else {},
         )
 
-        print(f"Service: {context.name}")
-        print(f"Type: {context.type}")
-        print(f"Tier: {context.tier}")
-        print(f"Dependencies: {', '.join(dependencies) if dependencies else 'none'}")
-        print()
-        print(f"Generated {len(alerts)} Loki alerts")
-        print()
+        console.print(f"[muted]Service:[/muted] {context.name}")
+        console.print(f"[muted]Type:[/muted] {context.type}")
+        console.print(f"[muted]Tier:[/muted] {context.tier}")
+        console.print(
+            f"[muted]Dependencies:[/muted] {', '.join(dependencies) if dependencies else 'none'}"
+        )
+        console.print()
+        console.print(f"[success]✓[/success] Generated {len(alerts)} Loki alerts")
+        console.print()
 
         # Group by category
         service_alerts = [a for a in alerts if a.category == "service"]
         dep_alerts = [a for a in alerts if a.category == "dependency"]
 
-        print("Alert breakdown:")
-        print(f"  Service alerts: {len(service_alerts)}")
-        print(f"  Dependency alerts: {len(dep_alerts)}")
-        print()
+        console.print("[bold]Alert breakdown:[/bold]")
+        console.print(f"  [muted]Service alerts:[/muted] {len(service_alerts)}")
+        console.print(f"  [muted]Dependency alerts:[/muted] {len(dep_alerts)}")
+        console.print()
 
         if dry_run:
-            print("Preview of generated alerts:")
-            print("-" * 50)
+            console.print("[bold]Preview of generated alerts:[/bold]")
+            console.print("[muted]─[/muted]" * 50)
             yaml_output = generator.to_ruler_yaml(alerts, group_name=context.name)
             print(yaml_output[:2000])
             if len(yaml_output) > 2000:
-                print(f"... ({len(yaml_output)} total characters)")
+                console.print(f"[muted]... ({len(yaml_output)} total characters)[/muted]")
         else:
             if not output:
                 output = f"generated/{context.name}/loki-alerts.yaml"
 
             output_path = Path(output)
             generator.write_ruler_file(alerts, output_path, group_name=context.name)
-            print(f"Wrote alerts to: {output_path}")
+            success(f"Wrote alerts to: {output_path}")
 
-        print()
-        print("Done!")
+        console.print()
+        success("Done!")
         return 0
 
     except Exception as e:
-        print(f"Error generating Loki alerts: {e}")
+        error(f"Error generating Loki alerts: {e}")
         import traceback
 
         traceback.print_exc()

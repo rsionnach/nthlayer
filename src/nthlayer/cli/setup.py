@@ -18,6 +18,7 @@ import getpass
 import os
 from pathlib import Path
 
+from nthlayer.cli.ux import console, error, header, info, success, warning
 from nthlayer.config.integrations import (
     GrafanaProfile,
     GrafanaType,
@@ -57,9 +58,9 @@ def setup_command(
     # Check if already configured
     config_path = get_config_path()
     if config_path and config_path.exists():
-        print(f"Existing configuration found at: {config_path}")
+        warning(f"Existing configuration found at: {config_path}")
         if not _confirm("Overwrite existing configuration?", default=False):
-            print("\nSetup cancelled. Use 'nthlayer config show' to view current config.")
+            info("Setup cancelled. Use 'nthlayer config show' to view current config.")
             return 0
 
     if quick:
@@ -89,12 +90,12 @@ def setup_command(
 
 def _print_welcome_banner() -> None:
     """Print welcome banner."""
-    print()
-    print("=" * 70)
-    print("  Welcome to NthLayer!")
-    print("  The missing layer of reliability - 20 hours of SRE work in 5 minutes")
-    print("=" * 70)
-    print()
+    console.print()
+    header("Welcome to NthLayer!")
+    console.print(
+        "[muted]The missing layer of reliability - 20 hours of SRE work in 5 minutes[/muted]"
+    )
+    console.print()
 
 
 def _quick_setup() -> int:
@@ -109,14 +110,14 @@ def _quick_setup() -> int:
     config = IntegrationConfig.default()
     resolver = get_secret_resolver()
 
-    print("Quick Setup")
-    print("-" * 40)
-    print("We'll configure the essentials to get you started.")
-    print("You can always run 'nthlayer config init' for advanced options.\n")
+    console.print("[bold]Quick Setup[/bold]")
+    console.print("[muted]─[/muted]" * 40)
+    console.print("We'll configure the essentials to get you started.")
+    console.print("You can always run 'nthlayer config init' for advanced options.\n")
 
     # 1. Prometheus
-    print("1. Prometheus Configuration")
-    print("   NthLayer queries Prometheus for SLO metrics and metric discovery.\n")
+    console.print("[bold cyan]1. Prometheus Configuration[/bold cyan]")
+    console.print("   NthLayer queries Prometheus for SLO metrics and metric discovery.\n")
 
     prom_url = _prompt("   Prometheus URL", default="http://localhost:9090")
 
@@ -135,11 +136,11 @@ def _quick_setup() -> int:
 
     config.prometheus.profiles["default"] = prom_profile
     config.prometheus.default = "default"
-    print()
+    console.print()
 
     # 2. Grafana (optional)
-    print("2. Grafana Configuration (optional)")
-    print("   NthLayer can push dashboards directly to Grafana.\n")
+    console.print("[bold cyan]2. Grafana Configuration[/bold cyan] [muted](optional)[/muted]")
+    console.print("   NthLayer can push dashboards directly to Grafana.\n")
 
     if _confirm("   Configure Grafana?", default=True):
         grafana_url = _prompt("   Grafana URL", default="http://localhost:3000")
@@ -157,11 +158,11 @@ def _quick_setup() -> int:
 
         config.grafana.profiles["default"] = grafana_profile
         config.grafana.default = "default"
-    print()
+    console.print()
 
     # 3. PagerDuty (optional)
-    print("3. PagerDuty Configuration (optional)")
-    print("   NthLayer can create teams, schedules, and escalation policies.\n")
+    console.print("[bold cyan]3. PagerDuty Configuration[/bold cyan] [muted](optional)[/muted]")
+    console.print("   NthLayer can create teams, schedules, and escalation policies.\n")
 
     if _confirm("   Configure PagerDuty?", default=False):
         config.alerting.pagerduty.enabled = True
@@ -174,7 +175,7 @@ def _quick_setup() -> int:
         policy = _prompt("   Default escalation policy (optional)", default="")
         if policy:
             config.alerting.pagerduty.default_escalation_policy = policy
-    print()
+    console.print()
 
     # Save configuration
     config_dir = Path.home() / ".nthlayer"
@@ -182,15 +183,15 @@ def _quick_setup() -> int:
     config_path = config_dir / "config.yaml"
 
     save_config(config, config_path)
-    print(f"Configuration saved to: {config_path}")
+    success(f"Configuration saved to: {config_path}")
 
     return 0
 
 
 def _test_connections() -> int:
     """Test all configured connections."""
-    print("Testing Connections")
-    print("-" * 40)
+    console.print("[bold]Testing Connections[/bold]")
+    console.print("[muted]─[/muted]" * 40)
 
     config = load_config()
     all_ok = True
@@ -198,46 +199,46 @@ def _test_connections() -> int:
     # Test Prometheus
     prom_profile = config.prometheus.profiles.get(config.prometheus.default)
     if prom_profile:
-        print(f"\n  Prometheus ({prom_profile.url})")
+        console.print(f"\n  [cyan]Prometheus[/cyan] ({prom_profile.url})")
         prom_ok, prom_msg = _test_prometheus(prom_profile)
         if prom_ok:
-            print(f"    [OK] {prom_msg}")
+            console.print(f"    [success]✓[/success] {prom_msg}")
         else:
-            print(f"    [FAIL] {prom_msg}")
+            console.print(f"    [error]✗[/error] {prom_msg}")
             all_ok = False
     else:
-        print("\n  Prometheus: Not configured")
+        console.print("\n  [cyan]Prometheus:[/cyan] [muted]Not configured[/muted]")
 
     # Test Grafana
     grafana_profile = config.grafana.profiles.get(config.grafana.default)
     if grafana_profile:
-        print(f"\n  Grafana ({grafana_profile.url})")
+        console.print(f"\n  [cyan]Grafana[/cyan] ({grafana_profile.url})")
         grafana_ok, grafana_msg = _test_grafana(grafana_profile)
         if grafana_ok:
-            print(f"    [OK] {grafana_msg}")
+            console.print(f"    [success]✓[/success] {grafana_msg}")
         else:
-            print(f"    [FAIL] {grafana_msg}")
+            console.print(f"    [error]✗[/error] {grafana_msg}")
             all_ok = False
     else:
-        print("\n  Grafana: Not configured")
+        console.print("\n  [cyan]Grafana:[/cyan] [muted]Not configured[/muted]")
 
     # Test PagerDuty
     if config.alerting.pagerduty.enabled:
-        print("\n  PagerDuty")
+        console.print("\n  [cyan]PagerDuty[/cyan]")
         pd_ok, pd_msg = _test_pagerduty(config)
         if pd_ok:
-            print(f"    [OK] {pd_msg}")
+            console.print(f"    [success]✓[/success] {pd_msg}")
         else:
-            print(f"    [FAIL] {pd_msg}")
+            console.print(f"    [error]✗[/error] {pd_msg}")
             all_ok = False
     else:
-        print("\n  PagerDuty: Not configured")
+        console.print("\n  [cyan]PagerDuty:[/cyan] [muted]Not configured[/muted]")
 
-    print()
+    console.print()
     if all_ok:
-        print("All configured services are operational!")
+        success("All configured services are operational!")
     else:
-        print("Some connections failed. Check your configuration.")
+        error("Some connections failed. Check your configuration.")
 
     return 0 if all_ok else 1
 
@@ -366,36 +367,38 @@ def _test_pagerduty(config: IntegrationConfig) -> tuple[bool, str]:
 
 def _create_first_service() -> None:
     """Guide user through creating their first service."""
-    print()
-    print("Create Your First Service")
-    print("-" * 40)
+    console.print()
+    console.print("[bold]Create Your First Service[/bold]")
+    console.print("[muted]─[/muted]" * 40)
 
     # Get service details
     service_name = _prompt("Service name (e.g., payment-api)")
     if not service_name:
-        print("Skipping service creation.")
+        info("Skipping service creation.")
         return
 
     # Validate name
     if not _is_valid_service_name(service_name):
-        print(f"Invalid service name: {service_name}")
-        print("Use lowercase letters, numbers, and hyphens only.")
+        error(f"Invalid service name: {service_name}")
+        console.print("Use lowercase letters, numbers, and hyphens only.")
         return
 
     team = _prompt("Team name", default="platform")
 
-    print("\nService type:")
-    print("  1. api     - HTTP/REST API service")
-    print("  2. worker  - Background job processor")
-    print("  3. stream  - Stream/event processor")
+    console.print("\n[bold]Service type:[/bold]")
+    console.print("  [cyan]1.[/cyan] api     - HTTP/REST API service")
+    console.print("  [cyan]2.[/cyan] worker  - Background job processor")
+    console.print("  [cyan]3.[/cyan] stream  - Stream/event processor")
     type_choice = _prompt("Type [1/2/3]", default="1")
     type_map = {"1": "api", "2": "worker", "3": "stream"}
     service_type = type_map.get(type_choice, "api")
 
-    print("\nService tier (determines SLO targets and alerting):")
-    print("  1. Critical - 99.95% availability, 5min escalation")
-    print("  2. Standard - 99.9% availability, 15min escalation")
-    print("  3. Low      - 99.5% availability, 30min escalation")
+    console.print(
+        "\n[bold]Service tier[/bold] [muted](determines SLO targets and alerting):[/muted]"
+    )
+    console.print("  [cyan]1.[/cyan] Critical - 99.95% availability, 5min escalation")
+    console.print("  [cyan]2.[/cyan] Standard - 99.9% availability, 15min escalation")
+    console.print("  [cyan]3.[/cyan] Low      - 99.5% availability, 30min escalation")
     tier_choice = _prompt("Tier [1/2/3]", default="2")
     tier = int(tier_choice) if tier_choice in ("1", "2", "3") else 2
 
@@ -409,11 +412,12 @@ def _create_first_service() -> None:
     service_file = services_dir / f"{service_name}.yaml"
     if service_file.exists():
         if not _confirm(f"{service_file} exists. Overwrite?", default=False):
-            print("Skipping service creation.")
+            info("Skipping service creation.")
             return
 
     service_file.write_text(service_content)
-    print(f"\n[OK] Created {service_file}")
+    console.print()
+    success(f"Created {service_file}")
 
 
 def _generate_service_yaml(
@@ -499,21 +503,19 @@ def _is_valid_service_name(name: str) -> bool:
 
 def _print_next_steps() -> None:
     """Print next steps after setup."""
-    print()
-    print("=" * 70)
-    print("  Setup Complete!")
-    print("=" * 70)
-    print()
-    print("Next steps:")
-    print("  1. nthlayer plan services/<service>.yaml   # Preview generated configs")
-    print("  2. nthlayer apply services/<service>.yaml  # Generate dashboards & alerts")
-    print("  3. nthlayer portfolio                      # View org-wide SLO health")
-    print()
-    print("Useful commands:")
-    print("  nthlayer config show    # View current configuration")
-    print("  nthlayer setup --test   # Re-test connections")
-    print("  nthlayer --help         # See all commands")
-    print()
+    console.print()
+    header("Setup Complete!")
+    console.print()
+    console.print("[bold]Next steps:[/bold]")
+    console.print("  [cyan]1.[/cyan] nthlayer plan services/<service>.yaml")
+    console.print("  [cyan]2.[/cyan] nthlayer apply services/<service>.yaml")
+    console.print("  [cyan]3.[/cyan] nthlayer portfolio")
+    console.print()
+    console.print("[bold]Useful commands:[/bold]")
+    console.print("  nthlayer config show    [muted]# View current configuration[/muted]")
+    console.print("  nthlayer setup --test   [muted]# Re-test connections[/muted]")
+    console.print("  nthlayer --help         [muted]# See all commands[/muted]")
+    console.print()
 
 
 def _prompt(message: str, default: str | None = None) -> str:

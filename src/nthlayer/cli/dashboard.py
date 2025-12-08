@@ -6,6 +6,7 @@ from typing import Optional
 
 import yaml
 
+from nthlayer.cli.ux import console, error, header
 from nthlayer.dashboards.builder_sdk import build_dashboard
 from nthlayer.specs.parser import parse_service_file
 
@@ -34,11 +35,10 @@ def generate_dashboard_command(
 
     def log(msg: str) -> None:
         if not quiet:
-            print(msg)
+            console.print(msg)
 
-    log("=" * 70)
-    log("  NthLayer: Generate Grafana Dashboard")
-    log("=" * 70)
+    if not quiet:
+        header("Generate Grafana Dashboard")
     log("")
 
     # Show configuration
@@ -131,10 +131,10 @@ def generate_dashboard_command(
         return 0
 
     except FileNotFoundError:
-        print(f"Error: Service file not found: {service_file}")
+        error(f"Service file not found: {service_file}")
         return 1
     except (yaml.YAMLError, ValueError, KeyError, TypeError, OSError) as e:
-        print(f"Error generating dashboard: {e}")
+        error(f"Error generating dashboard: {e}")
         import traceback
 
         traceback.print_exc()

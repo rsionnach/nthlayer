@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import yaml
 
+from nthlayer.cli.ux import console, header
 from nthlayer.slos.gates import DeploymentGate
 from nthlayer.specs.environment_gates import (
     explain_thresholds,
@@ -37,20 +38,18 @@ def check_deploy_command(
     Returns:
         Exit code (0, 1, or 2)
     """
-    print("=" * 70)
-    print("  NthLayer: Deployment Gate Check")
-    print("=" * 70)
-    print()
+    header("Deployment Gate Check")
+    console.print()
 
     if environment:
-        print(f"🌍 Environment: {environment}")
-        print()
+        console.print(f"[info]Environment:[/info] {environment}")
+        console.print()
 
     # Parse service file with optional environment overrides
     try:
         service_context, resources = parse_service_file(service_file, environment=environment)
     except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
-        print(f"❌ Error parsing service file: {e}")
+        print(f"✗ Error parsing service file: {e}")
         print()
         return 2  # Block on parse errors
 
@@ -83,7 +82,7 @@ def check_deploy_command(
     if budget_total is None or budget_consumed is None:
         # In real implementation, fetch from database
         # For now, show what would happen with example values
-        print("ℹ️  No error budget data available")
+        print("ℹ  No error budget data available")
         print("   (In production, this would fetch from database)")
         print()
         print(f"Example scenarios for {service_context.tier} in {environment or 'prod'}:")
@@ -177,19 +176,19 @@ def check_deploy_command(
 
     # Exit with appropriate code
     if result.is_blocked:
-        print("❌ Deployment BLOCKED")
+        print("✗ Deployment BLOCKED")
         print("   Exit code: 2")
         print()
         return 2
 
     elif result.is_warning:
-        print("⚠️  Deployment allowed with WARNING")
+        print("⚠  Deployment allowed with WARNING")
         print("   Exit code: 1")
         print()
         return 1
 
     else:
-        print("✅ Deployment APPROVED")
+        print("✓ Deployment APPROVED")
         print("   Exit code: 0")
         print()
         return 0

@@ -5,24 +5,28 @@
 Output demo/vhs/nthlayer-apply.gif
 
 Set Shell "bash"
-Set FontSize 15
-Set Width 800
-Set Height 500
+Set FontFamily "Menlo"
+Set FontSize 14
+Set Width 900
+Set Height 650
 Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
 
-# Show a real service spec from examples
-Type "cat examples/services/checkout-service.yaml"
+# Force color output for Rich
+Env FORCE_COLOR "1"
+
+# Show the banner (--version gives clean output without help text)
+Type ".venv/bin/nthlayer --version"
 Enter
-Sleep 3s
+Sleep 4s
 
 # Run nthlayer apply
-Type "nthlayer apply examples/services/checkout-service.yaml"
+Type ".venv/bin/nthlayer apply examples/services/checkout-service.yaml"
 Enter
-Sleep 2s
+Sleep 3s
 
 # Show generated files
 Type "ls generated/checkout-service/"
 Enter
-Sleep 2s
+Sleep 3s

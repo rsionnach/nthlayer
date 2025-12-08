@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from nthlayer.cli.ux import console, error, header
 from nthlayer.generators.alerts import generate_alerts_for_service
 from nthlayer.specs.environment_alerts import explain_alert_filtering
 
@@ -38,7 +39,7 @@ def generate_alerts_command(
 
     # Validate input file exists
     if not service_path.exists():
-        print(f"❌ Service file not found: {service_file}")
+        error(f"Service file not found: {service_file}")
         return 1
 
     # Determine output path
@@ -49,18 +50,18 @@ def generate_alerts_command(
     output_path = None if dry_run else Path(output)
 
     # Print header
-    print("=" * 70)
-    print("  NthLayer: Generate Alerts")
-    print("=" * 70)
-    print()
-    print(f"Service: {service_path}")
+    header("Generate Alerts")
+
+    header("Generate Alerts")
+    console.print()
+    console.print(f"[cyan]Service:[/cyan] {service_path}")
     if environment:
-        print(f"🌍 Environment: {environment}")
+        console.print(f"[cyan]Environment:[/cyan] {environment}")
     if dry_run:
-        print("Mode: Dry run (preview only)")
+        console.print("[muted]Mode: Dry run (preview only)[/muted]")
     else:
-        print(f"Output: {output}")
-    print()
+        console.print(f"[cyan]Output:[/cyan] {output}")
+    console.print()
 
     # Show alert filtering strategy if environment specified
     if environment:
@@ -84,36 +85,38 @@ def generate_alerts_command(
         )
 
         if not alerts:
-            print("\n💡 Tip: Add a Dependencies resource to your service YAML:")
-            print("   resources:")
-            print("     - kind: Dependencies")
-            print("       name: upstream")
-            print("       spec:")
-            print("         databases:")
-            print("           - type: postgres")
-            print("           - type: redis")
+            console.print("\n[bold]Tip:[/bold] Add a Dependencies resource to your service YAML:")
+            console.print("[muted]   resources:[/muted]")
+            console.print("[muted]     - kind: Dependencies[/muted]")
+            console.print("[muted]       name: upstream[/muted]")
+            console.print("[muted]       spec:[/muted]")
+            console.print("[muted]         databases:[/muted]")
+            console.print("[muted]           - type: postgres[/muted]")
+            console.print("[muted]           - type: redis[/muted]")
             return 1
 
         if dry_run:
-            print("\n📋 Dry run - alerts not written to file")
-            print("\n📝 Sample alerts generated:")
+            console.print("\n[muted]Dry run - alerts not written to file[/muted]")
+            console.print("\n[bold]Sample alerts generated:[/bold]")
             for i, alert in enumerate(alerts[:5], 1):
-                print(f"   {i}. {alert.name} ({alert.severity}, {alert.technology})")
+                console.print(
+                    f"   [cyan]{i}.[/cyan] {alert.name} ({alert.severity}, {alert.technology})"
+                )
 
             if len(alerts) > 5:
-                print(f"   ... and {len(alerts) - 5} more")
+                console.print(f"   [muted]... and {len(alerts) - 5} more[/muted]")
 
-            print(f"\n💡 Run without --dry-run to write to {output}")
+            console.print(f"\n[muted]Run without --dry-run to write to {output}[/muted]")
         else:
-            print("\n💡 Next steps:")
-            print(f"   1. Review generated alerts: cat {output}")
-            print("   2. Deploy to Prometheus: kubectl apply -f", output)
-            print("   3. Verify alerts are firing: check Prometheus UI")
+            console.print("\n[bold]Next steps:[/bold]")
+            console.print(f"   [cyan]1.[/cyan] Review generated alerts: cat {output}")
+            console.print(f"   [cyan]2.[/cyan] Deploy to Prometheus: kubectl apply -f {output}")
+            console.print("   [cyan]3.[/cyan] Verify alerts are firing: check Prometheus UI")
 
         return 0
 
     except (FileNotFoundError, ValueError, KeyError, TypeError, OSError) as e:
-        print(f"\n❌ Error generating alerts: {e}")
+        error(f"Error generating alerts: {e}")
         import traceback
 
         traceback.print_exc()

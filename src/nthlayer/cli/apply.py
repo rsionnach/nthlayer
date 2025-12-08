@@ -7,14 +7,15 @@ from pathlib import Path
 from typing import List, Optional
 
 from nthlayer.cli.plan import plan_command
+from nthlayer.cli.ux import console
 from nthlayer.orchestrator import ApplyResult, ServiceOrchestrator
 
 
 def print_apply_summary(result: ApplyResult, verbose: bool = False) -> None:
-    """Print clean apply summary."""
-    print()
+    """Print clean apply summary with rich formatting."""
+    console.print()
 
-    # Resource type display config: (label, width, detail_fn)
+    # Resource type display config: (label, detail_fn)
     resource_config = {
         "slos": ("SLOs", lambda c: f"{c} created"),
         "alerts": ("Alerts", lambda c: f"{c} generated"),
@@ -23,7 +24,9 @@ def print_apply_summary(result: ApplyResult, verbose: bool = False) -> None:
         "pagerduty": ("PagerDuty", lambda c: "configured"),
     }
 
-    # Print each resource on one line
+    warning_types = _get_warning_types(result)
+
+    # Print each resource on one line with rich styling
     for resource_type, count in result.resources_created.items():
         config = resource_config.get(resource_type)
         if config:
@@ -33,38 +36,46 @@ def print_apply_summary(result: ApplyResult, verbose: bool = False) -> None:
             label = resource_type.replace("-", " ").title()
             detail = f"{count} created"
 
-        icon = "✓" if resource_type not in _get_warning_types(result) else "⚠"
-        print(f"  {icon} {label:<12} {detail}")
+        if resource_type in warning_types:
+            console.print(f"  [yellow]⚠ {label:<12}[/yellow] {detail}")
+        else:
+            console.print(f"  [green]✓ {label:<12}[/green] {detail}")
 
     # Summary line
-    print()
+    console.print()
     duration = f" in {result.duration_seconds:.1f}s" if result.duration_seconds > 0 else ""
     if result.success:
-        print(f"Applied {result.total_resources} resources{duration} → {result.output_dir}/")
+        console.print(
+            f"[bold green]Applied {result.total_resources} resources{duration}[/bold green] "
+            f"→ [cyan]{result.output_dir}/[/cyan]"
+        )
     else:
-        print(f"Applied {result.total_resources} resources with errors{duration}")
+        console.print(
+            f"[bold yellow]Applied {result.total_resources} resources "
+            f"with errors{duration}[/bold yellow]"
+        )
 
     # Show warnings/errors at end (grouped)
     if result.errors:
-        print()
-        print("Warnings:")
-        for error in result.errors:
+        console.print()
+        console.print("[yellow]Warnings:[/yellow]")
+        for err in result.errors:
             # Truncate long errors in non-verbose mode
-            if not verbose and len(error) > 80:
-                error = error[:77] + "..."
-            print(f"  • {error}")
+            if not verbose and len(err) > 80:
+                err = err[:77] + "..."
+            console.print(f"  [dim]•[/dim] {err}")
 
     # Only show file list in verbose mode
     if verbose and result.output_dir.exists():
-        print()
-        print("Generated files:")
+        console.print()
+        console.print("[bold]Generated files:[/bold]")
         for file in sorted(result.output_dir.iterdir()):
             if file.is_file():
                 size = file.stat().st_size
                 size_str = f"{size:,}B" if size < 1024 else f"{size/1024:.1f}KB"
-                print(f"  • {file.name} ({size_str})")
+                console.print(f"  [dim]•[/dim] {file.name} [dim]({size_str})[/dim]")
 
-    print()
+    console.print()
 
 
 def _get_warning_types(result: ApplyResult) -> set:
@@ -163,33 +174,40 @@ def _lint_generated_alerts(output_dir: Path, verbose: bool = False) -> int:
     alerts_file = output_dir / "alerts.yaml"
     if not alerts_file.exists():
         if verbose:
-            print("  ℹ No alerts.yaml found, skipping lint")
+            console.print("  [dim]ℹ No alerts.yaml found, skipping lint[/dim]")
         return 0
 
     if not is_pint_available():
-        print()
-        print("  ⚠ pint not installed - skipping alert validation")
-        print("    Install: brew install cloudflare/cloudflare/pint")
-        print("    Or download from: https://github.com/cloudflare/pint/releases")
+        console.print()
+        console.print("  [yellow]⚠ pint not installed - skipping alert validation[/yellow]")
+        console.print("    [dim]Install: brew install cloudflare/cloudflare/pint[/dim]")
+        console.print(
+            "    [dim]Or download from: https://github.com/cloudflare/pint/releases[/dim]"
+        )
         return 0  # Don't fail, just warn
 
-    print()
-    print("Validating alerts with pint...")
+    console.print()
+    console.print("[bold]Validating alerts with pint...[/bold]")
 
     linter = PintLinter()
     result = linter.lint_file(alerts_file)
 
-    print(f"  {result.summary()}")
+    console.print(f"  {result.summary()}")
 
     if result.issues:
         for issue in result.issues:
-            icon = "✗" if issue.is_error else "⚠" if issue.is_warning else "ℹ"
+            if issue.is_error:
+                icon = "[red]✗[/red]"
+            elif issue.is_warning:
+                icon = "[yellow]⚠[/yellow]"
+            else:
+                icon = "[blue]ℹ[/blue]"
             line_info = f":{issue.line}" if issue.line else ""
-            print(f"    {icon} [{issue.check}]{line_info} {issue.message}")
+            console.print(f"    {icon} [dim][{issue.check}]{line_info}[/dim] {issue.message}")
 
     if not result.passed:
-        print()
-        print("  Alert validation failed. Fix issues before deploying.")
+        console.print()
+        console.print("  [red]Alert validation failed. Fix issues before deploying.[/red]")
         return 1
 
     return 0

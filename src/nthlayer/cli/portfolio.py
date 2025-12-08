@@ -14,6 +14,9 @@ import csv
 import io
 import json
 
+from rich.table import Table
+
+from nthlayer.cli.ux import console, header
 from nthlayer.portfolio import (
     HealthStatus,
     PortfolioHealth,
@@ -51,42 +54,62 @@ def portfolio_command(
 
 
 def _print_text(portfolio: PortfolioHealth) -> None:
-    """Print portfolio in human-readable text format."""
-    print()
-    print("=" * 80)
-    print("  NthLayer SLO Portfolio")
-    print("=" * 80)
-    print()
+    """Print portfolio in human-readable text format with rich styling."""
+    console.print()
+    header("NthLayer SLO Portfolio")
+    console.print()
 
-    # Overall health
+    # Overall health with color coding
     if portfolio.services_with_slos > 0:
         health_pct = portfolio.org_health_percent
-        print(
-            f"Organization Health: {health_pct:.0f}% "
-            f"({portfolio.healthy_services}/{portfolio.services_with_slos} services meeting SLOs)"
+        if health_pct >= 95:
+            health_color = "green"
+        elif health_pct >= 80:
+            health_color = "yellow"
+        else:
+            health_color = "red"
+        svc_count = f"{portfolio.healthy_services}/{portfolio.services_with_slos}"
+        console.print(
+            f"Organization Health: [{health_color} bold]{health_pct:.0f}%[/{health_color} bold] "
+            f"[dim]({svc_count} services meeting SLOs)[/dim]"
         )
     else:
-        print("Organization Health: No SLOs defined")
+        console.print("[yellow]Organization Health: No SLOs defined[/yellow]")
 
-    print()
+    console.print()
 
-    # By tier breakdown
+    # By tier breakdown with rich table
     if portfolio.by_tier:
-        print("By Tier:")
+        table = Table(title="Health by Tier", show_header=True, header_style="bold cyan")
+        table.add_column("Tier", style="bold")
+        table.add_column("Health", justify="right")
+        table.add_column("Progress", width=22)
+        table.add_column("Services", justify="right")
+
         for tier in portfolio.by_tier:
-            bar = _progress_bar(tier.health_percent, width=20)
-            print(
-                f"  Tier {tier.tier} ({tier.tier_name}):  {tier.health_percent:5.0f}%  "
-                f"{bar}  {tier.healthy_services}/{tier.total_services} services"
+            health_color = (
+                "green"
+                if tier.health_percent >= 95
+                else "yellow"
+                if tier.health_percent >= 80
+                else "red"
             )
-        print()
+            bar = _progress_bar(tier.health_percent, width=20)
+            table.add_row(
+                f"Tier {tier.tier} ({tier.tier_name})",
+                f"[{health_color}]{tier.health_percent:.0f}%[/{health_color}]",
+                bar,
+                f"{tier.healthy_services}/{tier.total_services}",
+            )
+
+        console.print(table)
+        console.print()
 
     # Services needing attention
     attention_services = portfolio.services_needing_attention
     if attention_services:
-        print("-" * 80)
-        print("Services Needing Attention:")
-        print("-" * 80)
+        console.print("[bold red]Services Needing Attention:[/bold red]")
+        console.rule(style="red")
 
         # Sort by severity (exhausted > critical > warning)
         status_order = {
@@ -99,65 +122,75 @@ def _print_text(portfolio: PortfolioHealth) -> None:
         for svc in attention_services:
             _print_service_attention(svc)
 
-        print()
+        console.print()
 
     # Insights
     if portfolio.insights:
-        print("-" * 80)
-        print("Insights:")
-        print("-" * 80)
+        console.print("[bold]Insights:[/bold]")
+        console.rule(style="dim")
 
         for insight in portfolio.insights[:10]:  # Limit to 10
-            icon = "•"
-            if insight.severity == "warning":
-                icon = "!"
-            elif insight.severity == "critical":
-                icon = "!!"
-            print(f"{icon} {insight.service}: {insight.message}")
+            if insight.severity == "critical":
+                console.print(f"  [red]!![/red] {insight.service}: {insight.message}")
+            elif insight.severity == "warning":
+                console.print(f"  [yellow]![/yellow] {insight.service}: {insight.message}")
+            else:
+                console.print(f"  [dim]•[/dim] {insight.service}: {insight.message}")
 
         if len(portfolio.insights) > 10:
-            print(f"  ... and {len(portfolio.insights) - 10} more")
+            console.print(f"  [dim]... and {len(portfolio.insights) - 10} more[/dim]")
 
-        print()
+        console.print()
 
     # Summary
-    print("-" * 80)
-    print(
-        f"Total: {portfolio.total_services} services, "
+    console.rule(style="dim")
+    console.print(
+        f"[bold]Total:[/bold] {portfolio.total_services} services, "
         f"{portfolio.services_with_slos} with SLOs, "
         f"{portfolio.total_slos} SLOs"
     )
-    print()
+    console.print()
 
 
 def _print_service_attention(svc: ServiceHealth) -> None:
     """Print a service that needs attention."""
-    # Status icon
-    icons = {
-        HealthStatus.EXHAUSTED: "[X]",
-        HealthStatus.CRITICAL: "[!!]",
-        HealthStatus.WARNING: "[!]",
+    # Status icon and color
+    status_config = {
+        HealthStatus.EXHAUSTED: ("[X]", "red bold"),
+        HealthStatus.CRITICAL: ("[!!]", "red"),
+        HealthStatus.WARNING: ("[!]", "yellow"),
     }
-    icon = icons.get(svc.overall_status, "[?]")
+    icon, style = status_config.get(svc.overall_status, ("[?]", "dim"))
 
-    print(f"{icon} {svc.service} (tier-{svc.tier})")
+    console.print(
+        f"[{style}]{icon}[/{style}] [bold]{svc.service}[/bold] [dim](tier-{svc.tier})[/dim]"
+    )
 
     # Show SLOs with issues
     for slo in svc.slos:
         if slo.status in (HealthStatus.WARNING, HealthStatus.CRITICAL, HealthStatus.EXHAUSTED):
             status_str = slo.status.value.upper()
+            slo_style = "red" if slo.status == HealthStatus.EXHAUSTED else "yellow"
             if slo.current_value is not None:
-                print(
-                    f"     {slo.name}: {slo.current_value:.2f}% "
-                    f"(target: {slo.objective}%) - {status_str}"
+                console.print(
+                    f"     {slo.name}: [{slo_style}]{slo.current_value:.2f}%[/{slo_style}] "
+                    f"[dim](target: {slo.objective}%)[/dim] - "
+                    f"[{slo_style}]{status_str}[/{slo_style}]"
                 )
             else:
-                print(f"     {slo.name}: target {slo.objective}% - {status_str}")
+                console.print(
+                    f"     {slo.name}: [dim]target {slo.objective}%[/dim] - "
+                    f"[{slo_style}]{status_str}[/{slo_style}]"
+                )
 
             if slo.budget_consumed_percent is not None:
-                print(f"     Budget: {slo.budget_consumed_percent:.0f}% consumed")
+                budget_style = "red" if slo.budget_consumed_percent > 90 else "yellow"
+                console.print(
+                    f"     [dim]Budget:[/dim] "
+                    f"[{budget_style}]{slo.budget_consumed_percent:.0f}% consumed[/{budget_style}]"
+                )
 
-    print()
+    console.print()
 
 
 def _progress_bar(percent: float, width: int = 20) -> str:
