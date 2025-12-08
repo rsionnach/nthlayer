@@ -353,11 +353,14 @@ def wizard_intro(title: str, description: str) -> None:
         console.print()
 
 
-# Simple ASCII banner - only shown in interactive mode
+# Blocky ASCII banner - only shown in interactive mode
 NTHLAYER_BANNER = """
-[cyan]┏┓╻╺┳╸╻ ╻╻  ┏━┓╻ ╻┏━╸┏━┓[/cyan]
-[cyan]┃┗┫ ┃ ┣━┫┃  ┣━┫┗┳┛┣╸ ┣┳┛[/cyan]
-[cyan]╹ ╹ ╹ ╹ ╹┗━╸╹ ╹ ╹ ┗━╸╹┗╸[/cyan]
+[cyan]███╗   ██╗████████╗██╗  ██╗██╗      █████╗ ██╗   ██╗███████╗██████╗[/cyan]
+[cyan]████╗  ██║╚══██╔══╝██║  ██║██║     ██╔══██╗╚██╗ ██╔╝██╔════╝██╔══██╗[/cyan]
+[cyan]██╔██╗ ██║   ██║   ███████║██║     ███████║ ╚████╔╝ █████╗  ██████╔╝[/cyan]
+[cyan]██║╚██╗██║   ██║   ██╔══██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗[/cyan]
+[cyan]██║ ╚████║   ██║   ██║  ██║███████╗██║  ██║   ██║   ███████╗██║  ██║[/cyan]
+[cyan]╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝[/cyan]
 [dim]The Missing Layer of Reliability[/dim]
 """
 

@@ -23,7 +23,11 @@ from nthlayer.alerts.models import AlertRule
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
+from nthlayer.cli.ux import print_banner
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
+
+# Version - keep in sync with pyproject.toml
+__version__ = "0.1.0a5"
 
 logger = structlog.get_logger()
 
@@ -391,6 +395,7 @@ async def demo_grafana(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nthlayer", description="NthLayer CLI")
+    parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
     subparsers = parser.add_subparsers(dest="command")
 
     # === NEW: Unified apply workflow ===
@@ -713,6 +718,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Show version with banner
+    if args.version:
+        print_banner()
+        print(f"nthlayer version {__version__}")
+        return
+
+    # Show banner when no command provided
+    if args.command is None:
+        print_banner()
+        parser.print_help()
+        return
 
     # Handle unified apply commands
     if args.command == "plan":
