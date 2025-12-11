@@ -551,6 +551,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Auto-detect environment from context (CI/CD env vars)",
     )
+    deploy_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Show demo output with sample data (for VHS recordings)",
+    )
 
     init_parser = subparsers.add_parser("init", help="Initialize new NthLayer service")
     init_parser.add_argument(
@@ -872,6 +877,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 args.service_file,
                 prometheus_url=getattr(args, "prometheus_url", None),
                 environment=env,
+                demo=getattr(args, "demo", False),
             )
         )
 

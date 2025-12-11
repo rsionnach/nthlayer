@@ -62,24 +62,9 @@ Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/C
 
 ### Deployment Gate Example
 
-```bash
-$ nthlayer check-deploy services/payment-api.yaml --prometheus-url $PROM_URL
-
-╭──────────────────────────────────────────────────────────────────────────────╮
-│  Deployment Gate Check                                                       │
-╰──────────────────────────────────────────────────────────────────────────────╯
-
-  Service:       payment-api
-  Tier:          critical
-  Window:        30d
-
-  SLO Results:
-    availability   99.87%  (target: 99.95%)   budget: 42% remaining   ⚠ WARNING
-    latency_p99    187ms   (target: 200ms)    budget: 78% remaining   ✓ OK
-
-  Decision:  ⚠ PROCEED WITH CAUTION
-  Reason:    Error budget below 50% for critical service
-```
+<div align="center">
+  <img src="demo/vhs/check-deploy-demo.gif" alt="nthlayer check-deploy demo" width="700">
+</div>
 
 ---
 
