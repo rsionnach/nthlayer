@@ -2,9 +2,16 @@
 CLI command for SLO Portfolio.
 
 Usage:
-    nthlayer portfolio              # Basic portfolio view
-    nthlayer portfolio --format json  # JSON export
-    nthlayer portfolio --format csv   # CSV export
+    nthlayer portfolio                      # Basic portfolio view (from YAML)
+    nthlayer portfolio --format json        # JSON export
+    nthlayer portfolio --format csv         # CSV export
+    nthlayer portfolio --format markdown    # Markdown for PR comments
+    nthlayer portfolio --prometheus-url URL # Live data from Prometheus
+
+Exit codes:
+    0 = healthy (all SLOs meeting targets)
+    1 = warning (some SLOs degraded)
+    2 = critical (SLOs exhausted or critical)
 """
 
 from __future__ import annotations
@@ -13,6 +20,7 @@ import argparse
 import csv
 import io
 import json
+import os
 
 from rich.table import Table
 
@@ -26,35 +34,73 @@ from nthlayer.portfolio import (
 
 
 def portfolio_command(
-    format: str = "text",
+    format: str = "table",
     search_paths: list[str] | None = None,
+    prometheus_url: str | None = None,
 ) -> int:
     """
     Display SLO portfolio health across all services.
 
     Args:
-        format: Output format (text, json, csv)
+        format: Output format (table, json, csv, markdown)
         search_paths: Optional directories to search for service files
+        prometheus_url: Optional Prometheus URL for live SLO data
 
     Returns:
-        Exit code (0 for success)
+        Exit code based on health:
+        - 0: healthy (all SLOs meeting targets or unknown)
+        - 1: warning (some SLOs degraded)
+        - 2: critical (SLOs exhausted or critical)
     """
+    # Get Prometheus URL from arg or environment
+    prom_url = prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL")
+
     # Collect portfolio data
-    portfolio = collect_portfolio(search_paths)
+    portfolio = collect_portfolio(search_paths, prometheus_url=prom_url)
 
     # Output in requested format
     if format == "json":
         print(json.dumps(portfolio.to_dict(), indent=2))
     elif format == "csv":
         _print_csv(portfolio)
+    elif format == "markdown":
+        _print_markdown(portfolio)
     else:
-        _print_text(portfolio)
+        _print_table(portfolio)
 
+    # Return exit code based on health
+    return _calculate_exit_code(portfolio)
+
+
+def _calculate_exit_code(portfolio: PortfolioHealth) -> int:
+    """
+    Calculate exit code based on portfolio health.
+
+    Returns:
+        0: healthy - all SLOs meeting targets (or unknown)
+        1: warning - some SLOs degraded but not critical
+        2: critical - SLOs exhausted or in critical state
+    """
+    has_critical = False
+    has_warning = False
+
+    for svc in portfolio.services:
+        if svc.overall_status == HealthStatus.EXHAUSTED:
+            return 2  # Critical - immediate exit
+        elif svc.overall_status == HealthStatus.CRITICAL:
+            has_critical = True
+        elif svc.overall_status == HealthStatus.WARNING:
+            has_warning = True
+
+    if has_critical:
+        return 2
+    if has_warning:
+        return 1
     return 0
 
 
-def _print_text(portfolio: PortfolioHealth) -> None:
-    """Print portfolio in human-readable text format with rich styling."""
+def _print_table(portfolio: PortfolioHealth) -> None:
+    """Print portfolio in human-readable table format with rich styling."""
     console.print()
     header("NthLayer SLO Portfolio")
     console.print()
@@ -200,6 +246,72 @@ def _progress_bar(percent: float, width: int = 20) -> str:
     return "█" * filled + "░" * empty
 
 
+def _print_markdown(portfolio: PortfolioHealth) -> None:
+    """Print portfolio in Markdown format for PR comments, Slack, etc."""
+    lines = []
+
+    # Header
+    lines.append("# SLO Portfolio Report")
+    lines.append("")
+
+    # Summary
+    health_pct = portfolio.org_health_percent
+    health_emoji = "🟢" if health_pct >= 95 else "🟡" if health_pct >= 80 else "🔴"
+    lines.append(f"**Organization Health:** {health_emoji} {health_pct:.0f}%")
+    svc_str = f"{portfolio.services_with_slos} with SLOs ({portfolio.healthy_services} healthy)"
+    lines.append(f"**Services:** {svc_str}")
+    lines.append(f"**Total SLOs:** {portfolio.total_slos}")
+    lines.append("")
+
+    # Tier breakdown
+    if portfolio.by_tier:
+        lines.append("## Health by Tier")
+        lines.append("")
+        lines.append("| Tier | Health | Services |")
+        lines.append("|------|--------|----------|")
+        for tier in portfolio.by_tier:
+            pct = tier.health_percent
+            emoji = "🟢" if pct >= 95 else "🟡" if pct >= 80 else "🔴"
+            svc_ratio = f"{tier.healthy_services}/{tier.total_services}"
+            lines.append(f"| {tier.tier_name} | {emoji} {pct:.0f}% | {svc_ratio} |")
+        lines.append("")
+
+    # Services needing attention
+    attention_services = portfolio.services_needing_attention
+    if attention_services:
+        lines.append("## Services Needing Attention")
+        lines.append("")
+
+        status_emojis = {"exhausted": "🔴", "critical": "🔴", "warning": "🟡"}
+        for svc in attention_services:
+            status_emoji = status_emojis.get(svc.overall_status.value, "⚪")
+            lines.append(f"### {status_emoji} {svc.service} (tier-{svc.tier})")
+            lines.append("")
+
+            for slo in svc.slos:
+                bad_statuses = (HealthStatus.WARNING, HealthStatus.CRITICAL, HealthStatus.EXHAUSTED)
+                if slo.status in bad_statuses:
+                    val = slo.current_value
+                    value_str = f"{val:.2f}%" if val is not None else "N/A"
+                    budget = slo.budget_consumed_percent
+                    budget_str = f" ({budget:.0f}% budget consumed)" if budget else ""
+                    target_str = f"(target: {slo.objective}%)"
+                    lines.append(f"- **{slo.name}:** {value_str} {target_str}{budget_str}")
+
+            lines.append("")
+
+    # Insights
+    if portfolio.insights:
+        lines.append("## Insights")
+        lines.append("")
+        for insight in portfolio.insights[:10]:
+            severity_emoji = {"critical": "🔴", "warning": "🟡"}.get(insight.severity, "ℹ️")
+            lines.append(f"- {severity_emoji} **{insight.service}:** {insight.message}")
+        lines.append("")
+
+    print("\n".join(lines))
+
+
 def _print_csv(portfolio: PortfolioHealth) -> None:
     """Print portfolio in CSV format."""
     rows = portfolio.to_csv_rows()
@@ -221,13 +333,16 @@ def register_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "portfolio",
         help="View SLO portfolio health across all services",
+        description=(
+            "Aggregate SLO status across services. " "Exit codes: 0=healthy, 1=warning, 2=critical"
+        ),
     )
 
     parser.add_argument(
         "--format",
-        choices=["text", "json", "csv"],
-        default="text",
-        help="Output format (default: text)",
+        choices=["table", "json", "csv", "markdown"],
+        default="table",
+        help="Output format (default: table)",
     )
 
     parser.add_argument(
@@ -237,10 +352,17 @@ def register_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Additional paths to search for service files",
     )
 
+    parser.add_argument(
+        "--prometheus-url",
+        dest="prometheus_url",
+        help="Prometheus URL for live SLO data (or set NTHLAYER_PROMETHEUS_URL)",
+    )
+
 
 def handle_portfolio_command(args: argparse.Namespace) -> int:
     """Handle portfolio subcommand."""
     return portfolio_command(
-        format=getattr(args, "format", "text"),
+        format=getattr(args, "format", "table"),
         search_paths=getattr(args, "search_paths", None),
+        prometheus_url=getattr(args, "prometheus_url", None),
     )

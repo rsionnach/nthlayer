@@ -2,10 +2,13 @@
 Portfolio aggregator.
 
 Scans service files and collects SLO information.
+Optionally queries Prometheus for live SLO data.
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -25,27 +28,36 @@ from nthlayer.specs.parser import parse_service_file
 class PortfolioAggregator:
     """Aggregates SLO health across all services."""
 
-    def __init__(self, search_paths: list[Path] | None = None):
+    def __init__(
+        self,
+        search_paths: list[Path] | None = None,
+        prometheus_url: str | None = None,
+    ):
         """
         Initialize aggregator.
 
         Args:
             search_paths: Directories to search for service files.
                          Defaults to ["services", "examples/services"]
+            prometheus_url: Optional Prometheus URL for live SLO queries
         """
         self.search_paths = search_paths or [
             Path("services"),
             Path("examples/services"),
         ]
+        self.prometheus_url = prometheus_url
 
     def collect(self) -> PortfolioHealth:
         """
         Collect SLO health from all service files.
 
+        If prometheus_url is configured, queries Prometheus for live SLO data.
+
         Returns:
             PortfolioHealth with aggregated data
         """
         services: list[ServiceHealth] = []
+        slo_specs: list[tuple[ServiceHealth, Path]] = []
 
         # Scan for service files
         for search_path in self.search_paths:
@@ -56,6 +68,11 @@ class PortfolioAggregator:
                 service_health = self._parse_service_file(service_file)
                 if service_health:
                     services.append(service_health)
+                    slo_specs.append((service_health, service_file))
+
+        # If Prometheus URL provided, enrich with live data
+        if self.prometheus_url:
+            asyncio.run(self._enrich_with_live_data(slo_specs))
 
         # Calculate tier health
         by_tier = self._calculate_tier_health(services)
@@ -76,6 +93,76 @@ class PortfolioAggregator:
             services=services,
             insights=insights,
         )
+
+    async def _enrich_with_live_data(
+        self,
+        slo_specs: list[tuple[ServiceHealth, Path]],
+    ) -> None:
+        """
+        Enrich SLO health with live data from Prometheus.
+
+        Updates SLO status, current_value, and budget_consumed_percent in place.
+        """
+        from nthlayer.providers.prometheus import PrometheusProvider
+
+        # Get auth credentials from environment
+        username = os.environ.get("NTHLAYER_METRICS_USER")
+        password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
+
+        provider = PrometheusProvider(self.prometheus_url, username=username, password=password)
+
+        for service_health, service_file in slo_specs:
+            try:
+                context, resources = parse_service_file(str(service_file))
+            except Exception:
+                continue
+
+            slo_resources = [r for r in resources if r.kind == "SLO"]
+
+            # Match SLO resources to health objects (use strict=False for robustness)
+            for slo_resource, slo_health in zip(slo_resources, service_health.slos, strict=False):
+                spec = slo_resource.spec or {}
+                indicator = spec.get("indicator", {})
+                query = indicator.get("query")
+
+                if not query:
+                    continue
+
+                # Substitute service name in query
+                query = query.replace("${service}", context.name)
+                query = query.replace("$service", context.name)
+
+                try:
+                    result = await provider.query_async(query)
+                    if result and result.get("result"):
+                        value_data = result["result"][0].get("value", [])
+                        if len(value_data) >= 2:
+                            current_value = float(value_data[1])
+                            slo_health.current_value = current_value
+
+                            # Calculate status based on objective
+                            objective = slo_health.objective
+                            if current_value >= objective:
+                                slo_health.status = HealthStatus.HEALTHY
+                            elif current_value >= objective * 0.99:  # Within 1%
+                                slo_health.status = HealthStatus.WARNING
+                            elif current_value >= objective * 0.95:  # Within 5%
+                                slo_health.status = HealthStatus.CRITICAL
+                            else:
+                                slo_health.status = HealthStatus.EXHAUSTED
+
+                            # Estimate budget consumed
+                            error_budget = 100 - objective
+                            error_rate = 100 - current_value
+                            if error_budget > 0:
+                                budget_consumed = (error_rate / error_budget) * 100
+                                slo_health.budget_consumed_percent = min(budget_consumed, 100)
+                except Exception:
+                    # Keep UNKNOWN status on query failure
+                    pass
+
+            # Recalculate overall status after enrichment
+            service_health.__post_init__()
 
     def _parse_service_file(self, file_path: Path) -> ServiceHealth | None:
         """Parse a service file and extract health information."""
@@ -199,16 +286,18 @@ class PortfolioAggregator:
 
 def collect_portfolio(
     search_paths: list[str] | None = None,
+    prometheus_url: str | None = None,
 ) -> PortfolioHealth:
     """
     Convenience function to collect portfolio health.
 
     Args:
         search_paths: Optional list of directories to search
+        prometheus_url: Optional Prometheus URL for live SLO data
 
     Returns:
         PortfolioHealth with aggregated data
     """
     paths = [Path(p) for p in search_paths] if search_paths else None
-    aggregator = PortfolioAggregator(search_paths=paths)
+    aggregator = PortfolioAggregator(search_paths=paths, prometheus_url=prometheus_url)
     return aggregator.collect()
