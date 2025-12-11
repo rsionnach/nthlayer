@@ -34,6 +34,30 @@ nthlayer apply service.yaml
 
 ---
 
+## 🎯 Why NthLayer?
+
+| Benefit | Description |
+|---------|-------------|
+| **Shift-Left Validation** | Developers write intent, not PromQL - syntax errors impossible |
+| **Immutable Standards** | Update NthLayer version = all services get new standards |
+| **Contract Verification** | `nthlayer verify` fails pipeline if metrics don't exist |
+| **Deployment Gates** | `nthlayer check-deploy` blocks if error budget exhausted |
+| **GitOps Native** | Generated files commit to git, works with any CD system |
+
+### CI/CD Pipeline Integration
+
+```
+service.yaml → nthlayer apply → validate → verify → gate → deploy
+                    ↓
+              alerts.yaml
+              dashboard.json
+              recording-rules.yaml
+```
+
+Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/Cortex**
+
+---
+
 ## 📥 What You Put In
 
 ### 1. Service Spec (`service.yaml`)
@@ -192,11 +216,19 @@ pagerduty:
 ## 🛠️ CLI Commands
 
 ```bash
+# Generation
 nthlayer plan service.yaml      # 👀 Preview what will be generated
 nthlayer apply service.yaml     # ✨ Generate all artifacts
-nthlayer apply --push-grafana   # 📊 Also push dashboard to Grafana
+nthlayer apply --push           # 📊 Also push dashboard to Grafana
+nthlayer apply --push-ruler     # 🚀 Push alerts to Mimir/Cortex Ruler API
 nthlayer apply --lint           # ✅ Validate generated alerts with pint
+
+# Validation
 nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
+nthlayer verify service.yaml    # 📋 Verify declared metrics exist in Prometheus
+
+# Deployment Gates
+nthlayer check-deploy service.yaml -p $PROMETHEUS_URL  # 🚦 Check error budget before deploy
 ```
 
 ---
@@ -207,8 +239,9 @@ nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
 |---------|-------------|--------|
 | 💰 **Error Budgets** | Track budget consumption, correlate with deploys | ✅ Done |
 | 📊 **SLO Portfolio** | Org-wide reliability view across all services | ✅ Done |
+| 🚦 **Deployment Gates** | Block deploys when error budget exhausted | ✅ Done |
+| ✅ **Contract Verification** | Verify declared metrics exist before promotion | ✅ Done |
 | 📝 **Loki Integration** | Generate LogQL alert rules, technology-specific log patterns | 🔨 Next |
-| 🚦 **Deployment Gates** | Block ArgoCD deploys when budget exhausted | 📋 Planned |
 | 🤖 **AI Generation** | Conversational service.yaml creation via MCP | 📋 Planned |
 
 ---

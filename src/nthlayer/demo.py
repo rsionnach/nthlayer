@@ -439,6 +439,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Push dashboard to Grafana via API (requires NTHLAYER_GRAFANA_URL)",
     )
     apply_parser.add_argument(
+        "--push-ruler",
+        action="store_true",
+        help="Push alerts to Mimir/Cortex Ruler API (requires MIMIR_RULER_URL)",
+    )
+    apply_parser.add_argument(
         "--lint",
         action="store_true",
         help="Validate generated alerts with pint (requires pint to be installed)",
@@ -762,6 +767,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 verbose=args.verbose,
                 output_format=args.output,
                 push_grafana=args.push_grafana,
+                push_ruler=getattr(args, "push_ruler", False),
                 lint=args.lint,
             )
         )

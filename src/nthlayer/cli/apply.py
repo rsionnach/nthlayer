@@ -117,6 +117,7 @@ def apply_command(
     verbose: bool = False,
     output_format: str = "text",
     push_grafana: bool = False,
+    push_ruler: bool = False,
     lint: bool = False,
 ) -> int:
     """
@@ -133,6 +134,7 @@ def apply_command(
         verbose: Show detailed progress
         output_format: Output format (text, json)
         push_grafana: Push dashboard to Grafana Cloud
+        push_ruler: Push alerts to Mimir/Cortex Ruler API
         lint: Validate generated alerts with pint
 
     Returns:
@@ -163,6 +165,14 @@ def apply_command(
         lint_exit_code = _lint_generated_alerts(result.output_dir, verbose=verbose)
         if lint_exit_code != 0:
             return lint_exit_code
+
+    # Push alerts to Mimir/Cortex Ruler if requested
+    if push_ruler and result.success:
+        ruler_exit_code = _push_to_mimir_ruler(
+            result.output_dir, result.service_name, verbose=verbose
+        )
+        if ruler_exit_code != 0:
+            return ruler_exit_code
 
     return 0 if result.success else 1
 
@@ -211,3 +221,65 @@ def _lint_generated_alerts(output_dir: Path, verbose: bool = False) -> int:
         return 1
 
     return 0
+
+
+def _push_to_mimir_ruler(output_dir: Path, service_name: str, verbose: bool = False) -> int:
+    """Push generated alerts to Mimir/Cortex Ruler API."""
+    import asyncio
+    import os
+
+    from nthlayer.providers.mimir import MimirRulerError, MimirRulerProvider
+
+    alerts_file = output_dir / "alerts.yaml"
+    if not alerts_file.exists():
+        if verbose:
+            console.print("  [dim]ℹ No alerts.yaml found, skipping Mimir push[/dim]")
+        return 0
+
+    # Get Mimir configuration from environment
+    ruler_url = os.environ.get("MIMIR_RULER_URL")
+    if not ruler_url:
+        console.print()
+        console.print("  [yellow]⚠ MIMIR_RULER_URL not set - skipping Mimir push[/yellow]")
+        console.print("    [dim]Set: export MIMIR_RULER_URL=https://your-mimir:8080[/dim]")
+        return 0
+
+    tenant_id = os.environ.get("MIMIR_TENANT_ID")
+    api_key = os.environ.get("MIMIR_API_KEY")
+    username = os.environ.get("MIMIR_USERNAME")
+    password = os.environ.get("MIMIR_PASSWORD")
+
+    console.print()
+    console.print("[bold]Pushing alerts to Mimir Ruler...[/bold]")
+    console.print(f"  [dim]URL: {ruler_url}[/dim]")
+    if tenant_id:
+        console.print(f"  [dim]Tenant: {tenant_id}[/dim]")
+
+    # Read alerts YAML
+    rules_yaml = alerts_file.read_text()
+
+    # Create provider and push
+    provider = MimirRulerProvider(
+        ruler_url=ruler_url,
+        tenant_id=tenant_id,
+        api_key=api_key,
+        username=username,
+        password=password,
+    )
+
+    try:
+        result = asyncio.run(provider.push_rules(service_name, rules_yaml))
+
+        if result.success:
+            console.print(
+                f"  [green]✓ Pushed {result.groups_pushed} rule group(s) "
+                f"to namespace '{result.namespace}'[/green]"
+            )
+            return 0
+        else:
+            console.print(f"  [red]✗ {result.message}[/red]")
+            return 1
+
+    except MimirRulerError as e:
+        console.print(f"  [red]✗ Mimir error: {e}[/red]")
+        return 1
