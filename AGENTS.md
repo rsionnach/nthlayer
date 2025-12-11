@@ -132,14 +132,29 @@ flowchart TB
 - `trellis-loki-templates`: Technology-specific log patterns (PostgreSQL, Redis, Kafka)
 
 ### Phase 3: SLO Portfolio (🔨 NEXT - Differentiator)
-**Goal:** Cross-vendor, org-wide reliability portfolio
+**Goal:** Stateless, cross-service SLO aggregation for CI/CD pipelines
+
 - `trellis-portfolio-epic`: SLO Portfolio epic
-- `trellis-portfolio-aggregate`: `nthlayer portfolio` command
+- `trellis-portfolio-cmd`: `nthlayer portfolio` command
+  - Aggregate SLO status across all services/*.yaml
+  - Query Prometheus in real-time (stateless)
+  - Exit codes: 0=healthy, 1=warning, 2=critical
+- `trellis-portfolio-output`: Multiple output formats
+  - `--format json` → pipe to dashboards, APIs
+  - `--format csv` → spreadsheets, data pipelines
+  - `--format markdown` → PR comments, Slack, docs
+  - `--format table` → terminal (default)
 - `trellis-portfolio-health`: Health scoring by tier
-- `trellis-portfolio-insights`: Actionable reliability insights
-- `trellis-portfolio-trends`: Local SQLite for historical data
-- `trellis-portfolio-web`: Local web dashboard
-- `trellis-portfolio-export`: JSON/CSV export for reporting
+  - Tier-1 services weighted higher
+  - Org-wide reliability score (0-100)
+- `trellis-portfolio-insights`: Actionable recommendations
+  - "3 services below 99% availability target"
+  - "checkout-service burned 80% of monthly budget"
+
+**Design principles:**
+- Stateless: No database, queries Prometheus each run
+- Pipeline-first: Exit codes, machine-readable output
+- Composable: Output feeds into Grafana, Datadog, Slack, etc.
 
 ### Phase 3.5: Enhanced Validation (📋 PLANNED)
 **Goal:** Beyond pint - comprehensive rule validation with promruval
