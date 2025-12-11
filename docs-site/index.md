@@ -1,14 +1,37 @@
 # NthLayer
 
-**Generate your complete reliability stack from a single service spec.**
+**Reliability at build time, not incident time.**
 
-20 hours of SRE work in 5 minutes. Zero toil.
+Shift reliability left into your CI/CD pipeline. Validate before deploy, not after incidents.
 
 ---
 
-## What is NthLayer?
+## The Problem
 
-NthLayer is an automation platform that generates your complete observability and reliability infrastructure from declarative service definitions. Define your service once, get:
+Teams deploy code without reliability validation:
+
+- Alerts created **after** the first incident
+- Dashboards built **after** users complain
+- SLOs defined **after** budget is exhausted
+- No gates to prevent risky deploys
+
+## The Solution
+
+NthLayer shifts reliability left:
+
+```
+service.yaml → generate → lint → verify → check-deploy → deploy
+                  ↓         ↓       ↓           ↓
+              artifacts   valid?  metrics?  budget ok?
+```
+
+| Command | What It Does | Exit Code |
+|---------|--------------|-----------|
+| `nthlayer verify` | Validates declared metrics exist | 1 if missing |
+| `nthlayer check-deploy` | Checks error budget gate | 2 if exhausted |
+| `nthlayer apply --lint` | Validates PromQL syntax | 1 if invalid |
+
+## What Gets Generated
 
 | Output | Description |
 |--------|-------------|

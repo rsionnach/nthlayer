@@ -1,10 +1,34 @@
 # NthLayer
 
-NthLayer is the "missing layer of reliability" - an automation platform that generates the complete observability and reliability stack from declarative service definitions. The goal is "20 hours of SRE work in 5 minutes" with zero toil.
+**Reliability at build time, not incident time.**
+
+NthLayer is the Reliability Shift Left platform - bringing production readiness validation into your CI/CD pipeline. Instead of discovering reliability issues in production, catch them before deployment.
 
 ## Product Vision & Scope
 
-**Core Value Proposition:** "Generate the complete reliability stack from a service spec in 5 minutes"
+**Core Value Proposition:** "Validate reliability requirements before deploy, not after incidents"
+
+### Reliability Shift Left
+
+| Stage | What NthLayer Does |
+|-------|-------------------|
+| **Generate** | Create dashboards, alerts, SLOs from service.yaml |
+| **Lint** | Validate PromQL syntax before Prometheus rejects it |
+| **Verify** | Confirm declared metrics exist in Prometheus |
+| **Gate** | Block deploys when error budget exhausted |
+
+**The key insight:** Generation is just the mechanism. The value is **prevention**.
+
+### Competitive Positioning
+
+| Competitor | Their Focus | NthLayer Difference |
+|------------|-------------|---------------------|
+| **PagerDuty** | Incident response | "They respond to incidents, we prevent them" |
+| **Datadog** | Post-deploy monitoring | "They monitor after, we validate before" |
+| **Nobl9** | SLO tracking | "They track SLOs, we enforce them as gates" |
+| **Backstage** | Service catalog | "They document, we generate and enforce" |
+
+**Strategic focus:** Compete where they won't go - build-time reliability validation.
 
 ### The Three Layers
 
@@ -63,9 +87,16 @@ flowchart TB
 ## Roadmap
 
 ### Strategic Differentiation
-**Current focus - Compete where PagerDuty/Datadog won't go:**
+**Primary narrative: Reliability Shift Left**
+- Prevention over response - catch issues before production
+- CI/CD integration - verification and gates as pipeline steps
 - Cross-vendor SLO Portfolio (they want lock-in)
-- AI-assisted config generation (they do incident response, not setup)
+
+**Core differentiators:**
+- `nthlayer verify` - Contract verification (metrics exist)
+- `nthlayer check-deploy` - Deployment gates (error budget)
+- `nthlayer apply --lint` - PromQL validation
+- Generation is the mechanism, prevention is the value
 
 **Don't compete with (for now):**
 - Incident pattern learning (PagerDuty Insights)

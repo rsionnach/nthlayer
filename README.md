@@ -10,11 +10,76 @@
 
 # NthLayer
 
-Generate your complete reliability stack from a single service spec.
+**Reliability at build time, not incident time.**
 
 [![Status: Alpha](https://img.shields.io/badge/Status-Alpha-orange?style=for-the-badge)](https://github.com/rsionnach/nthlayer)
 [![PyPI](https://img.shields.io/pypi/v/nthlayer?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/nthlayer/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE.txt)
+
+---
+
+## ⚠️ The Problem
+
+Teams deploy code without reliability validation:
+- Alerts created **after** the first incident
+- Dashboards built **after** users complain
+- SLOs defined **after** budget is exhausted
+- No gates to prevent risky deploys
+
+## ✅ The Solution
+
+NthLayer shifts reliability left into your CI/CD pipeline:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ service.yaml → generate → lint → verify → check-deploy → deploy            │
+│                   ↓         ↓       ↓           ↓                          │
+│               artifacts   valid?  metrics?  budget ok?                     │
+│                                                                            │
+│ "Is this production-ready?" - answered BEFORE deployment                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```bash
+# In your Tekton/GitHub Actions pipeline:
+nthlayer apply service.yaml --lint    # Generate + validate PromQL syntax
+nthlayer verify service.yaml          # Verify declared metrics exist
+nthlayer check-deploy service.yaml    # Check error budget gate
+# Only if all pass: deploy to production
+```
+
+Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/Cortex**
+
+---
+
+## 🚦 Shift Left Features
+
+| Command | What It Does | Pipeline Exit Code |
+|---------|--------------|-------------------|
+| `nthlayer verify` | Validates declared metrics exist in Prometheus | 1 if missing metrics |
+| `nthlayer check-deploy` | Checks error budget - blocks if exhausted | 2 if budget exhausted |
+| `nthlayer apply --lint` | Validates PromQL syntax with pint | 1 if invalid queries |
+
+### Deployment Gate Example
+
+```bash
+$ nthlayer check-deploy services/payment-api.yaml --prometheus-url $PROM_URL
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│  Deployment Gate Check                                                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  Service:       payment-api
+  Tier:          critical
+  Window:        30d
+
+  SLO Results:
+    availability   99.87%  (target: 99.95%)   budget: 42% remaining   ⚠ WARNING
+    latency_p99    187ms   (target: 200ms)    budget: 78% remaining   ✓ OK
+
+  Decision:  ⚠ PROCEED WITH CAUTION
+  Reason:    Error budget below 50% for critical service
+```
 
 ---
 
@@ -36,25 +101,22 @@ nthlayer apply service.yaml
 
 ## 🎯 Why NthLayer?
 
-| Benefit | Description |
-|---------|-------------|
-| **Shift-Left Validation** | Developers write intent, not PromQL - syntax errors impossible |
+| Benefit | How It Works |
+|---------|--------------|
+| **Prevent, Don't React** | Validate reliability requirements before deploy, not after incidents |
+| **Contract Verification** | `nthlayer verify` fails pipeline if declared metrics don't exist |
+| **Deployment Gates** | `nthlayer check-deploy` blocks deploys when error budget exhausted |
 | **Immutable Standards** | Update NthLayer version = all services get new standards |
-| **Contract Verification** | `nthlayer verify` fails pipeline if metrics don't exist |
-| **Deployment Gates** | `nthlayer check-deploy` blocks if error budget exhausted |
 | **GitOps Native** | Generated files commit to git, works with any CD system |
 
-### CI/CD Pipeline Integration
+### Competitive Positioning
 
-```
-service.yaml → nthlayer apply → validate → verify → gate → deploy
-                    ↓
-              alerts.yaml
-              dashboard.json
-              recording-rules.yaml
-```
-
-Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/Cortex**
+| Tool | Focus | NthLayer Difference |
+|------|-------|---------------------|
+| **PagerDuty** | Incident response | "They respond to incidents, we prevent them" |
+| **Datadog** | Post-deploy monitoring | "They monitor after, we validate before" |
+| **Nobl9** | SLO tracking | "They track SLOs, we enforce them as gates" |
+| **Backstage** | Service catalog | "They document, we generate and enforce" |
 
 ---
 
