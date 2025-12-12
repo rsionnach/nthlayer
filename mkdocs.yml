@@ -73,25 +73,33 @@ nav:
   - Generate:
     - nthlayer apply: commands/apply.md
     - nthlayer init: commands/init.md
+    - Loki Alerts: commands/generate-loki-alerts.md
     - Technology Templates: integrations/technologies.md
   - Validate:
     - Overview: validate/index.md
     - Contract Verification: commands/verify.md
     - Policy Validation: commands/validate-spec.md
+    - Metadata Validation: commands/validate-metadata.md
     - PromQL Linting: validate/linting.md
   - Protect:
     - Overview: protect/index.md
     - Deployment Gates: commands/check-deploy.md
     - SLO Portfolio: commands/portfolio.md
-    - Error Budgets: concepts/slos.md
   - Integrations:
     - CI/CD Pipelines: integrations/cicd.md
-    - Prometheus & Mimir: integrations/prometheus.md
+    - Prometheus: integrations/prometheus.md
+    - Mimir/Cortex: integrations/mimir.md
     - Grafana: integrations/grafana.md
     - PagerDuty: integrations/pagerduty.md
+  - Concepts:
+    - Reliability Shift Left: concepts/shift-left.md
+    - Deployment Gates: concepts/deployment-gates.md
+    - Service Specs: concepts/service-specs.md
+    - SLOs & Error Budgets: concepts/slos.md
   - Reference:
     - Service YAML Schema: reference/service-yaml.md
     - CLI Reference: reference/cli.md
+    - Environment Management: commands/environments.md
     - Architecture: architecture.md
 
 extra:

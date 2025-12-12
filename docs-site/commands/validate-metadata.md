@@ -149,5 +149,5 @@ result = validator.validate_file("alerts.yaml")
 
 ## See Also
 
-- [lint Command](./lint.md) - PromQL syntax validation with pint
+- [lint Command](../validate/linting.md) - PromQL syntax validation with pint
 - [apply Command](./apply.md) - Generate artifacts with optional validation

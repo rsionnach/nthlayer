@@ -235,6 +235,104 @@ Show available templates.
 nthlayer list-templates
 ```
 
+### list-services
+
+List available services from demo data.
+
+```bash
+nthlayer list-services
+```
+
+### list-teams
+
+List available teams from demo data.
+
+```bash
+nthlayer list-teams
+```
+
+### list-environments
+
+List available environment configurations.
+
+```bash
+nthlayer list-environments [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--service FILE` | Service YAML file to scope search |
+| `--directory DIR` | Directory to search for environments |
+
+### diff-envs
+
+Compare configurations between two environments.
+
+```bash
+nthlayer diff-envs <service.yaml> <env1> <env2> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--show-all` | Show all fields, not just differences |
+
+### validate-env
+
+Validate an environment configuration.
+
+```bash
+nthlayer validate-env <environment> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--service FILE` | Service file to test against |
+| `--directory DIR` | Directory containing environments |
+| `--strict` | Treat warnings as errors |
+
+### validate-spec
+
+Validate service.yaml against OPA/Rego policies.
+
+```bash
+nthlayer validate-spec <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--policy-dir DIR` | Directory containing .rego policies |
+| `--strict` | Treat warnings as errors |
+
+Exit codes:
+- `0` = All policies pass
+- `1` = Policy violations found
+
+### validate-metadata
+
+Validate Prometheus rule metadata (labels, annotations, URLs).
+
+```bash
+nthlayer validate-metadata <alerts.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--check-urls` | Verify runbook URLs are reachable |
+| `--strict` | Treat warnings as errors |
+
+### generate-loki-alerts
+
+Generate Loki LogQL alert rules from service spec.
+
+```bash
+nthlayer generate-loki-alerts <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--output-dir DIR` | Output directory |
+| `--dry-run` | Preview without writing |
+
 ### secrets
 
 Secret management commands.

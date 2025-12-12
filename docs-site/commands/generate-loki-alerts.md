@@ -141,4 +141,3 @@ resources:
 ## See Also
 
 - [apply Command](./apply.md) - Generate all artifacts including Loki alerts
-- [Loki Integration Guide](../integrations/loki.md)

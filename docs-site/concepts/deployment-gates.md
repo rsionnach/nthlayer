@@ -195,5 +195,5 @@ nthlayer check-deploy services/api.yaml --demo
 ## See Also
 
 - [check-deploy Command](../commands/check-deploy.md)
-- [SLO Concepts](./slo.md)
+- [SLO Concepts](./slos.md)
 - [Shift Left Philosophy](./shift-left.md)
