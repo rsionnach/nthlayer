@@ -366,11 +366,21 @@ MIT - See [LICENSE.txt](LICENSE.txt)
 ### Core Dependencies
 - [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) - Dashboard generation SDK (Apache 2.0)
 - [awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts) - 580+ battle-tested alert rules (CC BY 4.0)
+- [pint](https://github.com/cloudflare/pint) - PromQL linting and validation (Apache 2.0)
+- [conftest](https://github.com/open-policy-agent/conftest) / [OPA](https://github.com/open-policy-agent/opa) - Policy validation (Apache 2.0)
+- [PagerDuty Python SDK](https://github.com/PagerDuty/pdpyras) - Incident management integration (MIT)
 
 ### Architecture Inspiration
 - [autograf](https://github.com/FUSAKLA/autograf) - Dynamic Prometheus metric discovery
 - [Sloth](https://github.com/slok/sloth) - SLO specification and burn rate calculations
 - [OpenSLO](https://github.com/openslo/openslo) - SLO specification standard
+
+### CLI & Documentation
+- [Rich](https://github.com/Textualize/rich) - Terminal formatting and styling (MIT)
+- [Questionary](https://github.com/tmbo/questionary) - Interactive CLI prompts (MIT)
+- [MkDocs Material](https://github.com/squidfunk/mkdocs-material) - Documentation theme (MIT)
+- [VHS](https://github.com/charmbracelet/vhs) - Terminal demo recordings (MIT)
+- [Nord Theme](https://www.nordtheme.com/) - Color palette inspiration (MIT)
 
 ### Tooling
 - [Shields.io](https://shields.io/) - Badges
