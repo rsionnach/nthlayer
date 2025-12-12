@@ -12,14 +12,14 @@ theme:
   name: material
   palette:
     - scheme: slate
-      primary: deep purple
-      accent: purple
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
     - scheme: default
-      primary: deep purple
-      accent: purple
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -100,6 +100,9 @@ extra:
       link: https://github.com/rsionnach/nthlayer
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/nthlayer/
+
+extra_css:
+  - stylesheets/nord.css
 
 extra_javascript:
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js

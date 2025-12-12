@@ -1,0 +1,219 @@
+/* Nord Color Palette for MkDocs Material */
+
+/* Polar Night - Dark backgrounds */
+:root {
+  --nord0: #2E3440;
+  --nord1: #3B4252;
+  --nord2: #434C5E;
+  --nord3: #4C566A;
+
+  /* Snow Storm - Light backgrounds */
+  --nord4: #D8DEE9;
+  --nord5: #E5E9F0;
+  --nord6: #ECEFF4;
+
+  /* Frost - Blues/Cyans */
+  --nord7: #8FBCBB;
+  --nord8: #88C0D0;
+  --nord9: #81A1C1;
+  --nord10: #5E81AC;
+
+  /* Aurora - Accent colors */
+  --nord11: #BF616A; /* Red */
+  --nord12: #D08770; /* Orange */
+  --nord13: #EBCB8B; /* Yellow */
+  --nord14: #A3BE8C; /* Green */
+  --nord15: #B48EAD; /* Purple */
+}
+
+/* Dark mode (slate scheme) */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--nord10);
+  --md-primary-fg-color--light: var(--nord9);
+  --md-primary-fg-color--dark: var(--nord10);
+  --md-primary-bg-color: var(--nord6);
+  --md-primary-bg-color--light: var(--nord5);
+
+  --md-accent-fg-color: var(--nord8);
+  --md-accent-fg-color--transparent: rgba(136, 192, 208, 0.1);
+  --md-accent-bg-color: var(--nord0);
+  --md-accent-bg-color--light: var(--nord1);
+
+  --md-default-fg-color: var(--nord4);
+  --md-default-fg-color--light: var(--nord4);
+  --md-default-fg-color--lighter: var(--nord3);
+  --md-default-fg-color--lightest: var(--nord2);
+  --md-default-bg-color: var(--nord0);
+  --md-default-bg-color--light: var(--nord1);
+  --md-default-bg-color--lighter: var(--nord2);
+  --md-default-bg-color--lightest: var(--nord3);
+
+  --md-code-fg-color: var(--nord4);
+  --md-code-bg-color: var(--nord1);
+
+  --md-code-hl-color: rgba(136, 192, 208, 0.15);
+  --md-code-hl-number-color: var(--nord15);
+  --md-code-hl-special-color: var(--nord12);
+  --md-code-hl-function-color: var(--nord8);
+  --md-code-hl-constant-color: var(--nord7);
+  --md-code-hl-keyword-color: var(--nord9);
+  --md-code-hl-string-color: var(--nord14);
+  --md-code-hl-name-color: var(--nord4);
+  --md-code-hl-operator-color: var(--nord9);
+  --md-code-hl-punctuation-color: var(--nord4);
+  --md-code-hl-comment-color: var(--nord3);
+  --md-code-hl-generic-color: var(--nord4);
+  --md-code-hl-variable-color: var(--nord4);
+
+  --md-typeset-color: var(--nord4);
+  --md-typeset-a-color: var(--nord8);
+
+  --md-typeset-mark-color: rgba(235, 203, 139, 0.3);
+
+  --md-admonition-fg-color: var(--nord4);
+  --md-admonition-bg-color: var(--nord1);
+
+  --md-footer-fg-color: var(--nord4);
+  --md-footer-fg-color--light: var(--nord3);
+  --md-footer-fg-color--lighter: var(--nord2);
+  --md-footer-bg-color: var(--nord0);
+  --md-footer-bg-color--dark: var(--nord0);
+}
+
+/* Light mode (default scheme) */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--nord10);
+  --md-primary-fg-color--light: var(--nord9);
+  --md-primary-fg-color--dark: var(--nord10);
+  --md-primary-bg-color: var(--nord6);
+  --md-primary-bg-color--light: var(--nord5);
+
+  --md-accent-fg-color: var(--nord10);
+  --md-accent-fg-color--transparent: rgba(94, 129, 172, 0.1);
+  --md-accent-bg-color: var(--nord6);
+  --md-accent-bg-color--light: var(--nord5);
+
+  --md-default-fg-color: var(--nord0);
+  --md-default-fg-color--light: var(--nord1);
+  --md-default-fg-color--lighter: var(--nord2);
+  --md-default-fg-color--lightest: var(--nord3);
+  --md-default-bg-color: var(--nord6);
+  --md-default-bg-color--light: var(--nord5);
+  --md-default-bg-color--lighter: var(--nord4);
+  --md-default-bg-color--lightest: var(--nord4);
+
+  --md-code-fg-color: var(--nord0);
+  --md-code-bg-color: var(--nord5);
+
+  --md-code-hl-color: rgba(94, 129, 172, 0.15);
+  --md-code-hl-number-color: var(--nord15);
+  --md-code-hl-special-color: var(--nord12);
+  --md-code-hl-function-color: var(--nord10);
+  --md-code-hl-constant-color: var(--nord7);
+  --md-code-hl-keyword-color: var(--nord9);
+  --md-code-hl-string-color: var(--nord14);
+  --md-code-hl-name-color: var(--nord0);
+  --md-code-hl-operator-color: var(--nord9);
+  --md-code-hl-punctuation-color: var(--nord0);
+  --md-code-hl-comment-color: var(--nord3);
+  --md-code-hl-generic-color: var(--nord0);
+  --md-code-hl-variable-color: var(--nord0);
+
+  --md-typeset-color: var(--nord0);
+  --md-typeset-a-color: var(--nord10);
+
+  --md-typeset-mark-color: rgba(235, 203, 139, 0.5);
+}
+
+/* Header styling */
+.md-header {
+  background-color: var(--nord0);
+}
+
+[data-md-color-scheme="default"] .md-header {
+  background-color: var(--nord10);
+}
+
+/* Navigation tabs */
+.md-tabs {
+  background-color: var(--nord1);
+}
+
+[data-md-color-scheme="default"] .md-tabs {
+  background-color: var(--nord9);
+}
+
+/* Admonition colors using Aurora palette */
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-color: var(--nord10);
+}
+.md-typeset .note > .admonition-title,
+.md-typeset .note > summary {
+  background-color: rgba(94, 129, 172, 0.2);
+}
+
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: var(--nord14);
+}
+.md-typeset .tip > .admonition-title,
+.md-typeset .tip > summary {
+  background-color: rgba(163, 190, 140, 0.2);
+}
+
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-color: var(--nord13);
+}
+.md-typeset .warning > .admonition-title,
+.md-typeset .warning > summary {
+  background-color: rgba(235, 203, 139, 0.2);
+}
+
+.md-typeset .admonition.danger,
+.md-typeset details.danger {
+  border-color: var(--nord11);
+}
+.md-typeset .danger > .admonition-title,
+.md-typeset .danger > summary {
+  background-color: rgba(191, 97, 106, 0.2);
+}
+
+.md-typeset .admonition.info,
+.md-typeset details.info {
+  border-color: var(--nord8);
+}
+.md-typeset .info > .admonition-title,
+.md-typeset .info > summary {
+  background-color: rgba(136, 192, 208, 0.2);
+}
+
+/* Code block styling */
+.md-typeset code {
+  border-radius: 4px;
+}
+
+.md-typeset pre > code {
+  border-radius: 6px;
+}
+
+/* Link hover effects */
+.md-typeset a:hover {
+  color: var(--nord8);
+}
+
+/* Table styling */
+.md-typeset table:not([class]) th {
+  background-color: var(--nord2);
+}
+
+[data-md-color-scheme="default"] .md-typeset table:not([class]) th {
+  background-color: var(--nord4);
+}
+
+/* Search highlighting */
+.md-search-result mark {
+  background-color: var(--nord13);
+  color: var(--nord0);
+}
