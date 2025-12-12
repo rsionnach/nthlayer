@@ -14,11 +14,21 @@ Commands:
 from __future__ import annotations
 
 import argparse
-import getpass
 import os
 from pathlib import Path
 
-from nthlayer.cli.ux import console, error, header, info, success, warning
+from nthlayer.cli.ux import (
+    confirm,
+    console,
+    error,
+    header,
+    info,
+    password_input,
+    select,
+    success,
+    text_input,
+    warning,
+)
 from nthlayer.config.integrations import (
     GrafanaProfile,
     GrafanaType,
@@ -385,22 +395,25 @@ def _create_first_service() -> None:
 
     team = _prompt("Team name", default="platform")
 
-    console.print("\n[bold]Service type:[/bold]")
-    console.print("  [cyan]1.[/cyan] api     - HTTP/REST API service")
-    console.print("  [cyan]2.[/cyan] worker  - Background job processor")
-    console.print("  [cyan]3.[/cyan] stream  - Stream/event processor")
-    type_choice = _prompt("Type [1/2/3]", default="1")
-    type_map = {"1": "api", "2": "worker", "3": "stream"}
-    service_type = type_map.get(type_choice, "api")
+    # Service type selection using interactive menu
+    type_choices = [
+        "api - HTTP/REST API service",
+        "worker - Background job processor",
+        "stream - Stream/event processor",
+    ]
+    selected_type = select("Service type", type_choices, default=type_choices[0])
+    service_type = selected_type.split(" - ")[0]
 
-    console.print(
-        "\n[bold]Service tier[/bold] [muted](determines SLO targets and alerting):[/muted]"
-    )
-    console.print("  [cyan]1.[/cyan] Critical - 99.95% availability, 5min escalation")
-    console.print("  [cyan]2.[/cyan] Standard - 99.9% availability, 15min escalation")
-    console.print("  [cyan]3.[/cyan] Low      - 99.5% availability, 30min escalation")
-    tier_choice = _prompt("Tier [1/2/3]", default="2")
-    tier = int(tier_choice) if tier_choice in ("1", "2", "3") else 2
+    # Service tier selection using interactive menu
+    tier_choices = [
+        "critical - 99.95% availability, 5min escalation",
+        "standard - 99.9% availability, 15min escalation",
+        "low - 99.5% availability, 30min escalation",
+    ]
+    selected_tier = select("Service tier", tier_choices, default=tier_choices[1])
+    tier_name = selected_tier.split(" - ")[0]
+    tier_map = {"critical": 1, "standard": 2, "low": 3}
+    tier = tier_map.get(tier_name, 2)
 
     # Create services directory
     services_dir = Path("services")
@@ -520,26 +533,17 @@ def _print_next_steps() -> None:
 
 def _prompt(message: str, default: str | None = None) -> str:
     """Prompt user for input with optional default."""
-    if default:
-        result = input(f"{message} [{default}]: ").strip()
-        return result if result else default
-    else:
-        return input(f"{message}: ").strip()
+    return text_input(message, default=default or "")
 
 
 def _prompt_secret(message: str) -> str:
     """Prompt user for secret input (hidden)."""
-    return getpass.getpass(f"{message}: ")
+    return password_input(message)
 
 
 def _confirm(message: str, default: bool = True) -> bool:
     """Prompt user for yes/no confirmation."""
-    suffix = "[Y/n]" if default else "[y/N]"
-    result = input(f"{message} {suffix}: ").strip().lower()
-
-    if not result:
-        return default
-    return result in ("y", "yes")
+    return confirm(message, default=default)
 
 
 def config_exists() -> bool:
