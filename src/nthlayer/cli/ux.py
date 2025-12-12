@@ -89,12 +89,14 @@ PROMPT_STYLE = QStyle(
         ("question", "fg:#ECEFF4 bold"),  # Nord snow storm - question text
         ("answer", "fg:#A3BE8C bold"),  # Nord aurora green - selected answer
         ("pointer", "fg:#88C0D0 bold"),  # Nord frost - list pointer (>)
-        ("highlighted", "fg:#88C0D0"),  # Nord frost - currently highlighted option
-        ("selected", "fg:#A3BE8C"),  # Nord aurora green - selected checkbox items
+        ("highlighted", "fg:#88C0D0 bold"),  # Nord frost - currently highlighted option
+        ("selected", "fg:#ECEFF4"),  # Nord snow storm - pre-selected/default items (no color)
         ("separator", "fg:#4C566A"),  # Nord polar night - separators
         ("instruction", "fg:#D8DEE9"),  # Nord snow storm - instruction text
         ("text", "fg:#ECEFF4"),  # Nord snow storm - general text
         ("disabled", "fg:#4C566A italic"),  # Nord polar night - disabled items
+        # Override prompt_toolkit's default 'selected' which uses reverse video
+        ("class:selected", "fg:#ECEFF4 noreverse"),  # Remove reverse styling
     ]
 )
 
