@@ -140,7 +140,10 @@ class PintLinter:
                         severity="Information",
                         rule_name="",
                         check="pint/not-installed",
-                        message="pint not installed. Install: brew install cloudflare/cloudflare/pint",
+                        message=(
+                            "pint not installed. "
+                            "Install: brew install cloudflare/cloudflare/pint"
+                        ),
                     )
                 ],
                 exit_code=-1,
