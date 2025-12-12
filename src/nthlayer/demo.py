@@ -20,6 +20,7 @@ import yaml
 
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
+from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
@@ -725,6 +726,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Verify command (contract verification)
     register_verify_parser(subparsers)
 
+    # Loki alerts command
+    register_loki_parser(subparsers)
+
     return parser
 
 
@@ -1048,5 +1052,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "verify":
         sys.exit(handle_verify_command(args))
+
+    if args.command == "generate-loki-alerts":
+        sys.exit(handle_loki_command(args))
 
     parser.print_help()

@@ -126,3 +126,12 @@ def register_loki_parser(subparsers) -> None:
         action="store_true",
         help="Preview alerts without writing file",
     )
+
+
+def handle_loki_command(args) -> int:
+    """Handle the generate-loki-alerts subcommand."""
+    return generate_loki_command(
+        service_file=args.service_file,
+        output=getattr(args, "output", None),
+        dry_run=getattr(args, "dry_run", False),
+    )
