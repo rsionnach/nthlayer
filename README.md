@@ -262,20 +262,30 @@ pagerduty:
 
 ## 🛠️ CLI Commands
 
+### Generate
+
 ```bash
-# Generation
-nthlayer plan service.yaml      # 👀 Preview what will be generated
-nthlayer apply service.yaml     # ✨ Generate all artifacts
-nthlayer apply --push           # 📊 Also push dashboard to Grafana
-nthlayer apply --push-ruler     # 🚀 Push alerts to Mimir/Cortex Ruler API
-nthlayer apply --lint           # ✅ Validate generated alerts with pint
+nthlayer init                   # Interactive service.yaml creation
+nthlayer plan service.yaml      # Preview what will be generated
+nthlayer apply service.yaml     # Generate all artifacts
+nthlayer apply --push           # Also push dashboard to Grafana
+nthlayer apply --push-ruler     # Push alerts to Mimir/Cortex Ruler API
+```
 
-# Validation
-nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
-nthlayer verify service.yaml    # 📋 Verify declared metrics exist in Prometheus
+### Validate
 
-# Deployment Gates
-nthlayer check-deploy service.yaml -p $PROMETHEUS_URL  # 🚦 Check error budget before deploy
+```bash
+nthlayer apply --lint           # Validate PromQL syntax (pint)
+nthlayer validate-spec service.yaml  # Check against policies (OPA/Rego)
+nthlayer verify service.yaml    # Verify metrics exist in Prometheus
+```
+
+### Protect
+
+```bash
+nthlayer check-deploy service.yaml  # Check error budget gate (exit 2 = blocked)
+nthlayer portfolio              # Org-wide SLO health
+nthlayer slo collect service.yaml   # Query current budget from Prometheus
 ```
 
 ---
