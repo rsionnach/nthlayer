@@ -746,6 +746,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_welcome() -> None:
+    """Print styled welcome message for first-time users."""
+    from nthlayer.cli.ux import console
+
+    print_banner()
+    console.print(f"  [muted]Version: {__version__}[/muted]")
+    console.print()
+
+    console.print("  [bold]Quick Start:[/bold]")
+    console.print("    [info]nthlayer setup[/info]              Interactive first-time setup")
+    console.print("    [info]nthlayer init[/info]               Create a new service.yaml")
+    console.print("    [info]nthlayer apply service.yaml[/info] Generate dashboards, alerts, SLOs")
+    console.print()
+
+    console.print("  [bold]Key Commands:[/bold]")
+    console.print("    [info]nthlayer verify[/info]             Verify metrics exist in Prometheus")
+    console.print(
+        "    [info]nthlayer check-deploy[/info]       Check error budget before deploying"
+    )
+    console.print("    [info]nthlayer portfolio[/info]          View org-wide SLO health")
+    console.print()
+
+    console.print("  [muted]Run 'nthlayer --help' for all commands[/muted]")
+    console.print("  [muted]Run 'nthlayer <command> --help' for command details[/muted]")
+    console.print()
+    console.print("  [muted]Docs: https://rsionnach.github.io/nthlayer/[/muted]")
+    console.print()
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -756,10 +785,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"nthlayer version {__version__}")
         return
 
-    # Show banner when no command provided
+    # Show styled welcome when no command provided
     if args.command is None:
-        print_banner()
-        parser.print_help()
+        _print_welcome()
         return
 
     # Handle unified apply commands
