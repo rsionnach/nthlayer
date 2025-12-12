@@ -158,37 +158,9 @@ Track reliability across your entire organization:
 </div>
 
 ```bash
-$ nthlayer portfolio
-
-======================================================================
-  NthLayer Reliability Portfolio
-======================================================================
-
-Overall Health: 78% (14/18 SLOs meeting target)
-
-By Tier:
-  Critical: 5/6 healthy (83%)
-  Standard: 6/8 healthy (75%)
-  Low: 3/4 healthy (75%)
-
-Top Budget Burners:
-  payment-api/availability: 12.5h burned (156%)
-  search-api/latency: 8.2h burned (95%)
-
-Insights:
-  ! payment-api needs reliability investment
-  * user-api exceeds SLO - consider tier promotion
-
-----------------------------------------------------------------------
-Services: 12 | SLOs: 18
-```
-
-```bash
-nthlayer slo list              # List all SLOs across services
-nthlayer slo show payment-api  # Show SLO details for a service
-nthlayer slo collect payment-api  # Query Prometheus for current budget
-nthlayer portfolio             # Org-wide reliability view
-nthlayer portfolio --details   # Full breakdown by service
+nthlayer portfolio              # Org-wide reliability view
+nthlayer portfolio --format json  # Machine-readable for dashboards
+nthlayer slo collect service.yaml  # Query current budget from Prometheus
 ```
 
 ---
@@ -219,63 +191,92 @@ pagerduty:
 
 ## 💰 The Value
 
-<div align="center">
-  <h3>⏱️ 20 hours → 5 minutes per service</h3>
-</div>
-
-### What Gets Automated
+### Generation: 20 hours → 5 minutes per service
 
 | Task | Manual Effort | With NthLayer |
 |------|---------------|---------------|
-| 🎯 Define SLOs & error budgets | 6 hours | Generated |
+| 🎯 Define SLOs & error budgets | 6 hours | Generated from tier |
 | 🚨 Research & configure alerts | 4 hours | 400+ battle-tested rules |
 | 📊 Build Grafana dashboards | 5 hours | 12-28 panels auto-generated |
 | 📟 PagerDuty escalation setup | 2 hours | Tier-based defaults |
 | 📋 Write recording rules | 3 hours | 20+ pre-computed metrics |
-| **Total per service** | **20 hours** | **5 minutes** |
 
-<sub>*Hours based on typical SRE team experience for production-grade setup. Actual times vary by team expertise and existing tooling.</sub>
+### Validation: Catch issues before production
+
+| Problem | Without NthLayer | With NthLayer |
+|---------|------------------|---------------|
+| Missing metrics | Discover after deploy | `nthlayer verify` blocks promotion |
+| Invalid PromQL | Prometheus rejects rules | `--lint` catches in CI |
+| Policy violations | Manual review | `nthlayer validate-spec` enforces |
+| Exhausted budget | Deploy anyway, incident | `check-deploy` blocks risky deploys |
 
 ### At Scale
 
-| Scale | Manual Hours | With NthLayer | Hours Saved | Value* |
-|-------|--------------|---------------|-------------|--------|
-| 🚀 50 services | 1,000 hrs | 4 hrs | 996 hrs | $100K |
-| 📈 200 services | 4,000 hrs | 17 hrs | 3,983 hrs | $400K |
-| 🏢 1,000 services | 20,000 hrs | 83 hrs | 19,917 hrs | $2M |
+| Scale | Generation Saved | Incidents Prevented* |
+|-------|------------------|---------------------|
+| 🚀 50 services | 996 hours ($100K) | ~12/year |
+| 📈 200 services | 3,983 hours ($400K) | ~48/year |
+| 🏢 1,000 services | 19,917 hours ($2M) | ~240/year |
 
-<sub>*Value calculated at $100/hr engineering cost. Your mileage may vary.</sub>
+<sub>*Estimated based on 60% reduction in "missing monitoring" incidents. Value at $100/hr engineering cost.</sub>
 
 ---
 
 ## 🧠 How It Works
 
+### Generation
+
 | Step | What Happens |
 |------|--------------|
-| 🔍 **Metric Discovery** | Queries Prometheus to find what metrics actually exist |
 | 🎯 **Intent Resolution** | Maps "availability SLO" → best matching PromQL query |
 | 🔀 **Type Routing** | API services get HTTP metrics, workers get job metrics |
-| ⚡ **Tier Defaults** | Critical = 5/15/30min escalation, Low = 60min |
-| 🏗️ **Technology Templates** | PostgreSQL, Redis, Kubernetes patterns built-in |
+| ⚡ **Tier Defaults** | Critical = 99.95% SLO + 5min escalation, Low = 99.5% + 60min |
+| 🏗️ **Technology Templates** | 23 built-in: PostgreSQL, Redis, Kafka, MongoDB, etc. |
+
+### CI/CD Pipeline
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Generate  │───▶│   Validate  │───▶│   Protect   │───▶│   Deploy    │
+│ nthlayer    │    │ --lint      │    │ check-deploy│    │ kubectl     │
+│ apply       │    │ verify      │    │             │    │ argocd      │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+      │                  │                  │
+      ▼                  ▼                  ▼
+  artifacts         exit 1 if          exit 2 if
+  to git            invalid            budget exhausted
+```
+
+Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins**
 
 ---
 
 ## 🛠️ CLI Commands
 
+### Generate
+
 ```bash
-# Generation
-nthlayer plan service.yaml      # 👀 Preview what will be generated
-nthlayer apply service.yaml     # ✨ Generate all artifacts
-nthlayer apply --push           # 📊 Also push dashboard to Grafana
-nthlayer apply --push-ruler     # 🚀 Push alerts to Mimir/Cortex Ruler API
-nthlayer apply --lint           # ✅ Validate generated alerts with pint
+nthlayer init                   # Interactive service.yaml creation
+nthlayer plan service.yaml      # Preview what will be generated
+nthlayer apply service.yaml     # Generate all artifacts
+nthlayer apply --push           # Also push dashboard to Grafana
+nthlayer apply --push-ruler     # Push alerts to Mimir/Cortex Ruler API
+```
 
-# Validation
-nthlayer lint alerts.yaml       # 🔍 Lint existing Prometheus rules
-nthlayer verify service.yaml    # 📋 Verify declared metrics exist in Prometheus
+### Validate
 
-# Deployment Gates
-nthlayer check-deploy service.yaml -p $PROMETHEUS_URL  # 🚦 Check error budget before deploy
+```bash
+nthlayer apply --lint           # Validate PromQL syntax (pint)
+nthlayer validate-spec service.yaml  # Check against policies (OPA/Rego)
+nthlayer verify service.yaml    # Verify metrics exist in Prometheus
+```
+
+### Protect
+
+```bash
+nthlayer check-deploy service.yaml  # Check error budget gate (exit 2 = blocked)
+nthlayer portfolio              # Org-wide SLO health
+nthlayer slo collect service.yaml   # Query current budget from Prometheus
 ```
 
 ---
