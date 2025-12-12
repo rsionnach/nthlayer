@@ -16,9 +16,14 @@ Set Framerate 30
 # Force color output for Rich
 Env FORCE_COLOR "1"
 
+# Show what we're doing
+Type "# Check error budget before deploying"
+Enter
+Sleep 1s
+
 # Run the check-deploy command with demo mode
 Type ".venv/bin/nthlayer check-deploy examples/services/checkout-service.yaml --demo"
 Enter
-Sleep 5s
+Sleep 4s
 
 Sleep 2s

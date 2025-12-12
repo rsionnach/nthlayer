@@ -68,26 +68,31 @@ nav:
   - Getting Started:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quick-start.md
+    - Interactive Setup: commands/setup.md
     - Your First Service: getting-started/first-service.md
-  - Commands:
-    - Overview: commands/index.md
+  - Generate:
     - nthlayer apply: commands/apply.md
-    - nthlayer setup: commands/setup.md
-    - nthlayer portfolio: commands/portfolio.md
-    - nthlayer slo: commands/slo.md
-    - nthlayer config: commands/config.md
+    - nthlayer init: commands/init.md
+    - Technology Templates: integrations/technologies.md
+  - Validate:
+    - Overview: validate/index.md
+    - Contract Verification: commands/verify.md
+    - Policy Validation: commands/validate-spec.md
+    - PromQL Linting: validate/linting.md
+  - Protect:
+    - Overview: protect/index.md
+    - Deployment Gates: commands/check-deploy.md
+    - SLO Portfolio: commands/portfolio.md
+    - Error Budgets: concepts/slos.md
   - Integrations:
-    - Prometheus: integrations/prometheus.md
+    - CI/CD Pipelines: integrations/cicd.md
+    - Prometheus & Mimir: integrations/prometheus.md
     - Grafana: integrations/grafana.md
     - PagerDuty: integrations/pagerduty.md
-    - Technologies: integrations/technologies.md
-  - Concepts:
-    - Service Specs: concepts/service-specs.md
-    - SLOs & Error Budgets: concepts/slos.md
-    - Architecture: architecture.md
   - Reference:
     - Service YAML Schema: reference/service-yaml.md
     - CLI Reference: reference/cli.md
+    - Architecture: architecture.md
 
 extra:
   social:

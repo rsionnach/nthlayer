@@ -22,6 +22,7 @@ def verify_command(
     prometheus_url: Optional[str] = None,
     environment: Optional[str] = None,
     fail_on_missing: bool = True,
+    demo: bool = False,
 ) -> int:
     """
     Verify that declared metrics exist in Prometheus.
@@ -39,10 +40,15 @@ def verify_command(
         prometheus_url: Target Prometheus URL (or use env var)
         environment: Optional environment name
         fail_on_missing: If True, exit 2 on critical failures
+        demo: If True, show demo output with sample data
 
     Returns:
         Exit code (0, 1, or 2)
     """
+    # Demo mode - show sample output
+    if demo:
+        return _demo_verify_output(service_file, environment)
+
     # Resolve Prometheus URL
     prom_url = prometheus_url or os.environ.get("PROMETHEUS_URL")
     if not prom_url:
@@ -167,6 +173,62 @@ def _print_verification_results(result) -> None:
     console.print()
 
 
+def _demo_verify_output(service_file: str, environment: Optional[str] = None) -> int:
+    """Show demo verification output with sample data."""
+    # Try to get service name from file
+    service_name = "checkout-service"
+    try:
+        with open(service_file) as f:
+            data = yaml.safe_load(f)
+            if data and "service" in data:
+                service_name = data["service"].get("name", service_name)
+            elif data and "name" in data:
+                service_name = data.get("name", service_name)
+    except Exception:
+        pass
+
+    # Print header
+    header(f"Contract Verification: {service_name}")
+    console.print()
+
+    console.print("[cyan]Target:[/cyan] http://prometheus:9090")
+    console.print(f"[cyan]Service:[/cyan] {service_name}")
+    if environment:
+        console.print(f"[cyan]Environment:[/cyan] {environment}")
+    console.print()
+
+    console.print("[muted]Found 4 declared metrics[/muted]")
+    console.print()
+
+    # Demo results
+    console.print("[bold]SLO Metrics (Critical):[/bold]")
+    console.print(f'  [success]✓[/success] http_requests_total{{service="{service_name}"}}')
+    console.print(
+        f'  [success]✓[/success] http_request_duration_seconds_bucket{{service="{service_name}"}}'
+    )
+    console.print()
+
+    console.print("[bold]Observability Metrics (Optional):[/bold]")
+    console.print(f"  [success]✓[/success] {service_name.replace('-', '_')}_cache_hits_total")
+    console.print(
+        f"  [warning]⚠[/warning] {service_name.replace('-', '_')}_queue_depth "
+        "[muted]← Not instrumented[/muted]"
+    )
+    console.print()
+
+    console.print("[bold]Summary:[/bold]")
+    console.print("  [muted]Total:[/muted] 4 metrics")
+    console.print("  [success]✓[/success] Verified: 3")
+    console.print("  [warning]⚠[/warning] Optional missing: 1")
+    console.print()
+
+    warning("Optional metrics missing")
+    console.print("[muted]Critical SLOs verified - promotion allowed with warnings[/muted]")
+    console.print()
+
+    return 1  # Exit code 1 = warnings
+
+
 def register_verify_parser(subparsers: argparse._SubParsersAction) -> None:
     """Register verify subcommand parser."""
     parser = subparsers.add_parser(
@@ -197,6 +259,12 @@ def register_verify_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Don't fail on missing metrics (always exit 0)",
     )
 
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Show demo output with sample data (for VHS recordings)",
+    )
+
 
 def handle_verify_command(args: argparse.Namespace) -> int:
     """Handle verify subcommand."""
@@ -205,4 +273,5 @@ def handle_verify_command(args: argparse.Namespace) -> int:
         prometheus_url=getattr(args, "prometheus_url", None),
         environment=getattr(args, "environment", None),
         fail_on_missing=not getattr(args, "no_fail", False),
+        demo=getattr(args, "demo", False),
     )

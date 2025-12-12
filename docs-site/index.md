@@ -6,6 +6,26 @@ Shift reliability left into your CI/CD pipeline. Validate before deploy, not aft
 
 ---
 
+## The Reliability Pipeline
+
+```
+   service.yaml
+        │
+        ▼
+┌───────────┐     ┌───────────┐     ┌───────────┐
+│  Generate │ ──▶ │  Validate │ ──▶ │  Protect  │ ──▶ Deploy
+└───────────┘     └───────────┘     └───────────┘
+   apply            verify           check-deploy
+   init             validate-spec    portfolio
+                    --lint
+```
+
+| Stage | What Happens | Exit Code |
+|-------|--------------|-----------|
+| **Generate** | Create dashboards, alerts, SLOs from YAML | - |
+| **Validate** | Verify specs, lint PromQL, check contracts | 1 if invalid |
+| **Protect** | Block deploys when error budget exhausted | 2 if blocked |
+
 ## The Problem
 
 Teams deploy code without reliability validation:
@@ -17,31 +37,7 @@ Teams deploy code without reliability validation:
 
 ## The Solution
 
-NthLayer shifts reliability left:
-
-```
-service.yaml → generate → lint → verify → check-deploy → deploy
-                  ↓         ↓       ↓           ↓
-              artifacts   valid?  metrics?  budget ok?
-```
-
-| Command | What It Does | Exit Code |
-|---------|--------------|-----------|
-| `nthlayer verify` | Validates declared metrics exist | 1 if missing |
-| `nthlayer check-deploy` | Checks error budget gate | 2 if exhausted |
-| `nthlayer apply --lint` | Validates PromQL syntax | 1 if invalid |
-
-## What Gets Generated
-
-| Output | Description |
-|--------|-------------|
-| **Dashboards** | Grafana dashboards with technology-aware panels |
-| **Alerts** | Prometheus alert rules with best-practice thresholds |
-| **SLOs** | OpenSLO-compatible definitions with error budgets |
-| **Recording Rules** | Pre-aggregated metrics for performance |
-| **PagerDuty** | Teams, schedules, and escalation policies |
-
-## Quick Example
+NthLayer shifts reliability left - from incident response to CI/CD:
 
 ```yaml title="service.yaml"
 name: payment-api
@@ -53,42 +49,57 @@ dependencies:
 ```
 
 ```bash
-nthlayer apply service.yaml
+# Generate → Validate → Protect → Deploy
+nthlayer apply service.yaml --lint
+nthlayer verify service.yaml --prometheus-url $PROM_URL
+nthlayer check-deploy service.yaml --prometheus-url $PROM_URL
+kubectl apply -f generated/
 ```
 
-**Output:**
-```
-generated/payment-api/
-├── dashboard.json       # Grafana dashboard
-├── alerts.yaml          # Prometheus rules
-├── slos.yaml            # OpenSLO definitions
-└── recording-rules.yaml # Pre-aggregated metrics
-```
+## What Gets Generated
+
+| Output | Description |
+|--------|-------------|
+| **Dashboards** | Grafana dashboards with technology-aware panels |
+| **Alerts** | Prometheus alert rules with best-practice thresholds |
+| **SLOs** | OpenSLO-compatible definitions with error budgets |
+| **Recording Rules** | Pre-aggregated metrics for performance |
+| **PagerDuty** | Teams, schedules, and escalation policies |
 
 ## Key Features
+
+### Deployment Gates
+
+Block deploys when error budget is exhausted:
+
+![check-deploy demo](assets/check-deploy-demo.gif)
+
+```bash
+nthlayer check-deploy service.yaml --prometheus-url $PROM_URL
+# Exit code: 0=approved, 1=warning, 2=blocked
+```
 
 ### SLO Portfolio
 
 Track reliability across your entire organization:
 
-```
-================================================================================
-  NthLayer SLO Portfolio
-================================================================================
+![portfolio demo](assets/portfolio-demo.gif)
 
-Organization Health: 78% (14/18 services meeting SLOs)
-
-By Tier:
-  Critical:  ████████░░  83% (5/6 services)
-  Standard:  ███████░░░  75% (6/8 services)
-  Low:       ███████░░░  75% (3/4 services)
-
-Services Needing Attention:
-  payment-api    availability  156% budget burned  EXHAUSTED
-  search-api     latency       95% budget burned   WARNING
+```bash
+nthlayer portfolio --path services/
 ```
 
-### 18 Technology Templates
+### Contract Verification
+
+Verify declared metrics exist before deploy:
+
+![verify demo](assets/verify-demo.gif)
+
+```bash
+nthlayer verify service.yaml --prometheus-url $PROM_URL
+```
+
+### 23 Technology Templates
 
 Pre-built monitoring for:
 
@@ -97,13 +108,30 @@ Pre-built monitoring for:
 - **Proxies:** Nginx, HAProxy, Traefik
 - **Infrastructure:** Kubernetes, etcd, Consul
 
-### Interactive Setup
+## CI/CD Integration
 
-```bash
-nthlayer setup
+```yaml title=".github/workflows/deploy.yml"
+jobs:
+  deploy:
+    steps:
+      - name: Validate Specs
+        run: nthlayer validate-spec services/
+
+      - name: Generate & Lint
+        run: nthlayer apply services/*.yaml --lint
+
+      - name: Verify Metrics
+        run: nthlayer verify services/*.yaml --prometheus-url $PROM_URL
+
+      - name: Check Deploy Gate
+        run: nthlayer check-deploy services/*.yaml --prometheus-url $PROM_URL
+
+      - name: Deploy
+        if: success()
+        run: kubectl apply -f generated/
 ```
 
-Guided configuration for Prometheus, Grafana, and PagerDuty with connection testing.
+Integrates with GitHub Actions, GitLab CI, ArgoCD, Tekton, and Jenkins.
 
 ## Get Started
 
@@ -113,7 +141,7 @@ Guided configuration for Prometheus, Grafana, and PagerDuty with connection test
 
     ---
 
-    Install NthLayer with pip or pipx
+    Install NthLayer with pip in 30 seconds
 
     [:octicons-arrow-right-24: Install](getting-started/installation.md)
 
@@ -125,20 +153,31 @@ Guided configuration for Prometheus, Grafana, and PagerDuty with connection test
 
     [:octicons-arrow-right-24: Quick Start](getting-started/quick-start.md)
 
--   :material-file-document:{ .lg .middle } **Commands**
+-   :material-shield-check:{ .lg .middle } **Validate**
 
     ---
 
-    Full CLI reference
+    Catch issues before they reach production
 
-    [:octicons-arrow-right-24: Commands](commands/index.md)
+    [:octicons-arrow-right-24: Validation](validate/index.md)
 
--   :material-connection:{ .lg .middle } **Integrations**
+-   :material-gate:{ .lg .middle } **Protect**
 
     ---
 
-    Connect to Prometheus, Grafana, PagerDuty
+    Block risky deploys with error budget gates
 
-    [:octicons-arrow-right-24: Integrations](integrations/prometheus.md)
+    [:octicons-arrow-right-24: Protection](protect/index.md)
 
 </div>
+
+## The Google SRE Connection
+
+NthLayer automates concepts from the [Google SRE Book](https://sre.google/sre-book/):
+
+| SRE Concept | Manual Process | NthLayer Automation |
+|-------------|----------------|---------------------|
+| Production Readiness Review | Multi-week checklist | `nthlayer verify` in CI |
+| Error Budget Policy | Spreadsheet tracking | `nthlayer check-deploy` gates |
+| Release Engineering | Manual runbooks | Generated artifacts + GitOps |
+| Monitoring Standards | Wiki pages | `service.yaml` spec |

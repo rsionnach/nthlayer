@@ -8,7 +8,7 @@ Set Shell "bash"
 Set FontFamily "Menlo"
 Set FontSize 14
 Set Width 900
-Set Height 650
+Set Height 600
 Set Theme "Dracula"
 Set Padding 20
 Set Framerate 30
@@ -16,10 +16,10 @@ Set Framerate 30
 # Force color output for Rich
 Env FORCE_COLOR "1"
 
-# Show the banner (--version gives clean output without help text)
-Type ".venv/bin/nthlayer --version"
+# Show what we're doing
+Type "# Generate reliability stack from service spec"
 Enter
-Sleep 4s
+Sleep 1s
 
 # Run nthlayer apply
 Type ".venv/bin/nthlayer apply examples/services/checkout-service.yaml"
