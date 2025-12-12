@@ -82,14 +82,19 @@ console = Console(
 )
 
 # Questionary style matching Nord theme
+# Explicitly set all style elements to avoid ugly default backgrounds
 PROMPT_STYLE = QStyle(
     [
-        ("qmark", "fg:#88C0D0 bold"),  # Nord frost
-        ("question", "bold"),
-        ("answer", "fg:#A3BE8C"),  # Nord aurora green
-        ("pointer", "fg:#88C0D0 bold"),  # Nord frost
-        ("highlighted", "fg:#81A1C1 bold"),  # Nord frost blue
-        ("selected", "fg:#A3BE8C"),  # Nord aurora green
+        ("qmark", "fg:#88C0D0 bold"),  # Nord frost - question mark
+        ("question", "fg:#ECEFF4 bold"),  # Nord snow storm - question text
+        ("answer", "fg:#A3BE8C bold"),  # Nord aurora green - selected answer
+        ("pointer", "fg:#88C0D0 bold"),  # Nord frost - list pointer (>)
+        ("highlighted", "fg:#88C0D0"),  # Nord frost - currently highlighted option
+        ("selected", "fg:#A3BE8C"),  # Nord aurora green - selected checkbox items
+        ("separator", "fg:#4C566A"),  # Nord polar night - separators
+        ("instruction", "fg:#D8DEE9"),  # Nord snow storm - instruction text
+        ("text", "fg:#ECEFF4"),  # Nord snow storm - general text
+        ("disabled", "fg:#4C566A italic"),  # Nord polar night - disabled items
     ]
 )
 
