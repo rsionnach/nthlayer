@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.1.0a7 (December 12, 2025)
+
+### Reliability Shift Left - Major Release
+
+This release establishes NthLayer as the **Reliability Shift Left** platform with comprehensive validation and deployment gates.
+
+#### New Commands
+- **`nthlayer verify`** - Contract verification: check declared metrics exist in Prometheus
+- **`nthlayer validate-spec`** - OPA/Rego policy validation for service specs
+- **`nthlayer validate-metadata`** - Prometheus rule metadata validation (labels, URLs)
+- **`nthlayer check-deploy`** - Deployment gates based on error budget status
+
+#### CLI First-Run Experience
+- **Styled welcome message** when running `nthlayer` with no arguments
+- Shows Quick Start commands, Key Commands, and documentation link
+- ASCII banner with Nord colors in interactive terminals
+
+#### Documentation Overhaul
+- **Generate/Validate/Protect** structure for docs site
+- New pages: CI/CD integration, Mimir support, deployment gates, shift-left concepts
+- Nord color palette for docs site (dark/light mode)
+- 5 new VHS demo GIFs
+
+#### CI/CD Integration Examples
+- GitHub Actions workflow
+- GitLab CI template
+- ArgoCD deployment gate hook
+- Tekton pipeline task
+
+#### Mimir Integration
+- `nthlayer apply --push-ruler` supports Mimir/Cortex Ruler API
+- Multi-tenant rule management
+
+#### Policy Validation
+- OPA/Rego policies for service specs (`policies/service.rego`, `slo.rego`, `dependencies.rego`)
+- Conftest integration for CI/CD policy checks
+
+---
+
 ## v0.1.0a6 (December 8, 2025)
 
 ### Complete CLI Styling with Nord Color Palette
