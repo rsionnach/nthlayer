@@ -125,13 +125,16 @@ def init_command(
         )
         dependencies = multi_select("Dependencies", DEPENDENCIES)
 
-    # Template selection (optional - use built-in if available)
+    # Template selection (optional - filter by service type if selected)
     if not template and interactive:
         templates = registry.list()
+        # Filter templates by service type if one was selected
+        if service_type and templates:
+            templates = [t for t in templates if t.type == service_type]
         if templates:
             template_choices = [f"{t.name} - {t.description}" for t in templates]
             template_choices.insert(0, "none - Generate from selections above")
-            selected = select("Use template?", template_choices, default=template_choices[0])
+            selected = select("Use template?", template_choices)
             if not selected.startswith("none"):
                 template = selected.split(" - ")[0]
 
