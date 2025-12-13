@@ -90,7 +90,7 @@ PROMPT_STYLE = QStyle(
         ("answer", "fg:#A3BE8C bold"),  # Nord aurora green - selected answer
         ("pointer", "fg:#88C0D0 bold"),  # Nord frost - list pointer (>)
         ("highlighted", "fg:#88C0D0 bold"),  # Nord frost - currently highlighted option
-        ("selected", "fg:#ECEFF4 noreverse"),  # Nord snow storm - default items, no reverse
+        ("selected", "fg:#88C0D0 bold"),  # Same as highlighted - questionary prioritizes this
         ("separator", "fg:#4C566A"),  # Nord polar night - separators
         ("instruction", "fg:#D8DEE9"),  # Nord snow storm - instruction text
         ("text", "fg:#ECEFF4"),  # Nord snow storm - general text
