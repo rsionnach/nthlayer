@@ -10,25 +10,35 @@
 
 # NthLayer
 
-**Reliability at build time, not incident time.**
+### The Missing Layer of Reliability
+
+**Reliability requirements as code.**
 
 [![Status: Alpha](https://img.shields.io/badge/Status-Alpha-orange?style=for-the-badge)](https://github.com/rsionnach/nthlayer)
 [![PyPI](https://img.shields.io/pypi/v/nthlayer?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/nthlayer/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE.txt)
 
+NthLayer lets you define what "production-ready" means for a service,
+then generates, validates, and enforces those requirements automatically.
+
+**Define once. Generate everything. Block bad deploys.**
+
 ---
 
-## ⚠️ The Problem
+## The Problem
 
-Teams deploy code without reliability validation:
-- Alerts created **after** the first incident
-- Dashboards built **after** users complain
-- SLOs defined **after** budget is exhausted
-- No gates to prevent risky deploys
+For every new service, teams are expected to:
+- Manually create dashboards
+- Hand-craft alerts and recording rules
+- Define SLOs and error budgets
+- Configure incident escalation
+- Decide if a service is "ready" for production
 
-## ✅ The Solution
+These decisions are usually made **after deployment**, enforced **inconsistently**, or revisited **only during incidents**.
 
-NthLayer shifts reliability left into your CI/CD pipeline:
+## The Solution
+
+NthLayer moves reliability left in the delivery lifecycle:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -84,24 +94,31 @@ nthlayer apply service.yaml
 
 ---
 
-## 🎯 Why NthLayer?
+## What NthLayer Is
 
-| Benefit | How It Works |
-|---------|--------------|
-| **Prevent, Don't React** | Validate reliability requirements before deploy, not after incidents |
-| **Contract Verification** | `nthlayer verify` fails pipeline if declared metrics don't exist |
-| **Deployment Gates** | `nthlayer check-deploy` blocks deploys when error budget exhausted |
-| **Immutable Standards** | Update NthLayer version = all services get new standards |
-| **GitOps Native** | Generated files commit to git, works with any CD system |
+- A **reliability specification** that defines production-readiness
+- A **compiler** from service intent to operational reality
+- A **CI/CD-native** way to standardize reliability across teams
 
-### Competitive Positioning
+NthLayer integrates with existing tools (Prometheus, Grafana, PagerDuty) but operates **before** them - deciding what is allowed to reach production.
 
-| Tool | Focus | NthLayer Difference |
-|------|-------|---------------------|
-| **PagerDuty** | Incident response | "They respond to incidents, we prevent them" |
-| **Datadog** | Post-deploy monitoring | "They monitor after, we validate before" |
-| **Nobl9** | SLO tracking | "They track SLOs, we enforce them as gates" |
-| **Backstage** | Service catalog | "They document, we generate and enforce" |
+## What NthLayer Is Not
+
+- Not a service catalog
+- Not an observability platform
+- Not an incident management system
+- Not a runtime control plane
+
+NthLayer **complements** these systems by ensuring services meet reliability expectations before they are deployed.
+
+## Why NthLayer?
+
+| With NthLayer | Without NthLayer |
+|---------------|------------------|
+| Platform teams encode reliability standards **once** | Standards recreated per service |
+| Service teams inherit sane defaults **automatically** | Each team invents their own |
+| "Is this production-ready?" = **deterministic check** | "Is this ready?" = negotiated opinion |
+| Reliability is **enforced by default** | Reliability is **reactive and inconsistent** |
 
 ---
 
