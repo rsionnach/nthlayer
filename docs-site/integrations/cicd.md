@@ -13,6 +13,56 @@ Integrate NthLayer into your deployment pipeline for automated reliability valid
                  --lint
 ```
 
+## Recommended: GitOps Mode
+
+NthLayer supports two deployment patterns:
+
+| Mode | Description | When to Use |
+|------|-------------|-------------|
+| **GitOps** (Recommended) | Generate artifacts to repo, deploy via CD | Production workflows |
+| **Push** | Direct push to Grafana/Prometheus APIs | Bootstrap, demos |
+
+### Why GitOps is Recommended
+
+1. **Audit trail** - All changes are PR-reviewed and committed
+2. **Rollback** - `git revert` undoes any change
+3. **Separation of concerns** - NthLayer generates, CD deploys
+4. **No API credentials in NthLayer** - CD handles deployment auth
+
+### GitOps Workflow
+
+```yaml
+# CI: Generate and validate
+- name: Generate configs
+  run: nthlayer apply services/*.yaml --output-dir generated/
+
+- name: Commit generated configs
+  run: |
+    git add generated/
+    git commit -m "chore: regenerate reliability configs"
+    git push
+
+# CD (ArgoCD/Flux): Deploy from generated/ directory
+```
+
+### Push Mode (Bootstrap Only)
+
+Push mode is useful for initial setup or demos:
+
+```bash
+# Push dashboards directly to Grafana
+nthlayer apply services/*.yaml --push
+
+# Push alert rules to Prometheus ruler API
+nthlayer apply services/*.yaml --push-ruler
+```
+
+!!! warning "Not recommended for production"
+    Push mode bypasses code review and has no audit trail.
+    Use GitOps for production deployments.
+
+---
+
 ## GitHub Actions
 
 ### Complete Workflow

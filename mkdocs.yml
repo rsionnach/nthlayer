@@ -70,6 +70,7 @@ nav:
     - Quick Start: getting-started/quick-start.md
     - Interactive Setup: commands/setup.md
     - Your First Service: getting-started/first-service.md
+    - Adoption Path: getting-started/adoption-path.md
   - Generate:
     - nthlayer apply: commands/apply.md
     - nthlayer init: commands/init.md
@@ -91,8 +92,11 @@ nav:
     - Mimir/Cortex: integrations/mimir.md
     - Grafana: integrations/grafana.md
     - PagerDuty: integrations/pagerduty.md
+    - PagerDuty Safety: integrations/pagerduty-safety.md
   - Concepts:
     - Reliability Shift Left: concepts/shift-left.md
+    - Service Tiers: concepts/tiers.md
+    - Contracts & Assumptions: concepts/contracts.md
     - Deployment Gates: concepts/deployment-gates.md
     - Service Specs: concepts/service-specs.md
     - SLOs & Error Budgets: concepts/slos.md
