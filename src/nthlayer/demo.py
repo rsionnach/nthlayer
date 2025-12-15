@@ -565,6 +565,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show demo output with sample data (for VHS recordings)",
     )
+    deploy_parser.add_argument(
+        "--demo-blocked",
+        action="store_true",
+        help="Show demo output with BLOCKED scenario (for VHS recordings)",
+    )
 
     init_parser = subparsers.add_parser("init", help="Initialize new NthLayer service")
     init_parser.add_argument(
@@ -924,6 +929,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 prometheus_url=getattr(args, "prometheus_url", None),
                 environment=env,
                 demo=getattr(args, "demo", False),
+                demo_blocked=getattr(args, "demo_blocked", False),
             )
         )
 

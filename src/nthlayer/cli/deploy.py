@@ -22,6 +22,7 @@ def check_deploy_command(
     prometheus_url: str | None = None,
     environment: str | None = None,
     demo: bool = False,
+    demo_blocked: bool = False,
 ) -> int:
     """
     Check if deployment should be allowed based on error budget.
@@ -39,13 +40,16 @@ def check_deploy_command(
         prometheus_url: Prometheus server URL (or use PROMETHEUS_URL env var)
         environment: Optional environment name (dev, staging, prod)
         demo: Show demo output with sample data (for VHS recordings)
+        demo_blocked: Show demo output with BLOCKED scenario (for VHS recordings)
 
     Returns:
         Exit code (0, 1, or 2)
     """
     # Demo mode for VHS recordings
     if demo:
-        return _run_demo_mode(service_file, environment)
+        return _run_demo_mode(service_file, environment, blocked=False)
+    if demo_blocked:
+        return _run_demo_mode(service_file, environment, blocked=True)
     # Resolve Prometheus URL
     prom_url = prometheus_url or os.environ.get("PROMETHEUS_URL")
 
@@ -398,8 +402,14 @@ def _parse_window_minutes(window: str) -> float:
         return 30 * 24 * 60  # Default 30 days
 
 
-def _run_demo_mode(service_file: str, environment: str | None = None) -> int:
-    """Run demo mode with sample data for VHS recordings."""
+def _run_demo_mode(service_file: str, environment: str | None = None, blocked: bool = False) -> int:
+    """Run demo mode with sample data for VHS recordings.
+
+    Args:
+        service_file: Path to service YAML file
+        environment: Optional environment name
+        blocked: If True, show BLOCKED scenario; if False, show WARNING scenario
+    """
     from nthlayer.specs.parser import parse_service_file
 
     # Parse service file to get real names
@@ -426,40 +436,79 @@ def _run_demo_mode(service_file: str, environment: str | None = None) -> int:
     console.print("[bold]Querying Prometheus for SLO metrics...[/bold]")
     console.print()
 
-    # Demo SLO data - shows a warning scenario
-    console.print("[bold]SLO Budget Status:[/bold]")
-    console.print(
-        "  [warning]⚠[/warning] availability          "
-        "[muted]target:[/muted] 99.95% "
-        "[muted]current:[/muted] 99.87%   "
-        "[muted]budget:[/muted] 58% burned"
-    )
-    console.print(
-        "  [success]✓[/success] latency_p99           "
-        "[muted]target:[/muted] 200ms  "
-        "[muted]current:[/muted] 187ms    "
-        "[muted]budget:[/muted] 22% burned"
-    )
-    console.print()
+    if blocked:
+        # Demo SLO data - shows a BLOCKED scenario (error budget exhausted)
+        console.print("[bold]SLO Budget Status:[/bold]")
+        console.print(
+            "  [error]!![/error] availability          "
+            "[muted]target:[/muted] 99.95% "
+            "[muted]current:[/muted] 99.68%   "
+            "[muted]budget:[/muted] 93% burned"
+        )
+        console.print(
+            "  [warning]⚠[/warning] latency_p99           "
+            "[muted]target:[/muted] 200ms  "
+            "[muted]current:[/muted] 312ms    "
+            "[muted]budget:[/muted] 78% burned"
+        )
+        console.print()
 
-    console.print("[bold]Aggregate Budget:[/bold] 18.7/43.2 minutes consumed (43.3%)")
-    console.print()
+        console.print("[bold]Aggregate Budget:[/bold] 39.8/43.2 minutes consumed (92.1%)")
+        console.print()
 
-    console.print(f"[bold]Thresholds ({tier} tier):[/bold]")
-    console.print("  [muted]Warning:[/muted] <50% remaining")
-    console.print("  [muted]Blocking:[/muted] <10% remaining")
-    console.print()
+        console.print(f"[bold]Thresholds ({tier} tier):[/bold]")
+        console.print("  [muted]Warning:[/muted] <50% remaining")
+        console.print("  [muted]Blocking:[/muted] <10% remaining")
+        console.print()
 
-    # Show warning result
-    warning("Deployment allowed with WARNING")
-    console.print("[muted]Error budget low (56.7% remaining)[/muted]")
-    console.print()
+        # Show blocked result
+        error("Deployment BLOCKED")
+        console.print("[muted]Error budget critically low (7.9% remaining)[/muted]")
+        console.print()
 
-    console.print("[bold]Recommendations:[/bold]")
-    console.print("  [muted]•[/muted] Review recent changes for reliability impact")
-    console.print("  [muted]•[/muted] Consider smaller deployment batch size")
-    console.print("  [muted]•[/muted] Ensure rollback plan is ready")
-    console.print()
+        console.print("[bold]Recommendations:[/bold]")
+        console.print("  [muted]•[/muted] Investigate current reliability issues before deploying")
+        console.print("  [muted]•[/muted] Consider rolling back recent changes")
+        console.print("  [muted]•[/muted] Wait for error budget to recover (estimated: 4 hours)")
+        console.print()
 
-    console.print("[warning]Exit code: 1[/warning]")
-    return 1
+        console.print("[error]Exit code: 2[/error]")
+        return 2
+    else:
+        # Demo SLO data - shows a warning scenario
+        console.print("[bold]SLO Budget Status:[/bold]")
+        console.print(
+            "  [warning]⚠[/warning] availability          "
+            "[muted]target:[/muted] 99.95% "
+            "[muted]current:[/muted] 99.87%   "
+            "[muted]budget:[/muted] 58% burned"
+        )
+        console.print(
+            "  [success]✓[/success] latency_p99           "
+            "[muted]target:[/muted] 200ms  "
+            "[muted]current:[/muted] 187ms    "
+            "[muted]budget:[/muted] 22% burned"
+        )
+        console.print()
+
+        console.print("[bold]Aggregate Budget:[/bold] 18.7/43.2 minutes consumed (43.3%)")
+        console.print()
+
+        console.print(f"[bold]Thresholds ({tier} tier):[/bold]")
+        console.print("  [muted]Warning:[/muted] <50% remaining")
+        console.print("  [muted]Blocking:[/muted] <10% remaining")
+        console.print()
+
+        # Show warning result
+        warning("Deployment allowed with WARNING")
+        console.print("[muted]Error budget low (56.7% remaining)[/muted]")
+        console.print()
+
+        console.print("[bold]Recommendations:[/bold]")
+        console.print("  [muted]•[/muted] Review recent changes for reliability impact")
+        console.print("  [muted]•[/muted] Consider smaller deployment batch size")
+        console.print("  [muted]•[/muted] Ensure rollback plan is ready")
+        console.print()
+
+        console.print("[warning]Exit code: 1[/warning]")
+        return 1
