@@ -14,109 +14,118 @@ themeConfig:
 
 ## The Missing Layer of Reliability
 
-**Automate Operational Setup for Microservices**
+**Reliability Requirements as Code**
 
-<div class="mt-4 text-sm">
-Reduce platform team toil by 90%
+<div class="mt-6 text-lg">
+Prevent production incidents by enforcing reliability before deployment
 </div>
 
 ---
 layout: default
 ---
-
-<div class="text-sm">
 
 # The Business Problem
 
-<div class="text-center mt-4">
+<div class="text-center mt-8">
 
-### Your Platform Team Spends
+### Reliability Decisions Happen Too Late
 
-<div class="text-5xl font-bold my-4 text-red-400">
-20+ hours
-</div>
+<div class="grid grid-cols-3 gap-6 mt-8">
 
-### Per Service on Manual Operational Setup
+<div class="p-4 border-2 border-red-500 rounded">
 
-<div class="text-orange-400 font-bold mt-2 text-xs">
-Including 4 hours just for alert configuration
-</div>
+### After Incidents
+Alerts created **after** the first outage
 
-</div>
+Dashboards built **after** users complain
 
-<div class="grid grid-cols-3 gap-4 mt-4 text-left text-sm">
-
-<div>
-
-### 🎯 Reliability
-- SLOs
-- Error budgets
-- Alerts
+SLOs defined **after** budget is exhausted
 
 </div>
 
-<div>
+<div class="p-4 border-2 border-yellow-500 rounded">
 
-### 📊 Observability
-- Dashboards
-- Monitors
-- Logging
+### Inconsistently
+Each team invents their own standards
+
+No enforcement mechanism
+
+"Production-ready" = opinion
 
 </div>
 
-<div>
+<div class="p-4 border-2 border-orange-500 rounded">
 
-### 🚨 Incidents
-- Escalations
-- Schedules
-- Runbooks
+### Repeatedly
+Same configs rebuilt per service
+
+Platform team becomes bottleneck
+
+20+ hours of toil per service
 
 </div>
 
 </div>
 
-<div class="mt-3 text-xs">
-**Cost at Scale:** 200 services = 3,000 hours = 1.5 engineer-years wasted
 </div>
 
+<div class="text-center mt-8 text-xl font-bold text-red-400">
+Result: Reactive reliability, repeated incidents, inconsistent standards
 </div>
 
 ---
 layout: default
 ---
 
-<div class="text-sm">
+# The Solution: Shift Left
 
-# The Solution: Automation
+<div class="text-center mt-6">
 
-<div class="text-center mt-4">
+### Move Reliability to Build Time
 
-### NthLayer Auto-Generates Operational Configs
-
-<div class="text-4xl font-bold my-4 text-green-400">
-20 hours → 5 minutes
+<div class="text-2xl font-bold my-6 text-green-400">
+Define requirements before deployment, not after incidents
 </div>
 
-<div class="text-orange-400 font-bold text-xs">
-✨ Including auto-generated alerts for 46 technologies
 </div>
 
-### From a Simple YAML File
+<div class="grid grid-cols-2 gap-8 mt-4">
 
-<div class="text-xs">
+<div>
 
-```yaml
-service: payment-api
-tier: 1
-team: payments
+### How It Works
+
+1. **Define** reliability requirements in YAML
+2. **Generate** dashboards, alerts, SLOs automatically
+3. **Validate** that metrics exist before deploy
+4. **Gate** deployments based on error budget
+
+### The Key Insight
+
+Generation is just the mechanism.
+
+**The value is prevention.**
+
+</div>
+
+<div>
+
+### Pipeline Integration
+
+```
+service.yaml
+    ↓
+Generate artifacts (dashboards, alerts)
+    ↓
+Lint (validate PromQL syntax)
+    ↓
+Verify (confirm metrics exist)
+    ↓
+Gate (check error budget)
+    ↓
+Deploy (only if all pass)
 ```
 
-**↓**
-
-SLOs • Alerts • Dashboards • Escalations • Deploy Gates
-
-</div>
-
 </div>
 
 </div>
@@ -125,133 +134,45 @@ SLOs • Alerts • Dashboards • Escalations • Deploy Gates
 layout: default
 ---
 
-<div class="text-sm">
+# Business Value
 
-# Return on Investment
-
-<div class="grid grid-cols-2 gap-5 mt-1">
+<div class="grid grid-cols-2 gap-8 mt-6">
 
 <div>
 
-### 💰 Cost Savings
+### Prevent Incidents
 
-**At 200 services:**
-- ⏱️ **Time saved:** 4,000 hours
-- 👥 **Engineer-years:** 2 FTEs freed
-- 💵 **Annual value:** $400K+
-- 🚨 **Alerts alone:** $30K/year
+**Before NthLayer:**
+- Deploy → Incident → Create alerts
+- Cycle repeats for every new service
+- Reactive mode is the default
 
-**Ongoing:**
-- 📉 **Maintenance:** -90% time
-- 🎯 **Consistency:** 100% standardized
+**With NthLayer:**
+- Define requirements → Validate → Deploy
+- Missing metrics = blocked deployment
+- Budget exhausted = blocked deployment
+
+<div class="mt-4 p-4 bg-green-900/30 rounded text-center">
+<div class="text-2xl font-bold">Incidents prevented</div>
+<div class="text-sm mt-2">Not just faster response—actual prevention</div>
+</div>
 
 </div>
 
 <div>
 
-### 📈 Business Impact
+### Operational Efficiency
 
-**🚀 Velocity:**
-- New service → prod in < 1 day
-- No platform bottleneck
+| Metric | Before | After |
+|--------|--------|-------|
+| Time per service | 20+ hours | 5 minutes |
+| Config consistency | Variable | 100% |
+| Production readiness | Opinion | Enforced |
+| Platform team bottleneck | Yes | No |
 
-**✅ Quality:**
-- SRE best practices enforced
-- No configuration errors
-
-**🛡️ Risk Reduction:**
-- Deploy correlation catches bad releases
-- Automatic rollback
-
-</div>
-
-</div>
-
-<div class="mt-1">
-**Break-even:** 20 services operationalized
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Real-World Scenarios
-
-<div class="grid grid-cols-3 gap-3 mt-2">
-
-<div class="p-3 border-2 border-green-500 rounded">
-
-### Startup
-**50 services**
-
-**Without NthLayer:**
-- 1,000 hours manual work
-- 6 engineer-months
-- $200K in eng time
-
-**With NthLayer:**
-- 4 hours automated
-- 1 engineer-day
-- $800 in eng time
-
-<div class="text-green-400 font-bold mt-1">
-ROI: $199K saved (99.6%)
-</div>
-
-</div>
-
-<div class="p-3 border-2 border-blue-500 rounded">
-
-### Scale-Up
-**200 services**
-
-**Without NthLayer:**
-- 4,000 hours ongoing
-- 2 FTEs maintaining
-- $400K/year
-
-**With NthLayer:**
-- 100 hours/year
-- 0.2 FTE
-- $40K/year
-
-<div class="text-blue-400 font-bold mt-1">
-ROI: $400K/year (90% reduction)
-</div>
-
-<div class="text-orange-400 text-xs mt-1">
-Alert automation: $30K of that savings
-</div>
-
-</div>
-
-<div class="p-3 border-2 border-purple-500 rounded">
-
-### Enterprise
-**1,000 services**
-
-**Without NthLayer:**
-- 20,000 hours
-- 10 FTEs
-- $2M/year
-
-**With NthLayer:**
-- 500 hours/year
-- 0.5 FTE
-- $100K/year
-
-<div class="text-purple-400 font-bold mt-1">
-ROI: $1.9M/year (95% reduction)
-</div>
-
-<div class="text-orange-400 text-xs mt-1">
-Alert automation: $200K of that savings
-</div>
-
+<div class="mt-4 p-4 bg-blue-900/30 rounded text-center">
+<div class="text-2xl font-bold">4,000 hours saved</div>
+<div class="text-sm mt-2">At 200 services × 20 hours each</div>
 </div>
 
 </div>
@@ -262,32 +183,44 @@ Alert automation: $200K of that savings
 layout: default
 ---
 
-<div class="text-xs">
+# What Makes This Different
 
-# Competitive Differentiation
+<div class="grid grid-cols-2 gap-8 mt-8">
 
-<div class="mt-2">
+<div>
 
-| Solution | Approach | Auto Alerts | Auto SLOs | Setup Time | Best For |
-|----------|----------|-------------|-----------|------------|----------|
-| **Service Catalogs**<br/>(Backstage, Cortex, Port) | Top-down platform | ❌ No | ❌ No | Months | Large orgs with platform investment |
-| **SLO Platforms**<br/>(Nobl9, Sloth) | Manual SLO entry | ❌ No | ❌ No | Weeks | Teams with SRE resources |
-| **DIY Scripts** | Custom glue code | ❌ Manual | ❌ Manual | Ongoing | Small teams initially |
-| **⭐ NthLayer** | <span class="text-green-400">Bottom-up automation</span> | <span class="text-orange-400 font-bold">✅ 400+ rules</span> | <span class="text-green-400">✅ Yes</span> | <span class="text-green-400">Days</span> | <span class="text-green-400">Platform teams of any size</span> |
+### What NthLayer Is
 
-<div class="text-center mt-3 text-orange-400 font-bold">
-🚨 NthLayer is the ONLY platform with auto-generated alert rules
+**A reliability specification**
+- Define what "production-ready" means
+- Tier-based defaults (critical, standard, low)
+
+**A compiler**
+- YAML → dashboards, alerts, SLOs
+- Consistent output from simple input
+
+**A CI/CD enforcement layer**
+- Exit codes for pipeline integration
+- Blocks deploys that violate requirements
+
 </div>
 
+<div>
+
+### What NthLayer Is NOT
+
+❌ **Not a service catalog**
+<div class="text-sm text-gray-400 ml-6">Catalogs document; NthLayer enforces</div>
+
+❌ **Not an observability platform**
+<div class="text-sm text-gray-400 ml-6">Grafana/Datadog observe; NthLayer generates for them</div>
+
+❌ **Not incident management**
+<div class="text-sm text-gray-400 ml-6">PagerDuty responds; NthLayer prevents</div>
+
+<div class="mt-6 p-4 bg-blue-900/30 rounded">
+NthLayer operates <strong>before</strong> these systems—deciding what is allowed to reach production.
 </div>
-
-<div class="mt-3">
-
-**Key Differentiators:**
-- ✅ **Zero platform adoption tax** - Works immediately with YAML files
-- ✅ **Auto-generates everything** - SLOs, alerts, dashboards, escalations
-- ✅ **Opinionated defaults** - SRE best practices baked in
-- ✅ **Tool-agnostic** - Works with your existing Prometheus, Grafana, PagerDuty
 
 </div>
 
@@ -297,55 +230,218 @@ layout: default
 layout: default
 ---
 
-<div class="text-sm">
+# Competitive Positioning
+
+<div class="mt-6">
+
+| Solution | Focus | Prevents Incidents? | Works Day 1? |
+|----------|-------|---------------------|--------------|
+| **Service Catalogs** (Backstage) | Documentation | ❌ No gates | ❌ Requires adoption |
+| **Observability** (Datadog, Grafana) | Monitoring | ❌ Post-deploy | ✅ Yes |
+| **Incident Mgmt** (PagerDuty) | Response | ❌ After the fact | ✅ Yes |
+| **SLO Tools** (Nobl9) | Tracking | ❌ No enforcement | ✅ Yes |
+| **NthLayer** | **Requirements + Enforcement** | ✅ **Pre-deploy gates** | ✅ **Yes** |
+
+</div>
+
+<div class="text-center mt-8">
+
+<div class="text-xl font-bold text-green-400">
+Key differentiator: Enforcement happens at build time
+</div>
+
+<div class="mt-2 text-gray-400">
+They respond to incidents. NthLayer prevents them.
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# ROI Analysis
+
+<div class="grid grid-cols-3 gap-4 mt-6">
+
+<div class="p-4 border-2 border-green-500 rounded">
+
+### 50 Services
+
+**Time Savings:**
+- Before: 1,000 hours
+- After: 4 hours
+- Saved: 996 hours
+
+**Value:**
+- ~$200K in eng time
+- 6 months → 1 week
+
+<div class="text-green-400 font-bold mt-4">
+ROI: 99%+ time reduction
+</div>
+
+</div>
+
+<div class="p-4 border-2 border-blue-500 rounded">
+
+### 200 Services
+
+**Time Savings:**
+- Before: 4,000 hours (2 FTEs)
+- After: 100 hours (0.2 FTE)
+- Saved: 3,900 hours
+
+**Value:**
+- ~$400K/year
+- 1.8 engineers freed
+
+<div class="text-blue-400 font-bold mt-4">
+ROI: $400K annually
+</div>
+
+</div>
+
+<div class="p-4 border-2 border-purple-500 rounded">
+
+### 1,000 Services
+
+**Time Savings:**
+- Before: 20,000 hours (10 FTEs)
+- After: 500 hours (0.5 FTE)
+- Saved: 19,500 hours
+
+**Value:**
+- ~$2M/year
+- 9.5 engineers freed
+
+<div class="text-purple-400 font-bold mt-4">
+ROI: $2M annually
+</div>
+
+</div>
+
+</div>
+
+<div class="text-center mt-6 text-sm text-gray-400">
+*Based on $100/hour fully-loaded engineer cost
+</div>
+
+---
+layout: default
+---
+
+# Beyond Time Savings: Prevention Value
+
+<div class="grid grid-cols-2 gap-8 mt-8">
+
+<div>
+
+### Incidents Prevented
+
+The harder-to-measure but higher-impact value:
+
+**Deploy Gates:**
+- Error budget exhausted = deploy blocked
+- Bad deploys caught before production
+- No more "we should have waited"
+
+**Contract Verification:**
+- Missing metrics = deploy blocked
+- No more "dashboard shows no data"
+- Instrumentation guaranteed
+
+**Consistent Standards:**
+- Every service has proper alerting
+- No more "we forgot to add alerts"
+- Platform team standards enforced
+
+</div>
+
+<div>
+
+### Cost of an Incident
+
+| Factor | Cost |
+|--------|------|
+| Engineer time (5 people × 4 hours) | $2,000 |
+| Lost revenue (1 hour downtime) | $10,000+ |
+| Customer trust | Unmeasurable |
+| Post-incident process | $1,000 |
+
+**Total per incident: $13,000+**
+
+<div class="mt-6 p-4 bg-green-900/30 rounded">
+<div class="text-lg font-bold">Prevent 10 incidents/year</div>
+<div class="mt-2">= $130,000+ in avoided costs</div>
+<div class="mt-2 text-sm text-gray-400">Plus: better customer experience, less engineer burnout</div>
+</div>
+
+</div>
+
+</div>
+
+---
+layout: default
+---
 
 # Risk Mitigation
 
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
 <div>
 
-**"What if it generates wrong configs?"**
+### "What if it generates wrong configs?"
 
-✅ Dry-run mode previews changes  
-✅ Git-based review process  
-✅ Rollback via Git revert  
-✅ Override any default  
+✅ **Dry-run mode** previews all changes
+
+✅ **Git-based workflow** enables PR review
+
+✅ **Rollback via git revert** if needed
+
+✅ **Override any default** in YAML
 
 </div>
 
 <div>
 
-**"What about vendor lock-in?"**
+### "What about vendor lock-in?"
 
-✅ OpenSLO standard output  
-✅ Works with existing tools  
-✅ Export configs anytime  
-✅ Open source (planned)  
+✅ **OpenSLO standard** output
 
-</div>
+✅ **Works with existing tools** (Prometheus, Grafana, PagerDuty)
 
-<div>
+✅ **Export configs anytime**
 
-**"Will this disrupt operations?"**
-
-✅ Incremental adoption  
-✅ No rip-and-replace  
-✅ Works alongside manual configs  
-✅ Pilot with 5 services in 1 week  
+✅ **Open source planned**
 
 </div>
 
 <div>
 
-**"What if we need custom logic?"**
+### "Will this disrupt operations?"
 
-✅ Override tier defaults  
-✅ Custom YAML fields  
-✅ Plugin system (Q2 2025)  
-✅ API for programmatic access  
+✅ **Incremental adoption** - one service at a time
+
+✅ **No rip-and-replace** required
+
+✅ **Works alongside manual configs**
+
+✅ **Pilot with 5 services in 1 week**
 
 </div>
+
+<div>
+
+### "What if we need custom logic?"
+
+✅ **Override tier defaults** per service
+
+✅ **Custom YAML fields** supported
+
+✅ **Technology templates** extensible
+
+✅ **API access** for automation
 
 </div>
 
@@ -355,196 +451,117 @@ layout: default
 layout: default
 ---
 
-<div class="text-sm">
-
 # Implementation Timeline
 
-<div class="grid grid-cols-4 gap-3 mt-2">
+<div class="grid grid-cols-4 gap-4 mt-8">
 
-<div class="p-3 border-2 border-green-500 rounded">
+<div class="p-4 border-2 border-green-500 rounded">
 
 ### Week 1
 **Pilot**
 
 - Install NthLayer
-- Operationalize 5 services
+- 5-10 services
 - Validate output
 - Team training
 
-<div class="text-green-400 mt-1">
-✅ Quick win
+<div class="text-green-400 mt-2 font-bold">
+Quick win
 </div>
 
 </div>
 
-<div class="p-3 border-2 border-blue-500 rounded">
+<div class="p-4 border-2 border-blue-500 rounded">
 
 ### Week 2-3
-**Scale-Up**
+**Validate**
 
-- Operationalize 50 services
-- Integrate PagerDuty
-- Setup Prometheus
-- Monitor error budgets
+- Add to CI pipeline
+- Lint all specs
+- Verify in warning mode
+- Build confidence
 
-<div class="text-blue-400 mt-1">
-📈 ROI visible
+<div class="text-blue-400 mt-2 font-bold">
+Low risk
 </div>
 
 </div>
 
-<div class="p-3 border-2 border-purple-500 rounded">
+<div class="p-4 border-2 border-purple-500 rounded">
 
 ### Week 4
-**Full Rollout**
+**Protect**
 
-- All services automated
-- Deploy correlation active
-- CI/CD gates enabled
-- Documentation complete
+- Enable deploy gates
+- Start with non-critical
+- Graduate to blocking
+- Full enforcement
 
-<div class="text-purple-400 mt-1">
-🎯 Full value
+<div class="text-purple-400 mt-2 font-bold">
+Full value
 </div>
 
 </div>
 
-<div class="p-3 border-2 border-yellow-500 rounded">
+<div class="p-4 border-2 border-yellow-500 rounded">
 
 ### Ongoing
 **Optimize**
 
-- Fine-tune SLOs
-- Add custom logic
-- Expand integrations
-- Measure savings
+- Fine-tune thresholds
+- Add more services
+- Measure impact
+- Expand coverage
 
-<div class="text-yellow-400 mt-1">
-💰 Continuous ROI
+<div class="text-yellow-400 mt-2 font-bold">
+Continuous ROI
 </div>
 
 </div>
 
 </div>
 
-<div class="mt-2">
-**Total time to value: 1 month**
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Pricing & Packages (Indicative)
-
-<div class="grid grid-cols-3 gap-4 mt-2">
-
-<div class="p-3 border-2 border-green-500 rounded">
-
-### Starter
-**$5K/year**
-
-- Up to 50 services
-- Core ResLayer features
-- Community support
-- Self-hosted
-
-**Best for:**
-- Startups
-- Small teams
-- Pilots
-
-</div>
-
-<div class="p-3 border-2 border-blue-500 rounded bg-blue-900/20">
-
-### Professional
-**$20K/year**
-
-- Up to 250 services
-- All features
-- Email support
-- SaaS or self-hosted
-
-**Best for:**
-- Scale-ups
-- Mid-sized teams
-
-<div class="text-blue-400 mt-1">
-👍 Most Popular
-</div>
-
-</div>
-
-<div class="p-3 border-2 border-purple-500 rounded">
-
-### Enterprise
-**Custom**
-
-- Unlimited services
-- Custom integrations
-- Dedicated support
-- SLA guarantees
-- Professional services
-
-**Best for:**
-- Large enterprises
-- Complex environments
-
-</div>
-
-</div>
-
-<div class="text-center mt-2">
-*Pricing subject to change. Contact for custom quotes.*
-</div>
-
+<div class="text-center mt-6">
+<strong>Time to value: 1 month</strong> from pilot to full enforcement
 </div>
 
 ---
 layout: default
 ---
-
-<div class="text-sm">
 
 # Next Steps
 
-<div class="grid grid-cols-3 gap-6 mt-4">
+<div class="grid grid-cols-3 gap-8 mt-8">
 
-<div>
+<div class="text-center">
 
-### 1️⃣ Pilot Program
+### 1. Pilot
 
-**1 week**
+**1 week, no commitment**
 
 - 5-10 services
 - Proof of value
-- No commitment
+- Team feedback
 
 </div>
 
-<div>
+<div class="text-center">
 
-### 2️⃣ Business Case
+### 2. Business Case
 
 **You provide:**
 - Service count
-- Current eng time spent
+- Current eng hours
 
 **We provide:**
 - Custom ROI analysis
 - Implementation plan
-- Timeline
 
 </div>
 
-<div>
+<div class="text-center">
 
-### 3️⃣ Decision
+### 3. Decision
 
 **Your options:**
 - Full rollout
@@ -555,9 +572,11 @@ layout: default
 
 </div>
 
-<div class="mt-6 text-xs">
-**Next call:** Schedule 30-min technical demo with your platform team
-</div>
+<div class="text-center mt-8">
+
+**Ready to see it in action?**
+
+Schedule a 30-minute technical demo with your platform team
 
 </div>
 
@@ -565,22 +584,23 @@ layout: default
 layout: center
 ---
 
-# Thank You
+# Reliability Requirements as Code
 
-<div class="text-center mt-6 text-sm">
+<div class="text-center mt-8">
 
-**Let's discuss your specific needs:**
-
-- 📅 **Schedule demo:** calendly.com/nthlayer/demo
-- 💬 **Contact:** hello@nthlayer.dev
-- 📊 **ROI Calculator:** nthlayer.dev/roi
-
+<div class="text-2xl mb-6">
+Define what "production-ready" means.<br/>
+Generate, validate, and enforce automatically.
 </div>
 
-<div class="mt-6 text-xl font-bold text-blue-400">
-Transform 4,000 hours into 5 minutes
+<div class="text-xl font-bold text-blue-400 mb-8">
+Define once. Generate everything. Block bad deploys.
 </div>
 
-<div class="mt-2 text-sm text-orange-400">
-🚨 400+ auto-generated alerts • 46 technologies • Production-tested
+**Contact:** hello@nthlayer.dev
+
+**GitHub:** github.com/rsionnach/nthlayer
+
+**Docs:** rsionnach.github.io/nthlayer
+
 </div>
