@@ -340,7 +340,21 @@ async def _collect_slo_metrics(
         }
 
         # Try to get SLI value from Prometheus
+        # Support both simple indicator.query format and indicators[].success_ratio format
         query = indicator.get("query")
+
+        # Fallback: check for indicators[] format used in service.yaml examples
+        if not query:
+            indicators = spec.get("indicators", [])
+            if indicators:
+                ind = indicators[0]
+                if ind.get("success_ratio"):
+                    sr = ind["success_ratio"]
+                    total_query = sr.get("total_query")
+                    good_query = sr.get("good_query")
+                    if total_query and good_query:
+                        query = f"({good_query}) / ({total_query})"
+
         if query:
             # Substitute service name in query
             query = query.replace("${service}", service_name)
