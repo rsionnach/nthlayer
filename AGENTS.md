@@ -343,10 +343,25 @@ When adding a new database/cache template:
 
 ## Git Workflow
 
-1. Branch from `safeharbor` (current development branch)
-2. Run `make lint && make typecheck && make test` before committing
-3. Commit messages: `<type>: <description>` (e.g., `fix: Add sum by (le) to histogram queries`)
-4. Update `.beads/issues.jsonl` when completing tasks
+1. **Never commit directly to `main`** - All work goes to `develop` first
+2. Commit to `develop` branch for all changes
+3. Create PR from `develop` → `main` for review before merging
+4. Run `make lint && make typecheck && make test` before committing
+5. Commit messages: `<type>: <description>` (e.g., `fix: Add sum by (le) to histogram queries`)
+6. Update `.beads/issues.jsonl` when completing tasks
+
+```bash
+# Correct workflow
+git checkout develop
+# ... make changes ...
+git add . && git commit -m "feat: Add new feature"
+git push origin develop
+gh pr create --base main --head develop --title "feat: Add new feature"
+
+# WRONG - never do this
+git checkout main
+git commit -m "..."  # Do not commit to main directly
+```
 
 ## Beads Issue Tracking
 

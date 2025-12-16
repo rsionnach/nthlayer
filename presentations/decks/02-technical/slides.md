@@ -14,63 +14,49 @@ themeConfig:
 
 ## Technical Deep Dive
 
-**Architecture, CLI, and Implementation**
+**Reliability Requirements as Code**
 
 <div class="mt-4 text-sm">
 For Platform Engineers & SREs
 </div>
 
-<div class="mt-4 text-orange-400 font-bold">
-🚨 Featuring: 400+ Auto-Generated Alerts from awesome-prometheus-alerts
+<div class="mt-4 text-blue-400">
+Architecture • CLI • Enforcement • Integration
 </div>
 
 ---
 layout: default
 ---
 
-<div class="text-sm">
+# Agenda
 
-# Today's Agenda
-
-<div class="grid grid-cols-2 gap-6 mt-4">
+<div class="grid grid-cols-2 gap-8 mt-8">
 
 <div>
 
-### Part 1: Architecture
-- System design principles
-- ResLayer internals
-- Database schema
-- Integration architecture
+### Part 1: Core Concepts
+- Reliability requirements as code
+- The service.yaml contract
+- Tier-based defaults
+
+### Part 2: Enforcement Pipeline
+- Generate → Lint → Verify → Gate
+- Exit codes and CI/CD integration
+- Error budget calculations
 
 </div>
 
 <div>
 
-### Part 2: CLI & Usage
-- All 9 commands
-- YAML schema
+### Part 3: CLI Deep Dive
+- All commands explained
 - Real examples
 - Best practices
 
-</div>
-
-<div>
-
-### Part 3: Extensibility
-- Plugin architecture
-- API design
-- Performance
-- Security
-
-</div>
-
-<div>
-
-### Part 4: Q&A
-- Technical questions
-- Implementation details
-
-</div>
+### Part 4: Integration
+- Prometheus, Grafana, PagerDuty
+- GitOps workflow
+- Extensibility
 
 </div>
 
@@ -80,142 +66,55 @@ layout: default
 layout: section
 ---
 
-# Part 1: Architecture
+# Part 1: Core Concepts
 
-System Design & Implementation
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# System Design Principles
-
-<div class="grid grid-cols-2 gap-4 mt-1">
-
-<div>
-
-### Core Tenets
-
-**1. Git as Source of Truth**
-- YAML in version control
-- No DB for definitions
-
-**2. Opinionated Defaults**
-- Tier-based SLO targets
-- Override when needed
-
-**3. Tool Agnostic**
-- Any monitoring stack
-- OpenSLO standard
-
-</div>
-
-<div>
-
-### Design Rationale
-
-**Git-native:**
-- Teams already use Git
-- PR workflow familiar
-
-**Opinionated:**
-- SRE best practices
-- Consistency
-
-**Tool-agnostic:**
-- Use existing tools
-- Incremental adoption
-
-</div>
-
-</div>
-
-</div>
+The Reliability Contract
 
 ---
 layout: default
 ---
 
-<div class="text-xs">
+# What is "Reliability Requirements as Code"?
 
-# ResLayer Architecture
-
-```mermaid {scale: 0.7}
-graph TD
-    A[CLI] --> B[Parser]
-    B --> C[Service Def]
-    C --> D[SLO Gen]
-    C --> E[Alert Gen]
-    C --> F[Escalation Gen]
-    D --> G[OpenSLO]
-    E --> H[Prometheus]
-    F --> I[PagerDuty]
-    J[Prometheus] -->|metrics| K[Error Budget]
-    K -->|consumption| L[Database]
-    M[Deploy] --> N[Correlator]
-    N -->|score| O[CI/CD Gate]
-```
-
-**Components:** Parser • Generators • Integrations • Correlator
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Database Schema
-
-**SQLite for operational state (not service definitions)**
-
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-8 mt-6">
 
 <div>
 
-**`slos`**
-```
-id, service_name, slo_type,
-target, time_window, created_at
-```
+### The Concept
 
-**`error_budgets`**
-```
-id, slo_id, window_minutes,
-budget_minutes, consumed_minutes
-```
+Just like Infrastructure as Code (Terraform) defines **what infrastructure should exist**...
 
-**`deploys`**
-```
-id, service_name, version,
-deployed_at, commit_hash
+**Reliability as Code** defines **what reliability requirements a service must meet**.
+
+```yaml
+# Infrastructure as Code
+resource "aws_instance" "web" {
+  instance_type = "t3.micro"
+  ami           = "ami-12345"
+}
+
+# Reliability Requirements as Code
+name: payment-api
+tier: critical
+type: api
 ```
 
 </div>
 
 <div>
 
-**`incidents`**
-```
-id, service_name, started_at,
-resolved_at, severity
-```
+### The Contract
 
-**`correlations`**
-```
-id, deploy_id, incident_id,
-confidence_score, factors
-```
+Your service.yaml is not configuration.<br/>
+It is a **contract** that must be satisfied.
 
-**Design:**
-- Alembic migrations
-- Indexed on service_name
-- No cascade deletes
+| Contract Element | Meaning |
+|------------------|---------|
+| `tier: critical` | 99.95% availability required |
+| `type: api` | HTTP metrics must exist |
+| `dependencies: [postgresql]` | DB metrics must exist |
 
-</div>
+**If the contract is not met, deployment is blocked.**
 
 </div>
 
@@ -225,107 +124,92 @@ confidence_score, factors
 layout: default
 ---
 
-<div class="text-xs">
+# The Service Specification
 
-# SLO Generation Logic
+```yaml
+# services/payment-api.yaml
+name: payment-api           # Service identifier
+tier: critical              # Business criticality: critical | standard | low
+type: api                   # Service type: api | worker | stream
+team: payments              # Owning team
 
-**Tier-based defaults:**
+# SLO overrides (optional - tier provides defaults)
+slos:
+  availability: 99.99       # Override tier default
+  latency_p99_ms: 150       # Override tier default
 
-```python
-def generate_slo_targets(tier: int) -> dict:
-    targets = {
-        1: {"availability": 0.999, "latency_p95_ms": 500},
-        2: {"availability": 0.995, "latency_p95_ms": 1000},
-        3: {"availability": 0.990, "latency_p95_ms": 2000},
-    }
-    return targets.get(tier, targets[3])
+# Dependencies (for metric verification)
+dependencies:
+  - postgresql
+  - redis
+
+# Environment-specific config
+environments:
+  production:
+    prometheus:
+      url: https://prometheus.prod.example.com
 ```
-
-**Output:** OpenSLO format with calculated budgets
-
-</div>
 
 ---
 layout: default
 ---
 
-<div class="text-xs">
+# Tier-Based Defaults
 
-# Error Budget Calculation
+### Tier = Business Criticality
 
-<div class="grid grid-cols-2 gap-4">
+<div class="grid grid-cols-3 gap-4 mt-6">
 
-<div>
+<div class="p-4 border-2 border-red-500 rounded">
 
-**Formula:**
+### Critical (Tier 1)
 
-```python
-def calculate_error_budget(
-    slo_target: float,
-    time_window_days: int,
-    error_rate: float
-) -> dict:
-    window_min = time_window_days * 1440
-    budget_min = (1 - slo_target) * window_min
-    consumed = error_rate * window_min
-    remaining = budget_min - consumed
-    
-    return {
-        "total": budget_min,
-        "consumed": consumed,
-        "remaining": remaining
-    }
-```
+**Business Impact:** Revenue, safety, core flow
+
+**Defaults:**
+- Availability: 99.95%
+- Latency P99: 200ms
+- Error budget: 21.6 min/month
+- Gate blocks at: <10% remaining
+- PagerDuty: High urgency, 5min escalation
+
+**Examples:** Checkout, Auth, Payments
 
 </div>
 
-<div>
+<div class="p-4 border-2 border-yellow-500 rounded">
 
-**Example:**
+### Standard (Tier 2)
 
-Service: payment-api  
-Tier: 1 (99.9%)  
-Window: 30 days
+**Business Impact:** Degraded experience
 
-- Total: 43.2 min/month
-- Error rate: 0.05%
-- Consumed: 21.6 min
-- Remaining: 21.6 min (50%)
+**Defaults:**
+- Availability: 99.5%
+- Latency P99: 500ms
+- Error budget: 3.6 hrs/month
+- Gate blocks at: <5% remaining
+- PagerDuty: Low urgency, 30min escalation
 
-**Alerts:** <25%, <10%, <5%
-
-</div>
+**Examples:** Search, Recommendations
 
 </div>
 
+<div class="p-4 border-2 border-green-500 rounded">
+
+### Low (Tier 3)
+
+**Business Impact:** Minimal
+
+**Defaults:**
+- Availability: 99.0%
+- Latency P99: 2000ms
+- Error budget: 7.2 hrs/month
+- Gate: Advisory only
+- PagerDuty: Low urgency, 60min escalation
+
+**Examples:** Reports, Batch jobs
+
 </div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Deploy Correlation Algorithm
-
-**3-factor confidence scoring:**
-
-```python
-def calculate_correlation_confidence(deploy, incident) -> float:
-    # Factor 1: Time proximity (0.0 - 0.5)
-    time_delta = (incident.started_at - deploy.deployed_at).seconds
-    time_score = max(0, 0.5 - (time_delta / 3600) * 0.1)
-    
-    # Factor 2: Dependencies (0.0 - 0.3)
-    dependency_score = 0.3 if related_services else 0.0
-    
-    # Factor 3: Historical patterns (0.0 - 0.2)
-    history_score = 0.2 if similar_incidents else 0.0
-    
-    return min(1.0, time_score + dependency_score + history_score)
-```
-
-**Blocks deploy if > 0.8 confidence**
 
 </div>
 
@@ -333,70 +217,324 @@ def calculate_correlation_confidence(deploy, incident) -> float:
 layout: section
 ---
 
-# Part 2: CLI Deep Dive
+# Part 2: Enforcement Pipeline
 
-All 9 Commands Explained
+Generate → Lint → Verify → Gate
 
 ---
 layout: default
 ---
 
-<div class="text-xs">
+# The Enforcement Pipeline
+
+```
+┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐
+│  Define   │ → │ Generate  │ → │   Lint    │ → │  Verify   │ → │   Gate    │
+│           │    │           │    │           │    │           │    │           │
+│ service   │    │ artifacts │    │ PromQL    │    │ metrics   │    │ budget    │
+│ .yaml     │    │           │    │ valid?    │    │ exist?    │    │ ok?       │
+└───────────┘    └───────────┘    └───────────┘    └───────────┘    └───────────┘
+                      ↓                ↓                ↓                ↓
+                 dashboard.json   exit 0/1        exit 0/1         exit 0/1/2
+                 alerts.yaml
+                 slos.yaml
+```
+
+<div class="grid grid-cols-4 gap-4 mt-6 text-sm">
+
+<div>
+
+**Generate**
+`nthlayer apply`
+
+Creates all artifacts from spec
+
+</div>
+
+<div>
+
+**Lint**
+`--lint` flag
+
+Validates PromQL syntax with pint
+
+</div>
+
+<div>
+
+**Verify**
+`nthlayer verify`
+
+Confirms metrics exist in Prometheus
+
+</div>
+
+<div>
+
+**Gate**
+`nthlayer check-deploy`
+
+Checks error budget status
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Exit Codes for CI/CD
+
+### Machine-readable enforcement results
+
+<div class="grid grid-cols-2 gap-8 mt-6">
+
+<div>
+
+### Exit Code Semantics
+
+| Code | Meaning | Pipeline Action |
+|------|---------|-----------------|
+| `0` | Success | Continue |
+| `1` | Warning / Failure | Fail (lint/verify) |
+| `2` | Deploy Blocked | Hard stop (gate) |
+
+### Why Three Codes?
+
+```bash
+nthlayer check-deploy service.yaml
+EXIT=$?
+
+if [ $EXIT -eq 2 ]; then
+  echo "BLOCKED: Error budget exhausted"
+  exit 1  # Fail pipeline
+elif [ $EXIT -eq 1 ]; then
+  echo "WARNING: Budget low"
+  # Continue but alert
+fi
+```
+
+</div>
+
+<div>
+
+### Pipeline Example
+
+```yaml
+# GitHub Actions
+- name: Lint PromQL
+  run: nthlayer apply service.yaml --lint
+  # Fails on exit 1
+
+- name: Verify Metrics
+  run: nthlayer verify service.yaml
+  # Fails on exit 1
+
+- name: Check Gate
+  run: |
+    nthlayer check-deploy service.yaml
+    if [ $? -eq 2 ]; then
+      echo "::error::Deploy blocked"
+      exit 1
+    fi
+```
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Contract Verification: `nthlayer verify`
+
+### "Do the metrics I declared actually exist?"
+
+<div class="grid grid-cols-2 gap-8 mt-6">
+
+<div>
+
+### What It Checks
+
+For each service type, verify required metrics exist:
+
+**API Services:**
+- `http_requests_total{service="X"}`
+- `http_request_duration_seconds_bucket{service="X"}`
+
+**Worker Services:**
+- `job_processed_total{service="X"}`
+- `job_duration_seconds_bucket{service="X"}`
+
+**Dependencies:**
+- PostgreSQL: `pg_stat_*` metrics
+- Redis: `redis_*` metrics
+
+</div>
+
+<div>
+
+### Verification Query
+
+```python
+def verify_metric(metric_name, service):
+    query = f'count({metric_name}{{service="{service}"}}[5m]) > 0'
+    result = prometheus.query(query)
+    return result.value > 0
+```
+
+### Output
+
+```
+✓ http_requests_total: found
+✓ http_request_duration_seconds_bucket: found
+✗ redis_commands_total: NOT FOUND
+
+Verification: FAILED (1 missing metric)
+Exit code: 1
+```
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Deployment Gate: `nthlayer check-deploy`
+
+### "Is it safe to deploy right now?"
+
+<div class="grid grid-cols-2 gap-8 mt-6">
+
+<div>
+
+### Error Budget Calculation
+
+```python
+def calculate_error_budget(slo_target, window_days):
+    # Total allowed downtime
+    window_minutes = window_days * 24 * 60
+    budget_minutes = (1 - slo_target) * window_minutes
+
+    # Current consumption from Prometheus
+    error_rate = query_current_error_rate()
+    consumed = error_rate * window_minutes
+
+    remaining_pct = (budget_minutes - consumed) / budget_minutes
+    return remaining_pct
+
+# Example: 99.95% SLO, 30-day window
+# Budget: 21.6 minutes
+# If consumed 19 min → 12% remaining
+```
+
+</div>
+
+<div>
+
+### Gate Logic
+
+```python
+def check_deploy(service, tier):
+    remaining = calculate_error_budget(...)
+
+    thresholds = {
+        'critical': {'block': 0.10, 'warn': 0.20},
+        'standard': {'block': 0.05, 'warn': 0.10},
+        'low':      {'block': 0.00, 'warn': 0.20},
+    }
+
+    t = thresholds[tier]
+
+    if remaining < t['block']:
+        return EXIT_BLOCKED  # 2
+    elif remaining < t['warn']:
+        return EXIT_WARNING  # 1
+    else:
+        return EXIT_OK       # 0
+```
+
+</div>
+
+</div>
+
+---
+layout: section
+---
+
+# Part 3: CLI Deep Dive
+
+Commands & Usage
+
+---
+layout: default
+---
 
 # CLI Command Overview
 
-<div class="grid grid-cols-3 gap-3 mt-2">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
 <div>
 
-**SLO Management**
+### Generate Commands
+
 ```bash
-nthlayer generate-slo
-nthlayer validate
-nthlayer list-templates
+# Generate all artifacts
+nthlayer apply services/*.yaml
+
+# With PromQL linting
+nthlayer apply services/*.yaml --lint
+
+# Interactive service creation
+nthlayer init
+```
+
+### Validate Commands
+
+```bash
+# Verify metrics exist
+nthlayer verify services/*.yaml
+
+# Validate spec syntax
+nthlayer validate-spec services/*.yaml
+
+# Validate metadata
+nthlayer validate-metadata services/*.yaml
 ```
 
 </div>
 
 <div>
 
-**Alert Generation** ← NEW!
+### Protect Commands
+
 ```bash
-nthlayer generate-alerts
-# 400+ rules, 46 technologies
+# Check deployment gate
+nthlayer check-deploy services/*.yaml
+
+# View SLO portfolio
+nthlayer portfolio
+
+# View single service SLO
+nthlayer slo show services/payment.yaml
+
+# Collect current metrics
+nthlayer slo collect services/payment.yaml
 ```
 
-</div>
+### Integration Commands
 
-<div>
-
-**Deploy Safety**
 ```bash
-nthlayer check-deploy
-# Error budget gates
+# Setup PagerDuty resources
+nthlayer setup-pagerduty services/*.yaml
+
+# Interactive configuration
+nthlayer setup
 ```
-
-</div>
-
-<div>
-
-**Integration**
-```bash
-nthlayer setup-pagerduty
-nthlayer setup-prometheus
-```
-
-</div>
-
-<div>
-
-**Utilities**
-```bash
-nthlayer validate
-nthlayer dry-run
-```
-
-</div>
 
 </div>
 
@@ -406,54 +544,61 @@ nthlayer dry-run
 layout: default
 ---
 
-<div class="text-xs">
+# Command: `nthlayer apply`
 
-# Command: `generate-alerts` ← NEW!
+### Generate artifacts from service specs
 
-**Auto-generate 400+ production-tested alert rules**
-
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
 <div>
 
-**Usage:**
+### Usage
+
 ```bash
-nthlayer generate-alerts \
-  services/payment-api.yaml \
-  --runbook-url https://runbooks.company.com
+nthlayer apply services/payment-api.yaml \
+  --output-dir generated/ \
+  --lint \
+  --verbose
 ```
 
-**How it works:**
-1. Reads Dependencies from service YAML
-2. Loads alerts for each technology
-3. Filters by service tier
-4. Customizes with service labels
-5. Outputs Prometheus-ready YAML
+### Options
 
-**Output:** 27 alerts in 2 seconds
+| Flag | Description |
+|------|-------------|
+| `--output-dir` | Output directory |
+| `--lint` | Validate PromQL with pint |
+| `--push` | Push to Grafana (GitOps: avoid) |
+| `--dry-run` | Preview only |
+| `--verbose` | Detailed output |
 
 </div>
 
 <div>
 
-**Features:**
-- ✅ **46 technologies** (postgres, redis, kafka, k8s, etc.)
-- ✅ **400+ alert rules** from awesome-prometheus-alerts
-- ✅ **Tier-based filtering** (critical/standard/low)
-- ✅ **Auto-customized** (service labels, runbooks)
+### Output
 
-**Example Output:**
-```yaml
-alert: PostgresqlDown
-labels:
-  severity: critical
-  service: payment-api
-  team: payments
-annotations:
-  runbook: https://runbooks.../PostgresqlDown
 ```
+Generating artifacts for payment-api...
 
-</div>
+✓ Dashboard: generated/payment-api/dashboard.json
+  - 3 SLO panels
+  - 3 Health panels
+  - 8 Dependency panels (postgresql, redis)
+
+✓ Alerts: generated/payment-api/alerts.yaml
+  - 2 SLO burn rate alerts
+  - 15 postgresql alerts
+  - 12 redis alerts
+
+✓ Recording Rules: generated/payment-api/recording-rules.yaml
+  - 12 pre-computed metrics
+
+✓ SLOs: generated/payment-api/slos.yaml
+  - availability: 99.95%
+  - latency_p99: 200ms
+
+Linting with pint... ✓ All queries valid
+```
 
 </div>
 
@@ -463,50 +608,61 @@ annotations:
 layout: default
 ---
 
-<div class="text-xs">
+# Command: `nthlayer verify`
 
-# Command: `generate-slo`
+### Contract verification - confirm metrics exist
 
-**Auto-generate SLOs from service definition**
-
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
 <div>
 
-**Usage:**
+### Usage
+
 ```bash
-nthlayer generate-slo \
-  services/payment-api.yaml \
-  --output slos/ \
-  --format openslo
+# Strict mode (fails on missing)
+nthlayer verify services/payment-api.yaml
+
+# Lenient mode (warnings only)
+nthlayer verify services/payment-api.yaml --no-fail
+
+# Specify Prometheus URL
+nthlayer verify services/payment-api.yaml \
+  --prometheus-url https://prometheus.example.com
 ```
 
-**Options:**
-```
---output PATH     Output dir
---format FORMAT   openslo|prometheus
---dry-run        Preview only
-```
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | All metrics found |
+| 1 | Required metrics missing |
 
 </div>
 
 <div>
 
-**Input:**
-```yaml
-service: payment-api
-tier: 1
-team: payments
-```
+### Output
 
-**Output:**
 ```
-slos/
-  payment-api-availability.yaml
-  payment-api-latency-p95.yaml
-```
+Verifying metrics for payment-api...
 
-</div>
+Required metrics:
+✓ http_requests_total{service="payment-api"}
+✓ http_request_duration_seconds_bucket{service="payment-api"}
+
+Dependency metrics (postgresql):
+✓ pg_stat_activity_count
+✓ pg_stat_database_tup_fetched
+✓ pg_replication_lag_seconds
+
+Dependency metrics (redis):
+✓ redis_commands_total
+✗ redis_memory_used_bytes  ← NOT FOUND
+
+Verification: FAILED
+1 required metric missing
+Exit code: 1
+```
 
 </div>
 
@@ -516,41 +672,71 @@ slos/
 layout: default
 ---
 
-<div class="text-xs">
+# Command: `nthlayer check-deploy`
 
-# Command: `track-budget`
+### Deployment gate - check error budget
 
-**Real-time error budget tracking**
-
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
 <div>
 
-**Usage:**
+### Usage
+
 ```bash
-nthlayer track-budget \
-  --service payment-api \
-  --prometheus http://localhost:9090 \
-  --interval 5m
+# Check if deploy is safe
+nthlayer check-deploy services/payment-api.yaml
+
+# Specify Prometheus URL
+nthlayer check-deploy services/payment-api.yaml \
+  --prometheus-url https://prometheus.example.com
+
+# Specify time window
+nthlayer check-deploy services/payment-api.yaml \
+  --window 7d
 ```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Deploy allowed |
+| 1 | Warning (budget low) |
+| 2 | Deploy BLOCKED |
 
 </div>
 
 <div>
 
-**Output:**
+### Output (Healthy)
+
 ```
-📊 Error Budget: payment-api
-SLO: 99.9% (30d)
+Checking deployment gate for payment-api...
 
-Budget: 43.2 min/month
-Consumed: 18.7 min (43%)
-Remaining: 24.5 min (57%)
+SLO: 99.95% availability (30-day window)
 
-Status: 🟢 HEALTHY
+Error Budget Status:
+  Total:     21.6 minutes
+  Consumed:  8.2 minutes (38%)
+  Remaining: 13.4 minutes (62%)
+
+Status: ✅ HEALTHY
+Tier: critical (blocks at <10%)
+
+Exit code: 0
 ```
 
-</div>
+### Output (Blocked)
+
+```
+Error Budget Status:
+  Remaining: 1.8 minutes (8%)
+
+Status: 🛑 DEPLOY BLOCKED
+Reason: Error budget below 10% threshold
+Tier: critical
+
+Exit code: 2
+```
 
 </div>
 
@@ -560,273 +746,61 @@ Status: 🟢 HEALTHY
 layout: default
 ---
 
-<div class="text-xs">
+# Command: `nthlayer portfolio`
 
-# Command: `correlate-deploy`
+### Org-wide SLO overview
 
-**Link deployments to incidents**
-
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-6 mt-6">
 
 <div>
 
-**Usage:**
-```bash
-nthlayer correlate-deploy \
-  --deploy v2.3.1 \
-  --service payment-api \
-  --time-window 1h
-```
-
-</div>
-
-<div>
-
-**Output:**
-```
-🔍 Correlation Analysis
-
-Deploy: payment-api v2.3.1
-
-Incidents:
-  #4521: High error rate
-    Confidence: 89% 🔴
-    Factors: Time(0.45) + Deps(0.30)
-    
-Action: BLOCK further deploys
-```
-
-</div>
-
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# YAML Schema
-
-```yaml
-# Required
-service: payment-api
-tier: 1
-team: payments
-
-# Optional
-type: api
-tech_stack:
-  metrics: prometheus
-
-# Overrides
-observability:
-  slo_overrides:
-    availability: 0.9995
-
-# Dependencies
-dependencies:
-  upstream: [user-service]
-
-# PagerDuty
-pagerduty:
-  service_id: PXXXXXX
-```
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Integration: PagerDuty
-
-**Auto-creates services via API**
-
-<div class="grid grid-cols-2 gap-4 mt-2">
-
-<div>
-
-**What Gets Created:**
-
-1. Service object
-2. Team object (if needed)
-3. Escalation policy
-4. Integration keys
-
-**Flow:**
-```
-YAML → CLI → API
-  → Check if exists
-  → Create or update
-  → Return service key
-```
-
-</div>
-
-<div>
-
-**Example:**
-```python
-service = pd_client.create_service({
-    "name": "payment-api",
-    "escalation_policy_id": policy_id,
-    "alert_creation": "create_alerts"
-})
-```
-
-**Credentials:**
-```bash
-export PAGERDUTY_API_KEY=xxx
-```
-
-Idempotent - safe to re-run
-
-</div>
-
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Integration: Prometheus
-
-<div class="grid grid-cols-2 gap-3 mt-1">
-
-<div>
-
-**Scrape Config:**
-```yaml
-scrape_configs:
-  - job_name: 'payment-api'
-    static_configs:
-      - targets: ['payment-api:8080']
-```
-
-**Recording Rules:**
-```yaml
-groups:
-  - name: payment-api-slos
-    rules:
-      - record: slo:availability:ratio
-        expr: sum(rate(http_requests_total{
-            job="payment-api", code!~"5.."
-          }[5m]))
-```
-
-</div>
-
-<div>
-
-**Alerts:**
-```yaml
-groups:
-  - name: payment-api-alerts
-    rules:
-      - alert: HighErrorBudgetBurn
-        expr: slo:availability:ratio < 0.999
-        for: 5m
-        labels:
-          severity: warning
-```
-
-Mount into Prometheus config dir
-
-</div>
-
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Complete Workflow
-
-**Operationalize a service in 5 minutes:**
+### Usage
 
 ```bash
-# 1. Initialize from template
-nthlayer init payment-api --team payments --template critical-api
+# Table view (default)
+nthlayer portfolio
 
-# 2. Generate SLOs
-nthlayer generate-slo payment-api.yaml
+# JSON for automation
+nthlayer portfolio --format json
 
-# 3. Generate alerts (NEW!)
-nthlayer generate-alerts payment-api.yaml
-# ✅ 27 alerts generated for postgres & redis
+# Filter by tier
+nthlayer portfolio --tier critical
 
-# 4. Setup PagerDuty
-nthlayer setup-pagerduty payment-api.yaml --api-key KEY
-
-# 5. Check deployment safety
-nthlayer check-deploy payment-api.yaml
-# ✅ or ❌ based on error budget
+# Filter by team
+nthlayer portfolio --team payments
 ```
 
-**Time:** 5 minutes vs 20 hours manual setup
+### Output Formats
 
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Testing & Validation
-
-<div class="grid grid-cols-2 gap-4 mt-2">
-
-<div>
-
-**Unit Tests (pytest):**
-```bash
-pytest tests/ -v --cov=src
-```
-
-Coverage: 85%  
-20 tests passing
-
-**Tests cover:**
-- SLO generation
-- Error budget calc
-- Deploy correlation
-- OpenSLO validation
-- API mocking
+| Format | Use Case |
+|--------|----------|
+| `table` | Terminal (default) |
+| `json` | Automation, APIs |
+| `csv` | Spreadsheets |
+| `markdown` | PR comments, Slack |
 
 </div>
 
 <div>
 
-**Integration Tests:**
-```bash
-pytest tests/integration/ \
-  --prometheus-url http://localhost:9090
+### Output
+
 ```
+┌─────────────────────────────────────────────────────┐
+│                  SLO Portfolio                      │
+├─────────────┬──────────┬─────────┬─────────┬───────┤
+│ Service     │ Tier     │ SLO     │ Budget  │ Status│
+├─────────────┼──────────┼─────────┼─────────┼───────┤
+│ payment-api │ critical │ 99.95%  │ 62%     │ ✅    │
+│ search-api  │ standard │ 99.5%   │ 45%     │ ✅    │
+│ user-svc    │ critical │ 99.95%  │ 8%      │ 🛑    │
+│ analytics   │ low      │ 99.0%   │ 78%     │ ✅    │
+└─────────────┴──────────┴─────────┴─────────┴───────┘
 
-**Validation:**
-```bash
-# Validate YAML
-nthlayer validate services/*.yaml
+Organization Health Score: 72/100
 
-# Check output
-nthlayer validate --output slos/
+⚠️ 1 service below threshold (user-svc)
 ```
-
-</div>
 
 </div>
 
@@ -836,59 +810,305 @@ nthlayer validate --output slos/
 layout: section
 ---
 
-# Part 3: Extensibility
+# Part 4: Integration
 
-Plugins, API, Performance
+Prometheus • Grafana • PagerDuty • GitOps
 
 ---
 layout: default
 ---
 
-<div class="text-xs">
+# GitOps Workflow (Recommended)
 
-# Plugin Architecture (Future)
+### NthLayer generates, CD deploys
 
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-8 mt-6">
 
 <div>
 
-**Plugin Types:**
+### Why GitOps?
 
-1. SLO Generators
-2. Platform Integrations
-3. Output Formats
+1. **Audit trail** - All changes PR-reviewed
+2. **Rollback** - `git revert` undoes any change
+3. **Separation** - NthLayer generates, ArgoCD deploys
+4. **No credentials** - NthLayer doesn't need Grafana/Prometheus API keys
 
-**Example:**
+### Workflow
+
+```
+service.yaml → nthlayer apply → generated/
+                                    ↓
+                              git commit
+                                    ↓
+                               PR review
+                                    ↓
+                              merge to main
+                                    ↓
+                            ArgoCD/Flux sync
+```
+
+</div>
+
+<div>
+
+### Pipeline Example
+
+```yaml
+# CI: Generate and commit
+- name: Generate configs
+  run: nthlayer apply services/*.yaml --lint
+
+- name: Commit if changed
+  run: |
+    git add generated/
+    git diff --cached --quiet || \
+      git commit -m "chore: regenerate configs"
+    git push
+
+# CD: ArgoCD syncs generated/ to cluster
+```
+
+### Directory Structure
+
+```
+repo/
+├── services/           # Source of truth
+│   └── payment-api.yaml
+├── generated/          # NthLayer output
+│   └── payment-api/
+│       ├── dashboard.json
+│       ├── alerts.yaml
+│       └── slos.yaml
+└── .github/workflows/
+    └── nthlayer.yaml
+```
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Prometheus Integration
+
+### Alert rules and recording rules
+
+<div class="grid grid-cols-2 gap-6 mt-6">
+
+<div>
+
+### Generated Alerts
+
+```yaml
+# generated/payment-api/alerts.yaml
+groups:
+  - name: payment-api-slo
+    rules:
+      - alert: PaymentAPIHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{
+            service="payment-api",
+            status=~"5.."
+          }[5m]))
+          /
+          sum(rate(http_requests_total{
+            service="payment-api"
+          }[5m])) > 0.001
+        for: 5m
+        labels:
+          severity: critical
+          service: payment-api
+          tier: critical
+        annotations:
+          summary: "High error rate on payment-api"
+```
+
+</div>
+
+<div>
+
+### Generated Recording Rules
+
+```yaml
+# generated/payment-api/recording-rules.yaml
+groups:
+  - name: payment-api-recording
+    rules:
+      # Pre-compute availability
+      - record: service:availability:ratio5m
+        expr: |
+          sum(rate(http_requests_total{
+            service="payment-api",
+            status!~"5.."
+          }[5m]))
+          /
+          sum(rate(http_requests_total{
+            service="payment-api"
+          }[5m]))
+        labels:
+          service: payment-api
+
+      # Pre-compute p99 latency
+      - record: service:latency:p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(
+              http_request_duration_seconds_bucket{
+                service="payment-api"
+              }[5m])))
+```
+
+</div>
+
+</div>
+
+---
+layout: default
+---
+
+# Grafana Integration
+
+### Dashboard generation
+
+<div class="grid grid-cols-2 gap-6 mt-6">
+
+<div>
+
+### Dashboard Structure
+
+```
+Dashboard: payment-api
+├── Row: SLO Metrics
+│   ├── Availability (gauge)
+│   ├── Error Budget (gauge)
+│   └── Burn Rate (timeseries)
+├── Row: Service Health
+│   ├── Request Rate
+│   ├── Error Rate
+│   └── Latency P99
+└── Row: Dependencies
+    ├── PostgreSQL
+    │   ├── Connections
+    │   ├── Query Rate
+    │   └── Replication Lag
+    └── Redis
+        ├── Memory Usage
+        ├── Hit Rate
+        └── Commands/sec
+```
+
+</div>
+
+<div>
+
+### Panel Types
+
+| Intent | Panel Type |
+|--------|------------|
+| Availability | Gauge with thresholds |
+| Error Budget | Gauge (remaining %) |
+| Request Rate | Time series |
+| Latency | Time series (heatmap) |
+| Error Rate | Time series |
+
+### Metric Resolution
+
+NthLayer uses **intent-based templates**:
+
+1. Define what you **want** to show
+2. Discover what metrics **exist**
+3. Resolve intent → actual metric
+
 ```python
-from nthlayer.plugin import SLOGenerator
-
-class FinancialSLO(SLOGenerator):
-    def generate(self, service):
-        return {
-            "availability": 0.9999,
-            "latency_p99": 200,
-            "audit_logging": True
-        }
+# Intent: http_latency_p99
+# Candidates: [
+#   http_request_duration_seconds_bucket,
+#   http_request_latency_seconds_bucket,
+#   request_duration_seconds_bucket
+# ]
+# Resolved: http_request_duration_seconds_bucket
 ```
 
 </div>
 
+</div>
+
+---
+layout: default
+---
+
+# PagerDuty Integration
+
+### Auto-create teams, services, escalations
+
+<div class="grid grid-cols-2 gap-6 mt-6">
+
 <div>
 
-**Usage:**
+### What Gets Created
+
+```yaml
+# When auto_create: true
+Team: payments
+Escalation Policy: payments-escalation
+Service: payment-api
+```
+
+### Idempotency
+
+- Uses **upsert by name**
+- Safe to run multiple times
+- Never deletes existing resources
+- Never modifies existing configs
+
+### Dry Run
+
 ```bash
-nthlayer generate-slo \
-  --plugin plugins/financial.py \
-  services/payment-api.yaml
+# Preview what would be created
+nthlayer setup-pagerduty service.yaml --dry-run
+
+Would create:
+  ✓ Team: payments
+  ✓ Escalation Policy: payments-escalation
+  ✓ Service: payment-api
+
+No changes made (dry run mode)
 ```
 
-**Benefits:**
-- Custom tier mappings
-- Industry-specific SLOs
-- Compliance requirements
-- Internal tool integrations
-
 </div>
+
+<div>
+
+### Tier-Based Escalation
+
+| Tier | Urgency | Escalation |
+|------|---------|------------|
+| critical | High | 5 min → 15 min → 30 min |
+| standard | Low | 30 min → 60 min |
+| low | Low | 60 min |
+
+### Using Existing Resources
+
+```yaml
+# service.yaml
+resources:
+  - kind: PagerDuty
+    spec:
+      auto_create: false
+      team_id: PXXXXXX       # Existing team
+      service_id: PXXXXXX    # Existing service
+```
+
+### Required Permissions
+
+```
+teams:write
+services:write
+escalation_policies:write
+users:read
+```
 
 </div>
 
@@ -897,271 +1117,68 @@ nthlayer generate-slo \
 ---
 layout: default
 ---
-
-<div class="text-xs">
-
-# API Design (Future)
-
-**RESTful API for programmatic access:**
-
-```
-POST   /api/v1/services              # Create config
-GET    /api/v1/services/{name}       # Get details
-PUT    /api/v1/services/{name}       # Update
-DELETE /api/v1/services/{name}       # Remove
-
-POST   /api/v1/slos/generate         # Generate SLOs
-GET    /api/v1/slos/{service}        # Get SLOs
-
-GET    /api/v1/error-budgets/{slo}  # Budget status
-POST   /api/v1/deploys               # Record deploy
-POST   /api/v1/deploys/correlate    # Check correlation
-```
-
-**Auth:** API keys or OAuth2  
-**Rate Limiting:** 1000 req/min
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Performance Characteristics
-
-<div class="grid grid-cols-2 gap-4 mt-2">
-
-<div>
-
-**SLO Generation:**
-- 1 service: < 100ms
-- 100 services: ~5 sec
-- 1,000 services: ~45 sec
-- Bottleneck: None (CPU)
-
-**Error Budget Calc:**
-- 1 SLO: ~200ms
-- 100 SLOs: ~20 sec
-- 1,000 SLOs: ~3 min
-- Bottleneck: Prometheus
-
-</div>
-
-<div>
-
-**Deploy Correlation:**
-- 1 deploy: ~50ms
-- 10 deploys/min: OK
-- 100 deploys/min: Needs cache
-- Bottleneck: Database
-
-**Resources:**
-- Memory: ~50MB base
-- CPU: Minimal
-- Disk: ~100KB/service
-- Network: API calls only
-
-</div>
-
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
-
-# Security
-
-<div class="grid grid-cols-2 gap-4 mt-2">
-
-<div>
-
-**Credentials:**
-```bash
-# Env vars (recommended)
-export PAGERDUTY_API_KEY=xxx
-
-# Or secrets manager
-nthlayer config set pagerduty.api_key \
-  --from-vault vault://secret/pd
-```
-
-**Never commit to Git!**
-
-**API Permissions:**
-- PagerDuty: Read/Write Services
-- Prometheus: Read-only
-- ArgoCD: Rollback only
-
-</div>
-
-<div>
-
-**Audit Trail:**
-```python
-{
-  "timestamp": "2025-11-21T14:30:00Z",
-  "action": "generate_slo",
-  "service": "payment-api",
-  "user": "john@company.com",
-  "result": "success"
-}
-```
-
-**Compliance:** PCI-DSS, SOC2 ready
-
-</div>
-
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-xs">
 
 # Best Practices
 
-<div class="grid grid-cols-2 gap-4 mt-2">
+<div class="grid grid-cols-2 gap-8 mt-6">
 
 <div>
 
-**Organization:**
+### Directory Organization
+
 ```
 services/
-  tier-1/
-    payment-api.yaml
-  tier-2/
-    notifications.yaml
-  tier-3/
-    analytics.yaml
+├── tier-1/
+│   ├── payment-api.yaml
+│   └── auth-service.yaml
+├── tier-2/
+│   ├── search-api.yaml
+│   └── recommendation-svc.yaml
+└── tier-3/
+    ├── analytics.yaml
+    └── reports.yaml
 ```
 
-**Naming:**
+### Naming Conventions
+
 ```yaml
 # Good
-service: payment-api
+name: payment-api
 team: payments
 
 # Bad
-service: PaymentAPI_v2_PROD
+name: PaymentAPI_v2_PROD
+team: Team_Payments_123
 ```
 
 </div>
 
 <div>
 
-**Workflow:**
-1. Validate YAML locally
-2. Use `--dry-run`
-3. Test in staging
-4. Monitor budgets
+### Workflow
 
-**Version Control:**
-- Commit YAMLs to Git
-- Generated configs separate
-- PR reviews required
-- Tag releases
+1. **Validate locally** before commit
+   ```bash
+   nthlayer validate-spec services/*.yaml
+   nthlayer apply services/*.yaml --lint --dry-run
+   ```
 
-</div>
+2. **Use `--no-fail` initially** for verify
+   ```bash
+   nthlayer verify services/*.yaml --no-fail
+   ```
 
-</div>
+3. **Graduate to blocking** after burn-in
+   ```bash
+   nthlayer check-deploy services/*.yaml
+   ```
 
-</div>
+### Version Control
 
----
-layout: default
----
-
-<div class="text-xs">
-
-# Troubleshooting
-
-<div class="grid grid-cols-2 gap-4 mt-2">
-
-<div>
-
-**SLO not generating:**
-```bash
-nthlayer validate services/my-api.yaml
-nthlayer generate-slo --dry-run
-```
-
-**Budget tracking shows 0%:**
-```bash
-# Test Prometheus query
-curl http://prometheus:9090/api/v1/query\
-  ?query=up{job="my-api"}
-```
-
-</div>
-
-<div>
-
-**PagerDuty 401 error:**
-```bash
-# Test API key
-curl -H "Authorization: Token $KEY" \
-  https://api.pagerduty.com/services
-```
-
-**Low correlation confidence:**
-- Add dependencies to YAML
-- Increase time window
-- Wait for more history
-
-</div>
-
-</div>
-
-</div>
-
----
-layout: default
----
-
-<div class="text-sm">
-
-# Roadmap
-
-<div class="grid grid-cols-3 gap-3 mt-4">
-
-<div class="p-3 border-2 border-green-500 rounded">
-
-**Q1 2025 ✅**
-- Composite SLOs
-- Multi-window tracking
-- Grafana integration
-- Datadog service creation
-
-</div>
-
-<div class="p-3 border-2 border-blue-500 rounded">
-
-**Q2 2025**
-- Plugin architecture
-- REST API
-- Dependency auto-discovery
-- Advanced correlation
-
-</div>
-
-<div class="p-3 border-2 border-purple-500 rounded">
-
-**Q3 2025**
-- Kubernetes operator
-- GitOps (Flux)
-- Policy engine (OPA)
-- Cost tracking
-
-</div>
+- ✅ Commit service.yaml specs to Git
+- ✅ Commit generated/ artifacts to Git
+- ✅ PR reviews for all changes
+- ❌ Never commit API keys
 
 </div>
 
@@ -1173,12 +1190,20 @@ layout: center
 
 # Questions?
 
-<div class="mt-6 text-sm">
+<div class="text-center mt-8">
 
 **Resources:**
 
-- 📚 **Docs:** docs.nthlayer.dev/api
-- 💻 **GitHub:** github.com/yourname/nthlayer
-- 💬 **Slack:** slack.nthlayer.dev #architecture
+- 📚 **Docs:** rsionnach.github.io/nthlayer
+- 💻 **GitHub:** github.com/rsionnach/nthlayer
+- 📦 **PyPI:** `pip install nthlayer`
+
+<div class="mt-8 text-xl font-bold text-blue-400">
+Reliability Requirements as Code
+</div>
+
+<div class="mt-2">
+Define once. Generate everything. Block bad deploys.
+</div>
 
 </div>

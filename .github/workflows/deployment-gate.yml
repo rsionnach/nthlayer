@@ -1,0 +1,72 @@
+name: NthLayer Deployment Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service file to check'
+        default: 'examples/services/checkout-service.yaml'
+        required: true
+        type: string
+      demo_blocked:
+        description: 'Force blocked scenario (for testing)'
+        type: boolean
+        default: false
+
+jobs:
+  gate:
+    name: Deployment Gate Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install NthLayer
+        run: pip install nthlayer
+
+      - name: Generate + Lint
+        run: |
+          echo "=== Stage 1: Generate + Lint ==="
+          nthlayer apply ${{ inputs.service }} --lint
+          echo "✅ Artifacts generated and linted"
+
+      - name: Check Deployment Gate
+        if: ${{ inputs.demo_blocked != true }}
+        env:
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USERNAME: ${{ secrets.PROMETHEUS_USERNAME }}
+          PROMETHEUS_PASSWORD: ${{ secrets.PROMETHEUS_PASSWORD }}
+        run: |
+          echo "=== Stage 2: Deployment Gate ==="
+          nthlayer check-deploy ${{ inputs.service }}
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -eq 2 ]; then
+            echo "::error::Deployment BLOCKED - error budget exhausted"
+            exit 1
+          elif [ $EXIT_CODE -eq 1 ]; then
+            echo "::warning::Error budget low - proceeding with caution"
+          else
+            echo "✅ Error budget healthy"
+          fi
+
+      - name: Check Deployment Gate (Demo Blocked)
+        if: ${{ inputs.demo_blocked == true }}
+        run: |
+          echo "=== Stage 2: Deployment Gate (Demo Mode) ==="
+          nthlayer check-deploy ${{ inputs.service }} --demo-blocked
+          echo "::error::Deployment BLOCKED (demo mode)"
+          exit 1
+
+      - name: Deploy (placeholder)
+        run: |
+          echo "=== Stage 3: Deploy ==="
+          echo "Would run: kubectl apply -f generated/"
+          ls -la generated/ || echo "No generated directory"
+          echo "✅ Deployment allowed - pipeline complete"
