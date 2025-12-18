@@ -101,7 +101,7 @@ class MimirRulerProvider:
                     url,
                     content=rules_yaml,
                     headers=headers,
-                    auth=self._auth,
+                    auth=self._auth,  # type: ignore[arg-type]
                 )
 
                 if response.status_code in (200, 202):
@@ -160,7 +160,7 @@ class MimirRulerProvider:
                 response = await client.delete(
                     url,
                     headers=headers,
-                    auth=self._auth,
+                    auth=self._auth,  # type: ignore[arg-type]
                 )
                 return response.status_code in (200, 202, 204)
 

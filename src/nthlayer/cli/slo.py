@@ -161,9 +161,10 @@ def slo_list_command() -> int:
     print(f"{'Service':<25} {'SLO':<20} {'Objective':<12} {'Window':<10}")
     print("-" * 70)
 
-    for slo in sorted(all_slos, key=lambda x: (x["service"], x["name"])):
+    for slo_info in sorted(all_slos, key=lambda x: (x["service"], x["name"])):
         print(
-            f"{slo['service']:<25} {slo['name']:<20} " f"{slo['objective']:<12} {slo['window']:<10}"
+            f"{slo_info['service']:<25} {slo_info['name']:<20} "
+            f"{slo_info['objective']:<12} {slo_info['window']:<10}"
         )
 
     print()
@@ -180,7 +181,9 @@ def slo_collect_command(
 ) -> int:
     """Collect metrics from Prometheus and calculate error budget."""
     # Get Prometheus URL from env or arg
-    prom_url = prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL", "http://localhost:9090")
+    prom_url: str = (
+        prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL") or "http://localhost:9090"
+    )
 
     print()
     print("=" * 60)
@@ -221,7 +224,8 @@ def slo_collect_command(
     print()
 
     try:
-        results = asyncio.run(_collect_slo_metrics(slo_resources, prom_url, context.name))
+        service_name = context.name or "unknown"
+        results = asyncio.run(_collect_slo_metrics(slo_resources, prom_url, service_name))
     except Exception as e:
         print(f"Error querying Prometheus: {e}")
         print()

@@ -109,6 +109,8 @@ class PortfolioAggregator:
         username = os.environ.get("NTHLAYER_METRICS_USER")
         password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
 
+        if not self.prometheus_url:
+            raise ValueError("Prometheus URL is required for collecting metrics")
         provider = PrometheusProvider(self.prometheus_url, username=username, password=password)
 
         for service_health, service_file in slo_specs:
@@ -133,7 +135,7 @@ class PortfolioAggregator:
                 query = query.replace("$service", context.name)
 
                 try:
-                    result = await provider.query_async(query)
+                    result = await provider.query(query)
                     if result and result.get("result"):
                         value_data = result["result"][0].get("value", [])
                         if len(value_data) >= 2:
@@ -187,21 +189,24 @@ class PortfolioAggregator:
             )
 
         # Parse tier (handle both int and string formats)
-        tier = context.tier
-        if isinstance(tier, str):
+        tier_str = context.tier
+        tier_num: int = 2  # default to standard
+        if isinstance(tier_str, str):
             # Handle "tier-1", "tier-2", etc.
-            if tier.startswith("tier-"):
-                tier = int(tier.split("-")[1])
-            elif tier.isdigit():
-                tier = int(tier)
+            if tier_str.startswith("tier-"):
+                tier_num = int(tier_str.split("-")[1])
+            elif tier_str.isdigit():
+                tier_num = int(tier_str)
             else:
                 # Map string names to numbers
                 tier_map = {"critical": 1, "standard": 2, "low": 3}
-                tier = tier_map.get(tier.lower(), 2)
+                tier_num = tier_map.get(tier_str.lower(), 2)
+        elif isinstance(tier_str, int):
+            tier_num = tier_str
 
         return ServiceHealth(
             service=context.name,
-            tier=tier,
+            tier=tier_num,
             team=context.team,
             service_type=context.type,
             slos=slos,

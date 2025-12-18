@@ -4,9 +4,11 @@ Dependency validation and visualization commands.
 
 from __future__ import annotations
 
+from typing import Any
+
 import yaml
 
-from nthlayer.cli.ux import console, header, success
+from nthlayer.cli.ux import console, error, header, success, warning
 from nthlayer.slos.dependencies import (
     Dependency,
     DependencyCriticality,
@@ -34,13 +36,13 @@ def validate_dependencies_command(
         Exit code (0 = valid, 1 = errors found)
     """
     header("Validate Dependencies")
-    console.console.print()
+    console.print()
 
     # Parse all services
-    services = {}
-    service_deps = {}
-    all_errors = []
-    all_warnings = []
+    services: dict[str, Any] = {}
+    service_deps: dict[str, list[str]] = {}
+    all_errors: list[str] = []
+    all_warnings: list[str] = []
 
     for service_file in service_files:
         try:
@@ -53,18 +55,19 @@ def validate_dependencies_command(
                 deps_spec = dep_resources[0].spec
 
                 # Parse dependencies from spec
-                deps = []
+                parsed_deps: list[Dependency] = []
                 for svc in deps_spec.get("services", []):
-                    deps.append(
+                    crit = DependencyCriticality.from_string(svc.get("criticality", "medium"))
+                    parsed_deps.append(
                         Dependency(
                             name=svc["name"],
-                            criticality=DependencyCriticality(svc.get("criticality", "medium")),
+                            criticality=crit,
                             type="service",
                         )
                     )
 
-                service_deps[context.name] = [d.name for d in deps]
-                services[context.name]._deps = deps  # Store for later
+                service_deps[context.name] = [d.name for d in parsed_deps]
+                services[context.name]._deps = parsed_deps  # Store for later
 
         except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
             all_errors.append(f"Error parsing {service_file}: {e}")
@@ -90,14 +93,14 @@ def validate_dependencies_command(
             console.print(f"[cyan]Service:[/cyan] {service_name}")
 
             if errors:
-                for error in errors:
-                    console.print(f"  [error]✗[/error] {error}")
-                    all_errors.append(f"{service_name}: {error}")
+                for err in errors:
+                    console.print(f"  [error]✗[/error] {err}")
+                    all_errors.append(f"{service_name}: {err}")
 
             if warnings:
-                for warning in warnings:
-                    console.print(f"  [warning]⚠[/warning] {warning}")
-                    all_warnings.append(f"{service_name}: {warning}")
+                for warn in warnings:
+                    console.print(f"  [warning]⚠[/warning] {warn}")
+                    all_warnings.append(f"{service_name}: {warn}")
 
             console.print()
 
@@ -132,9 +135,9 @@ def validate_dependencies_command(
 
     # Display dependency graph summary
     console.print("[bold]Dependency Summary:[/bold]")
-    for service_name, deps in service_deps.items():
-        if deps:
-            console.print(f"  [cyan]{service_name}[/cyan] → {', '.join(deps)}")
+    for service_name, dep_names in service_deps.items():
+        if dep_names:
+            console.print(f"  [cyan]{service_name}[/cyan] → {', '.join(dep_names)}")
 
     console.print()
 

@@ -55,7 +55,7 @@ class DashboardBuilderSDK:
         self.slo_resources = [r for r in resources if r.kind == "SLO"]
         self.dependency_resources = [r for r in resources if r.kind == "Dependencies"]
         self.full_panels = full_panels
-        self.validation_warnings = []
+        self.validation_warnings: list[str] = []
         self.use_intent_templates = use_intent_templates
 
         # SDK adapter
@@ -81,12 +81,11 @@ class DashboardBuilderSDK:
             self.resolver = MetricResolver(custom_overrides=custom_metric_overrides)
 
         # Validator (optional)
+        self.validator: Optional["DashboardValidator"] = None
         if enable_validation and discovery_client:
             from nthlayer.dashboards.validator import DashboardValidator
 
             self.validator = DashboardValidator(discovery_client)
-        else:
-            self.validator = None
 
     def _extract_custom_overrides(self) -> Dict[str, str]:
         """Extract custom metric overrides from service resources."""
