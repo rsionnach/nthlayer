@@ -139,7 +139,7 @@ class ServiceOrchestrator:
 
         # Get service name
         service_section = self.service_def.get("service", {})
-        self.service_name = service_section.get("name", self.service_yaml.stem)
+        self.service_name = service_section.get("name") or self.service_yaml.stem
 
         # Set default output directory
         if self.output_dir is None:
@@ -165,6 +165,10 @@ class ServiceOrchestrator:
                 service_yaml=self.service_yaml,
                 errors=[f"Failed to load service: {e}"],
             )
+
+        # After _load_service(), these are guaranteed to be set
+        assert self.service_name is not None
+        assert self.service_def is not None
 
         result = PlanResult(service_name=self.service_name, service_yaml=self.service_yaml)
 
@@ -209,6 +213,11 @@ class ServiceOrchestrator:
             return ApplyResult(
                 service_name=self.service_yaml.stem, errors=[f"Failed to load service: {e}"]
             )
+
+        # After _load_service(), these are guaranteed to be set
+        assert self.service_name is not None
+        assert self.service_def is not None
+        assert self.output_dir is not None
 
         result = ApplyResult(service_name=self.service_name, output_dir=self.output_dir)
 
@@ -299,7 +308,8 @@ class ServiceOrchestrator:
 
     def _plan_slos(self) -> List[Dict[str, Any]]:
         """Plan SLO generation."""
-        slo_resources = [r for r in self.service_def.get("resources", []) if r.get("kind") == "SLO"]
+        service_def = self.service_def or {}
+        slo_resources = [r for r in service_def.get("resources", []) if r.get("kind") == "SLO"]
         return [
             {
                 "name": r.get("name"),
@@ -311,9 +321,10 @@ class ServiceOrchestrator:
 
     def _plan_alerts(self) -> List[Dict[str, Any]]:
         """Plan alert generation."""
+        service_def = self.service_def or {}
         # Get dependencies
         deps_resource = next(
-            (r for r in self.service_def.get("resources", []) if r.get("kind") == "Dependencies"),
+            (r for r in service_def.get("resources", []) if r.get("kind") == "Dependencies"),
             None,
         )
 
@@ -334,9 +345,10 @@ class ServiceOrchestrator:
 
     def _plan_dashboard(self) -> List[Dict[str, Any]]:
         """Plan dashboard generation."""
+        service_name = self.service_name or "unknown"
         return [
             {
-                "name": f"{self.service_name}-dashboard",
+                "name": f"{service_name}-dashboard",
                 "panels": "12+",
                 "description": "Auto-generated monitoring dashboard",
             }
@@ -344,22 +356,23 @@ class ServiceOrchestrator:
 
     def _plan_recording_rules(self) -> List[Dict[str, Any]]:
         """Plan recording rule generation."""
-        slo_count = len(
-            [r for r in self.service_def.get("resources", []) if r.get("kind") == "SLO"]
-        )
+        service_def = self.service_def or {}
+        slo_count = len([r for r in service_def.get("resources", []) if r.get("kind") == "SLO"])
         # Roughly 7 rules per SLO
         return [{"type": "SLO metrics", "count": slo_count * 7}]
 
     def _plan_pagerduty(self) -> List[Dict[str, Any]]:
         """Plan PagerDuty service creation."""
+        service_def = self.service_def or {}
+        service_name = self.service_name or "unknown"
         pd_resource = next(
-            (r for r in self.service_def.get("resources", []) if r.get("kind") == "PagerDuty"), None
+            (r for r in service_def.get("resources", []) if r.get("kind") == "PagerDuty"), None
         )
 
         if not pd_resource:
             return []
 
-        service = self.service_def.get("service", {})
+        service = service_def.get("service", {})
         team = service.get("team", "unknown")
         tier = service.get("tier", "medium")
         support_model = service.get("support_model", "self")
@@ -384,7 +397,7 @@ class ServiceOrchestrator:
             },
             {
                 "type": "service",
-                "name": self.service_name,
+                "name": service_name,
                 "tier": tier,
                 "support_model": support_model,
             },
@@ -396,10 +409,12 @@ class ServiceOrchestrator:
         """Generate SLO files."""
         # TODO: Implement actual SLO generation
         # For now, return count
-        slo_resources = [r for r in self.service_def.get("resources", []) if r.get("kind") == "SLO"]
+        service_def = self.service_def or {}
+        output_dir = self.output_dir or Path("generated")
+        slo_resources = [r for r in service_def.get("resources", []) if r.get("kind") == "SLO"]
 
         # Write placeholder file
-        output_file = self.output_dir / "slos.yaml"
+        output_file = output_dir / "slos.yaml"
         with open(output_file, "w") as f:
             yaml.dump({"slos": slo_resources}, f)
 
@@ -409,8 +424,10 @@ class ServiceOrchestrator:
         """Generate alert files."""
         # TODO: Implement actual alert generation using AlertGenerator
         # For now, return estimated count
+        service_def = self.service_def or {}
+        output_dir = self.output_dir or Path("generated")
         deps_resource = next(
-            (r for r in self.service_def.get("resources", []) if r.get("kind") == "Dependencies"),
+            (r for r in service_def.get("resources", []) if r.get("kind") == "Dependencies"),
             None,
         )
 
@@ -418,7 +435,7 @@ class ServiceOrchestrator:
             return 0
 
         # Write placeholder
-        output_file = self.output_dir / "alerts.yaml"
+        output_file = output_dir / "alerts.yaml"
         with open(output_file, "w") as f:
             f.write("# Alerts would be generated here\n")
 
@@ -442,8 +459,9 @@ class ServiceOrchestrator:
         """
         from nthlayer.cli.dashboard import generate_dashboard_command
 
+        output_dir = self.output_dir or Path("generated")
         # Generate dashboard JSON file
-        output_file = self.output_dir / "dashboard.json"
+        output_file = output_dir / "dashboard.json"
         generate_dashboard_command(
             str(self.service_yaml),
             output=str(output_file),
@@ -471,6 +489,8 @@ class ServiceOrchestrator:
 
         from nthlayer.providers.grafana import GrafanaProvider
 
+        service_name = self.service_name or "unknown"
+
         # Get configuration directly from environment (simpler and more reliable)
         grafana_url = os.getenv("NTHLAYER_GRAFANA_URL")
         grafana_api_key = os.getenv("NTHLAYER_GRAFANA_API_KEY")
@@ -497,7 +517,7 @@ class ServiceOrchestrator:
         provider = GrafanaProvider(url=grafana_url, token=grafana_api_key, org_id=grafana_org_id)
 
         # Get dashboard UID from JSON
-        dashboard_uid = dashboard_json.get("uid", self.service_name)
+        dashboard_uid = dashboard_json.get("uid", service_name)
 
         # Push dashboard
         print("📤 Pushing dashboard to Grafana...")
@@ -509,7 +529,7 @@ class ServiceOrchestrator:
                 {
                     "dashboard": dashboard_json,
                     "folderUid": None,  # Use default folder
-                    "title": dashboard_json.get("title", f"{self.service_name} Dashboard"),
+                    "title": dashboard_json.get("title", f"{service_name} Dashboard"),
                 }
             )
 
@@ -539,14 +559,14 @@ class ServiceOrchestrator:
     def _generate_recording_rules(self) -> int:
         """Generate recording rule files."""
         # TODO: Implement actual recording rule generation
-        output_file = self.output_dir / "recording-rules.yaml"
+        service_def = self.service_def or {}
+        output_dir = self.output_dir or Path("generated")
+        output_file = output_dir / "recording-rules.yaml"
         with open(output_file, "w") as f:
             f.write("# Recording rules would be generated here\n")
 
         # Estimate count
-        slo_count = len(
-            [r for r in self.service_def.get("resources", []) if r.get("kind") == "SLO"]
-        )
+        slo_count = len([r for r in service_def.get("resources", []) if r.get("kind") == "SLO"])
         return slo_count * 7
 
     def _generate_pagerduty(self) -> int:
@@ -555,7 +575,10 @@ class ServiceOrchestrator:
         api_key = os.environ.get("PAGERDUTY_API_KEY")
         default_from = os.environ.get("PAGERDUTY_FROM_EMAIL", "nthlayer@example.com")
 
-        service = self.service_def.get("service", {})
+        service_def = self.service_def or {}
+        service_name = self.service_name or "unknown"
+        output_dir = self.output_dir or Path("generated")
+        service = service_def.get("service", {})
         team = service.get("team", "unknown")
         tier = service.get("tier", "medium")
         support_model = service.get("support_model", "self")
@@ -566,9 +589,9 @@ class ServiceOrchestrator:
 
         # If no API key, generate config file only (dry-run mode)
         if not api_key:
-            output_file = self.output_dir / "pagerduty-config.json"
+            output_file = output_dir / "pagerduty-config.json"
             config = {
-                "service_name": self.service_name,
+                "service_name": service_name,
                 "team": team,
                 "tier": tier,
                 "support_model": support_model,
@@ -577,7 +600,7 @@ class ServiceOrchestrator:
                     "team": team,
                     "schedules": [f"{team}-primary", f"{team}-secondary", f"{team}-manager"],
                     "escalation_policy": f"{team}-escalation",
-                    "service": self.service_name,
+                    "service": service_name,
                 },
                 "note": "Set PAGERDUTY_API_KEY to create resources in PagerDuty",
             }
@@ -591,7 +614,7 @@ class ServiceOrchestrator:
             default_from=default_from,
         ) as manager:
             result = manager.setup_service(
-                service_name=self.service_name,
+                service_name=service_name,
                 team=team,
                 tier=tier,
                 support_model=support_model,
@@ -603,7 +626,7 @@ class ServiceOrchestrator:
             raise RuntimeError(f"PagerDuty setup failed: {', '.join(result.errors)}")
 
         # Save result to file
-        output_file = self.output_dir / "pagerduty-result.json"
+        output_file = output_dir / "pagerduty-result.json"
         result_data = {
             "success": result.success,
             "team_id": result.team_id,
@@ -628,7 +651,7 @@ class ServiceOrchestrator:
 
         # Generate Alertmanager config if integration key available
         pd_resource = next(
-            (r for r in self.service_def.get("resources", []) if r.get("kind") == "PagerDuty"),
+            (r for r in service_def.get("resources", []) if r.get("kind") == "PagerDuty"),
             None,
         )
         integration_key = None
@@ -681,8 +704,10 @@ class ServiceOrchestrator:
         sre_integration_key: str | None = None,
     ) -> None:
         """Generate Alertmanager configuration with PagerDuty receiver."""
+        service_name = self.service_name or "unknown"
+        output_dir = self.output_dir or Path("generated")
         config = generate_alertmanager_config(
-            service_name=self.service_name,
+            service_name=service_name,
             team=team,
             pagerduty_integration_key=integration_key,
             support_model=support_model,
@@ -691,6 +716,6 @@ class ServiceOrchestrator:
         )
 
         # Write Alertmanager config
-        output_file = self.output_dir / "alertmanager.yaml"
+        output_file = output_dir / "alertmanager.yaml"
         config.write(output_file)
         print(f"✅ Alertmanager config: {output_file}")
