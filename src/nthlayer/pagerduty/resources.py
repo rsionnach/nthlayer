@@ -263,7 +263,8 @@ class PagerDutyResourceManager:
 
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             result.success = False
-            result.errors.append(f"PagerDuty API error: {e.response.status_code}")
+            status = getattr(e.response, "status_code", "unknown")
+            result.errors.append(f"PagerDuty API error: {status}")
         except Exception as e:
             result.success = False
             result.errors.append(f"Unexpected error: {e}")
@@ -313,9 +314,10 @@ class PagerDutyResourceManager:
                 created=True,
             )
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
+            error_text = getattr(e.response, "text", str(e))
             return ResourceResult(
                 success=False,
-                error=f"Failed to create team: {e.response.text}",
+                error=f"Failed to create team: {error_text}",
             )
 
     def get_current_user_id(self) -> str | None:
@@ -360,7 +362,7 @@ class PagerDutyResourceManager:
             )
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
             # Check if user is already a member (409 Conflict)
-            if hasattr(e, "response") and e.response.status_code == 409:
+            if getattr(e.response, "status_code", None) == 409:
                 return ResourceResult(
                     success=True,
                     resource_id=user_id,
@@ -368,7 +370,7 @@ class PagerDutyResourceManager:
                     created=False,
                     warnings=["User already member of team"],
                 )
-            err_text = e.response.text if hasattr(e, "response") else str(e)
+            err_text = getattr(e.response, "text", str(e))
             return ResourceResult(
                 success=False,
                 error=f"Failed to add team member: {err_text}",
@@ -464,9 +466,10 @@ class PagerDutyResourceManager:
                 ],
             )
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
+            error_text = getattr(e.response, "text", str(e))
             return ResourceResult(
                 success=False,
-                error=f"Failed to create schedule: {e.response.text}",
+                error=f"Failed to create schedule: {error_text}",
             )
 
     def ensure_escalation_policy(
@@ -548,9 +551,10 @@ class PagerDutyResourceManager:
                 created=True,
             )
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
+            error_text = getattr(e.response, "text", str(e))
             return ResourceResult(
                 success=False,
-                error=f"Failed to create escalation policy: {e.response.text}",
+                error=f"Failed to create escalation policy: {error_text}",
             )
 
     def ensure_service(
@@ -619,9 +623,10 @@ class PagerDutyResourceManager:
                 created=True,
             )
         except (pagerduty.HttpError, pagerduty.ServerHttpError) as e:
+            error_text = getattr(e.response, "text", str(e))
             return ResourceResult(
                 success=False,
-                error=f"Failed to create service: {e.response.text}",
+                error=f"Failed to create service: {error_text}",
             )
 
     def _find_team(self, team_name: str) -> dict[str, Any] | None:
