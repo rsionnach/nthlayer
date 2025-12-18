@@ -26,13 +26,13 @@ async def process_job(payload: dict[str, Any], settings: Settings) -> None:
     job_id = payload["job_id"]
     body = payload.get("payload", {})
     team_id = body["team_id"]
-    
+
     log = logger.bind(job_id=job_id, team_id=team_id)
     metrics = get_metrics_collector("NthLayer", settings.aws_region)
 
-    cortex_token = settings.cortex_token.get_secret_value() if settings.cortex_token else None
-    pagerduty_token = settings.pagerduty_token.get_secret_value() if settings.pagerduty_token else None
-    slack_token = settings.slack_bot_token.get_secret_value() if settings.slack_bot_token else None
+    cortex_token = settings.cortex_token
+    pagerduty_token = settings.pagerduty_token
+    slack_token = settings.slack_bot_token
 
     pagerduty_provider = create_provider(
         "pagerduty",
@@ -45,10 +45,10 @@ async def process_job(payload: dict[str, Any], settings: Settings) -> None:
     async for session in get_session():
         repo = RunRepository(session)
         start_ts = time.time()
-        
+
         log.info("job_started")
         await metrics.emit("JobStarted", 1, JobType=payload.get("job_type", "unknown"))
-        
+
         await repo.update_status(job_id, RunStatus.running, started_at=start_ts)
         await session.commit()
 
@@ -116,7 +116,7 @@ async def handle_event(event: dict[str, Any], settings: Settings) -> dict[str, A
     """
     records = event.get("Records", [])
     failed_message_ids = []
-    
+
     for record in records:
         message_id = record.get("messageId")
         try:
@@ -129,12 +129,8 @@ async def handle_event(event: dict[str, Any], settings: Settings) -> dict[str, A
                 error=str(exc),
             )
             failed_message_ids.append(message_id)
-    
-    return {
-        "batchItemFailures": [
-            {"itemIdentifier": msg_id} for msg_id in failed_message_ids
-        ]
-    }
+
+    return {"batchItemFailures": [{"itemIdentifier": msg_id} for msg_id in failed_message_ids]}
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -142,11 +138,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     configure_logging()
     init_engine(settings)
     init_xray("nthlayer-worker")
-    
+
     logger.info(
         "lambda_invoked",
         request_id=getattr(context, "aws_request_id", "unknown"),
         record_count=len(event.get("Records", [])),
     )
-    
+
     return asyncio.run(handle_event(event, settings))

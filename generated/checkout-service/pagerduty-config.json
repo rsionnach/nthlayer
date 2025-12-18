@@ -1,0 +1,18 @@
+{
+  "service_name": "checkout-service",
+  "team": "commerce",
+  "tier": "critical",
+  "support_model": "self",
+  "timezone": "America/New_York",
+  "resources_to_create": {
+    "team": "commerce",
+    "schedules": [
+      "commerce-primary",
+      "commerce-secondary",
+      "commerce-manager"
+    ],
+    "escalation_policy": "commerce-escalation",
+    "service": "checkout-service"
+  },
+  "note": "Set PAGERDUTY_API_KEY to create resources in PagerDuty"
+}

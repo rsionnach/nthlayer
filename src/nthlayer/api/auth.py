@@ -40,8 +40,9 @@ class JWTValidator:
         async with httpx.AsyncClient() as client:
             response = await client.get(jwks_url)
             response.raise_for_status()
-            self._jwks = response.json()
-            return self._jwks
+            jwks_data: dict[str, Any] = response.json()
+            self._jwks = jwks_data
+            return jwks_data
 
     async def validate_token(self, token: str) -> dict[str, Any]:
         """Validate JWT token and return claims."""

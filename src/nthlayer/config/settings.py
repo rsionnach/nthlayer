@@ -60,7 +60,26 @@ class Settings(BaseSettings):
 
     # Cognito (for API authentication)
     cognito_user_pool_id: str | None = None
+    cognito_region: str | None = None
+    cognito_audience: str | None = None
     jwt_jwks_url: str | None = None
+    jwt_issuer: str | None = None
+
+    # HTTP client settings
+    http_timeout: int = 30
+    http_max_retries: int = 3
+    http_retry_backoff_factor: float = 0.5
+
+    # External service URLs
+    cortex_base_url: str = "https://api.cortex.io"
+    pagerduty_base_url: str = "https://api.pagerduty.com"
+    pagerduty_from_email: str = "nthlayer@example.com"
+
+    # API tokens (SecretStr for security)
+    cortex_token: str | None = None
+    pagerduty_token: str | None = None
+    slack_bot_token: str | None = None
+    slack_default_channel: str | None = None
 
     class Config:
         env_file = ".env"
