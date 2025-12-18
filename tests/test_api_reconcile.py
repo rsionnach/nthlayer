@@ -73,7 +73,7 @@ async def test_team_reconcile_enqueues_job() -> None:
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/v1/teams/reconcile",
+            "/api/v1/teams/reconcile",
             json={"team_id": "team-123", "desired": {"id": "team-123", "name": "Team"}},
             headers={"X-Principal-Id": "user-1"},
         )
@@ -96,7 +96,7 @@ async def test_team_reconcile_rolls_back_on_enqueue_failure() -> None:
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/v1/teams/reconcile",
+            "/api/v1/teams/reconcile",
             json={"team_id": "team-123", "desired": {"id": "team-123", "name": "Team"}},
             headers={"X-Principal-Id": "user-1"},
         )
