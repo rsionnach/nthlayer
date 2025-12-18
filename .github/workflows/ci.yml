@@ -47,8 +47,6 @@ jobs:
       - name: Run tests
         run: |
           pytest tests/ \
-            --ignore=tests/test_api_reconcile.py \
-            --ignore=tests/test_repository.py \
             --ignore=tests/integration/ \
             -v --tb=short \
             -x
