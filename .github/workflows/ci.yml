@@ -40,10 +40,9 @@ jobs:
           ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E721,E722,B012,I001
 
       - name: Run type checking
-        # TODO: Make mypy blocking once type errors are fixed (50+ errors currently)
         run: |
           pip install mypy types-redis types-requests types-PyYAML
-          mypy src/nthlayer --ignore-missing-imports --no-error-summary || true
+          mypy src/nthlayer --ignore-missing-imports --no-error-summary
 
       - name: Run tests
         run: |
