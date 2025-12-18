@@ -102,6 +102,7 @@ class ConftestValidator:
     def _validate_with_conftest(self, file_path: Path) -> ValidationResult:
         """Validate using conftest binary."""
         result = ValidationResult(file_path=file_path)
+        assert self._conftest_path is not None  # Checked by is_available()
 
         cmd = [
             self._conftest_path,

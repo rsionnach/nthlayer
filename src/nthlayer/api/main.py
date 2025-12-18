@@ -50,6 +50,6 @@ app = create_app()
 try:
     from mangum import Mangum
 
-    handler = Mangum(app)
+    handler: Mangum | None = Mangum(app)
 except ImportError:  # pragma: no cover
     handler = None

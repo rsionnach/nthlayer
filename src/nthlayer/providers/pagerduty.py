@@ -46,7 +46,7 @@ class PagerDutyProvider(Provider):
         self._client = factory(token, default_from=default_from or "nthlayer@example.com")
         if base_url:
             # RestApiV2Client stores the base URL on the protected attribute.
-            self._client._base_url = base_url.rstrip("/")  # type: ignore[attr-defined]
+            self._client._base_url = base_url.rstrip("/")  # type: ignore[attr-defined,assignment]
 
     async def aclose(self) -> None:
         await asyncio.to_thread(self._client.close)

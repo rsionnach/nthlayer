@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     slack_bot_token: str | None = None
     slack_default_channel: str | None = None
 
+    # Queue settings
+    sqs_queue_url: str | None = None
+    job_queue_backend: str = "memory"  # memory, sqs, redis
+
+    # Redis settings
+    redis_max_connections: int = 10
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

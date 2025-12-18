@@ -24,7 +24,7 @@ class RunRepository:
         stmt = insert(db_models.IdempotencyKey).values(team_id=team_id, idem_key=key)
         stmt = stmt.on_conflict_do_nothing(constraint="uq_team_idem")
         result = await self.session.execute(stmt)
-        if result.rowcount == 0:
+        if result.rowcount == 0:  # type: ignore[attr-defined]
             raise IdempotencyConflict(key)
 
     async def create_run(self, run: Run) -> None:

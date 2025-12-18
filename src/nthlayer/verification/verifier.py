@@ -156,7 +156,7 @@ class MetricVerifier:
             Tuple of (exists, sample_labels)
         """
         url = f"{self.prometheus_url}/api/v1/series"
-        params = {"match[]": selector, "limit": 1}
+        params: dict[str, str | int] = {"match[]": selector, "limit": 1}
 
         try:
             with httpx.Client(timeout=self.timeout) as client:

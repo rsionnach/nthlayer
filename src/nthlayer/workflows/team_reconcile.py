@@ -96,9 +96,10 @@ class TeamReconcileWorkflow:
     async def _compute_diff(self, state: TeamReconcileState) -> TeamReconcileState:
         job_id = state["job_id"]
         desired = state.get("desired") or (state.get("cortex_team") or {})
-        desired_manager_ids = {str(m) for m in desired.get("managers", [])}
+        desired_manager_ids = {str(m) for m in (desired.get("managers") or [])}
 
-        members = state.get("pagerduty_team", {}).get("members", [])
+        pagerduty_team = state.get("pagerduty_team") or {}
+        members = pagerduty_team.get("members", [])
         current_manager_ids = {member["user"]["id"] for member in members if member.get("user")}
 
         to_add = sorted(desired_manager_ids - current_manager_ids)

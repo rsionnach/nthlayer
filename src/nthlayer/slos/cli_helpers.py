@@ -35,12 +35,15 @@ async def get_cli_session() -> AsyncIterator[AsyncSession]:
         break
 
 
-async def save_slo_to_db(slo: SLO) -> None:
+async def save_slo_to_db(slo: SLO) -> str:
     """
     Save SLO to database.
     
     Args:
         slo: SLO object to save
+        
+    Returns:
+        Action taken ("created" or "updated")
         
     Raises:
         Exception: If database operation fails

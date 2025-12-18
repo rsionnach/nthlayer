@@ -353,11 +353,11 @@ class SecretResolver:
 
     def list_secrets(self) -> dict[str, list[str]]:
         """List all available secrets by backend."""
-        result = {}
+        result: dict[str, list[str]] = {}
         for name, backend in self._backends.items():
             secrets = backend.list_secrets()
             if secrets:
-                result[name] = secrets
+                result[str(name)] = secrets
         return result
 
     def verify_secrets(self, paths: list[str]) -> dict[str, tuple[bool, str | None]]:

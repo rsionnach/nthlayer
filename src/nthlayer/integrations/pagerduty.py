@@ -142,7 +142,7 @@ class PagerDutyClient:
                 warnings.append(f"Created default escalation policy '{default_ep_name}'")
             
             # Step 3: Create service
-            service_config = {
+            service_config: dict[str, Any] = {
                 "name": service_name,
                 "escalation_policy": {
                     "id": ep_id,

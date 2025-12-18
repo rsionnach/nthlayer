@@ -77,16 +77,19 @@ def config_show_command(reveal_secrets: bool = False) -> int:
     
     print("Grafana:")
     print(f"  Default profile: {config.grafana.default}")
-    for name, profile in config.grafana.profiles.items():
+    for name, grafana_profile in config.grafana.profiles.items():
         marker = " *" if name == config.grafana.default else ""
         print(f"  [{name}]{marker}")
-        print(f"    Type: {profile.type}")
-        print(f"    URL: {profile.url}")
-        print(f"    Org ID: {profile.org_id}")
-        if profile.api_key_secret:
+        print(f"    Type: {grafana_profile.type}")
+        print(f"    URL: {grafana_profile.url}")
+        print(f"    Org ID: {grafana_profile.org_id}")
+        if grafana_profile.api_key_secret:
             if reveal_secrets:
-                key = profile.get_api_key()
-                print(f"    API Key: {key[:8]}...{key[-4:] if key else '(not set)'}")
+                key = grafana_profile.get_api_key()
+                if key:
+                    print(f"    API Key: {key[:8]}...{key[-4:]}")
+                else:
+                    print("    API Key: (not set)")
             else:
                 print("    API Key: ****")
     print()
