@@ -38,7 +38,7 @@ architecture-beta
     group nthlayer(mdi:cog) [NthLayer Platform]
     group observability(mdi:chart-line) [Observability Stack]
 
-    service specs(mdi:file-code) [Service YAML Files] in git
+    service specs(mdi:file-code) [Service Definitions] in git
 
     service reslayer(mdi:target) [ResLayer SLOs] in nthlayer
     service govlayer(mdi:shield-check) [GovLayer Policies] in nthlayer

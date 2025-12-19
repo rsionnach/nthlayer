@@ -15,7 +15,7 @@ architecture-beta
     service backstage(logos:backstage-icon) [Backstage] in sources
     service cortex(mdi:hexagon-outline) [Cortex] in sources
     service port(mdi:gate) [Port] in sources
-    service yml(mdi:file-code) [NthLayer YAML] in sources
+    service ymlfile(mdi:file-code) [NthLayer Config] in sources
 
     service api(logos:fastapi) [FastAPI API] in engine
     service wf(mdi:workflow) [LangGraph Workflows] in engine
@@ -30,7 +30,7 @@ architecture-beta
     backstage:R --> L:api
     cortex:R --> L:api
     port:R --> L:api
-    yml:R --> L:api
+    ymlfile:R --> L:api
 
     api:R --> L:wf
     wf:B --> T:db

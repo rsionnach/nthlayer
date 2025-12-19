@@ -12,7 +12,7 @@ architecture-beta
     group nthlayer(mdi:cog) [NthLayer Platform]
     group observability(mdi:cloud) [Observability Stack]
 
-    service specs(mdi:file-code) [Service YAML Files] in git
+    service specs(mdi:file-code) [Service Definitions] in git
 
     service reslayer(mdi:target) [ResLayer SLOs] in nthlayer
     service govlayer(mdi:shield-check) [GovLayer Policies] in nthlayer
@@ -43,7 +43,7 @@ architecture-beta
     group processing(mdi:cog) [NthLayer Processing]
     group output(mdi:package-variant) [Generated Artifacts]
 
-    service yaml(mdi:file-code) [Service YAML] in input
+    service yamlfile(mdi:file-code) [Service Spec] in input
 
     service parser(mdi:file-search) [Spec Parser] in processing
     service slogen(mdi:target) [SLO Generator] in processing
@@ -51,23 +51,23 @@ architecture-beta
     service dashgen(mdi:view-dashboard) [Dashboard Builder] in processing
     service pdgen(logos:pagerduty) [PagerDuty Setup] in processing
 
-    service slos(mdi:file-check) [SLOs YAML] in output
-    service alerts(mdi:file-alert) [Alerts YAML] in output
-    service dashboard(mdi:file-chart) [Dashboard JSON] in output
-    service recording(mdi:file-clock) [Recording Rules] in output
-    service pdconfig(mdi:file-cog) [PagerDuty Config] in output
+    service slofile(mdi:file-check) [SLO File] in output
+    service alertfile(mdi:file-alert) [Alert File] in output
+    service dashfile(mdi:file-chart) [Dashboard File] in output
+    service recfile(mdi:file-clock) [Recording Rules] in output
+    service pdfile(mdi:file-cog) [PagerDuty Config] in output
 
-    yaml:R --> L:parser
+    yamlfile:R --> L:parser
     parser:R --> L:slogen
     parser:R --> L:alertgen
     parser:R --> L:dashgen
     parser:R --> L:pdgen
 
-    slogen:R --> L:slos
-    slogen:R --> L:recording
-    alertgen:R --> L:alerts
-    dashgen:R --> L:dashboard
-    pdgen:R --> L:pdconfig
+    slogen:R --> L:slofile
+    slogen:R --> L:recfile
+    alertgen:R --> L:alertfile
+    dashgen:R --> L:dashfile
+    pdgen:R --> L:pdfile
 ```
 
 ## Integration Architecture
@@ -178,27 +178,27 @@ architecture-beta
     group applyflow(mdi:arrow-right) [Apply Flow]
     group portfolioflow(mdi:arrow-right) [Portfolio Flow]
 
-    service yaml(mdi:file-code) [Service YAML] in applyflow
-    service apply(mdi:play) [NthLayer Apply] in applyflow
-    service alerts(logos:prometheus) [Prometheus Alerts] in applyflow
-    service dashboard(logos:grafana) [Grafana Dashboard] in applyflow
+    service specfile(mdi:file-code) [Service Spec] in applyflow
+    service ntlapply(mdi:play) [NthLayer Apply] in applyflow
+    service promalerts(logos:prometheus) [Prometheus Alerts] in applyflow
+    service grafdash(logos:grafana) [Grafana Dashboard] in applyflow
     service pdsetup(logos:pagerduty) [PagerDuty Setup] in applyflow
-    service rules(mdi:file-clock) [Recording Rules] in applyflow
-    service slos(mdi:target) [SLO Definitions] in applyflow
+    service recrules(mdi:file-clock) [Recording Rules] in applyflow
+    service slodefs(mdi:target) [SLO Definitions] in applyflow
 
-    service portfolio(mdi:chart-box) [NthLayer Portfolio] in portfolioflow
-    service scan(mdi:file-search) [Scan Services] in portfolioflow
-    service aggregate(mdi:chart-timeline-variant) [Aggregate SLOs] in portfolioflow
-    service report(mdi:file-chart) [Health Report] in portfolioflow
+    service ntlportfolio(mdi:chart-box) [NthLayer Portfolio] in portfolioflow
+    service scansvcs(mdi:file-search) [Scan Services] in portfolioflow
+    service aggrslos(mdi:chart-timeline-variant) [Aggregate SLOs] in portfolioflow
+    service healthrpt(mdi:file-chart) [Health Report] in portfolioflow
 
-    yaml:R --> L:apply
-    apply:R --> L:alerts
-    apply:R --> L:dashboard
-    apply:R --> L:pdsetup
-    apply:R --> L:rules
-    apply:R --> L:slos
+    specfile:R --> L:ntlapply
+    ntlapply:R --> L:promalerts
+    ntlapply:R --> L:grafdash
+    ntlapply:R --> L:pdsetup
+    ntlapply:R --> L:recrules
+    ntlapply:R --> L:slodefs
 
-    portfolio:R --> L:scan
-    scan:R --> L:aggregate
-    aggregate:R --> L:report
+    ntlportfolio:R --> L:scansvcs
+    scansvcs:R --> L:aggrslos
+    aggrslos:R --> L:healthrpt
 ```
