@@ -5,31 +5,32 @@ Tests for deployment gate CLI command.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nthlayer.cli.deploy import (
-    _collect_slo_metrics,
-    _parse_window_minutes,
-    check_deploy_command,
-)
+from nthlayer.cli.deploy import check_deploy_command
+from nthlayer.slos.collector import SLOMetricCollector
 
 
 class TestParseWindowMinutes:
     """Test window parsing."""
 
     def test_parse_days(self):
-        assert _parse_window_minutes("30d") == 30 * 24 * 60
-        assert _parse_window_minutes("7d") == 7 * 24 * 60
+        collector = SLOMetricCollector()
+        assert collector._parse_window_minutes("30d") == 30 * 24 * 60
+        assert collector._parse_window_minutes("7d") == 7 * 24 * 60
 
     def test_parse_hours(self):
-        assert _parse_window_minutes("24h") == 24 * 60
-        assert _parse_window_minutes("1h") == 60
+        collector = SLOMetricCollector()
+        assert collector._parse_window_minutes("24h") == 24 * 60
+        assert collector._parse_window_minutes("1h") == 60
 
     def test_parse_weeks(self):
-        assert _parse_window_minutes("1w") == 7 * 24 * 60
-        assert _parse_window_minutes("4w") == 4 * 7 * 24 * 60
+        collector = SLOMetricCollector()
+        assert collector._parse_window_minutes("1w") == 7 * 24 * 60
+        assert collector._parse_window_minutes("4w") == 4 * 7 * 24 * 60
 
     def test_parse_default(self):
         # Unknown format defaults to 30 days
-        assert _parse_window_minutes("unknown") == 30 * 24 * 60
+        collector = SLOMetricCollector()
+        assert collector._parse_window_minutes("unknown") == 30 * 24 * 60
 
 
 class TestCheckDeployCommand:
@@ -105,17 +106,16 @@ class TestCollectSLOMetrics:
         slo_resources = [mock_slo]
 
         with patch(
-            "nthlayer.providers.prometheus.PrometheusProvider",
+            "nthlayer.slos.collector.PrometheusProvider",
             return_value=mock_provider_instance,
         ):
-            results = await _collect_slo_metrics(
-                slo_resources, "http://prometheus:9090", "test-service"
-            )
+            collector = SLOMetricCollector("http://prometheus:9090")
+            results = await collector.collect(slo_resources, "test-service")
 
         assert len(results) == 1
-        assert results[0]["name"] == "availability"
-        assert results[0]["current_sli"] == 99.99
-        assert results[0]["status"] == "HEALTHY"
+        assert results[0].name == "availability"
+        assert results[0].current_sli == 99.99
+        assert results[0].status == "HEALTHY"
 
     @pytest.mark.asyncio
     async def test_collect_metrics_no_data(self):
@@ -133,15 +133,14 @@ class TestCollectSLOMetrics:
         slo_resources = [mock_slo]
 
         with patch(
-            "nthlayer.providers.prometheus.PrometheusProvider",
+            "nthlayer.slos.collector.PrometheusProvider",
             return_value=mock_provider_instance,
         ):
-            results = await _collect_slo_metrics(
-                slo_resources, "http://prometheus:9090", "test-service"
-            )
+            collector = SLOMetricCollector("http://prometheus:9090")
+            results = await collector.collect(slo_resources, "test-service")
 
         assert len(results) == 1
-        assert results[0]["status"] == "NO_DATA"
+        assert results[0].status == "NO_DATA"
 
     @pytest.mark.asyncio
     async def test_collect_metrics_error(self):
@@ -163,16 +162,15 @@ class TestCollectSLOMetrics:
         slo_resources = [mock_slo]
 
         with patch(
-            "nthlayer.providers.prometheus.PrometheusProvider",
+            "nthlayer.slos.collector.PrometheusProvider",
             return_value=mock_provider_instance,
         ):
-            results = await _collect_slo_metrics(
-                slo_resources, "http://prometheus:9090", "test-service"
-            )
+            collector = SLOMetricCollector("http://prometheus:9090")
+            results = await collector.collect(slo_resources, "test-service")
 
         assert len(results) == 1
-        assert results[0]["status"] == "ERROR"
-        assert "Connection failed" in results[0]["error"]
+        assert results[0].status == "ERROR"
+        assert "Connection failed" in results[0].error
 
     @pytest.mark.asyncio
     async def test_budget_calculation(self):
@@ -191,18 +189,17 @@ class TestCollectSLOMetrics:
         slo_resources = [mock_slo]
 
         with patch(
-            "nthlayer.providers.prometheus.PrometheusProvider",
+            "nthlayer.slos.collector.PrometheusProvider",
             return_value=mock_provider_instance,
         ):
-            results = await _collect_slo_metrics(
-                slo_resources, "http://prometheus:9090", "test-service"
-            )
+            collector = SLOMetricCollector("http://prometheus:9090")
+            results = await collector.collect(slo_resources, "test-service")
 
         # With 0.5% error rate and 0.1% budget, we're at 500% consumption
         # (but capped at actual minutes)
-        assert results[0]["current_sli"] == 99.5
-        assert results[0]["burned_minutes"] is not None
-        assert results[0]["percent_consumed"] > 100  # Budget exhausted
+        assert results[0].current_sli == 99.5
+        assert results[0].burned_minutes is not None
+        assert results[0].percent_consumed > 100  # Budget exhausted
 
 
 class TestIntegration:
@@ -233,7 +230,7 @@ resources:
         mock_provider_instance.get_sli_value = AsyncMock(return_value=0.9995)
 
         with patch(
-            "nthlayer.providers.prometheus.PrometheusProvider",
+            "nthlayer.slos.collector.PrometheusProvider",
             return_value=mock_provider_instance,
         ):
             result = check_deploy_command(
@@ -270,7 +267,7 @@ resources:
         mock_provider_instance.get_sli_value = AsyncMock(return_value=0.99)
 
         with patch(
-            "nthlayer.providers.prometheus.PrometheusProvider",
+            "nthlayer.slos.collector.PrometheusProvider",
             return_value=mock_provider_instance,
         ):
             result = check_deploy_command(

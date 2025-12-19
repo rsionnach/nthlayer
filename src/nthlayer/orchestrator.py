@@ -119,6 +119,15 @@ class ResourceDetector:
 class ServiceOrchestrator:
     """Orchestrates generation of all resources for a service."""
 
+    # Dispatch table mapping resource types to (generator_method, display_name)
+    GENERATORS: Dict[str, tuple[str, str]] = {
+        "slos": ("_generate_slos", "SLOs"),
+        "alerts": ("_generate_alerts", "alerts"),
+        "dashboard": ("_generate_dashboard", "dashboard"),
+        "recording-rules": ("_generate_recording_rules", "recording rules"),
+        "pagerduty": ("_generate_pagerduty", "PagerDuty"),
+    }
+
     def __init__(
         self, service_yaml: Path, env: Optional[str] = None, push_to_grafana: bool = False
     ):
@@ -220,89 +229,61 @@ class ServiceOrchestrator:
         assert self.output_dir is not None
 
         result = ApplyResult(service_name=self.service_name, output_dir=self.output_dir)
-
-        # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Detect what resources to generate
-        detector = ResourceDetector(self.service_def)
+        # Get filtered resource types
+        resource_types = self._get_filtered_resources(skip, only)
+        total_steps = len(resource_types)
+
+        # Generate each resource type using dispatch table
+        for step, resource_type in enumerate(resource_types, 1):
+            method_name, display_name = self.GENERATORS[resource_type]
+
+            if verbose:
+                print(f"[{step}/{total_steps}] Generating {display_name}...")
+
+            try:
+                generator = getattr(self, method_name)
+                # Dashboard generator needs push_to_grafana arg
+                if resource_type == "dashboard":
+                    count = generator(push_to_grafana=self.push_to_grafana)
+                else:
+                    count = generator()
+                result.resources_created[resource_type] = count
+                if verbose:
+                    self._log_success(resource_type, count, display_name)
+            except Exception as e:
+                result.errors.append(f"{display_name.capitalize()} generation failed: {e}")
+
+        result.duration_seconds = time.time() - start
+        return result
+
+    def _get_filtered_resources(
+        self, skip: Optional[List[str]], only: Optional[List[str]]
+    ) -> List[str]:
+        """Detect and filter resource types to generate."""
+        service_def = self.service_def or {}
+        detector = ResourceDetector(service_def)
         resource_types = detector.detect()
 
-        # Apply filters
         if only:
             resource_types = [r for r in resource_types if r in only]
         if skip:
             resource_types = [r for r in resource_types if r not in skip]
 
-        # Generate each resource type
-        step = 1
-        total_steps = len(resource_types)
+        return resource_types
 
-        if "slos" in resource_types:
-            if verbose:
-                print(f"[{step}/{total_steps}] Generating SLOs...")
-            try:
-                count = self._generate_slos()
-                result.resources_created["slos"] = count
-                if verbose:
-                    print(f"✅ {count} SLOs created")
-            except Exception as e:
-                result.errors.append(f"SLO generation failed: {e}")
-            step += 1
-
-        if "alerts" in resource_types:
-            if verbose:
-                print(f"[{step}/{total_steps}] Generating alerts...")
-            try:
-                count = self._generate_alerts()
-                result.resources_created["alerts"] = count
-                if verbose:
-                    print(f"✅ {count} alerts created")
-            except Exception as e:
-                result.errors.append(f"Alert generation failed: {e}")
-            step += 1
-
-        if "dashboard" in resource_types:
-            if verbose:
-                print(f"[{step}/{total_steps}] Generating dashboard...")
-            try:
-                count = self._generate_dashboard(push_to_grafana=self.push_to_grafana)
-                result.resources_created["dashboard"] = count
-                if verbose:
-                    if self.push_to_grafana:
-                        print("✅ Dashboard created and pushed to Grafana")
-                    else:
-                        print("✅ Dashboard created")
-            except Exception as e:
-                result.errors.append(f"Dashboard generation failed: {e}")
-            step += 1
-
-        if "recording-rules" in resource_types:
-            if verbose:
-                print(f"[{step}/{total_steps}] Generating recording rules...")
-            try:
-                count = self._generate_recording_rules()
-                result.resources_created["recording-rules"] = count
-                if verbose:
-                    print(f"✅ {count} recording rules created")
-            except Exception as e:
-                result.errors.append(f"Recording rule generation failed: {e}")
-            step += 1
-
-        if "pagerduty" in resource_types:
-            if verbose:
-                print(f"[{step}/{total_steps}] Setting up PagerDuty...")
-            try:
-                count = self._generate_pagerduty()
-                result.resources_created["pagerduty"] = count
-                if verbose:
-                    print("✅ PagerDuty service created")
-            except Exception as e:
-                result.errors.append(f"PagerDuty setup failed: {e}")
-            step += 1
-
-        result.duration_seconds = time.time() - start
-        return result
+    def _log_success(self, resource_type: str, count: int, display_name: str) -> None:
+        """Log success message for a generated resource."""
+        if resource_type == "dashboard":
+            if self.push_to_grafana:
+                print("✅ Dashboard created and pushed to Grafana")
+            else:
+                print("✅ Dashboard created")
+        elif resource_type == "pagerduty":
+            print("✅ PagerDuty service created")
+        else:
+            print(f"✅ {count} {display_name} created")
 
     # Planning methods (return summaries, don't generate files)
 

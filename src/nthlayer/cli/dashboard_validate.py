@@ -5,12 +5,15 @@ from typing import Optional
 import yaml
 
 from nthlayer.cli.ux import console, error, header, info, success, warning
-from nthlayer.dashboards.intents import (
-    ALL_INTENTS,
-    get_intents_for_technology,
-    list_technologies,
+from nthlayer.dashboards.intents import ALL_INTENTS, get_intents_for_technology, list_technologies
+from nthlayer.dashboards.resolver import ResolutionStatus
+from nthlayer.dashboards.validator import (
+    DashboardValidator,
+    IntentResult,
+    ValidationResult,
+    extract_custom_overrides,
+    extract_technologies,
 )
-from nthlayer.dashboards.resolver import ResolutionStatus, create_resolver
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -20,174 +23,47 @@ def validate_dashboard_command(
     technology: Optional[str] = None,
     show_all: bool = False,
 ) -> int:
-    """Validate dashboard metric resolution for a service.
-
-    This command discovers metrics from Prometheus and shows how each
-    intent would be resolved, including fallbacks and guidance.
-
-    Args:
-        service_file: Path to service YAML file
-        prometheus_url: Prometheus URL for metric discovery
-        technology: Specific technology to validate (postgresql, redis, etc.)
-        show_all: Show all intents, not just those for service dependencies
-
-    Returns:
-        Exit code (0 for success, 1 for errors, 2 for warnings)
-    """
-    header("Dashboard Metric Validation")
-
+    """Validate dashboard metric resolution for a service."""
     header("Dashboard Metric Validation")
     console.print()
 
     try:
-        # Parse service file
-        console.print(f"[cyan]Service:[/cyan] {service_file}")
         context, resources = parse_service_file(service_file)
+        _display_service_info(service_file, context)
 
-        console.print(f"   [muted]Name:[/muted] {context.name}")
-        console.print(f"   [muted]Team:[/muted] {context.team}")
-        console.print()
-
-        # Extract dependencies
-        dependencies = [r for r in resources if r.kind == "Dependencies"]
-        technologies = set()
-
-        for dep in dependencies:
-            spec = dep.spec if hasattr(dep, "spec") else {}
-            databases = spec.get("databases", []) if isinstance(spec, dict) else []
-            caches = spec.get("caches", []) if isinstance(spec, dict) else []
-
-            for db in databases:
-                db_type = db.get("type", "") if isinstance(db, dict) else getattr(db, "type", "")
-                if db_type:
-                    technologies.add(db_type)
-            for cache in caches:
-                cache_type = (
-                    cache.get("type", "redis")
-                    if isinstance(cache, dict)
-                    else getattr(cache, "type", "redis")
-                )
-                technologies.add(cache_type)
-
-        # Always include HTTP for API services
-        if context.type in ("api", "service", "web"):
-            technologies.add("http")
-
-        # Filter by technology if specified
+        # Determine technologies to validate
+        technologies = extract_technologies(context, resources)
         if technology:
             technologies = {technology}
 
-        tech_list = ", ".join(sorted(technologies)) or "none detected"
-        console.print(f"[muted]Technologies to validate:[/muted] {tech_list}")
-        console.print()
+        _display_technologies(technologies)
 
-        # Create resolver
-        custom_overrides = {}
-        for resource in resources:
-            if hasattr(resource, "spec") and isinstance(resource.spec, dict):
-                metrics = resource.spec.get("metrics", {})
-                if isinstance(metrics, dict):
-                    custom_overrides.update(metrics)
+        # Run validation
+        custom_overrides = extract_custom_overrides(resources)
+        validator = DashboardValidator(prometheus_url)
 
-        resolver = create_resolver(prometheus_url=prometheus_url, custom_overrides=custom_overrides)
-
-        # Discover metrics if Prometheus URL provided
         if prometheus_url:
-            console.print(f"[cyan]Discovering metrics from {prometheus_url}...[/cyan]")
-            try:
-                count = resolver.discover_for_service(context.name)
-                console.print(f"   [success]✓[/success] Found {count} metrics")
-                console.print()
-            except (ConnectionError, TimeoutError, ValueError, OSError) as e:
-                warning(f"Discovery failed: {e}")
-                console.print("   [muted]Continuing without discovery (intents unresolved)[/muted]")
-                console.print()
-        else:
-            info("No Prometheus URL provided - showing intent structure only")
-            console.print(
-                "   [muted]Tip: Add --prometheus-url to validate against real metrics[/muted]"
-            )
-            console.print()
+            _display_discovery_start(prometheus_url)
 
-        # Collect intents to validate
-        intents_to_check = []
-        if show_all:
-            intents_to_check = list(ALL_INTENTS.keys())
-        else:
-            for tech in technologies:
-                tech_intents = get_intents_for_technology(tech)
-                intents_to_check.extend(tech_intents.keys())
+        result = validator.validate(
+            service_name=context.name,
+            technologies=technologies,
+            custom_overrides=custom_overrides,
+            validate_all=show_all,
+        )
 
-        if not intents_to_check:
+        # Display discovery result
+        _display_discovery_result(result, prometheus_url)
+
+        if result.total == 0:
             info("No intents to validate. Add --technology or --show-all")
             return 0
 
-        # Resolve all intents
-        console.print("[bold]Resolving intents:[/bold]")
-        console.print("[muted]─[/muted]" * 60)
+        # Display intent results
+        _display_intent_results(result)
+        _display_summary(result)
 
-        resolved_count = 0
-        fallback_count = 0
-        unresolved_count = 0
-        custom_count = 0
-
-        for intent_name in sorted(intents_to_check):
-            result = resolver.resolve(intent_name)
-
-            if result.status == ResolutionStatus.RESOLVED:
-                console.print(f"  [success]✓[/success] {intent_name}")
-                console.print(f"     [muted]Resolved:[/muted] {result.metric_name}")
-                resolved_count += 1
-            elif result.status == ResolutionStatus.CUSTOM:
-                console.print(f"  [highlight]⚙[/highlight] {intent_name}")
-                console.print(f"     [muted]Custom:[/muted] {result.metric_name}")
-                custom_count += 1
-            elif result.status == ResolutionStatus.FALLBACK:
-                console.print(f"  [warning]⚠[/warning] {intent_name}")
-                console.print(f"     [muted]Fallback:[/muted] {result.metric_name}")
-                console.print(f"     [muted]Note:[/muted] {result.message}")
-                fallback_count += 1
-            elif result.status == ResolutionStatus.SYNTHESIZED:
-                console.print(f"  [cyan]↻[/cyan] {intent_name}")
-                console.print(f"     [muted]Synthesized:[/muted] {result.metric_name}")
-                console.print(f"     [muted]Expression:[/muted] {result.synthesis_expr}")
-                resolved_count += 1
-            else:
-                console.print(f"  [error]✗[/error] {intent_name}")
-                console.print(f"     [muted]{result.message}[/muted]")
-                unresolved_count += 1
-
-            console.print()
-
-        # Summary
-        console.print("[muted]─[/muted]" * 60)
-        console.print("[bold]Summary:[/bold]")
-        total = resolved_count + fallback_count + unresolved_count + custom_count
-        console.print(f"   [muted]Total intents:[/muted] {total}")
-        console.print(f"   [success]✓[/success] Resolved: {resolved_count}")
-        if custom_count:
-            console.print(f"   [highlight]⚙[/highlight] Custom: {custom_count}")
-        if fallback_count:
-            console.print(f"   [warning]⚠[/warning] Fallback: {fallback_count}")
-        console.print(f"   [error]✗[/error] Unresolved: {unresolved_count}")
-        console.print()
-
-        # Exit code based on results
-        if unresolved_count > 0:
-            if prometheus_url:
-                warning(
-                    "Some intents could not be resolved. Dashboard will include guidance panels."
-                )
-                console.print(
-                    "[muted]See exporter recommendations above to enable missing metrics.[/muted]"
-                )
-                return 2  # Warning
-            else:
-                info("Run with --prometheus-url to validate against real metrics.")
-                return 0
-        else:
-            success("All intents resolved successfully!")
-            return 0
+        return _display_final_verdict(result, prometheus_url)
 
     except FileNotFoundError:
         error(f"Service file not found: {service_file}")
@@ -200,6 +76,109 @@ def validate_dashboard_command(
         return 1
 
 
+def _display_service_info(service_file: str, context) -> None:
+    """Display service information."""
+    console.print(f"[cyan]Service:[/cyan] {service_file}")
+    console.print(f"   [muted]Name:[/muted] {context.name}")
+    console.print(f"   [muted]Team:[/muted] {context.team}")
+    console.print()
+
+
+def _display_technologies(technologies: set[str]) -> None:
+    """Display technologies to validate."""
+    tech_list = ", ".join(sorted(technologies)) or "none detected"
+    console.print(f"[muted]Technologies to validate:[/muted] {tech_list}")
+    console.print()
+
+
+def _display_discovery_start(prometheus_url: str) -> None:
+    """Display discovery start message."""
+    console.print(f"[cyan]Discovering metrics from {prometheus_url}...[/cyan]")
+
+
+def _display_discovery_result(result: ValidationResult, prometheus_url: Optional[str]) -> None:
+    """Display metric discovery result."""
+    if prometheus_url:
+        if result.discovery_error:
+            warning(f"Discovery failed: {result.discovery_error}")
+            console.print("   [muted]Continuing without discovery (intents unresolved)[/muted]")
+        else:
+            console.print(f"   [success]✓[/success] Found {result.discovery_count} metrics")
+        console.print()
+    else:
+        info("No Prometheus URL provided - showing intent structure only")
+        console.print(
+            "   [muted]Tip: Add --prometheus-url to validate against real metrics[/muted]"
+        )
+        console.print()
+
+
+def _display_intent_results(result: ValidationResult) -> None:
+    """Display individual intent resolution results."""
+    console.print("[bold]Resolving intents:[/bold]")
+    console.print("[muted]─[/muted]" * 60)
+
+    all_intents = (
+        result.resolved + result.synthesized + result.custom + result.fallback + result.unresolved
+    )
+
+    for intent in sorted(all_intents, key=lambda x: x.name):
+        _display_single_intent(intent)
+
+
+def _display_single_intent(intent: IntentResult) -> None:
+    """Display a single intent result."""
+    if intent.status == ResolutionStatus.RESOLVED:
+        console.print(f"  [success]✓[/success] {intent.name}")
+        console.print(f"     [muted]Resolved:[/muted] {intent.metric_name}")
+    elif intent.status == ResolutionStatus.CUSTOM:
+        console.print(f"  [highlight]⚙[/highlight] {intent.name}")
+        console.print(f"     [muted]Custom:[/muted] {intent.metric_name}")
+    elif intent.status == ResolutionStatus.FALLBACK:
+        console.print(f"  [warning]⚠[/warning] {intent.name}")
+        console.print(f"     [muted]Fallback:[/muted] {intent.metric_name}")
+        console.print(f"     [muted]Note:[/muted] {intent.message}")
+    elif intent.status == ResolutionStatus.SYNTHESIZED:
+        console.print(f"  [cyan]↻[/cyan] {intent.name}")
+        console.print(f"     [muted]Synthesized:[/muted] {intent.metric_name}")
+        console.print(f"     [muted]Expression:[/muted] {intent.synthesis_expr}")
+    else:
+        console.print(f"  [error]✗[/error] {intent.name}")
+        console.print(f"     [muted]{intent.message}[/muted]")
+    console.print()
+
+
+def _display_summary(result: ValidationResult) -> None:
+    """Display validation summary."""
+    console.print("[muted]─[/muted]" * 60)
+    console.print("[bold]Summary:[/bold]")
+    console.print(f"   [muted]Total intents:[/muted] {result.total}")
+    console.print(f"   [success]✓[/success] Resolved: {result.resolved_count}")
+    if result.custom:
+        console.print(f"   [highlight]⚙[/highlight] Custom: {len(result.custom)}")
+    if result.fallback:
+        console.print(f"   [warning]⚠[/warning] Fallback: {len(result.fallback)}")
+    console.print(f"   [error]✗[/error] Unresolved: {len(result.unresolved)}")
+    console.print()
+
+
+def _display_final_verdict(result: ValidationResult, prometheus_url: Optional[str]) -> int:
+    """Display final verdict and return exit code."""
+    if result.has_unresolved:
+        if prometheus_url:
+            warning("Some intents could not be resolved. Dashboard will include guidance panels.")
+            console.print(
+                "[muted]See exporter recommendations above to enable missing metrics.[/muted]"
+            )
+            return 2
+        else:
+            info("Run with --prometheus-url to validate against real metrics.")
+            return 0
+    else:
+        success("All intents resolved successfully!")
+        return 0
+
+
 def list_intents_command(technology: Optional[str] = None) -> int:
     """List all available metric intents.
 
@@ -209,9 +188,7 @@ def list_intents_command(technology: Optional[str] = None) -> int:
     Returns:
         Exit code (0 for success)
     """
-    header("Dashboard Metric Validation")
-
-    header("Dashboard Metric Validation")
+    header("Available Metric Intents")
     console.print()
 
     if technology:

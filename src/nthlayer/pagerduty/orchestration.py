@@ -272,7 +272,6 @@ class EventOrchestrationManager:
         self,
         alerts: list[dict[str, Any]],
         sre_escalation_policy_id: str,
-        team_escalation_policy_id: str,
     ) -> list[RoutingRule]:
         """
         Generate routing rules from alert definitions.
@@ -280,7 +279,6 @@ class EventOrchestrationManager:
         Args:
             alerts: List of alert definitions with optional 'routing' field
             sre_escalation_policy_id: ID of SRE escalation policy
-            team_escalation_policy_id: ID of team escalation policy
 
         Returns:
             List of routing rules for alerts with routing overrides

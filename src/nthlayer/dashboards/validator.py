@@ -1,201 +1,214 @@
 """
-Dashboard validation using metric discovery.
+Dashboard validation logic.
 
-This module validates dashboard panels against actual discovered metrics,
-preventing the creation of panels that query non-existent metrics.
+Validates dashboard intents against available metrics from Prometheus.
 """
 
-import logging
-import re
-from typing import Dict, List, Optional, Set
+from __future__ import annotations
 
-from nthlayer.discovery import DiscoveryResult, MetricDiscoveryClient
+from dataclasses import dataclass, field
+from typing import Any
 
-from .models import Panel
+from nthlayer.dashboards.intents import ALL_INTENTS, get_intents_for_technology
+from nthlayer.dashboards.resolver import ResolutionStatus, create_resolver
 
-logger = logging.getLogger(__name__)
+
+@dataclass
+class IntentResult:
+    """Result of resolving a single intent."""
+
+    name: str
+    status: ResolutionStatus
+    metric_name: str | None = None
+    message: str | None = None
+    synthesis_expr: str | None = None
+
+
+@dataclass
+class ValidationResult:
+    """Result of validating dashboard intents."""
+
+    resolved: list[IntentResult] = field(default_factory=list)
+    fallback: list[IntentResult] = field(default_factory=list)
+    unresolved: list[IntentResult] = field(default_factory=list)
+    custom: list[IntentResult] = field(default_factory=list)
+    synthesized: list[IntentResult] = field(default_factory=list)
+    discovery_count: int = 0
+    discovery_error: str | None = None
+
+    @property
+    def total(self) -> int:
+        """Total number of intents validated."""
+        return (
+            len(self.resolved)
+            + len(self.fallback)
+            + len(self.unresolved)
+            + len(self.custom)
+            + len(self.synthesized)
+        )
+
+    @property
+    def resolved_count(self) -> int:
+        """Count of resolved intents (including synthesized)."""
+        return len(self.resolved) + len(self.synthesized)
+
+    @property
+    def has_unresolved(self) -> bool:
+        """Whether any intents failed to resolve."""
+        return len(self.unresolved) > 0
+
+    def get_exit_code(self, has_prometheus: bool) -> int:
+        """Get exit code based on validation results."""
+        if self.has_unresolved and has_prometheus:
+            return 2  # Warning - some intents unresolved
+        return 0
 
 
 class DashboardValidator:
-    """Validates dashboard panels against discovered metrics."""
+    """Validates dashboard intents against available Prometheus metrics."""
 
-    def __init__(self, discovery_client: Optional[MetricDiscoveryClient] = None):
-        """
-        Initialize validator.
-
-        Args:
-            discovery_client: Optional discovery client. If None, validation is skipped.
-        """
-        self.discovery_client = discovery_client
-        self._discovery_cache: Dict[str, DiscoveryResult] = {}
-
-    def validate_dashboard(
-        self, service_name: str, panels: List[Panel], discover_metrics: bool = True
-    ) -> tuple[List[Panel], List[str]]:
-        """
-        Validate all panels in a dashboard against discovered metrics.
+    def __init__(self, prometheus_url: str | None = None):
+        """Initialize validator.
 
         Args:
-            service_name: Service name to discover metrics for
-            panels: List of panels to validate
-            discover_metrics: Whether to discover metrics (False for testing)
-
-        Returns:
-            Tuple of (valid_panels, warnings)
-            - valid_panels: Panels that query existing metrics
-            - warnings: List of warning messages for invalid panels
+            prometheus_url: Optional Prometheus URL for metric discovery
         """
-        if not self.discovery_client or not discover_metrics:
-            logger.debug("Skipping validation (no discovery client or disabled)")
-            return panels, []
+        self.prometheus_url = prometheus_url
 
-        # Discover metrics for service
-        logger.info(f"Discovering metrics for {service_name}...")
-        discovery = self._get_discovery_result(service_name)
-
-        if not discovery or discovery.total_metrics == 0:
-            logger.warning(f"No metrics discovered for {service_name}, skipping validation")
-            return panels, [f"No metrics discovered for {service_name} - validation skipped"]
-
-        logger.info(f"Discovered {discovery.total_metrics} metrics for {service_name}")
-
-        # Extract all discovered metric names
-        discovered_metric_names = {m.name for m in discovery.metrics}
-
-        # Validate each panel
-        valid_panels = []
-        warnings = []
-
-        for panel in panels:
-            is_valid, panel_warnings = self._validate_panel(panel, discovered_metric_names)
-
-            if is_valid:
-                valid_panels.append(panel)
-            else:
-                warnings.extend(panel_warnings)
-                logger.warning(f"Removing panel '{panel.title}': {', '.join(panel_warnings)}")
-
-        logger.info(f"Validation complete: {len(valid_panels)}/{len(panels)} panels valid")
-        return valid_panels, warnings
-
-    def _get_discovery_result(self, service_name: str) -> Optional[DiscoveryResult]:
-        """Get discovery result for service (cached)."""
-        if service_name in self._discovery_cache:
-            return self._discovery_cache[service_name]
-
-        if not self.discovery_client:
-            return None
-
-        try:
-            result = self.discovery_client.discover(f'{{service="{service_name}"}}')
-            self._discovery_cache[service_name] = result
-            return result
-        except Exception as e:
-            logger.error(f"Error discovering metrics for {service_name}: {e}")
-            return None
-
-    def _validate_panel(self, panel: Panel, discovered_metrics: Set[str]) -> tuple[bool, List[str]]:
-        """
-        Validate a single panel.
-
-        Returns:
-            Tuple of (is_valid, warnings)
-        """
-        if not panel.targets:
-            return True, []  # Panel with no targets (e.g., row) is valid
-
-        warnings = []
-        has_valid_target = False
-
-        for target in panel.targets:
-            expr = target.expr
-            if not expr:
-                continue
-
-            # Extract metric names from PromQL expression
-            metrics_in_query = self._extract_metrics_from_expr(expr)
-
-            # Check if any metrics in query exist
-            missing_metrics = []
-            for metric in metrics_in_query:
-                if metric not in discovered_metrics:
-                    missing_metrics.append(metric)
-
-            if missing_metrics:
-                msg = f"Panel '{panel.title}' queries non-existent metrics: "
-                msg += ", ".join(missing_metrics)
-                warnings.append(msg)
-            else:
-                has_valid_target = True
-
-        # Panel is valid if at least one target has all its metrics
-        return has_valid_target, warnings
-
-    def _extract_metrics_from_expr(self, expr: str) -> Set[str]:
-        """
-        Extract metric names from a PromQL expression.
-
-        Examples:
-            'http_requests_total{service="foo"}' -> {'http_requests_total'}
-            'rate(http_requests_total[5m])' -> {'http_requests_total'}
-            'sum by (le) (rate(http_duration_bucket[5m]))' -> {'http_duration_bucket'}
-        """
-        # Pattern: metric name is alphanumeric + underscores, followed by { or (
-        # Handles: metric_name{...}, rate(metric_name[...]), etc.
-        pattern = r"\b([a-z_][a-z0-9_]*)\s*(?:\{|\[)"
-
-        metrics = set()
-        for match in re.finditer(pattern, expr, re.IGNORECASE):
-            metric_name = match.group(1)
-
-            # Filter out PromQL functions and aggregations
-            promql_keywords = {
-                "rate",
-                "irate",
-                "sum",
-                "avg",
-                "max",
-                "min",
-                "count",
-                "by",
-                "without",
-                "histogram_quantile",
-                "label_replace",
-                "increase",
-                "delta",
-                "abs",
-                "ceil",
-                "floor",
-                "round",
-                "sort",
-                "sort_desc",
-                "topk",
-                "bottomk",
-                "time",
-                "vector",
-            }
-
-            if metric_name not in promql_keywords:
-                metrics.add(metric_name)
-
-        return metrics
-
-    def get_technology_metrics(self, service_name: str, technology: str) -> List[str]:
-        """
-        Get all metrics for a specific technology.
-
-        Useful for template generators to know which metrics are available.
+    def validate(
+        self,
+        service_name: str,
+        technologies: set[str],
+        custom_overrides: dict[str, Any] | None = None,
+        validate_all: bool = False,
+    ) -> ValidationResult:
+        """Validate dashboard intents for a service.
 
         Args:
-            service_name: Service to discover metrics for
-            technology: Technology group (e.g., 'postgresql', 'redis')
+            service_name: Name of the service
+            technologies: Set of technologies to validate (postgresql, redis, etc.)
+            custom_overrides: Custom metric overrides from service spec
+            validate_all: If True, validate all intents regardless of technologies
 
         Returns:
-            List of metric names for that technology
+            ValidationResult with resolved/unresolved intents
         """
-        discovery = self._get_discovery_result(service_name)
-        if not discovery:
-            return []
+        result = ValidationResult()
 
-        tech_metrics = discovery.metrics_by_technology.get(technology, [])
-        return [m.name for m in tech_metrics]
+        # Create resolver
+        resolver = create_resolver(
+            prometheus_url=self.prometheus_url,
+            custom_overrides=custom_overrides or {},
+        )
+
+        # Discover metrics if Prometheus URL provided
+        if self.prometheus_url:
+            try:
+                result.discovery_count = resolver.discover_for_service(service_name)
+            except (ConnectionError, TimeoutError, ValueError, OSError) as e:
+                result.discovery_error = str(e)
+
+        # Collect intents to validate
+        intents_to_check = self._get_intents_to_check(technologies, validate_all)
+
+        # Resolve each intent
+        for intent_name in sorted(intents_to_check):
+            intent_result = self._resolve_intent(resolver, intent_name)
+            self._categorize_result(result, intent_result)
+
+        return result
+
+    def _get_intents_to_check(self, technologies: set[str], validate_all: bool) -> list[str]:
+        """Get list of intent names to validate."""
+        if validate_all:
+            return list(ALL_INTENTS.keys())
+
+        intents = []
+        for tech in technologies:
+            tech_intents = get_intents_for_technology(tech)
+            intents.extend(tech_intents.keys())
+        return intents
+
+    def _resolve_intent(self, resolver: Any, intent_name: str) -> IntentResult:
+        """Resolve a single intent."""
+        resolution = resolver.resolve(intent_name)
+        return IntentResult(
+            name=intent_name,
+            status=resolution.status,
+            metric_name=resolution.metric_name,
+            message=resolution.message,
+            synthesis_expr=getattr(resolution, "synthesis_expr", None),
+        )
+
+    def _categorize_result(self, result: ValidationResult, intent: IntentResult) -> None:
+        """Categorize an intent result into the appropriate list."""
+        if intent.status == ResolutionStatus.RESOLVED:
+            result.resolved.append(intent)
+        elif intent.status == ResolutionStatus.CUSTOM:
+            result.custom.append(intent)
+        elif intent.status == ResolutionStatus.FALLBACK:
+            result.fallback.append(intent)
+        elif intent.status == ResolutionStatus.SYNTHESIZED:
+            result.synthesized.append(intent)
+        else:
+            result.unresolved.append(intent)
+
+
+def extract_technologies(context: Any, resources: list[Any]) -> set[str]:
+    """Extract technologies from service context and resources.
+
+    Args:
+        context: ServiceContext from parsed service file
+        resources: List of resources from parsed service file
+
+    Returns:
+        Set of technology names (postgresql, redis, http, etc.)
+    """
+    technologies = set()
+
+    # Extract from Dependencies resources
+    dependencies = [r for r in resources if r.kind == "Dependencies"]
+    for dep in dependencies:
+        spec = dep.spec if hasattr(dep, "spec") else {}
+        if not isinstance(spec, dict):
+            continue
+
+        databases = spec.get("databases", [])
+        caches = spec.get("caches", [])
+
+        for db in databases:
+            db_type = db.get("type", "") if isinstance(db, dict) else getattr(db, "type", "")
+            if db_type:
+                technologies.add(db_type)
+
+        for cache in caches:
+            cache_type = (
+                cache.get("type", "redis")
+                if isinstance(cache, dict)
+                else getattr(cache, "type", "redis")
+            )
+            technologies.add(cache_type)
+
+    # Always include HTTP for API services
+    if context.type in ("api", "service", "web"):
+        technologies.add("http")
+
+    return technologies
+
+
+def extract_custom_overrides(resources: list[Any]) -> dict[str, Any]:
+    """Extract custom metric overrides from resources.
+
+    Args:
+        resources: List of resources from parsed service file
+
+    Returns:
+        Dictionary of custom metric overrides
+    """
+    overrides = {}
+    for resource in resources:
+        if hasattr(resource, "spec") and isinstance(resource.spec, dict):
+            metrics = resource.spec.get("metrics", {})
+            if isinstance(metrics, dict):
+                overrides.update(metrics)
+    return overrides

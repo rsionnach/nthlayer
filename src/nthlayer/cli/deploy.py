@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from nthlayer.cli.ux import console, error, header, info, success, warning
+from nthlayer.slos.collector import BudgetSummary, SLOMetricCollector, SLOResult
 from nthlayer.slos.gates import DeploymentGate, GateResult
 from nthlayer.specs.parser import parse_service_file
 
@@ -27,31 +28,12 @@ def check_deploy_command(
     """
     Check if deployment should be allowed based on error budget.
 
-    Queries Prometheus for actual SLI metrics, calculates budget,
-    then evaluates deployment gate thresholds.
-
-    Exit codes:
-    - 0 = Approved (proceed with deploy)
-    - 1 = Warning (advisory, proceed with caution)
-    - 2 = Blocked (do not deploy)
-
-    Args:
-        service_file: Path to service YAML file
-        prometheus_url: Prometheus server URL (or use PROMETHEUS_URL env var)
-        environment: Optional environment name (dev, staging, prod)
-        demo: Show demo output with sample data (for VHS recordings)
-        demo_blocked: Show demo output with BLOCKED scenario (for VHS recordings)
-
-    Returns:
-        Exit code (0, 1, or 2)
+    Exit codes: 0 = Approved, 1 = Warning, 2 = Blocked
     """
-    # Demo mode for VHS recordings
     if demo:
         return _run_demo_mode(service_file, environment, blocked=False)
     if demo_blocked:
         return _run_demo_mode(service_file, environment, blocked=True)
-    # Resolve Prometheus URL
-    prom_url = prometheus_url or os.environ.get("PROMETHEUS_URL")
 
     # Parse service file
     try:
@@ -60,36 +42,60 @@ def check_deploy_command(
         error(f"Error parsing service file: {e}")
         return 2
 
-    # Print header
-    header(f"Deployment Gate Check: {service_context.name}")
-    console.print()
-
-    if prom_url:
-        console.print(f"[cyan]Prometheus:[/cyan] {prom_url}")
-    console.print(f"[cyan]Service:[/cyan] {service_context.name}")
-    console.print(f"[cyan]Team:[/cyan] {service_context.team}")
-    console.print(f"[cyan]Tier:[/cyan] {service_context.tier}")
-    if environment:
-        console.print(f"[cyan]Environment:[/cyan] {environment}")
-    console.print()
-
-    # Get SLO resources
+    prom_url = prometheus_url or os.environ.get("PROMETHEUS_URL")
     slo_resources = [r for r in resources if r.kind == "SLO"]
+    downstream_services = _extract_downstream_services(resources)
 
+    # Display header
+    _display_header(service_context, prom_url, environment)
+
+    # Validate SLOs exist
     if not slo_resources:
-        warning("No SLOs defined in service.yaml")
-        console.print("[muted]Cannot check error budget without SLO definitions[/muted]")
-        console.print()
-        console.print("[muted]Add SLOs to enable deployment gating:[/muted]")
-        console.print("  resources:")
-        console.print("    - kind: SLO")
-        console.print("      name: availability")
-        console.print("      spec:")
-        console.print("        objective: 99.95")
-        console.print("        window: 30d")
+        _display_no_slos_warning()
         return 0
 
-    # Get dependencies for blast radius
+    # Show examples if no Prometheus
+    if not prom_url:
+        _display_no_prometheus_info(service_context, slo_resources, downstream_services)
+        return 0
+
+    # Collect metrics from Prometheus
+    console.print("[bold]Querying Prometheus for SLO metrics...[/bold]")
+    console.print()
+
+    try:
+        collector = SLOMetricCollector(prom_url)
+        slo_results = asyncio.run(collector.collect(slo_resources, service_context.name))
+        budget = collector.calculate_aggregate_budget(slo_results)
+    except Exception as e:
+        error(f"Failed to query Prometheus: {e}")
+        console.print(f"[muted]Check Prometheus is reachable at: {prom_url}[/muted]")
+        return 2
+
+    # Display results and run gate
+    _display_slo_table(slo_results)
+
+    if budget.valid_slo_count == 0:
+        warning("No SLO data available from Prometheus")
+        console.print("[muted]Ensure metrics are being collected[/muted]")
+        return 0
+
+    _display_budget_summary(budget)
+
+    gate = DeploymentGate()
+    result = gate.check_deployment(
+        service=service_context.name,
+        tier=service_context.tier,
+        budget_total_minutes=int(budget.total_budget_minutes),
+        budget_consumed_minutes=int(budget.burned_budget_minutes),
+        downstream_services=downstream_services,
+    )
+
+    return _display_gate_result(result, service_context.tier, budget.remaining_percent)
+
+
+def _extract_downstream_services(resources: list[Any]) -> list[dict[str, Any]]:
+    """Extract downstream services from Dependencies resource."""
     dep_resources = [r for r in resources if r.kind == "Dependencies"]
     downstream_services = []
 
@@ -103,65 +109,96 @@ def check_deploy_command(
                 }
             )
 
-    # If no Prometheus URL, show example scenarios
-    if not prom_url:
-        info("No Prometheus URL provided")
-        console.print("[muted]Provide via --prometheus-url or PROMETHEUS_URL env var[/muted]")
-        console.print()
-        _show_example_scenarios(service_context, slo_resources, downstream_services)
-        return 0
+    return downstream_services
 
-    # Query Prometheus for SLO metrics
-    console.print("[bold]Querying Prometheus for SLO metrics...[/bold]")
+
+def _display_header(service_context: Any, prom_url: str | None, environment: str | None) -> None:
+    """Display command header with service info."""
+    header(f"Deployment Gate Check: {service_context.name}")
     console.print()
 
-    try:
-        slo_results = asyncio.run(
-            _collect_slo_metrics(slo_resources, prom_url, service_context.name)
+    if prom_url:
+        console.print(f"[cyan]Prometheus:[/cyan] {prom_url}")
+    console.print(f"[cyan]Service:[/cyan] {service_context.name}")
+    console.print(f"[cyan]Team:[/cyan] {service_context.team}")
+    console.print(f"[cyan]Tier:[/cyan] {service_context.tier}")
+    if environment:
+        console.print(f"[cyan]Environment:[/cyan] {environment}")
+    console.print()
+
+
+def _display_no_slos_warning() -> None:
+    """Display warning when no SLOs are defined."""
+    warning("No SLOs defined in service.yaml")
+    console.print("[muted]Cannot check error budget without SLO definitions[/muted]")
+    console.print()
+    console.print("[muted]Add SLOs to enable deployment gating:[/muted]")
+    console.print("  resources:")
+    console.print("    - kind: SLO")
+    console.print("      name: availability")
+    console.print("      spec:")
+    console.print("        objective: 99.95")
+    console.print("        window: 30d")
+
+
+def _display_no_prometheus_info(
+    service_context: Any,
+    slo_resources: list[Any],
+    downstream_services: list[dict[str, Any]],
+) -> None:
+    """Display info when no Prometheus URL is provided."""
+    info("No Prometheus URL provided")
+    console.print("[muted]Provide via --prometheus-url or PROMETHEUS_URL env var[/muted]")
+    console.print()
+    _show_example_scenarios(service_context, slo_resources, downstream_services)
+
+
+def _display_slo_table(results: list[SLOResult]) -> None:
+    """Display SLO status as a table."""
+    console.print("[bold]SLO Budget Status:[/bold]")
+
+    status_icons = {
+        "HEALTHY": "[success]✓[/success]",
+        "WARNING": "[warning]⚠[/warning]",
+        "CRITICAL": "[error]!![/error]",
+        "EXHAUSTED": "[error]✗[/error]",
+        "NO_DATA": "[muted]?[/muted]",
+        "ERROR": "[error]E[/error]",
+    }
+
+    for result in results:
+        icon = status_icons.get(result.status, "[muted]?[/muted]")
+
+        if result.current_sli is not None:
+            sli = f"{result.current_sli:.2f}%"
+            budget_str = f"{result.percent_consumed:.0f}% burned"
+        else:
+            sli = "N/A"
+            budget_str = result.error or "No data"
+
+        console.print(
+            f"  {icon} {result.name:<20} "
+            f"[muted]target:[/muted] {result.objective}% "
+            f"[muted]current:[/muted] {sli:<8} "
+            f"[muted]budget:[/muted] {budget_str}"
         )
-    except Exception as e:
-        error(f"Failed to query Prometheus: {e}")
-        console.print()
-        console.print(f"[muted]Check Prometheus is reachable at: {prom_url}[/muted]")
-        return 2
 
-    # Display SLO status table
-    _print_slo_table(slo_results)
+    console.print()
 
-    # Calculate aggregate budget
-    valid_results = [r for r in slo_results if r["burned_minutes"] is not None]
 
-    if not valid_results:
-        warning("No SLO data available from Prometheus")
-        console.print("[muted]Ensure metrics are being collected[/muted]")
-        return 0
-
-    total_budget = sum(r["total_budget_minutes"] for r in valid_results)
-    burned_budget = sum(r["burned_minutes"] for r in valid_results)
-    if total_budget > 0:
-        remaining_pct = (total_budget - burned_budget) / total_budget * 100
-    else:
-        remaining_pct = 100
-
-    consumed_pct = 100 - remaining_pct
+def _display_budget_summary(budget: BudgetSummary) -> None:
+    """Display aggregate budget summary."""
     console.print(
-        f"[bold]Aggregate Budget:[/bold] {burned_budget:.1f}/{total_budget:.1f} "
-        f"minutes consumed ({consumed_pct:.1f}%)"
+        f"[bold]Aggregate Budget:[/bold] {budget.burned_budget_minutes:.1f}/"
+        f"{budget.total_budget_minutes:.1f} minutes consumed ({budget.consumed_percent:.1f}%)"
     )
     console.print()
 
-    # Run deployment gate
-    gate = DeploymentGate()
-    result = gate.check_deployment(
-        service=service_context.name,
-        tier=service_context.tier,
-        budget_total_minutes=int(total_budget),
-        budget_consumed_minutes=int(burned_budget),
-        downstream_services=downstream_services,
-    )
 
+def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
+    """Display gate result and return exit code."""
     # Display thresholds
-    console.print(f"[bold]Thresholds ({service_context.tier} tier):[/bold]")
+    console.print(f"[bold]Thresholds ({tier} tier):[/bold]")
     console.print(f"  [muted]Warning:[/muted] <{result.warning_threshold}% remaining")
     if result.blocking_threshold:
         console.print(f"  [muted]Blocking:[/muted] <{result.blocking_threshold}% remaining")
@@ -194,7 +231,7 @@ def check_deploy_command(
         console.print("[error]Exit code: 2[/error]")
         return 2
 
-    elif result.result == GateResult.WARNING:
+    if result.result == GateResult.WARNING:
         warning("Deployment allowed with WARNING")
         console.print(f"[muted]Error budget low ({remaining_pct:.1f}% remaining)[/muted]")
         console.print()
@@ -205,12 +242,11 @@ def check_deploy_command(
         console.print("[warning]Exit code: 1[/warning]")
         return 1
 
-    else:
-        success("Deployment APPROVED")
-        console.print(f"[muted]Error budget healthy ({remaining_pct:.1f}% remaining)[/muted]")
-        console.print()
-        console.print("[success]Exit code: 0[/success]")
-        return 0
+    success("Deployment APPROVED")
+    console.print(f"[muted]Error budget healthy ({remaining_pct:.1f}% remaining)[/muted]")
+    console.print()
+    console.print("[success]Exit code: 0[/success]")
+    return 0
 
 
 def _show_example_scenarios(
@@ -225,11 +261,12 @@ def _show_example_scenarios(
     gate = DeploymentGate()
 
     # Calculate example budget from first SLO
+    collector = SLOMetricCollector()
     if slo_resources:
         spec = slo_resources[0].spec or {}
         window = spec.get("window", "30d")
         objective = spec.get("objective", 99.9)
-        window_minutes = _parse_window_minutes(window)
+        window_minutes = collector._parse_window_minutes(window)
         total_budget = window_minutes * ((100 - objective) / 100)
     else:
         total_budget = 43.2  # Default: 30 days at 99.9%
@@ -264,167 +301,6 @@ def _show_example_scenarios(
         "--prometheus-url http://prometheus:9090[/cyan]"
     )
     console.print()
-
-
-def _print_slo_table(results: list[dict[str, Any]]) -> None:
-    """Print SLO status as a table."""
-    console.print("[bold]SLO Budget Status:[/bold]")
-
-    for result in results:
-        status_icon = {
-            "HEALTHY": "[success]✓[/success]",
-            "WARNING": "[warning]⚠[/warning]",
-            "CRITICAL": "[error]!![/error]",
-            "EXHAUSTED": "[error]✗[/error]",
-            "NO_DATA": "[muted]?[/muted]",
-            "ERROR": "[error]E[/error]",
-        }.get(result["status"], "[muted]?[/muted]")
-
-        name = result["name"]
-        objective = result["objective"]
-
-        if result["current_sli"] is not None:
-            sli = f"{result['current_sli']:.2f}%"
-            burned_pct = result["percent_consumed"]
-            budget_str = f"{burned_pct:.0f}% burned"
-        else:
-            sli = "N/A"
-            budget_str = result.get("error", "No data")
-
-        console.print(
-            f"  {status_icon} {name:<20} "
-            f"[muted]target:[/muted] {objective}% "
-            f"[muted]current:[/muted] {sli:<8} "
-            f"[muted]budget:[/muted] {budget_str}"
-        )
-
-    console.print()
-
-
-async def _collect_slo_metrics(
-    slo_resources: list[Any],
-    prometheus_url: str,
-    service_name: str,
-) -> list[dict[str, Any]]:
-    """Query Prometheus for SLO metrics."""
-    from nthlayer.providers.prometheus import PrometheusProvider, PrometheusProviderError
-
-    # Get auth credentials from environment
-    username = os.environ.get("PROMETHEUS_USERNAME") or os.environ.get("NTHLAYER_METRICS_USER")
-    password = os.environ.get("PROMETHEUS_PASSWORD") or os.environ.get("NTHLAYER_METRICS_PASSWORD")
-
-    provider = PrometheusProvider(prometheus_url, username=username, password=password)
-    results = []
-
-    for slo in slo_resources:
-        spec = slo.spec or {}
-        objective = spec.get("objective", 99.9)
-        window = spec.get("window", "30d")
-        indicator = spec.get("indicator", {})
-
-        # Calculate budget
-        window_minutes = _parse_window_minutes(window)
-        error_budget_percent = (100 - objective) / 100
-        total_budget_minutes = window_minutes * error_budget_percent
-
-        result = {
-            "name": slo.name,
-            "objective": objective,
-            "window": window,
-            "total_budget_minutes": total_budget_minutes,
-            "current_sli": None,
-            "burned_minutes": None,
-            "percent_consumed": None,
-            "status": "UNKNOWN",
-            "error": None,
-        }
-
-        # Try to get SLI value from Prometheus
-        # Support both simple indicator.query format and indicators[].success_ratio format
-        query = indicator.get("query")
-
-        # Fallback: check for indicators[] format used in service.yaml examples
-        if not query:
-            indicators = spec.get("indicators", [])
-            if indicators:
-                ind = indicators[0]
-                # Handle availability SLOs with success_ratio
-                if ind.get("success_ratio"):
-                    sr = ind["success_ratio"]
-                    total_query = sr.get("total_query")
-                    good_query = sr.get("good_query")
-                    if total_query and good_query:
-                        query = f"({good_query}) / ({total_query})"
-                # Handle latency SLOs with latency_query
-                # Note: For latency, we query the percentile value directly
-                # This shows if query works but budget calc needs threshold comparison
-                elif ind.get("latency_query"):
-                    # For now, skip latency SLOs in budget calculation
-                    # They need different logic (compare against threshold_ms)
-                    result["error"] = "Latency SLOs not yet supported for gating"
-                    result["status"] = "NO_DATA"
-                    results.append(result)
-                    continue
-
-        if query:
-            # Substitute service name in query
-            query = query.replace("${service}", service_name)
-            query = query.replace("$service", service_name)
-
-            try:
-                sli_value = await provider.get_sli_value(query)
-
-                if sli_value > 0:
-                    result["current_sli"] = sli_value * 100
-
-                    # Calculate burn
-                    error_rate = 1.0 - sli_value
-                    burned_minutes = window_minutes * error_rate
-                    result["burned_minutes"] = burned_minutes
-                    result["percent_consumed"] = (
-                        (burned_minutes / total_budget_minutes) * 100
-                        if total_budget_minutes > 0
-                        else 0
-                    )
-
-                    # Determine status
-                    if result["percent_consumed"] >= 100:
-                        result["status"] = "EXHAUSTED"
-                    elif result["percent_consumed"] >= 80:
-                        result["status"] = "CRITICAL"
-                    elif result["percent_consumed"] >= 50:
-                        result["status"] = "WARNING"
-                    else:
-                        result["status"] = "HEALTHY"
-                else:
-                    result["error"] = "No data returned"
-                    result["status"] = "NO_DATA"
-
-            except PrometheusProviderError as e:
-                result["error"] = str(e)
-                result["status"] = "ERROR"
-        else:
-            result["error"] = "No query defined"
-            result["status"] = "NO_DATA"
-
-        results.append(result)
-
-    return results
-
-
-def _parse_window_minutes(window: str) -> float:
-    """Parse window string like '30d' into minutes."""
-    if window.endswith("d"):
-        days = int(window[:-1])
-        return days * 24 * 60
-    elif window.endswith("h"):
-        hours = int(window[:-1])
-        return hours * 60
-    elif window.endswith("w"):
-        weeks = int(window[:-1])
-        return weeks * 7 * 24 * 60
-    else:
-        return 30 * 24 * 60  # Default 30 days
 
 
 def _run_demo_mode(service_file: str, environment: str | None = None, blocked: bool = False) -> int:
