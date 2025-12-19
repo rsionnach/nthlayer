@@ -7,45 +7,39 @@ Visual diagrams using Mermaid (renders automatically on GitHub).
 ## High-Level Architecture
 
 ```mermaid
-graph TB
-    subgraph Sources["📚 Service Catalogs (Optional)"]
-        BS[Backstage]
-        CX[Cortex]
-        PT[Port]
-        YML[nthlayer.yaml]
-    end
+architecture-beta
+    group sources(mdi:folder-multiple) [Service Catalogs - Optional]
+    group engine(mdi:cog) [NthLayer Engine]
+    group targets(mdi:bullseye-arrow) [Operational Tools]
 
-    subgraph Engine["⚙️ NthLayer Engine"]
-        API[FastAPI API]
-        WF[LangGraph Workflows]
-        DB[(PostgreSQL)]
-        CACHE[(Redis Cache)]
-    end
+    service backstage(logos:backstage-icon) [Backstage] in sources
+    service cortex(mdi:hexagon-outline) [Cortex] in sources
+    service port(mdi:gate) [Port] in sources
+    service yml(mdi:file-code) [nthlayer.yaml] in sources
 
-    subgraph Targets["🎯 Operational Tools"]
-        PD[PagerDuty]
-        DD[Datadog]
-        GF[Grafana]
-        SL[Slack]
-    end
+    service api(logos:fastapi) [FastAPI API] in engine
+    service wf(mdi:workflow) [LangGraph Workflows] in engine
+    service db(logos:postgresql) [PostgreSQL] in engine
+    service cache(logos:redis) [Redis Cache] in engine
 
-    BS -->|reads metadata| API
-    CX -->|reads metadata| API
-    PT -->|reads metadata| API
-    YML -->|reads metadata| API
+    service pd(logos:pagerduty) [PagerDuty] in targets
+    service dd(logos:datadog) [Datadog] in targets
+    service gf(logos:grafana) [Grafana] in targets
+    service sl(logos:slack-icon) [Slack] in targets
 
-    API -->|enqueues jobs| WF
-    WF -->|stores state| DB
-    WF -->|caches| CACHE
+    backstage:R --> L:api
+    cortex:R --> L:api
+    port:R --> L:api
+    yml:R --> L:api
 
-    WF -->|generates configs| PD
-    WF -->|generates configs| DD
-    WF -->|generates configs| GF
-    WF -->|sends notifications| SL
+    api:R --> L:wf
+    wf:B --> T:db
+    wf:B --> T:cache
 
-    style Sources fill:#e1f5ff
-    style Engine fill:#fff4e1
-    style Targets fill:#e8f5e9
+    wf:R --> L:pd
+    wf:R --> L:dd
+    wf:R --> L:gf
+    wf:R --> L:sl
 ```
 
 ---
@@ -96,49 +90,41 @@ sequenceDiagram
 ## Service Operationalization Flow
 
 ```mermaid
-graph LR
-    subgraph Input["📋 Input"]
-        SVC[Service Definition]
-    end
+architecture-beta
+    group input(mdi:file-document) [Input]
+    group analysis(mdi:magnify) [Analysis]
+    group generation(mdi:cog) [Generation]
+    group apply(mdi:check-circle) [Apply]
 
-    subgraph Analysis["🔍 Analysis"]
-        TIER[Determine Tier]
-        DEPS[Check Dependencies]
-        TEAM[Find Team]
-    end
+    service svc(mdi:file-code) [Service Definition] in input
 
-    subgraph Generation["⚙️ Generation"]
-        ALERT[Generate Alerts]
-        ESC[Generate Escalations]
-        DASH[Generate Dashboards]
-        RBOOK[Generate Runbooks]
-    end
+    service tier(mdi:layers-triple) [Determine Tier] in analysis
+    service deps(mdi:connection) [Check Dependencies] in analysis
+    service team(mdi:account-group) [Find Team] in analysis
 
-    subgraph Apply["✅ Apply"]
-        DD_A[Datadog Monitors]
-        PD_A[PagerDuty Policies]
-        GF_A[Grafana Dashboards]
-        DOC[Documentation]
-    end
+    service alert(mdi:bell-alert) [Generate Alerts] in generation
+    service esc(mdi:arrow-up-bold) [Generate Escalations] in generation
+    service dash(mdi:view-dashboard) [Generate Dashboards] in generation
+    service rbook(mdi:book-open) [Generate Runbooks] in generation
 
-    SVC --> TIER
-    SVC --> DEPS
-    SVC --> TEAM
+    service dda(logos:datadog) [Datadog Monitors] in apply
+    service pda(logos:pagerduty) [PagerDuty Policies] in apply
+    service gfa(logos:grafana) [Grafana Dashboards] in apply
+    service doc(logos:git-icon) [Documentation] in apply
 
-    TIER --> ALERT
-    TEAM --> ESC
-    DEPS --> DASH
-    TIER --> RBOOK
+    svc:R --> L:tier
+    svc:R --> L:deps
+    svc:R --> L:team
 
-    ALERT --> DD_A
-    ESC --> PD_A
-    DASH --> GF_A
-    RBOOK --> DOC
+    tier:R --> L:alert
+    team:R --> L:esc
+    deps:R --> L:dash
+    tier:R --> L:rbook
 
-    style Input fill:#e3f2fd
-    style Analysis fill:#fff3e0
-    style Generation fill:#f3e5f5
-    style Apply fill:#e8f5e9
+    alert:R --> L:dda
+    esc:R --> L:pda
+    dash:R --> L:gfa
+    rbook:R --> L:doc
 ```
 
 ---
@@ -146,44 +132,36 @@ graph LR
 ## Development Environment
 
 ```mermaid
-graph TB
-    subgraph Local["💻 Local Development"]
-        DEV[Developer]
-        VENV[Python venv]
-    end
+architecture-beta
+    group local(mdi:laptop) [Local Development]
+    group docker(logos:docker-icon) [Docker Containers]
+    group mock(mdi:drama-masks) [Mock Server]
+    group nthlayer(mdi:rocket-launch) [NthLayer]
 
-    subgraph Docker["🐳 Docker Containers"]
-        PG[(PostgreSQL<br/>port 5432)]
-        RD[(Redis<br/>port 6379)]
-    end
+    service dev(mdi:account) [Developer] in local
+    service venv(logos:python) [Python venv] in local
 
-    subgraph Mock["🎭 Mock Server"]
-        MOCK[Mock API Server<br/>port 8001]
-        STATE[In-Memory State]
-    end
+    service pg(logos:postgresql) [PostgreSQL :5432] in docker
+    service rd(logos:redis) [Redis :6379] in docker
 
-    subgraph NthLayer["🚀 NthLayer"]
-        API_T[API Server<br/>port 8000]
-        DEMO[Demo CLI]
-        TESTS[Test Suite]
-    end
+    service mockapi(mdi:server) [Mock API :8001] in mock
+    service state(mdi:memory) [In-Memory State] in mock
 
-    DEV -->|develops| VENV
-    VENV -->|runs| API_T
-    VENV -->|runs| DEMO
-    VENV -->|runs| TESTS
+    service apit(logos:fastapi) [API Server :8000] in nthlayer
+    service demo(mdi:console) [Demo CLI] in nthlayer
+    service tests(mdi:test-tube) [Test Suite] in nthlayer
 
-    API_T -->|connects| PG
-    API_T -->|connects| RD
-    API_T -->|calls| MOCK
+    dev:R --> L:venv
+    venv:R --> L:apit
+    venv:R --> L:demo
+    venv:R --> L:tests
 
-    TESTS -->|calls| MOCK
-    MOCK -->|stores| STATE
+    apit:B --> T:pg
+    apit:B --> T:rd
+    apit:R --> L:mockapi
 
-    style Local fill:#e1f5ff
-    style Docker fill:#e8f5e9
-    style Mock fill:#fff4e1
-    style NthLayer fill:#f3e5f5
+    tests:R --> L:mockapi
+    mockapi:B --> T:state
 ```
 
 ---
@@ -285,55 +263,41 @@ flowchart TD
 ## Component Architecture
 
 ```mermaid
-graph TB
-    subgraph API["API Layer"]
-        REST[REST Endpoints]
-        AUTH[Authentication]
-        VALID[Validation]
-    end
+architecture-beta
+    group api(mdi:api) [API Layer]
+    group business(mdi:cog) [Business Logic]
+    group clients(mdi:web) [HTTP Clients]
+    group data(mdi:database) [Data Layer]
 
-    subgraph Business["Business Logic"]
-        WF[Workflows]
-        RECON[Reconciliation Engine]
-        DIFF[Diff Calculator]
-    end
+    service rest(mdi:routes) [REST Endpoints] in api
+    service auth(mdi:lock) [Authentication] in api
+    service valid(mdi:check-decagram) [Validation] in api
 
-    subgraph Clients["HTTP Clients"]
-        BASE[Base Client<br/>retry + circuit breaker]
-        PD_C[PagerDuty Client]
-        DD_C[Datadog Client]
-        GF_C[Grafana Client]
-        CX_C[Cortex Client]
+    service wf(mdi:workflow) [Workflows] in business
+    service recon(mdi:sync) [Reconciliation Engine] in business
+    service diff(mdi:compare) [Diff Calculator] in business
 
-        BASE -.->|inherits| PD_C
-        BASE -.->|inherits| DD_C
-        BASE -.->|inherits| GF_C
-        BASE -.->|inherits| CX_C
-    end
+    service base(mdi:server) [Base Client] in clients
+    service pdc(logos:pagerduty) [PagerDuty Client] in clients
+    service ddc(logos:datadog) [Datadog Client] in clients
+    service gfc(logos:grafana) [Grafana Client] in clients
+    service cxc(mdi:hexagon-outline) [Cortex Client] in clients
 
-    subgraph Data["Data Layer"]
-        REPO[Repositories]
-        MODELS[ORM Models]
-        CACHE_L[Cache Layer]
+    service repo(mdi:folder-table) [Repositories] in data
+    service models(mdi:file-tree) [ORM Models] in data
+    service cachel(mdi:cached) [Cache Layer] in data
 
-        REPO -->|uses| MODELS
-        REPO -->|uses| CACHE_L
-    end
+    auth:R --> L:rest
+    valid:R --> L:rest
+    rest:R --> L:wf
 
-    REST --> WF
-    AUTH --> REST
-    VALID --> REST
+    wf:R --> L:recon
+    recon:R --> L:diff
+    diff:R --> L:base
 
-    WF --> RECON
-    RECON --> DIFF
-    DIFF --> Clients
-
-    WF --> Data
-
-    style API fill:#e3f2fd
-    style Business fill:#fff3e0
-    style Clients fill:#f3e5f5
-    style Data fill:#e8f5e9
+    wf:B --> T:repo
+    repo:R --> L:models
+    repo:R --> L:cachel
 ```
 
 ---
@@ -341,79 +305,63 @@ graph TB
 ## Deployment Architecture (Production)
 
 ```mermaid
-graph TB
-    subgraph Internet["🌐 Internet"]
-        USER[Users/CLI]
-    end
+architecture-beta
+    group internet(mdi:web) [Internet]
+    group aws(logos:aws) [AWS Cloud]
+    group apilayer(mdi:api) [API Layer] in aws
+    group queue(mdi:tray-full) [Message Queue] in aws
+    group workers(mdi:cogs) [Worker Layer] in aws
+    group storage(mdi:database) [Storage Layer] in aws
+    group observability(mdi:chart-line) [Observability] in aws
+    group secrets(mdi:key) [Secrets] in aws
+    group external(mdi:connection) [External APIs]
 
-    subgraph AWS["☁️ AWS Cloud"]
-        subgraph API_Layer["API Layer"]
-            AGW[API Gateway]
-            LAMBDA_API[Lambda<br/>FastAPI]
-        end
+    service user(mdi:account-group) [Users/CLI] in internet
 
-        subgraph Queue["Message Queue"]
-            SQS[SQS Queue]
-            DLQ[Dead Letter Queue]
-        end
+    service agw(logos:aws-api-gateway) [API Gateway] in apilayer
+    service lambdaapi(logos:aws-lambda) [Lambda FastAPI] in apilayer
 
-        subgraph Workers["Worker Layer"]
-            LAMBDA_W[Lambda Worker<br/>LangGraph]
-            ECS[ECS Fargate<br/>Long Jobs]
-        end
+    service sqs(logos:aws-sqs) [SQS Queue] in queue
+    service dlq(mdi:tray-remove) [Dead Letter Queue] in queue
 
-        subgraph Storage["Storage Layer"]
-            RDS[(RDS PostgreSQL)]
-            ELASTICACHE[(ElastiCache Redis)]
-        end
+    service lambdaw(logos:aws-lambda) [Lambda Worker] in workers
+    service ecs(logos:aws-ecs) [ECS Fargate] in workers
 
-        subgraph Observability["Observability"]
-            CW[CloudWatch Logs/Metrics]
-            XRAY[X-Ray Tracing]
-        end
+    service rds(logos:aws-rds) [RDS PostgreSQL] in storage
+    service elasticache(logos:aws-elasticache) [ElastiCache Redis] in storage
 
-        subgraph Secrets["Secrets"]
-            SM[Secrets Manager]
-        end
-    end
+    service cw(logos:aws-cloudwatch) [CloudWatch] in observability
+    service xray(mdi:radar) [X-Ray Tracing] in observability
 
-    subgraph External["🔌 External APIs"]
-        PD_E[PagerDuty]
-        DD_E[Datadog]
-        GF_E[Grafana]
-        SL_E[Slack]
-    end
+    service sm(logos:aws-secrets-manager) [Secrets Manager] in secrets
 
-    USER -->|HTTPS| AGW
-    AGW --> LAMBDA_API
-    LAMBDA_API -->|enqueue| SQS
-    SQS -->|failed| DLQ
+    service pde(logos:pagerduty) [PagerDuty] in external
+    service dde(logos:datadog) [Datadog] in external
+    service gfe(logos:grafana) [Grafana] in external
+    service sle(logos:slack-icon) [Slack] in external
 
-    SQS -->|trigger| LAMBDA_W
-    SQS -->|long jobs| ECS
+    user:R --> L:agw
+    agw:R --> L:lambdaapi
+    lambdaapi:B --> T:sqs
+    sqs:R --> L:dlq
 
-    LAMBDA_API --> RDS
-    LAMBDA_W --> RDS
-    ECS --> RDS
+    sqs:B --> T:lambdaw
+    sqs:B --> T:ecs
 
-    LAMBDA_API --> ELASTICACHE
-    LAMBDA_W --> ELASTICACHE
+    lambdaapi:B --> T:rds
+    lambdaw:B --> T:rds
+    lambdaapi:B --> T:elasticache
 
-    LAMBDA_W -->|API calls| PD_E
-    LAMBDA_W -->|API calls| DD_E
-    LAMBDA_W -->|API calls| GF_E
-    LAMBDA_W -->|API calls| SL_E
+    lambdaw:R --> L:pde
+    lambdaw:R --> L:dde
+    lambdaw:R --> L:gfe
+    lambdaw:R --> L:sle
 
-    LAMBDA_API -->|logs/metrics| CW
-    LAMBDA_W -->|logs/metrics| CW
-    LAMBDA_API -->|traces| XRAY
-    LAMBDA_W -->|traces| XRAY
+    lambdaapi:B --> T:cw
+    lambdaw:B --> T:cw
 
-    LAMBDA_API -->|get tokens| SM
-    LAMBDA_W -->|get tokens| SM
-
-    style AWS fill:#FF9900,color:#fff
-    style External fill:#4CAF50,color:#fff
+    lambdaapi:B --> T:sm
+    lambdaw:B --> T:sm
 ```
 
 ---

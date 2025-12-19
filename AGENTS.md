@@ -33,30 +33,28 @@ NthLayer is the Reliability Shift Left platform - bringing production readiness 
 ### The Three Layers
 
 ```mermaid
-flowchart TB
-    subgraph Git["Git Repository"]
-        specs["services/*.yaml"]
-    end
+architecture-beta
+    group git(logos:git-icon) [Git Repository]
+    group nthlayer(mdi:cog) [NthLayer Platform]
+    group observability(mdi:chart-line) [Observability Stack]
 
-    subgraph NthLayer["NthLayer Platform"]
-        reslayer["ResLayer - SLOs & Error Budgets"]
-        govlayer["GovLayer - Policy Enforcement"]
-        obslayer["ObserveLayer - Monitoring"]
-    end
+    service specs(mdi:file-code) [services/*.yaml] in git
 
-    subgraph Observability["Observability Stack"]
-        prometheus["Prometheus"]
-        grafana["Grafana"]
-        pagerduty["PagerDuty"]
-    end
+    service reslayer(mdi:target) [ResLayer - SLOs & Error Budgets] in nthlayer
+    service govlayer(mdi:shield-check) [GovLayer - Policy Enforcement] in nthlayer
+    service obslayer(mdi:eye) [ObserveLayer - Monitoring] in nthlayer
 
-    specs --> reslayer
-    specs --> govlayer
-    specs --> obslayer
+    service prometheus(logos:prometheus) [Prometheus] in observability
+    service grafana(logos:grafana) [Grafana] in observability
+    service pagerduty(logos:pagerduty) [PagerDuty] in observability
 
-    reslayer --> prometheus
-    obslayer --> grafana
-    obslayer --> pagerduty
+    specs:R --> L:reslayer
+    specs:R --> L:govlayer
+    specs:R --> L:obslayer
+
+    reslayer:R --> L:prometheus
+    obslayer:R --> L:grafana
+    obslayer:R --> L:pagerduty
 ```
 
 > **See also:** [Full Architecture Documentation](docs-site/architecture.md) for detailed diagrams of workflows and integrations.

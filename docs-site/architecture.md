@@ -7,32 +7,30 @@ This page provides visual documentation of NthLayer's architecture, workflows, a
 The NthLayer platform sits between your service definitions and your observability stack, generating the complete reliability infrastructure.
 
 ```mermaid
-flowchart TB
-    subgraph Git["📁 Git Repository"]
-        specs["services/*.yaml"]
-    end
+architecture-beta
+    group git(logos:git-icon) [Git Repository]
+    group nthlayer(mdi:cog) [NthLayer Platform]
+    group observability(mdi:cloud) [Observability Stack]
 
-    subgraph NthLayer["⚙️ NthLayer Platform"]
-        reslayer["ResLayer\nSLOs & Error Budgets"]
-        govlayer["GovLayer\nPolicy Enforcement"]
-        obslayer["ObserveLayer\nMonitoring"]
-    end
+    service specs(mdi:file-code) [services/*.yaml] in git
 
-    subgraph Observability["☁️ Observability Stack"]
-        prometheus["Prometheus"]
-        grafana["Grafana"]
-        pagerduty["PagerDuty"]
-        loki["Loki"]
-    end
+    service reslayer(mdi:target) [ResLayer - SLOs & Error Budgets] in nthlayer
+    service govlayer(mdi:shield-check) [GovLayer - Policy Enforcement] in nthlayer
+    service obslayer(mdi:eye) [ObserveLayer - Monitoring] in nthlayer
 
-    specs --> reslayer
-    specs --> govlayer
-    specs --> obslayer
+    service prometheus(logos:prometheus) [Prometheus] in observability
+    service grafana(logos:grafana) [Grafana] in observability
+    service pagerduty(logos:pagerduty) [PagerDuty] in observability
+    service loki(logos:loki) [Loki] in observability
 
-    reslayer --> prometheus
-    obslayer --> grafana
-    obslayer --> pagerduty
-    obslayer --> loki
+    specs:R --> L:reslayer
+    specs:R --> L:govlayer
+    specs:R --> L:obslayer
+
+    reslayer:R --> L:prometheus
+    obslayer:R --> L:grafana
+    obslayer:R --> L:pagerduty
+    obslayer:R --> L:loki
 ```
 
 ## Apply Workflow
@@ -40,38 +38,36 @@ flowchart TB
 When you run `nthlayer apply`, the following artifacts are generated from your service specification:
 
 ```mermaid
-flowchart LR
-    subgraph Input["📄 Input"]
-        yaml["service.yaml"]
-    end
+architecture-beta
+    group input(mdi:file-document) [Input]
+    group processing(mdi:cog) [NthLayer Processing]
+    group output(mdi:package-variant) [Generated Artifacts]
 
-    subgraph Processing["⚙️ NthLayer Processing"]
-        parser["Spec Parser"]
-        slo_gen["SLO Generator"]
-        alert_gen["Alert Generator"]
-        dash_gen["Dashboard Builder"]
-        pd_gen["PagerDuty Setup"]
-    end
+    service yaml(mdi:file-code) [service.yaml] in input
 
-    subgraph Output["📦 Generated Artifacts"]
-        slos["slos.yaml"]
-        alerts["alerts.yaml"]
-        dashboard["dashboard.json"]
-        recording["recording-rules.yaml"]
-        pd_config["pagerduty-config.json"]
-    end
+    service parser(mdi:file-search) [Spec Parser] in processing
+    service slogen(mdi:target) [SLO Generator] in processing
+    service alertgen(mdi:bell-alert) [Alert Generator] in processing
+    service dashgen(mdi:view-dashboard) [Dashboard Builder] in processing
+    service pdgen(logos:pagerduty) [PagerDuty Setup] in processing
 
-    yaml --> parser
-    parser --> slo_gen
-    parser --> alert_gen
-    parser --> dash_gen
-    parser --> pd_gen
+    service slos(mdi:file-check) [slos.yaml] in output
+    service alerts(mdi:file-alert) [alerts.yaml] in output
+    service dashboard(mdi:file-chart) [dashboard.json] in output
+    service recording(mdi:file-clock) [recording-rules.yaml] in output
+    service pdconfig(mdi:file-cog) [pagerduty-config.json] in output
 
-    slo_gen --> slos
-    slo_gen --> recording
-    alert_gen --> alerts
-    dash_gen --> dashboard
-    pd_gen --> pd_config
+    yaml:R --> L:parser
+    parser:R --> L:slogen
+    parser:R --> L:alertgen
+    parser:R --> L:dashgen
+    parser:R --> L:pdgen
+
+    slogen:R --> L:slos
+    slogen:R --> L:recording
+    alertgen:R --> L:alerts
+    dashgen:R --> L:dashboard
+    pdgen:R --> L:pdconfig
 ```
 
 ## Integration Architecture
@@ -79,43 +75,40 @@ flowchart LR
 NthLayer integrates with your existing observability stack without requiring changes to your infrastructure:
 
 ```mermaid
-flowchart TB
-    subgraph User["👤 User Environment"]
-        developer["Developer"]
-        cicd["CI/CD Pipeline"]
-        k8s["Kubernetes"]
-    end
+architecture-beta
+    group user(mdi:account-group) [User Environment]
+    group cli(mdi:console) [NthLayer CLI]
+    group metrics(mdi:chart-line) [Metrics Stack]
+    group incidents(mdi:alert) [Incident Management]
 
-    subgraph CLI["🖥️ NthLayer CLI"]
-        apply["nthlayer apply"]
-        portfolio["nthlayer portfolio"]
-        setup["nthlayer setup"]
-    end
+    service developer(mdi:account) [Developer] in user
+    service cicd(mdi:pipe) [CI/CD Pipeline] in user
+    service k8s(logos:kubernetes) [Kubernetes] in user
 
-    subgraph Metrics["📊 Metrics Stack"]
-        prom["Prometheus"]
-        grafana["Grafana Cloud"]
-        loki["Loki"]
-    end
+    service apply(mdi:play) [nthlayer apply] in cli
+    service portfolio(mdi:chart-box) [nthlayer portfolio] in cli
+    service setup(mdi:cog) [nthlayer setup] in cli
 
-    subgraph Incidents["🚨 Incident Management"]
-        pagerduty["PagerDuty"]
-        slack["Slack"]
-    end
+    service prom(logos:prometheus) [Prometheus] in metrics
+    service grafana(logos:grafana) [Grafana Cloud] in metrics
+    service loki(logos:loki) [Loki] in metrics
 
-    developer --> apply
-    cicd --> apply
+    service pagerduty(logos:pagerduty) [PagerDuty] in incidents
+    service slack(logos:slack-icon) [Slack] in incidents
 
-    apply --> prom
-    apply --> grafana
-    apply --> pagerduty
+    developer:R --> L:apply
+    cicd:R --> L:apply
 
-    portfolio --> prom
-    setup --> grafana
-    setup --> pagerduty
+    apply:R --> L:prom
+    apply:R --> L:grafana
+    apply:R --> L:pagerduty
 
-    pagerduty --> slack
-    prom --> grafana
+    portfolio:R --> L:prom
+    setup:R --> L:grafana
+    setup:R --> L:pagerduty
+
+    pagerduty:R --> L:slack
+    prom:R --> L:grafana
 ```
 
 ## SLO Portfolio Flow
@@ -123,35 +116,33 @@ flowchart TB
 The portfolio command aggregates SLO health across all services:
 
 ```mermaid
-flowchart LR
-    subgraph Services["📁 Service Definitions"]
-        svc1["payment-api.yaml"]
-        svc2["checkout-service.yaml"]
-        svc3["notification-worker.yaml"]
-    end
+architecture-beta
+    group services(mdi:folder) [Service Definitions]
+    group collection(mdi:cog) [Portfolio Collection]
+    group output(mdi:export) [Output]
 
-    subgraph Collection["⚙️ Portfolio Collection"]
-        scanner["Service Scanner"]
-        aggregator["SLO Aggregator"]
-        health["Health Calculator"]
-    end
+    service svc1(mdi:file-code) [payment-api.yaml] in services
+    service svc2(mdi:file-code) [checkout-service.yaml] in services
+    service svc3(mdi:file-code) [notification-worker.yaml] in services
 
-    subgraph Output["📤 Output"]
-        text["Terminal Output"]
-        json["JSON Export"]
-        csv["CSV Export"]
-    end
+    service scanner(mdi:file-search) [Service Scanner] in collection
+    service aggregator(mdi:chart-timeline-variant) [SLO Aggregator] in collection
+    service health(mdi:calculator) [Health Calculator] in collection
 
-    svc1 --> scanner
-    svc2 --> scanner
-    svc3 --> scanner
+    service text(mdi:console) [Terminal Output] in output
+    service json(mdi:code-json) [JSON Export] in output
+    service csv(mdi:file-delimited) [CSV Export] in output
 
-    scanner --> aggregator
-    aggregator --> health
+    svc1:R --> L:scanner
+    svc2:R --> L:scanner
+    svc3:R --> L:scanner
 
-    health --> text
-    health --> json
-    health --> csv
+    scanner:R --> L:aggregator
+    aggregator:R --> L:health
+
+    health:R --> L:text
+    health:R --> L:json
+    health:R --> L:csv
 ```
 
 ## Technology Support
@@ -159,41 +150,55 @@ flowchart LR
 NthLayer generates technology-specific monitoring for 18+ technologies:
 
 ```mermaid
-flowchart TB
-    subgraph Databases["🗄️ Databases"]
-        postgres["PostgreSQL"]
-        mysql["MySQL"]
-        mongodb["MongoDB"]
-        elasticsearch["Elasticsearch"]
-    end
+architecture-beta
+    group databases(mdi:database) [Databases]
+    group caches(mdi:lightning-bolt) [Caches & Queues]
+    group infra(mdi:server-network) [Infrastructure]
 
-    subgraph Caches["⚡ Caches & Queues"]
-        redis["Redis"]
-        kafka["Kafka"]
-        rabbitmq["RabbitMQ"]
-        nats["NATS"]
-    end
+    service postgres(logos:postgresql) [PostgreSQL] in databases
+    service mysql(logos:mysql) [MySQL] in databases
+    service mongodb(logos:mongodb-icon) [MongoDB] in databases
+    service elasticsearch(logos:elasticsearch) [Elasticsearch] in databases
 
-    subgraph Infra["🌐 Infrastructure"]
-        nginx["Nginx"]
-        haproxy["HAProxy"]
-        traefik["Traefik"]
-        k8s["Kubernetes"]
-    end
+    service redis(logos:redis) [Redis] in caches
+    service kafka(logos:kafka-icon) [Kafka] in caches
+    service rabbitmq(logos:rabbitmq-icon) [RabbitMQ] in caches
+    service nats(logos:nats-icon) [NATS] in caches
+
+    service nginx(logos:nginx) [Nginx] in infra
+    service haproxy(mdi:arrow-decision) [HAProxy] in infra
+    service traefik(logos:traefik) [Traefik] in infra
+    service k8s(logos:kubernetes) [Kubernetes] in infra
 ```
 
 ## Data Flow Summary
 
 ```mermaid
-flowchart LR
-    A["service.yaml"] --> B["nthlayer apply"]
-    B --> C["Prometheus Alerts"]
-    B --> D["Grafana Dashboard"]
-    B --> E["PagerDuty Setup"]
-    B --> F["Recording Rules"]
-    B --> G["SLO Definitions"]
+architecture-beta
+    group applyflow(mdi:arrow-right) [Apply Flow]
+    group portfolioflow(mdi:arrow-right) [Portfolio Flow]
 
-    H["nthlayer portfolio"] --> I["Scan services/"]
-    I --> J["Aggregate SLOs"]
-    J --> K["Health Report"]
+    service yaml(mdi:file-code) [service.yaml] in applyflow
+    service apply(mdi:play) [nthlayer apply] in applyflow
+    service alerts(logos:prometheus) [Prometheus Alerts] in applyflow
+    service dashboard(logos:grafana) [Grafana Dashboard] in applyflow
+    service pdsetup(logos:pagerduty) [PagerDuty Setup] in applyflow
+    service rules(mdi:file-clock) [Recording Rules] in applyflow
+    service slos(mdi:target) [SLO Definitions] in applyflow
+
+    service portfolio(mdi:chart-box) [nthlayer portfolio] in portfolioflow
+    service scan(mdi:file-search) [Scan services/] in portfolioflow
+    service aggregate(mdi:chart-timeline-variant) [Aggregate SLOs] in portfolioflow
+    service report(mdi:file-chart) [Health Report] in portfolioflow
+
+    yaml:R --> L:apply
+    apply:R --> L:alerts
+    apply:R --> L:dashboard
+    apply:R --> L:pdsetup
+    apply:R --> L:rules
+    apply:R --> L:slos
+
+    portfolio:R --> L:scan
+    scan:R --> L:aggregate
+    aggregate:R --> L:report
 ```
