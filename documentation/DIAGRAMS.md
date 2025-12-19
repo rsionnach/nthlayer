@@ -8,38 +8,38 @@ Visual diagrams using Mermaid (renders automatically on GitHub).
 
 ```mermaid
 architecture-beta
-    group sources(mdi:folder-multiple) [Service Catalogs]
-    group engine(mdi:cog) [NthLayer Engine]
-    group targets(mdi:bullseye-arrow) [Operational Tools]
+   group sources(mdi:folder-multiple) [Service Catalogs]
+   group engine(mdi:cog) [NthLayer Engine]
+   group targets(mdi:bullseye-arrow) [Operational Tools]
 
-    service backstage(logos:backstage-icon) [Backstage] in sources
-    service cortex(mdi:hexagon-outline) [Cortex] in sources
-    service port(mdi:gate) [Port] in sources
-    service ymlfile(mdi:file-code) [NthLayer Config] in sources
+   service backstage(logos:backstage-icon) [Backstage] in sources
+   service cortex(mdi:hexagon-outline) [Cortex] in sources
+   service port(mdi:gate) [Port] in sources
+   service ymlfile(mdi:file-code) [NthLayer Config] in sources
 
-    service api(logos:fastapi) [FastAPI API] in engine
-    service wf(mdi:workflow) [LangGraph Workflows] in engine
-    service db(logos:postgresql) [PostgreSQL] in engine
-    service cache(logos:redis) [Redis Cache] in engine
+   service api(logos:fastapi) [FastAPI API] in engine
+   service wf(mdi:workflow) [LangGraph Workflows] in engine
+   service db(logos:postgresql) [PostgreSQL] in engine
+   service cache(logos:redis) [Redis Cache] in engine
 
-    service pd(logos:pagerduty) [PagerDuty] in targets
-    service dd(logos:datadog) [Datadog] in targets
-    service gf(logos:grafana) [Grafana] in targets
-    service sl(logos:slack-icon) [Slack] in targets
+   service pd(logos:pagerduty) [PagerDuty] in targets
+   service dd(logos:datadog) [Datadog] in targets
+   service gf(logos:grafana) [Grafana] in targets
+   service sl(logos:slack-icon) [Slack] in targets
 
-    backstage:R --> L:api
-    cortex:R --> L:api
-    port:R --> L:api
-    ymlfile:R --> L:api
+   backstage:R --> L:api
+   cortex:R --> L:api
+   port:R --> L:api
+   ymlfile:R --> L:api
 
-    api:R --> L:wf
-    wf:B --> T:db
-    wf:B --> T:cache
+   api:R --> L:wf
+   wf:B --> T:db
+   wf:B --> T:cache
 
-    wf:R --> L:pd
-    wf:R --> L:dd
-    wf:R --> L:gf
-    wf:R --> L:sl
+   wf:R --> L:pd
+   wf:R --> L:dd
+   wf:R --> L:gf
+   wf:R --> L:sl
 ```
 
 ---
@@ -91,40 +91,40 @@ sequenceDiagram
 
 ```mermaid
 architecture-beta
-    group input(mdi:file-document) [Input]
-    group analysis(mdi:magnify) [Analysis]
-    group generation(mdi:cog) [Generation]
-    group apply(mdi:check-circle) [Apply]
+   group inputgrp(mdi:file-document) [Input]
+   group analysis(mdi:magnify) [Analysis]
+   group generation(mdi:cog) [Generation]
+   group applygrp(mdi:check-circle) [Apply]
 
-    service svc(mdi:file-code) [Service Definition] in input
+   service svc(mdi:file-code) [Service Definition] in inputgrp
 
-    service tier(mdi:layers-triple) [Determine Tier] in analysis
-    service deps(mdi:connection) [Check Dependencies] in analysis
-    service team(mdi:account-group) [Find Team] in analysis
+   service tier(mdi:layers-triple) [Determine Tier] in analysis
+   service deps(mdi:connection) [Check Dependencies] in analysis
+   service team(mdi:account-group) [Find Team] in analysis
 
-    service alert(mdi:bell-alert) [Generate Alerts] in generation
-    service esc(mdi:arrow-up-bold) [Generate Escalations] in generation
-    service dash(mdi:view-dashboard) [Generate Dashboards] in generation
-    service rbook(mdi:book-open) [Generate Runbooks] in generation
+   service alertgen(mdi:bell-alert) [Generate Alerts] in generation
+   service escgen(mdi:arrow-up-bold) [Generate Escalations] in generation
+   service dashgenr(mdi:view-dashboard) [Generate Dashboards] in generation
+   service rbook(mdi:book-open) [Generate Runbooks] in generation
 
-    service dda(logos:datadog) [Datadog Monitors] in apply
-    service pda(logos:pagerduty) [PagerDuty Policies] in apply
-    service gfa(logos:grafana) [Grafana Dashboards] in apply
-    service doc(logos:git-icon) [Documentation] in apply
+   service dda(logos:datadog) [Datadog Monitors] in applygrp
+   service pda(logos:pagerduty) [PagerDuty Policies] in applygrp
+   service gfa(logos:grafana) [Grafana Dashboards] in applygrp
+   service docgen(logos:git-icon) [Documentation] in applygrp
 
-    svc:R --> L:tier
-    svc:R --> L:deps
-    svc:R --> L:team
+   svc:R --> L:tier
+   svc:R --> L:deps
+   svc:R --> L:team
 
-    tier:R --> L:alert
-    team:R --> L:esc
-    deps:R --> L:dash
-    tier:R --> L:rbook
+   tier:R --> L:alertgen
+   team:R --> L:escgen
+   deps:R --> L:dashgenr
+   tier:R --> L:rbook
 
-    alert:R --> L:dda
-    esc:R --> L:pda
-    dash:R --> L:gfa
-    rbook:R --> L:doc
+   alertgen:R --> L:dda
+   escgen:R --> L:pda
+   dashgenr:R --> L:gfa
+   rbook:R --> L:docgen
 ```
 
 ---
@@ -133,35 +133,35 @@ architecture-beta
 
 ```mermaid
 architecture-beta
-    group local(mdi:laptop) [Local Development]
-    group docker(logos:docker-icon) [Docker Containers]
-    group mock(mdi:drama-masks) [Mock Server]
-    group nthlayer(mdi:rocket-launch) [NthLayer]
+   group local(mdi:laptop) [Local Development]
+   group docker(logos:docker-icon) [Docker Containers]
+   group mockgrp(mdi:drama-masks) [Mock Server]
+   group nthlayergrp(mdi:rocket-launch) [NthLayer]
 
-    service dev(mdi:account) [Developer] in local
-    service venv(logos:python) [Python venv] in local
+   service dev(mdi:account) [Developer] in local
+   service venv(logos:python) [Python venv] in local
 
-    service pg(logos:postgresql) [PostgreSQL 5432] in docker
-    service rd(logos:redis) [Redis 6379] in docker
+   service pg(logos:postgresql) [PostgreSQL 5432] in docker
+   service rd(logos:redis) [Redis 6379] in docker
 
-    service mockapi(mdi:server) [Mock API 8001] in mock
-    service state(mdi:memory) [InMemory State] in mock
+   service mockapi(mdi:server) [Mock API 8001] in mockgrp
+   service statemem(mdi:memory) [InMemory State] in mockgrp
 
-    service apit(logos:fastapi) [API Server 8000] in nthlayer
-    service demo(mdi:console) [Demo CLI] in nthlayer
-    service tests(mdi:test-tube) [Test Suite] in nthlayer
+   service apit(logos:fastapi) [API Server 8000] in nthlayergrp
+   service democli(mdi:console) [Demo CLI] in nthlayergrp
+   service testsuite(mdi:test-tube) [Test Suite] in nthlayergrp
 
-    dev:R --> L:venv
-    venv:R --> L:apit
-    venv:R --> L:demo
-    venv:R --> L:tests
+   dev:R --> L:venv
+   venv:R --> L:apit
+   venv:R --> L:democli
+   venv:R --> L:testsuite
 
-    apit:B --> T:pg
-    apit:B --> T:rd
-    apit:R --> L:mockapi
+   apit:B --> T:pg
+   apit:B --> T:rd
+   apit:R --> L:mockapi
 
-    tests:R --> L:mockapi
-    mockapi:B --> T:state
+   testsuite:R --> L:mockapi
+   mockapi:B --> T:statemem
 ```
 
 ---
@@ -264,40 +264,40 @@ flowchart TD
 
 ```mermaid
 architecture-beta
-    group api(mdi:api) [API Layer]
-    group business(mdi:cog) [Business Logic]
-    group clients(mdi:web) [HTTP Clients]
-    group data(mdi:database) [Data Layer]
+   group apigrp(mdi:api) [API Layer]
+   group business(mdi:cog) [Business Logic]
+   group clients(mdi:web) [HTTP Clients]
+   group datagrp(mdi:database) [Data Layer]
 
-    service rest(mdi:routes) [REST Endpoints] in api
-    service auth(mdi:lock) [Authentication] in api
-    service valid(mdi:check-decagram) [Validation] in api
+   service rest(mdi:routes) [REST Endpoints] in apigrp
+   service auth(mdi:lock) [Authentication] in apigrp
+   service valid(mdi:check-decagram) [Validation] in apigrp
 
-    service wf(mdi:workflow) [Workflows] in business
-    service recon(mdi:sync) [Reconciliation Engine] in business
-    service diff(mdi:compare) [Diff Calculator] in business
+   service wf(mdi:workflow) [Workflows] in business
+   service recon(mdi:sync) [Reconciliation Engine] in business
+   service diffcalc(mdi:compare) [Diff Calculator] in business
 
-    service base(mdi:server) [Base Client] in clients
-    service pdc(logos:pagerduty) [PagerDuty Client] in clients
-    service ddc(logos:datadog) [Datadog Client] in clients
-    service gfc(logos:grafana) [Grafana Client] in clients
-    service cxc(mdi:hexagon-outline) [Cortex Client] in clients
+   service baseclient(mdi:server) [Base Client] in clients
+   service pdc(logos:pagerduty) [PagerDuty Client] in clients
+   service ddc(logos:datadog) [Datadog Client] in clients
+   service gfc(logos:grafana) [Grafana Client] in clients
+   service cxc(mdi:hexagon-outline) [Cortex Client] in clients
 
-    service repo(mdi:folder-table) [Repositories] in data
-    service models(mdi:file-tree) [ORM Models] in data
-    service cachel(mdi:cached) [Cache Layer] in data
+   service repo(mdi:folder-table) [Repositories] in datagrp
+   service models(mdi:file-tree) [ORM Models] in datagrp
+   service cachel(mdi:cached) [Cache Layer] in datagrp
 
-    auth:R --> L:rest
-    valid:R --> L:rest
-    rest:R --> L:wf
+   auth:R --> L:rest
+   valid:R --> L:rest
+   rest:R --> L:wf
 
-    wf:R --> L:recon
-    recon:R --> L:diff
-    diff:R --> L:base
+   wf:R --> L:recon
+   recon:R --> L:diffcalc
+   diffcalc:R --> L:baseclient
 
-    wf:B --> T:repo
-    repo:R --> L:models
-    repo:R --> L:cachel
+   wf:B --> T:repo
+   repo:R --> L:models
+   repo:R --> L:cachel
 ```
 
 ---
@@ -306,62 +306,62 @@ architecture-beta
 
 ```mermaid
 architecture-beta
-    group internet(mdi:web) [Internet]
-    group aws(logos:aws) [AWS Cloud]
-    group apilayer(mdi:api) [API Layer] in aws
-    group queue(mdi:tray-full) [Message Queue] in aws
-    group workers(mdi:cogs) [Worker Layer] in aws
-    group storage(mdi:database) [Storage Layer] in aws
-    group observability(mdi:chart-line) [Observability] in aws
-    group secrets(mdi:key) [Secrets] in aws
-    group external(mdi:connection) [External APIs]
+   group internet(mdi:web) [Internet]
+   group aws(logos:aws) [AWS Cloud]
+   group apilayer(mdi:api) [API Layer] in aws
+   group queue(mdi:tray-full) [Message Queue] in aws
+   group workers(mdi:cogs) [Worker Layer] in aws
+   group storageaws(mdi:database) [Storage Layer] in aws
+   group observaws(mdi:chart-line) [Observability] in aws
+   group secretsaws(mdi:key) [Secrets] in aws
+   group external(mdi:connection) [External APIs]
 
-    service user(mdi:account-group) [Users and CLI] in internet
+   service useraws(mdi:account-group) [Users and CLI] in internet
 
-    service agw(logos:aws-api-gateway) [API Gateway] in apilayer
-    service lambdaapi(logos:aws-lambda) [Lambda FastAPI] in apilayer
+   service agw(logos:aws-api-gateway) [API Gateway] in apilayer
+   service lambdaapi(logos:aws-lambda) [Lambda FastAPI] in apilayer
 
-    service sqs(logos:aws-sqs) [SQS Queue] in queue
-    service dlq(mdi:tray-remove) [Dead Letter Queue] in queue
+   service sqsqueue(logos:aws-sqs) [SQS Queue] in queue
+   service dlq(mdi:tray-remove) [Dead Letter Queue] in queue
 
-    service lambdaw(logos:aws-lambda) [Lambda Worker] in workers
-    service ecs(logos:aws-ecs) [ECS Fargate] in workers
+   service lambdaw(logos:aws-lambda) [Lambda Worker] in workers
+   service ecsfargate(logos:aws-ecs) [ECS Fargate] in workers
 
-    service rds(logos:aws-rds) [RDS PostgreSQL] in storage
-    service elasticache(logos:aws-elasticache) [ElastiCache Redis] in storage
+   service rdsdb(logos:aws-rds) [RDS PostgreSQL] in storageaws
+   service elasticache(logos:aws-elasticache) [ElastiCache Redis] in storageaws
 
-    service cw(logos:aws-cloudwatch) [CloudWatch] in observability
-    service xray(mdi:radar) [XRay Tracing] in observability
+   service cwlogs(logos:aws-cloudwatch) [CloudWatch] in observaws
+   service xraytrace(mdi:radar) [XRay Tracing] in observaws
 
-    service sm(logos:aws-secrets-manager) [Secrets Manager] in secrets
+   service secretsmgr(logos:aws-secrets-manager) [Secrets Manager] in secretsaws
 
-    service pde(logos:pagerduty) [PagerDuty] in external
-    service dde(logos:datadog) [Datadog] in external
-    service gfe(logos:grafana) [Grafana] in external
-    service sle(logos:slack-icon) [Slack] in external
+   service pde(logos:pagerduty) [PagerDuty] in external
+   service dde(logos:datadog) [Datadog] in external
+   service gfe(logos:grafana) [Grafana] in external
+   service sle(logos:slack-icon) [Slack] in external
 
-    user:R --> L:agw
-    agw:R --> L:lambdaapi
-    lambdaapi:B --> T:sqs
-    sqs:R --> L:dlq
+   useraws:R --> L:agw
+   agw:R --> L:lambdaapi
+   lambdaapi:B --> T:sqsqueue
+   sqsqueue:R --> L:dlq
 
-    sqs:B --> T:lambdaw
-    sqs:B --> T:ecs
+   sqsqueue:B --> T:lambdaw
+   sqsqueue:B --> T:ecsfargate
 
-    lambdaapi:B --> T:rds
-    lambdaw:B --> T:rds
-    lambdaapi:B --> T:elasticache
+   lambdaapi:B --> T:rdsdb
+   lambdaw:B --> T:rdsdb
+   lambdaapi:B --> T:elasticache
 
-    lambdaw:R --> L:pde
-    lambdaw:R --> L:dde
-    lambdaw:R --> L:gfe
-    lambdaw:R --> L:sle
+   lambdaw:R --> L:pde
+   lambdaw:R --> L:dde
+   lambdaw:R --> L:gfe
+   lambdaw:R --> L:sle
 
-    lambdaapi:B --> T:cw
-    lambdaw:B --> T:cw
+   lambdaapi:B --> T:cwlogs
+   lambdaw:B --> T:cwlogs
 
-    lambdaapi:B --> T:sm
-    lambdaw:B --> T:sm
+   lambdaapi:B --> T:secretsmgr
+   lambdaw:B --> T:secretsmgr
 ```
 
 ---
