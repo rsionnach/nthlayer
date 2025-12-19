@@ -12,11 +12,11 @@ architecture-beta
     group nthlayer(mdi:cog) [NthLayer Platform]
     group observability(mdi:cloud) [Observability Stack]
 
-    service specs(mdi:file-code) [services/*.yaml] in git
+    service specs(mdi:file-code) [Service YAML Files] in git
 
-    service reslayer(mdi:target) [ResLayer - SLOs & Error Budgets] in nthlayer
-    service govlayer(mdi:shield-check) [GovLayer - Policy Enforcement] in nthlayer
-    service obslayer(mdi:eye) [ObserveLayer - Monitoring] in nthlayer
+    service reslayer(mdi:target) [ResLayer SLOs] in nthlayer
+    service govlayer(mdi:shield-check) [GovLayer Policies] in nthlayer
+    service obslayer(mdi:eye) [ObserveLayer Monitoring] in nthlayer
 
     service prometheus(logos:prometheus) [Prometheus] in observability
     service grafana(logos:grafana) [Grafana] in observability
@@ -43,7 +43,7 @@ architecture-beta
     group processing(mdi:cog) [NthLayer Processing]
     group output(mdi:package-variant) [Generated Artifacts]
 
-    service yaml(mdi:file-code) [service.yaml] in input
+    service yaml(mdi:file-code) [Service YAML] in input
 
     service parser(mdi:file-search) [Spec Parser] in processing
     service slogen(mdi:target) [SLO Generator] in processing
@@ -51,11 +51,11 @@ architecture-beta
     service dashgen(mdi:view-dashboard) [Dashboard Builder] in processing
     service pdgen(logos:pagerduty) [PagerDuty Setup] in processing
 
-    service slos(mdi:file-check) [slos.yaml] in output
-    service alerts(mdi:file-alert) [alerts.yaml] in output
-    service dashboard(mdi:file-chart) [dashboard.json] in output
-    service recording(mdi:file-clock) [recording-rules.yaml] in output
-    service pdconfig(mdi:file-cog) [pagerduty-config.json] in output
+    service slos(mdi:file-check) [SLOs YAML] in output
+    service alerts(mdi:file-alert) [Alerts YAML] in output
+    service dashboard(mdi:file-chart) [Dashboard JSON] in output
+    service recording(mdi:file-clock) [Recording Rules] in output
+    service pdconfig(mdi:file-cog) [PagerDuty Config] in output
 
     yaml:R --> L:parser
     parser:R --> L:slogen
@@ -82,7 +82,7 @@ architecture-beta
     group incidents(mdi:alert) [Incident Management]
 
     service developer(mdi:account) [Developer] in user
-    service cicd(mdi:pipe) [CI/CD Pipeline] in user
+    service cicd(mdi:pipe) [CICD Pipeline] in user
     service k8s(logos:kubernetes) [Kubernetes] in user
 
     service apply(mdi:play) [nthlayer apply] in cli
@@ -121,9 +121,9 @@ architecture-beta
     group collection(mdi:cog) [Portfolio Collection]
     group output(mdi:export) [Output]
 
-    service svc1(mdi:file-code) [payment-api.yaml] in services
-    service svc2(mdi:file-code) [checkout-service.yaml] in services
-    service svc3(mdi:file-code) [notification-worker.yaml] in services
+    service svc1(mdi:file-code) [Payment API] in services
+    service svc2(mdi:file-code) [Checkout Service] in services
+    service svc3(mdi:file-code) [Notification Worker] in services
 
     service scanner(mdi:file-search) [Service Scanner] in collection
     service aggregator(mdi:chart-timeline-variant) [SLO Aggregator] in collection
@@ -152,7 +152,7 @@ NthLayer generates technology-specific monitoring for 18+ technologies:
 ```mermaid
 architecture-beta
     group databases(mdi:database) [Databases]
-    group caches(mdi:lightning-bolt) [Caches & Queues]
+    group caches(mdi:lightning-bolt) [Caches and Queues]
     group infra(mdi:server-network) [Infrastructure]
 
     service postgres(logos:postgresql) [PostgreSQL] in databases
@@ -178,16 +178,16 @@ architecture-beta
     group applyflow(mdi:arrow-right) [Apply Flow]
     group portfolioflow(mdi:arrow-right) [Portfolio Flow]
 
-    service yaml(mdi:file-code) [service.yaml] in applyflow
-    service apply(mdi:play) [nthlayer apply] in applyflow
+    service yaml(mdi:file-code) [Service YAML] in applyflow
+    service apply(mdi:play) [NthLayer Apply] in applyflow
     service alerts(logos:prometheus) [Prometheus Alerts] in applyflow
     service dashboard(logos:grafana) [Grafana Dashboard] in applyflow
     service pdsetup(logos:pagerduty) [PagerDuty Setup] in applyflow
     service rules(mdi:file-clock) [Recording Rules] in applyflow
     service slos(mdi:target) [SLO Definitions] in applyflow
 
-    service portfolio(mdi:chart-box) [nthlayer portfolio] in portfolioflow
-    service scan(mdi:file-search) [Scan services/] in portfolioflow
+    service portfolio(mdi:chart-box) [NthLayer Portfolio] in portfolioflow
+    service scan(mdi:file-search) [Scan Services] in portfolioflow
     service aggregate(mdi:chart-timeline-variant) [Aggregate SLOs] in portfolioflow
     service report(mdi:file-chart) [Health Report] in portfolioflow
 

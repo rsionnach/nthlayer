@@ -8,14 +8,14 @@ Visual diagrams using Mermaid (renders automatically on GitHub).
 
 ```mermaid
 architecture-beta
-    group sources(mdi:folder-multiple) [Service Catalogs - Optional]
+    group sources(mdi:folder-multiple) [Service Catalogs]
     group engine(mdi:cog) [NthLayer Engine]
     group targets(mdi:bullseye-arrow) [Operational Tools]
 
     service backstage(logos:backstage-icon) [Backstage] in sources
     service cortex(mdi:hexagon-outline) [Cortex] in sources
     service port(mdi:gate) [Port] in sources
-    service yml(mdi:file-code) [nthlayer.yaml] in sources
+    service yml(mdi:file-code) [NthLayer YAML] in sources
 
     service api(logos:fastapi) [FastAPI API] in engine
     service wf(mdi:workflow) [LangGraph Workflows] in engine
@@ -141,13 +141,13 @@ architecture-beta
     service dev(mdi:account) [Developer] in local
     service venv(logos:python) [Python venv] in local
 
-    service pg(logos:postgresql) [PostgreSQL :5432] in docker
-    service rd(logos:redis) [Redis :6379] in docker
+    service pg(logos:postgresql) [PostgreSQL 5432] in docker
+    service rd(logos:redis) [Redis 6379] in docker
 
-    service mockapi(mdi:server) [Mock API :8001] in mock
-    service state(mdi:memory) [In-Memory State] in mock
+    service mockapi(mdi:server) [Mock API 8001] in mock
+    service state(mdi:memory) [InMemory State] in mock
 
-    service apit(logos:fastapi) [API Server :8000] in nthlayer
+    service apit(logos:fastapi) [API Server 8000] in nthlayer
     service demo(mdi:console) [Demo CLI] in nthlayer
     service tests(mdi:test-tube) [Test Suite] in nthlayer
 
@@ -316,7 +316,7 @@ architecture-beta
     group secrets(mdi:key) [Secrets] in aws
     group external(mdi:connection) [External APIs]
 
-    service user(mdi:account-group) [Users/CLI] in internet
+    service user(mdi:account-group) [Users and CLI] in internet
 
     service agw(logos:aws-api-gateway) [API Gateway] in apilayer
     service lambdaapi(logos:aws-lambda) [Lambda FastAPI] in apilayer
@@ -331,7 +331,7 @@ architecture-beta
     service elasticache(logos:aws-elasticache) [ElastiCache Redis] in storage
 
     service cw(logos:aws-cloudwatch) [CloudWatch] in observability
-    service xray(mdi:radar) [X-Ray Tracing] in observability
+    service xray(mdi:radar) [XRay Tracing] in observability
 
     service sm(logos:aws-secrets-manager) [Secrets Manager] in secrets
 
