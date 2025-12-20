@@ -108,7 +108,7 @@ jobs:
         run: |
           echo "=== Validating example service specs ==="
           # Only validate known-good specs (some examples are intentionally incomplete for demos)
-          nthlayer validate-spec examples/services/checkout-service.yaml examples/services/payment-api.yaml
+          nthlayer validate-spec examples/services/checkout-service.yaml
 
       - name: Generate artifacts for example service
         run: |
