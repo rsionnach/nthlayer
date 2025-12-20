@@ -309,11 +309,82 @@ scripts/           → Utility scripts (validation, migration)
 - Rate queries should aggregate: `sum(rate(metric{service="$service"}[5m]))`
 
 ### Coding Style
-- Python 3.9+ with type hints
+- Python 3.11+ with type hints (all functions must have type annotations)
 - Pydantic models for data validation
 - Use `structlog` for logging
 - Prefer composition over inheritance
 - Tests first when fixing bugs
+
+### Code Quality & Architecture (CRITICAL)
+
+**Complexity Limits:**
+- Functions should have cyclomatic complexity ≤ 10 (target: A/B rating)
+- If complexity exceeds 15, refactor immediately
+- Use `radon cc src/nthlayer -a` to check complexity scores
+
+**Refactoring Triggers:**
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| Function complexity | > 10 | Extract helper methods or use dispatch pattern |
+| Function length | > 50 lines | Split into smaller functions |
+| Nested conditionals | > 3 levels | Use early returns or extract methods |
+| Duplicate code | > 10 lines | Extract to shared utility |
+
+**Architecture Patterns:**
+
+1. **Dispatch Pattern** - Replace long if/elif chains:
+   ```python
+   # BAD: Long conditional chain
+   if resource_type == "slos":
+       generate_slos()
+   elif resource_type == "alerts":
+       generate_alerts()
+   # ... 10 more conditions
+
+   # GOOD: Dispatch table
+   GENERATORS = {
+       "slos": generate_slos,
+       "alerts": generate_alerts,
+   }
+   GENERATORS[resource_type]()
+   ```
+
+2. **Extract Business Logic** - Keep CLI commands thin:
+   ```python
+   # BAD: Business logic in CLI
+   def validate_command(file):
+       # 100 lines of validation logic
+
+   # GOOD: Thin CLI, extracted logic
+   def validate_command(file):
+       validator = DashboardValidator(file)
+       result = validator.validate()
+       return result.exit_code
+   ```
+
+3. **Single Responsibility** - Each module/class does ONE thing:
+   - `orchestrator.py` - Coordinates workflow
+   - `dashboards/builder_sdk.py` - Builds dashboards
+   - `slos/collector.py` - Collects SLO data
+   - Don't mix concerns (e.g., no API calls in validators)
+
+4. **DRY (Don't Repeat Yourself)**:
+   - Extract shared query patterns to `slos/queries.py`
+   - Extract shared CLI output formatting to helpers
+   - Use base classes for common template behavior
+
+**Before Adding New Code:**
+1. Check if similar functionality exists - search codebase first
+2. Identify the right module (see Project Layout)
+3. Follow existing patterns in that module
+4. Add tests before or alongside implementation
+
+**Code Review Checklist:**
+- [ ] Complexity score acceptable (`radon cc <file>`)
+- [ ] No duplicate code (check with `radon hal` or manual review)
+- [ ] Type hints on all functions
+- [ ] Tests added/updated
+- [ ] Follows existing patterns in the module
 
 ### External Service SDKs (CRITICAL)
 Always use official SDKs/clients for external service integrations. Do not create bespoke HTTP clients when official libraries exist.
