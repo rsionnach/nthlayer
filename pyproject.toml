@@ -77,6 +77,10 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
+ignore = [
+    "B008",  # Depends() in function defaults - standard FastAPI pattern
+    "E402",  # Module level import not at top - needed for sys.modules mocking in tests
+]
 
 [tool.sloppy]
 # Sloppylint configuration - AI code quality checker

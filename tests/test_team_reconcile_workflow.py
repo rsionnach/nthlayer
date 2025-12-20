@@ -30,7 +30,9 @@ class _MockStateGraph:
         return _MockCompiledGraph()
 
 
-sys.modules.setdefault("langgraph.graph", types.SimpleNamespace(END="END", StateGraph=_MockStateGraph))
+sys.modules.setdefault(
+    "langgraph.graph", types.SimpleNamespace(END="END", StateGraph=_MockStateGraph)
+)
 
 from nthlayer.workflows.team_reconcile import TeamReconcileWorkflow
 
@@ -51,7 +53,9 @@ class StubPagerDuty:
     async def get_team_members(self, team_id: str):
         return self.members
 
-    async def set_team_members(self, team_id: str, memberships, *, idempotency_key: str | None = None):
+    async def set_team_members(
+        self, team_id: str, memberships, *, idempotency_key: str | None = None
+    ):
         self.latest_memberships = list(memberships)
 
 
@@ -96,9 +100,7 @@ async def test_apply_diff_replaces_memberships_when_removals_needed():
     state = await workflow._apply_diff(state)
 
     assert state["applied"] is True
-    assert workflow.pagerduty.latest_memberships == [
-        {"user": {"id": "user-2"}, "role": "manager"}
-    ]
+    assert workflow.pagerduty.latest_memberships == [{"user": {"id": "user-2"}, "role": "manager"}]
     assert repo.findings and repo.findings[0].after == {"managers": ["user-2"]}
 
 

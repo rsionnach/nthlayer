@@ -54,21 +54,23 @@ class TestSLOCollector:
         # Mock Prometheus to return perfect SLI values
         now = datetime.utcnow()
         measurements = []
-        
+
         # 30 days of perfect uptime (SLI = 1.0)
         for i in range(30 * 24):  # 30 days, 1 measurement per hour
-            measurements.append({
-                "timestamp": now - timedelta(hours=30*24 - i),
-                "sli_value": 1.0,  # 100% good
-                "duration_seconds": 3600,  # 1 hour
-            })
-        
+            measurements.append(
+                {
+                    "timestamp": now - timedelta(hours=30 * 24 - i),
+                    "sli_value": 1.0,  # 100% good
+                    "duration_seconds": 3600,  # 1 hour
+                }
+            )
+
         mock_prometheus.get_sli_time_series.return_value = measurements
-        
+
         # Create collector and collect
         collector = SLOCollector(mock_prometheus, mock_repository)
         budget = await collector.collect_slo_budget(sample_slo)
-        
+
         # Verify budget calculation
         assert budget.slo_id == "test-slo"
         assert budget.service == "test-service"
@@ -76,10 +78,10 @@ class TestSLOCollector:
         assert budget.burned_minutes == 0.0
         assert budget.remaining_minutes == pytest.approx(21.6, rel=0.01)
         assert budget.status.value == "healthy"
-        
+
         # Verify Prometheus was called
         mock_prometheus.get_sli_time_series.assert_called_once()
-        
+
         # Verify budget was stored
         mock_repository.create_or_update_error_budget.assert_called_once()
 
@@ -88,29 +90,33 @@ class TestSLOCollector:
         """Test collection with some errors (partial budget burn)."""
         now = datetime.utcnow()
         measurements = []
-        
+
         # First 20 days: perfect (1.0)
         for i in range(20 * 24):
-            measurements.append({
-                "timestamp": now - timedelta(hours=30*24 - i),
-                "sli_value": 1.0,
-                "duration_seconds": 3600,
-            })
-        
+            measurements.append(
+                {
+                    "timestamp": now - timedelta(hours=30 * 24 - i),
+                    "sli_value": 1.0,
+                    "duration_seconds": 3600,
+                }
+            )
+
         # Last 10 days: 99% uptime (1% errors)
         for i in range(20 * 24, 30 * 24):
-            measurements.append({
-                "timestamp": now - timedelta(hours=30*24 - i),
-                "sli_value": 0.99,  # 1% errors
-                "duration_seconds": 3600,
-            })
-        
+            measurements.append(
+                {
+                    "timestamp": now - timedelta(hours=30 * 24 - i),
+                    "sli_value": 0.99,  # 1% errors
+                    "duration_seconds": 3600,
+                }
+            )
+
         mock_prometheus.get_sli_time_series.return_value = measurements
-        
+
         # Create collector and collect
         collector = SLOCollector(mock_prometheus, mock_repository)
         budget = await collector.collect_slo_budget(sample_slo)
-        
+
         # 1% error rate for 10 days = 0.01 * 10 * 24 * 60 = 144 minutes
         assert budget.burned_minutes == pytest.approx(144, rel=0.1)
         assert budget.percent_consumed > 50  # More than 50% consumed
@@ -121,11 +127,11 @@ class TestSLOCollector:
         """Test collection when no measurements are available."""
         # Mock Prometheus to return empty list
         mock_prometheus.get_sli_time_series.return_value = []
-        
+
         # Create collector and collect
         collector = SLOCollector(mock_prometheus, mock_repository)
         budget = await collector.collect_slo_budget(sample_slo)
-        
+
         # With no measurements, no budget is burned
         assert budget.burned_minutes == 0.0
         assert budget.remaining_minutes == pytest.approx(21.6, rel=0.01)
@@ -153,10 +159,10 @@ class TestSLOCollector:
             time_window=TimeWindow("30d", TimeWindowType.ROLLING),
             query="query2",
         )
-        
+
         # Mock repository to return both SLOs
         mock_repository.get_slos_by_service.return_value = [slo1, slo2]
-        
+
         # Mock Prometheus to return perfect uptime
         now = datetime.utcnow()
         measurements = [
@@ -168,29 +174,31 @@ class TestSLOCollector:
             for i in range(24)
         ]
         mock_prometheus.get_sli_time_series.return_value = measurements
-        
+
         # Create collector and collect
         collector = SLOCollector(mock_prometheus, mock_repository)
         budgets = await collector.collect_service_budgets("test-service")
-        
+
         # Verify we got budgets for both SLOs
         assert len(budgets) == 2
         assert budgets[0].slo_id == "slo-1"
         assert budgets[1].slo_id == "slo-2"
-        
+
         # Verify repository was queried
         mock_repository.get_slos_by_service.assert_called_once_with("test-service")
-        
+
         # Verify both budgets were stored
         assert mock_repository.create_or_update_error_budget.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_collect_with_custom_time_range(self, sample_slo, mock_prometheus, mock_repository):
+    async def test_collect_with_custom_time_range(
+        self, sample_slo, mock_prometheus, mock_repository
+    ):
         """Test collection with custom time range."""
         # Custom time range: last 7 days
         period_end = datetime.utcnow()
         period_start = period_end - timedelta(days=7)
-        
+
         # Mock measurements
         measurements = [
             {
@@ -201,7 +209,7 @@ class TestSLOCollector:
             for i in range(7 * 24)
         ]
         mock_prometheus.get_sli_time_series.return_value = measurements
-        
+
         # Create collector and collect with custom range
         collector = SLOCollector(mock_prometheus, mock_repository)
         budget = await collector.collect_slo_budget(
@@ -209,12 +217,12 @@ class TestSLOCollector:
             period_start=period_start,
             period_end=period_end,
         )
-        
+
         # Verify time range was passed to Prometheus
         call_args = mock_prometheus.get_sli_time_series.call_args
         assert call_args.kwargs["start"] == period_start
         assert call_args.kwargs["end"] == period_end
-        
+
         # Verify budget period
         assert budget.period_start == period_start
         assert budget.period_end == period_end
@@ -242,7 +250,7 @@ class TestPrometheusIntegration:
                 ],
             },
         }
-        
+
         # Verify structure
         assert response["status"] == "success"
         data = response["data"]["result"][0]

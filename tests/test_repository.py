@@ -9,15 +9,15 @@ from sqlalchemy.orm import sessionmaker
 @pytest.fixture
 async def session():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=True)
-    
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
+
     async with async_session() as session:
         yield session
-    
+
     await engine.dispose()
 
 
@@ -30,10 +30,10 @@ async def test_create_run(session):
         status=RunStatus.queued,
         requested_by="user-1",
     )
-    
+
     await repo.create_run(run)
     await session.commit()
-    
+
     retrieved = await repo.get_run("job-123")
     assert retrieved is not None
     assert retrieved.job_id == "job-123"
@@ -45,10 +45,10 @@ async def test_create_run(session):
 async def test_update_status(session):
     repo = RunRepository(session)
     run = Run(job_id="job-123", type="team.reconcile", status=RunStatus.queued)
-    
+
     await repo.create_run(run)
     await session.commit()
-    
+
     await repo.update_status(
         "job-123",
         RunStatus.succeeded,
@@ -57,7 +57,7 @@ async def test_update_status(session):
         outcome="applied",
     )
     await session.commit()
-    
+
     retrieved = await repo.get_run("job-123")
     assert retrieved.status == RunStatus.succeeded
     assert retrieved.started_at == 1234.5
@@ -67,10 +67,10 @@ async def test_update_status(session):
 @pytest.mark.asyncio
 async def test_register_idempotency(session):
     repo = RunRepository(session)
-    
+
     await repo.register_idempotency("team-123", "idem-key-1")
     await session.commit()
-    
+
     with pytest.raises(IdempotencyConflict):
         await repo.register_idempotency("team-123", "idem-key-1")
 
@@ -87,6 +87,6 @@ async def test_record_finding(session):
         api_calls=[{"name": "set_members", "count": 1}],
         outcome="applied",
     )
-    
+
     await repo.record_finding(finding)
     await session.commit()

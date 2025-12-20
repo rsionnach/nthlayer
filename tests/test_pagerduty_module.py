@@ -2,7 +2,6 @@
 Tests for the PagerDuty integration module.
 """
 
-from nthlayer.pagerduty.resources import ResourceResult
 from nthlayer.pagerduty.defaults import (
     SUPPORT_MODEL_DEFAULTS,
     TIER_ESCALATION_DEFAULTS,
@@ -20,6 +19,7 @@ from nthlayer.pagerduty.naming import (
     parse_resource_name,
     sanitize_name,
 )
+from nthlayer.pagerduty.resources import ResourceResult
 
 
 class TestDefaults:

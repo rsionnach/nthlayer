@@ -10,7 +10,9 @@ class StubRedisClient:
         self.counts: dict[str, int] = {}
         self._lock = asyncio.Lock()
 
-    async def eval(self, script: str, numkeys: int, key: str, window_seconds: Any, max_requests: Any) -> int:
+    async def eval(
+        self, script: str, numkeys: int, key: str, window_seconds: Any, max_requests: Any
+    ) -> int:
         async with self._lock:
             current = self.counts.get(key)
             if current is None:
