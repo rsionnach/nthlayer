@@ -1,4 +1,5 @@
-// Mermaid configuration - loaded BEFORE mermaid.min.js
+// Mermaid configuration with Iconify icon support for architecture-beta diagrams
+// Uses 'mermaid-raw' class to prevent mkdocs-material auto-processing
 
 window.mermaidConfig = {
   startOnLoad: false,
@@ -9,19 +10,14 @@ window.mermaidConfig = {
 window.addEventListener('DOMContentLoaded', async function() {
   await new Promise(r => setTimeout(r, 100));
 
-  if (typeof mermaid === 'undefined') {
-    console.error('Mermaid not available');
-    return;
-  }
+  if (typeof mermaid === 'undefined') return;
 
   try {
-    // Load icon packs
-    console.log('Loading icon packs...');
+    // Load and register Iconify icon packs (logos: and mdi:)
     const [logosData, mdiData] = await Promise.all([
       fetch('https://unpkg.com/@iconify-json/logos@1/icons.json').then(r => r.json()),
       fetch('https://unpkg.com/@iconify-json/mdi@1/icons.json').then(r => r.json()),
     ]);
-    console.log('Icons loaded');
 
     mermaid.registerIconPacks([
       { name: logosData.prefix || 'logos', icons: logosData },
@@ -34,16 +30,12 @@ window.addEventListener('DOMContentLoaded', async function() {
       securityLevel: 'loose',
     });
 
-    // Find pre.mermaid-raw > code elements (our custom class to avoid mkdocs auto-processing)
+    // Transform pre.mermaid-raw > code to div.mermaid for rendering
     const codeBlocks = document.querySelectorAll('pre.mermaid-raw code');
-    console.log('Found', codeBlocks.length, 'mermaid-raw code blocks');
-
-    // Transform pre>code to div for mermaid
     const nodes = [];
-    codeBlocks.forEach((code, i) => {
-      const content = code.textContent.trim();
-      console.log('Block', i, 'content length:', content.length, 'preview:', content.substring(0, 60));
 
+    codeBlocks.forEach((code) => {
+      const content = code.textContent.trim();
       if (content) {
         const div = document.createElement('div');
         div.className = 'mermaid';
@@ -53,15 +45,10 @@ window.addEventListener('DOMContentLoaded', async function() {
       }
     });
 
-    console.log('Created', nodes.length, 'diagram nodes');
-
-    // Run mermaid on our nodes
     if (nodes.length > 0) {
       await mermaid.run({ nodes });
     }
-    console.log('Mermaid complete');
-
   } catch (err) {
-    console.error('Mermaid error:', err);
+    console.error('Mermaid initialization error:', err);
   }
 });
