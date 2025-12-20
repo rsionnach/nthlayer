@@ -1,52 +1,64 @@
 // Initialize Mermaid with Iconify icon packs for architecture diagrams
-// This enables icons like logos:prometheus, mdi:cog, etc.
+// Sequence: Load icons -> Register -> Fix HTML escaping -> Render
 
-// Wait for mermaid to be available (loaded via extra_javascript in mkdocs.yml)
-document.addEventListener('DOMContentLoaded', async function() {
-  if (typeof mermaid !== 'undefined') {
-    // Register icon packs for architecture-beta diagrams
-    mermaid.registerIconPacks([
-      {
-        name: 'logos',
-        loader: () =>
-          fetch('https://unpkg.com/@iconify-json/logos@1/icons.json').then((res) => res.json()),
-      },
-      {
-        name: 'mdi',
-        loader: () =>
-          fetch('https://unpkg.com/@iconify-json/mdi@1/icons.json').then((res) => res.json()),
-      },
+window.addEventListener('load', async function() {
+  if (typeof mermaid === 'undefined') {
+    console.error('Mermaid not loaded');
+    return;
+  }
+
+  try {
+    // 1. Load icon packs in parallel
+    console.log('Loading icon packs...');
+    const [logosIcons, mdiIcons] = await Promise.all([
+      fetch('https://unpkg.com/@iconify-json/logos@1/icons.json').then(r => r.json()),
+      fetch('https://unpkg.com/@iconify-json/mdi@1/icons.json').then(r => r.json()),
     ]);
+    console.log('Icon packs loaded');
 
-    // Initialize mermaid
+    // 2. Register icon packs with mermaid
+    mermaid.registerIconPacks([
+      { name: 'logos', icons: logosIcons },
+      { name: 'mdi', icons: mdiIcons },
+    ]);
+    console.log('Icon packs registered');
+
+    // 3. Initialize mermaid (don't auto-start, we'll run manually)
     mermaid.initialize({
       startOnLoad: false,
       theme: 'dark',
       securityLevel: 'loose',
     });
 
-    // Fix HTML-escaped content in mermaid blocks before rendering
-    // mkdocs escapes > to &gt; which breaks arrows like -->
-    document.querySelectorAll('pre.mermaid code, .mermaid code').forEach((el) => {
-      // Decode HTML entities
-      const decoded = el.textContent
-        .replace(/&gt;/g, '>')
-        .replace(/&lt;/g, '<')
-        .replace(/&amp;/g, '&');
+    // 4. Fix HTML-escaped content and prepare divs for mermaid
+    const mermaidBlocks = document.querySelectorAll('pre.mermaid');
+    console.log('Found', mermaidBlocks.length, 'mermaid blocks');
 
-      // Create a new div with the decoded content for mermaid to process
-      const div = document.createElement('div');
-      div.className = 'mermaid';
-      div.textContent = decoded;
+    mermaidBlocks.forEach((pre, index) => {
+      const code = pre.querySelector('code');
+      if (code) {
+        // textContent automatically decodes HTML entities
+        const content = code.textContent;
+        console.log('Block', index, 'content preview:', content.substring(0, 50));
 
-      // Replace the pre>code structure with the div
-      const pre = el.closest('pre.mermaid') || el.closest('.mermaid');
-      if (pre && pre.parentNode) {
+        // Create a clean div for mermaid
+        const div = document.createElement('div');
+        div.className = 'mermaid';
+        div.textContent = content;
+
+        // Replace pre with div
         pre.parentNode.replaceChild(div, pre);
       }
     });
 
-    // Run mermaid on all .mermaid elements
-    await mermaid.run();
+    // 5. Run mermaid on all prepared divs
+    console.log('Running mermaid.run()...');
+    await mermaid.run({
+      querySelector: '.mermaid',
+    });
+    console.log('Mermaid rendering complete');
+
+  } catch (error) {
+    console.error('Mermaid init error:', error);
   }
 });
