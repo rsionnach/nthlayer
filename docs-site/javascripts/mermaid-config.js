@@ -34,38 +34,28 @@ window.addEventListener('DOMContentLoaded', async function() {
       securityLevel: 'loose',
     });
 
-    // Find pre.mermaid > code elements (mkdocs structure)
-    const codeBlocks = document.querySelectorAll('pre.mermaid code');
-    console.log('Found', codeBlocks.length, 'mermaid code blocks');
-
-    // Debug: show what we found
-    document.querySelectorAll('.mermaid').forEach((el, i) => {
-      console.log('Element', i, el.tagName, 'text length:', el.textContent.length);
-    });
-
-    if (codeBlocks.length === 0) {
-      console.log('No pre.mermaid>code found, checking for raw .mermaid divs...');
-      const divs = document.querySelectorAll('div.mermaid');
-      console.log('Found', divs.length, 'div.mermaid elements');
-      divs.forEach((d, i) => console.log('Div', i, 'text:', d.textContent.substring(0, 50)));
-    }
+    // Find pre.mermaid-raw > code elements (our custom class to avoid mkdocs auto-processing)
+    const codeBlocks = document.querySelectorAll('pre.mermaid-raw code');
+    console.log('Found', codeBlocks.length, 'mermaid-raw code blocks');
 
     // Transform pre>code to div for mermaid
     const nodes = [];
-    codeBlocks.forEach((code) => {
+    codeBlocks.forEach((code, i) => {
       const content = code.textContent.trim();
+      console.log('Block', i, 'content length:', content.length, 'preview:', content.substring(0, 60));
+
       if (content) {
         const div = document.createElement('div');
-        div.className = 'mermaid-diagram';
+        div.className = 'mermaid';
         div.textContent = content;
         code.closest('pre').replaceWith(div);
         nodes.push(div);
       }
     });
 
-    console.log('Created', nodes.length, 'diagram divs');
+    console.log('Created', nodes.length, 'diagram nodes');
 
-    // Run mermaid only on our new divs
+    // Run mermaid on our nodes
     if (nodes.length > 0) {
       await mermaid.run({ nodes });
     }
