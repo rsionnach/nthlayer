@@ -18,14 +18,35 @@ document.addEventListener('DOMContentLoaded', async function() {
       },
     ]);
 
-    // Re-initialize to pick up icon packs
+    // Initialize mermaid
     mermaid.initialize({
       startOnLoad: false,
       theme: 'dark',
       securityLevel: 'loose',
     });
 
-    // Run mermaid on any diagrams
+    // Fix HTML-escaped content in mermaid blocks before rendering
+    // mkdocs escapes > to &gt; which breaks arrows like -->
+    document.querySelectorAll('pre.mermaid code, .mermaid code').forEach((el) => {
+      // Decode HTML entities
+      const decoded = el.textContent
+        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, '<')
+        .replace(/&amp;/g, '&');
+
+      // Create a new div with the decoded content for mermaid to process
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = decoded;
+
+      // Replace the pre>code structure with the div
+      const pre = el.closest('pre.mermaid') || el.closest('.mermaid');
+      if (pre && pre.parentNode) {
+        pre.parentNode.replaceChild(div, pre);
+      }
+    });
+
+    // Run mermaid on all .mermaid elements
     await mermaid.run();
   }
 });
