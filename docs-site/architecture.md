@@ -39,11 +39,11 @@ When you run `nthlayer apply`, the following artifacts are generated from your s
 
 ```mermaid
 architecture-beta
-   group input(mdi:file-document) [Input]
+   group inputgrp(mdi:file-document) [Input]
    group processing(mdi:cog) [NthLayer Processing]
-   group output(mdi:package-variant) [Generated Artifacts]
+   group outputgrp(mdi:package-variant) [Generated Artifacts]
 
-   service yamlfile(mdi:file-code) [Service Spec] in input
+   service specfile(mdi:file-code) [Service Spec] in inputgrp
 
    service parser(mdi:file-search) [Spec Parser] in processing
    service slogen(mdi:target) [SLO Generator] in processing
@@ -51,13 +51,13 @@ architecture-beta
    service dashgen(mdi:view-dashboard) [Dashboard Builder] in processing
    service pdgen(logos:pagerduty) [PagerDuty Setup] in processing
 
-   service slofile(mdi:file-check) [SLO File] in output
-   service alertfile(mdi:file-alert) [Alert File] in output
-   service dashfile(mdi:file-chart) [Dashboard File] in output
-   service recfile(mdi:file-clock) [Recording Rules] in output
-   service pdfile(mdi:file-cog) [PagerDuty Config] in output
+   service slofile(mdi:file-check) [SLO File] in outputgrp
+   service alertfile(mdi:file-alert) [Alert File] in outputgrp
+   service dashfile(mdi:file-chart) [Dashboard File] in outputgrp
+   service recfile(mdi:file-clock) [Recording Rules] in outputgrp
+   service pdfile(mdi:file-cog) [PagerDuty Config] in outputgrp
 
-   yamlfile:R --> L:parser
+   specfile:R --> L:parser
    parser:R --> L:slogen
    parser:R --> L:alertgen
    parser:R --> L:dashgen
@@ -127,7 +127,7 @@ architecture-beta
 
    service scanner(mdi:file-search) [Service Scanner] in collection
    service aggregator(mdi:chart-timeline-variant) [SLO Aggregator] in collection
-   service health(mdi:calculator) [Health Calculator] in collection
+   service healthcalc(mdi:calculator) [Health Calculator] in collection
 
    service termout(mdi:console) [Terminal Output] in outputgrp
    service jsonout(mdi:code-json) [JSON Export] in outputgrp
@@ -138,11 +138,11 @@ architecture-beta
    svc3:R --> L:scanner
 
    scanner:R --> L:aggregator
-   aggregator:R --> L:health
+   aggregator:R --> L:healthcalc
 
-   health:R --> L:termout
-   health:R --> L:jsonout
-   health:R --> L:csvout
+   healthcalc:R --> L:termout
+   healthcalc:R --> L:jsonout
+   healthcalc:R --> L:csvout
 ```
 
 ## Technology Support
