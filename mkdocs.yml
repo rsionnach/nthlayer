@@ -118,3 +118,4 @@ extra_css:
 
 extra_javascript:
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
