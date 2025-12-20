@@ -36,3 +36,22 @@ repos:
           - types-requests
           - types-PyYAML
           - pydantic>=2.0
+
+  # Pre-push hooks - run before git push (not on every commit)
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest tests/ --ignore=tests/integration/ -x -q --tb=short
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
+
+      - id: self-check
+        name: self-check (validate spec)
+        entry: nthlayer validate-spec examples/services/checkout-service.yaml
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
