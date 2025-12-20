@@ -1,15 +1,12 @@
 // Mermaid configuration - loaded BEFORE mermaid.min.js
-// This sets up the config that mermaid will use when it initializes
 
 window.mermaidConfig = {
-  startOnLoad: false,  // We'll trigger manually after icons load
+  startOnLoad: false,
   theme: 'dark',
   securityLevel: 'loose',
 };
 
-// Register icon packs after mermaid loads, then run
 window.addEventListener('DOMContentLoaded', async function() {
-  // Wait a tick for mermaid to be available
   await new Promise(r => setTimeout(r, 100));
 
   if (typeof mermaid === 'undefined') {
@@ -19,33 +16,62 @@ window.addEventListener('DOMContentLoaded', async function() {
 
   try {
     // Load icon packs
-    console.log('Loading Iconify icon packs...');
+    console.log('Loading icon packs...');
     const [logosData, mdiData] = await Promise.all([
       fetch('https://unpkg.com/@iconify-json/logos@1/icons.json').then(r => r.json()),
       fetch('https://unpkg.com/@iconify-json/mdi@1/icons.json').then(r => r.json()),
     ]);
-    console.log('Loaded', Object.keys(logosData.icons).length, 'logos icons');
-    console.log('Loaded', Object.keys(mdiData.icons).length, 'mdi icons');
+    console.log('Icons loaded');
 
-    // Register with mermaid
     mermaid.registerIconPacks([
       { name: logosData.prefix || 'logos', icons: logosData },
       { name: mdiData.prefix || 'mdi', icons: mdiData },
     ]);
 
-    // Initialize mermaid
     mermaid.initialize({
       startOnLoad: false,
       theme: 'dark',
       securityLevel: 'loose',
     });
 
-    // Run mermaid on all .mermaid elements
-    console.log('Running mermaid...');
-    await mermaid.run();
+    // Find pre.mermaid > code elements (mkdocs structure)
+    const codeBlocks = document.querySelectorAll('pre.mermaid code');
+    console.log('Found', codeBlocks.length, 'mermaid code blocks');
+
+    // Debug: show what we found
+    document.querySelectorAll('.mermaid').forEach((el, i) => {
+      console.log('Element', i, el.tagName, 'text length:', el.textContent.length);
+    });
+
+    if (codeBlocks.length === 0) {
+      console.log('No pre.mermaid>code found, checking for raw .mermaid divs...');
+      const divs = document.querySelectorAll('div.mermaid');
+      console.log('Found', divs.length, 'div.mermaid elements');
+      divs.forEach((d, i) => console.log('Div', i, 'text:', d.textContent.substring(0, 50)));
+    }
+
+    // Transform pre>code to div for mermaid
+    const nodes = [];
+    codeBlocks.forEach((code) => {
+      const content = code.textContent.trim();
+      if (content) {
+        const div = document.createElement('div');
+        div.className = 'mermaid-diagram';
+        div.textContent = content;
+        code.closest('pre').replaceWith(div);
+        nodes.push(div);
+      }
+    });
+
+    console.log('Created', nodes.length, 'diagram divs');
+
+    // Run mermaid only on our new divs
+    if (nodes.length > 0) {
+      await mermaid.run({ nodes });
+    }
     console.log('Mermaid complete');
 
   } catch (err) {
-    console.error('Mermaid setup error:', err);
+    console.error('Mermaid error:', err);
   }
 });
