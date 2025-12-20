@@ -21,7 +21,6 @@ architecture-beta
    service prometheus(logos:prometheus) [Prometheus] in observability
    service grafana(logos:grafana) [Grafana] in observability
    service pagerduty(logos:pagerduty) [PagerDuty] in observability
-   service loki(logos:loki) [Loki] in observability
 
    specs:R --> L:reslayer
    specs:R --> L:govlayer
@@ -30,7 +29,31 @@ architecture-beta
    reslayer:R --> L:prometheus
    obslayer:R --> L:grafana
    obslayer:R --> L:pagerduty
-   obslayer:R --> L:loki
+```
+
+## CLI Commands
+
+NthLayer provides these core commands for reliability shift left:
+
+```mermaid
+architecture-beta
+   group generate(mdi:cog) [Generate]
+   group validate(mdi:check-circle) [Validate]
+   group enforce(mdi:shield-check) [Enforce]
+
+   service apply(mdi:play) [nthlayer apply] in generate
+   service plan(mdi:file-search) [nthlayer plan] in generate
+
+   service lint(mdi:code-tags-check) [nthlayer apply lint] in validate
+   service verify(mdi:check-decagram) [nthlayer verify] in validate
+
+   service checkdeploy(mdi:gate) [nthlayer check deploy] in enforce
+   service portfolio(mdi:chart-box) [nthlayer portfolio] in enforce
+
+   plan:R --> L:apply
+   apply:R --> L:lint
+   lint:R --> L:verify
+   verify:R --> L:checkdeploy
 ```
 
 ## Apply Workflow
@@ -52,8 +75,8 @@ architecture-beta
    service pdgen(logos:pagerduty) [PagerDuty Setup] in processing
 
    service slofile(mdi:file-check) [SLO File] in outputgrp
-   service alertfile(mdi:file-alert) [Alert File] in outputgrp
-   service dashfile(mdi:file-chart) [Dashboard File] in outputgrp
+   service alertfile(mdi:file-alert) [Alert Rules] in outputgrp
+   service dashfile(mdi:file-chart) [Dashboard] in outputgrp
    service recfile(mdi:file-clock) [Recording Rules] in outputgrp
    service pdfile(mdi:file-cog) [PagerDuty Config] in outputgrp
 
@@ -72,43 +95,26 @@ architecture-beta
 
 ## Integration Architecture
 
-NthLayer integrates with your existing observability stack without requiring changes to your infrastructure:
+NthLayer integrates with your existing observability stack:
 
 ```mermaid
 architecture-beta
-   group userenv(mdi:account-group) [User Environment]
-   group cli(mdi:console) [NthLayer CLI]
-   group metrics(mdi:chart-line) [Metrics Stack]
-   group incidents(mdi:alert) [Incident Management]
+   group cicd(mdi:pipe) [CICD Pipeline]
+   group observability(mdi:cloud) [Observability Stack]
 
-   service developer(mdi:account) [Developer] in userenv
-   service cicd(mdi:pipe) [CICD Pipeline] in userenv
-   service k8s(logos:kubernetes) [Kubernetes] in userenv
+   service developer(mdi:account) [Developer] in cicd
+   service pipeline(mdi:source-branch) [Pipeline] in cicd
+   service nthlayer(mdi:cog) [NthLayer CLI] in cicd
 
-   service ntlapply(mdi:play) [nthlayer apply] in cli
-   service ntlportfolio(mdi:chart-box) [nthlayer portfolio] in cli
-   service ntlsetup(mdi:cog) [nthlayer setup] in cli
+   service prometheus(logos:prometheus) [Prometheus] in observability
+   service grafana(logos:grafana) [Grafana] in observability
+   service pagerduty(logos:pagerduty) [PagerDuty] in observability
 
-   service prom(logos:prometheus) [Prometheus] in metrics
-   service grafana(logos:grafana) [Grafana Cloud] in metrics
-   service loki(logos:loki) [Loki] in metrics
-
-   service pagerduty(logos:pagerduty) [PagerDuty] in incidents
-   service slack(logos:slack-icon) [Slack] in incidents
-
-   developer:R --> L:ntlapply
-   cicd:R --> L:ntlapply
-
-   ntlapply:R --> L:prom
-   ntlapply:R --> L:grafana
-   ntlapply:R --> L:pagerduty
-
-   ntlportfolio:R --> L:prom
-   ntlsetup:R --> L:grafana
-   ntlsetup:R --> L:pagerduty
-
-   pagerduty:R --> L:slack
-   prom:R --> L:grafana
+   developer:R --> L:pipeline
+   pipeline:R --> L:nthlayer
+   nthlayer:R --> L:prometheus
+   nthlayer:R --> L:grafana
+   nthlayer:R --> L:pagerduty
 ```
 
 ## SLO Portfolio Flow
@@ -129,9 +135,9 @@ architecture-beta
    service aggregator(mdi:chart-timeline-variant) [SLO Aggregator] in collection
    service healthcalc(mdi:calculator) [Health Calculator] in collection
 
-   service termout(mdi:console) [Terminal Output] in outputgrp
-   service jsonout(mdi:code-json) [JSON Export] in outputgrp
-   service csvout(mdi:file-delimited) [CSV Export] in outputgrp
+   service termout(mdi:console) [Terminal] in outputgrp
+   service jsonout(mdi:code-json) [JSON] in outputgrp
+   service csvout(mdi:file-delimited) [CSV] in outputgrp
 
    svc1:R --> L:scanner
    svc2:R --> L:scanner
@@ -171,34 +177,30 @@ architecture-beta
    service k8s(logos:kubernetes) [Kubernetes] in infra
 ```
 
-## Data Flow Summary
+## Reliability Shift Left Flow
+
+The complete flow from code to production gate:
 
 ```mermaid
 architecture-beta
-   group applyflow(mdi:arrow-right) [Apply Flow]
-   group portfolioflow(mdi:arrow-right) [Portfolio Flow]
+   group dev(mdi:code-braces) [Development]
+   group validation(mdi:check-circle) [Validation]
+   group deploy(mdi:rocket-launch) [Deployment]
 
-   service specfile(mdi:file-code) [Service Spec] in applyflow
-   service applyrun(mdi:play) [NthLayer Apply] in applyflow
-   service promalerts(logos:prometheus) [Prometheus Alerts] in applyflow
-   service grafdash(logos:grafana) [Grafana Dashboard] in applyflow
-   service pdsetup(logos:pagerduty) [PagerDuty Setup] in applyflow
-   service recrules(mdi:file-clock) [Recording Rules] in applyflow
-   service slodefs(mdi:target) [SLO Definitions] in applyflow
+   service code(mdi:git) [Git Push] in dev
+   service spec(mdi:file-code) [Service Spec] in dev
 
-   service portrun(mdi:chart-box) [NthLayer Portfolio] in portfolioflow
-   service scansvcs(mdi:file-search) [Scan Services] in portfolioflow
-   service aggrslos(mdi:chart-timeline-variant) [Aggregate SLOs] in portfolioflow
-   service healthrpt(mdi:file-chart) [Health Report] in portfolioflow
+   service lint(mdi:code-tags-check) [PromQL Lint] in validation
+   service verify(mdi:check-decagram) [Metric Verify] in validation
+   service budget(mdi:target) [Budget Check] in validation
 
-   specfile:R --> L:applyrun
-   applyrun:R --> L:promalerts
-   applyrun:R --> L:grafdash
-   applyrun:R --> L:pdsetup
-   applyrun:R --> L:recrules
-   applyrun:R --> L:slodefs
+   service gate(mdi:gate) [Deploy Gate] in deploy
+   service prod(mdi:server) [Production] in deploy
 
-   portrun:R --> L:scansvcs
-   scansvcs:R --> L:aggrslos
-   aggrslos:R --> L:healthrpt
+   code:R --> L:spec
+   spec:R --> L:lint
+   lint:R --> L:verify
+   verify:R --> L:budget
+   budget:R --> L:gate
+   gate:R --> L:prod
 ```
