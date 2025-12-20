@@ -1,6 +1,6 @@
 # Architecture
 
-This page provides visual documentation of NthLayer's architecture, workflows, and integrations.
+This page provides comprehensive documentation of NthLayer's architecture, components, and tech stack.
 
 ## Platform Architecture
 
@@ -31,9 +31,116 @@ architecture-beta
    obslayer:R --> L:pagerduty
 ```
 
+---
+
+## Tech Stack
+
+NthLayer is built on these core technologies:
+
+| Category | Technology | Purpose |
+|----------|------------|---------|
+| **Runtime** | Python 3.11+ | Core language |
+| **CLI** | argparse + Rich | Command parsing and terminal UI |
+| **HTTP Client** | httpx | Async HTTP for Prometheus, Grafana APIs |
+| **Validation** | Pydantic | Schema validation for service specs |
+| **Dashboard SDK** | grafana-foundation-sdk | Type-safe Grafana dashboard generation |
+| **PagerDuty SDK** | pagerduty | Official PagerDuty API client |
+| **Database** | SQLAlchemy + PostgreSQL | State storage (optional, for SLO history) |
+| **Cache** | Redis | Caching layer (optional) |
+| **Logging** | structlog | Structured JSON logging |
+| **Resilience** | tenacity + circuitbreaker | Retry logic and circuit breakers |
+| **Config** | PyYAML + Pydantic Settings | YAML parsing and environment config |
+
+---
+
+## Core Modules
+
+NthLayer is organized into these modules:
+
+### Specification and Orchestration
+
+| Module | Purpose | Key Components |
+|--------|---------|----------------|
+| `specs/` | Parse and validate service.yaml files | `ServiceContext`, `Resource`, `parse_service_file()` |
+| `orchestrator.py` | Coordinate the generation workflow | `ServiceOrchestrator`, `ApplyResult`, `PlanResult` |
+| `config/` | Configuration and secrets management | `Settings`, `get_settings()`, secrets providers |
+
+### Generation Modules
+
+| Module | Purpose | Key Components |
+|--------|---------|----------------|
+| `dashboards/` | Generate Grafana dashboards with 18+ technology templates | `DashboardBuilder`, `IntentResolver`, technology templates |
+| `alerts/` | Generate Prometheus alerting rules | `AlertTemplateLoader`, `AlertRule` |
+| `recording_rules/` | Generate Prometheus recording rules for performance | `build_recording_rules()`, `RecordingRule` |
+| `slos/` | SLO definitions, error budgets, and tracking | `SLO`, `ErrorBudgetCalculator`, `SLOCollector` |
+| `pagerduty/` | PagerDuty teams, schedules, escalation policies | `PagerDutyResourceManager`, `EventOrchestrationManager` |
+| `loki/` | Generate LogQL alerting rules | `LokiAlertGenerator`, `LogQLAlert` |
+
+### Validation and Verification
+
+| Module | Purpose | Key Components |
+|--------|---------|----------------|
+| `validation/` | PromQL syntax and metadata validation | `validate_promql()`, `validate_metadata()`, pint integration |
+| `verification/` | Verify declared metrics exist in Prometheus | `MetricVerifier`, `MetricContract`, `VerificationResult` |
+| `discovery/` | Discover available metrics from Prometheus | `MetricDiscoveryClient`, `MetricClassifier` |
+
+### Policy and Portfolio
+
+| Module | Purpose | Key Components |
+|--------|---------|----------------|
+| `policies/` | Deployment policy evaluation | `ConditionEvaluator`, `PolicyContext` |
+| `portfolio/` | Cross-service SLO aggregation | `PortfolioAggregator`, `collect_portfolio()` |
+
+### Providers and Integrations
+
+| Module | Purpose | Key Components |
+|--------|---------|----------------|
+| `providers/` | External service integrations | Grafana, Prometheus, PagerDuty providers |
+| `clients/` | HTTP clients with retry/circuit breaker | `CortexClient`, `PagerDutyClient`, `SlackNotifier` |
+| `integrations/` | High-level integration helpers | `PagerDutySetupResult` |
+
+---
+
 ## CLI Commands
 
-NthLayer provides these core commands for reliability shift left:
+### Generation Commands
+
+| Command | Purpose | Exit Codes |
+|---------|---------|------------|
+| `nthlayer apply <service.yaml>` | Generate all resources (dashboards, alerts, SLOs, etc.) | 0=success, 1=error |
+| `nthlayer plan <service.yaml>` | Preview what would be generated (dry-run) | 0=success |
+| `nthlayer init` | Create a new service.yaml interactively | 0=success |
+
+### Validation Commands
+
+| Command | Purpose | Exit Codes |
+|---------|---------|------------|
+| `nthlayer apply --lint` | Validate PromQL syntax using pint | 0=valid, 1=errors |
+| `nthlayer validate <service.yaml>` | Validate service.yaml schema | 0=valid, 1=invalid |
+| `nthlayer verify <service.yaml>` | Verify declared metrics exist in Prometheus | 0=all exist, 1=missing |
+
+### Enforcement Commands
+
+| Command | Purpose | Exit Codes |
+|---------|---------|------------|
+| `nthlayer check-deploy <service.yaml>` | Check error budget before deploy | 0=safe, 1=budget exhausted |
+| `nthlayer portfolio [--format json]` | Aggregate SLO health across all services | 0=healthy, 1=warning, 2=critical |
+
+### SLO Commands
+
+| Command | Purpose |
+|---------|---------|
+| `nthlayer slo show <service>` | Display SLO status for a service |
+| `nthlayer slo list` | List all defined SLOs |
+| `nthlayer slo collect <service>` | Collect current SLO metrics from Prometheus |
+
+### Configuration Commands
+
+| Command | Purpose |
+|---------|---------|
+| `nthlayer setup` | Interactive configuration wizard |
+| `nthlayer config show` | Display current configuration |
+| `nthlayer env list` | List environment configurations |
 
 ```mermaid
 architecture-beta
@@ -44,10 +151,10 @@ architecture-beta
    service apply(mdi:play) [nthlayer apply] in generate
    service plan(mdi:file-search) [nthlayer plan] in generate
 
-   service lint(mdi:code-tags-check) [nthlayer apply lint] in validate
+   service lint(mdi:code-tags-check) [apply with lint] in validate
    service verify(mdi:check-decagram) [nthlayer verify] in validate
 
-   service checkdeploy(mdi:gate) [nthlayer check deploy] in enforce
+   service checkdeploy(mdi:gate) [check deploy] in enforce
    service portfolio(mdi:chart-box) [nthlayer portfolio] in enforce
 
    plan:R --> L:apply
@@ -56,9 +163,18 @@ architecture-beta
    verify:R --> L:checkdeploy
 ```
 
-## Apply Workflow
+---
 
-When you run `nthlayer apply`, the following artifacts are generated from your service specification:
+## Data Flow
+
+### Apply Workflow
+
+When you run `nthlayer apply`, the following happens:
+
+1. **Parse**: `specs/parser.py` reads service.yaml into `ServiceContext`
+2. **Detect**: `orchestrator.py` determines which resources to generate
+3. **Generate**: Each generator module creates its artifacts
+4. **Output**: Files written to `generated/` directory
 
 ```mermaid
 architecture-beta
@@ -93,9 +209,79 @@ architecture-beta
    pdgen:R --> L:pdfile
 ```
 
-## Integration Architecture
+### Verification Flow
 
-NthLayer integrates with your existing observability stack:
+When you run `nthlayer verify`:
+
+1. **Extract**: Parse service.yaml for declared metrics
+2. **Query**: Check each metric against Prometheus API
+3. **Report**: Show which metrics exist vs missing
+
+### Portfolio Flow
+
+When you run `nthlayer portfolio`:
+
+1. **Scan**: Find all service.yaml files in directory
+2. **Collect**: Query Prometheus for each SLO's current value
+3. **Aggregate**: Calculate health scores by tier
+4. **Output**: Terminal table, JSON, or CSV
+
+---
+
+## Technology Templates
+
+NthLayer includes 18+ technology-specific templates that generate appropriate dashboards and alerts:
+
+### Databases
+
+| Technology | Template | Key Metrics |
+|------------|----------|-------------|
+| PostgreSQL | `postgresql_intent.py` | Connections, replication lag, locks, cache hit ratio |
+| MySQL | `mysql_intent.py` | Connections, queries, replication, InnoDB metrics |
+| MongoDB | `mongodb_intent.py` | Operations, connections, replication, locks |
+| Elasticsearch | `elasticsearch_intent.py` | JVM, indexing, search latency, cluster health |
+
+### Caches and Queues
+
+| Technology | Template | Key Metrics |
+|------------|----------|-------------|
+| Redis | `redis_intent.py` | Memory, connections, commands, keyspace |
+| Kafka | `kafka_intent.py` | Consumer lag, partitions, throughput, replication |
+| RabbitMQ | `rabbitmq_intent.py` | Queue depth, consumers, publish/deliver rates |
+| NATS | `nats_intent.py` | Connections, messages, subscriptions |
+| Pulsar | `pulsar_intent.py` | Topics, subscriptions, throughput |
+
+### Infrastructure
+
+| Technology | Template | Key Metrics |
+|------------|----------|-------------|
+| Kubernetes | `kubernetes.py` | Pod status, resource usage, restarts |
+| Nginx | `nginx_intent.py` | Requests, connections, response codes |
+| HAProxy | `haproxy_intent.py` | Backend health, sessions, response times |
+| Traefik | `traefik_intent.py` | Requests, entrypoints, services |
+
+### Service Types
+
+| Type | Template | Key Metrics |
+|------|----------|-------------|
+| HTTP/API | `http_intent.py` | Request rate, latency percentiles, error rate |
+| Worker | `worker_intent.py` | Job throughput, processing time, failures |
+| Stream | `stream_intent.py` | Events processed, lag, errors |
+
+### Service Mesh
+
+| Technology | Template | Key Metrics |
+|------------|----------|-------------|
+| Consul | `consul_intent.py` | Service health, KV operations |
+| Etcd | `etcd_intent.py` | Leader elections, proposals, WAL |
+
+---
+
+## Integration Points
+
+### CI/CD Integration
+
+NthLayer integrates into your pipeline at these points:
 
 ```mermaid
 architecture-beta
@@ -117,69 +303,20 @@ architecture-beta
    nthlayer:R --> L:pagerduty
 ```
 
-## SLO Portfolio Flow
+### Environment Variables
 
-The portfolio command aggregates SLO health across all services:
+| Variable | Purpose |
+|----------|---------|
+| `NTHLAYER_PROMETHEUS_URL` | Prometheus server URL |
+| `NTHLAYER_GRAFANA_URL` | Grafana server URL |
+| `NTHLAYER_GRAFANA_API_KEY` | Grafana API key |
+| `PAGERDUTY_API_KEY` | PagerDuty API key |
 
-```mermaid
-architecture-beta
-   group services(mdi:folder) [Service Definitions]
-   group collection(mdi:cog) [Portfolio Collection]
-   group outputgrp(mdi:export) [Output]
-
-   service svc1(mdi:file-code) [Payment API] in services
-   service svc2(mdi:file-code) [Checkout Service] in services
-   service svc3(mdi:file-code) [Notification Worker] in services
-
-   service scanner(mdi:file-search) [Service Scanner] in collection
-   service aggregator(mdi:chart-timeline-variant) [SLO Aggregator] in collection
-   service healthcalc(mdi:calculator) [Health Calculator] in collection
-
-   service termout(mdi:console) [Terminal] in outputgrp
-   service jsonout(mdi:code-json) [JSON] in outputgrp
-   service csvout(mdi:file-delimited) [CSV] in outputgrp
-
-   svc1:R --> L:scanner
-   svc2:R --> L:scanner
-   svc3:R --> L:scanner
-
-   scanner:R --> L:aggregator
-   aggregator:R --> L:healthcalc
-
-   healthcalc:R --> L:termout
-   healthcalc:R --> L:jsonout
-   healthcalc:R --> L:csvout
-```
-
-## Technology Support
-
-NthLayer generates technology-specific monitoring for 18+ technologies:
-
-```mermaid
-architecture-beta
-   group databases(mdi:database) [Databases]
-   group caches(mdi:lightning-bolt) [Caches and Queues]
-   group infra(mdi:server-network) [Infrastructure]
-
-   service postgres(logos:postgresql) [PostgreSQL] in databases
-   service mysql(logos:mysql) [MySQL] in databases
-   service mongodb(logos:mongodb-icon) [MongoDB] in databases
-   service elasticsearch(logos:elasticsearch) [Elasticsearch] in databases
-
-   service redis(logos:redis) [Redis] in caches
-   service kafka(logos:kafka-icon) [Kafka] in caches
-   service rabbitmq(logos:rabbitmq-icon) [RabbitMQ] in caches
-   service nats(logos:nats-icon) [NATS] in caches
-
-   service nginx(logos:nginx) [Nginx] in infra
-   service haproxy(mdi:arrow-decision) [HAProxy] in infra
-   service traefik(logos:traefik) [Traefik] in infra
-   service k8s(logos:kubernetes) [Kubernetes] in infra
-```
+---
 
 ## Reliability Shift Left Flow
 
-The complete flow from code to production gate:
+The complete validation pipeline from code to production:
 
 ```mermaid
 architecture-beta
@@ -204,3 +341,9 @@ architecture-beta
    budget:R --> L:gate
    gate:R --> L:prod
 ```
+
+| Stage | Command | Blocks Deploy If |
+|-------|---------|------------------|
+| **Lint** | `nthlayer apply --lint` | PromQL syntax errors |
+| **Verify** | `nthlayer verify` | Declared metrics don't exist |
+| **Budget** | `nthlayer check-deploy` | Error budget < 10% remaining |
