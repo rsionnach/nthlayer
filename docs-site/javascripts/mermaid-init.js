@@ -29,20 +29,30 @@ window.addEventListener('load', async function() {
       securityLevel: 'loose',
     });
 
-    // 4. Fix HTML-escaped content and prepare divs for mermaid
-    const mermaidBlocks = document.querySelectorAll('pre.mermaid');
+    // 4. Find and process mermaid blocks
+    // mkdocs creates: <pre class="mermaid"><code>content</code></pre>
+    const mermaidBlocks = document.querySelectorAll('pre.mermaid, .mermaid');
     console.log('Found', mermaidBlocks.length, 'mermaid blocks');
 
-    mermaidBlocks.forEach((pre, index) => {
-      const code = pre.querySelector('code');
-      if (code) {
-        const content = code.textContent;
-        console.log('Block', index, ':', content.substring(0, 60).replace(/\n/g, ' '));
+    // Debug: log all mermaid elements
+    mermaidBlocks.forEach((el, i) => {
+      console.log('Block', i, 'tagName:', el.tagName, 'innerHTML preview:', el.innerHTML.substring(0, 100));
+    });
 
+    // Process pre.mermaid > code elements
+    document.querySelectorAll('pre.mermaid code').forEach((code, index) => {
+      const content = code.textContent;
+      console.log('Processing block', index, 'length:', content.length, 'preview:', content.substring(0, 80).replace(/\n/g, '\\n'));
+
+      if (content.trim()) {
         const div = document.createElement('div');
         div.className = 'mermaid';
         div.textContent = content;
-        pre.parentNode.replaceChild(div, pre);
+
+        const pre = code.closest('pre');
+        if (pre && pre.parentNode) {
+          pre.parentNode.replaceChild(div, pre);
+        }
       }
     });
 
