@@ -117,5 +117,5 @@ extra_css:
   - stylesheets/nord.css
 
 extra_javascript:
+  - javascripts/mermaid-config.js
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js
-  - javascripts/mermaid-init.js
