@@ -123,7 +123,7 @@ class DashboardValidator:
         if validate_all:
             return list(ALL_INTENTS.keys())
 
-        intents = []
+        intents: list[str] = []
         for tech in technologies:
             tech_intents = get_intents_for_technology(tech)
             intents.extend(tech_intents.keys())

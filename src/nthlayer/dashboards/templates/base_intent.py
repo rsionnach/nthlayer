@@ -258,8 +258,8 @@ class IntentBasedTemplate(TechnologyTemplate):
         )
 
         # Add custom attribute for noValue message (used during SDK conversion)
-        panel.no_value_message = short_guidance
-        panel.is_guidance_panel = True
+        panel.no_value_message = short_guidance  # type: ignore[attr-defined]
+        panel.is_guidance_panel = True  # type: ignore[attr-defined]
 
         return panel
 
