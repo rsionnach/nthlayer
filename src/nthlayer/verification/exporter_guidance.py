@@ -18,6 +18,7 @@ class ExporterInfo:
     helm_repo: str
     docs_url: str
     metric_prefixes: tuple[str, ...]
+    mixin_url: str | None = None
 
 
 # Known exporters and their metric prefixes
@@ -28,6 +29,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/prometheus-community/postgres_exporter",
         metric_prefixes=("pg_", "postgres_"),
+        mixin_url="https://monitoring.mixins.dev/postgres-exporter/",
     ),
     "redis": ExporterInfo(
         name="Redis Exporter",
@@ -35,6 +37,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/oliver006/redis_exporter",
         metric_prefixes=("redis_",),
+        mixin_url="https://monitoring.mixins.dev/redis/",
     ),
     "elasticsearch": ExporterInfo(
         name="Elasticsearch Exporter",
@@ -42,6 +45,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/prometheus-community/elasticsearch_exporter",
         metric_prefixes=("elasticsearch_", "es_"),
+        mixin_url="https://monitoring.mixins.dev/elasticsearch/",
     ),
     "mongodb": ExporterInfo(
         name="MongoDB Exporter",
@@ -49,6 +53,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/percona/mongodb_exporter",
         metric_prefixes=("mongodb_", "mongo_"),
+        mixin_url="https://monitoring.mixins.dev/mongodb/",
     ),
     "mysql": ExporterInfo(
         name="MySQL Exporter",
@@ -56,6 +61,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/prometheus/mysqld_exporter",
         metric_prefixes=("mysql_", "mysqld_"),
+        mixin_url="https://monitoring.mixins.dev/mysql/",
     ),
     "kafka": ExporterInfo(
         name="Kafka Exporter",
@@ -63,6 +69,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/danielqsj/kafka-exporter",
         metric_prefixes=("kafka_",),
+        mixin_url="https://monitoring.mixins.dev/kafka/",
     ),
     "rabbitmq": ExporterInfo(
         name="RabbitMQ Exporter",
@@ -70,6 +77,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/kbudde/rabbitmq_exporter",
         metric_prefixes=("rabbitmq_",),
+        mixin_url="https://monitoring.mixins.dev/rabbitmq/",
     ),
     "nginx": ExporterInfo(
         name="NGINX Exporter",
@@ -77,6 +85,7 @@ EXPORTERS: dict[str, ExporterInfo] = {
         helm_repo="prometheus-community",
         docs_url="https://github.com/nginxinc/nginx-prometheus-exporter",
         metric_prefixes=("nginx_", "nginxexporter_"),
+        mixin_url="https://monitoring.mixins.dev/nginx/",
     ),
 }
 
@@ -159,6 +168,8 @@ def format_exporter_guidance(missing_by_exporter: dict[str, list[str]]) -> list[
             f"  [green]helm install[/green] {exporter_type}-exporter {info.helm_repo}/{info.helm_chart}"
         )
         lines.append(f"  [muted]Docs:[/muted] {info.docs_url}")
+        if info.mixin_url:
+            lines.append(f"  [muted]Mixin:[/muted] {info.mixin_url}")
         lines.append("")
 
     return lines
