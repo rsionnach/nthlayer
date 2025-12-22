@@ -172,6 +172,27 @@ def _print_verification_results(result) -> None:
 
     console.print()
 
+    # Check for missing exporter metrics and provide guidance
+    all_missing = [r.metric.name for r in result.results if not r.exists]
+    if all_missing:
+        _print_exporter_guidance(all_missing)
+
+
+def _print_exporter_guidance(missing_metrics: list[str]) -> None:
+    """Print guidance for missing exporter metrics."""
+    from nthlayer.verification.exporter_guidance import (
+        detect_missing_exporters,
+        format_exporter_guidance,
+    )
+
+    missing_by_exporter = detect_missing_exporters(missing_metrics)
+    if not missing_by_exporter:
+        return
+
+    guidance_lines = format_exporter_guidance(missing_by_exporter)
+    for line in guidance_lines:
+        console.print(line)
+
 
 def _demo_verify_output(service_file: str, environment: Optional[str] = None) -> int:
     """Show demo verification output with sample data."""

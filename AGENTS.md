@@ -145,24 +145,16 @@ If unsure, defer to Future Considerations.
 - `--check-urls` to verify runbook URLs are accessible
 - Thanos/Mimir/Loki rule support
 
-### Phase 3.6: Exporter Generation (📋 PLANNED)
-**Goal:** Generate Prometheus exporter deployment manifests from service.yaml
-- `trellis-exporters-gen`: Exporter deployment generation
-- `nthlayer exporters generate` command with format options:
-  - `--format kubernetes` → Deployment + Service + ServiceMonitor
-  - `--format docker-compose` → Docker Compose service definitions
-  - `--format helm` → Helm values file
-  - `--format prometheus` → Prometheus scrape configs
-- Extended dependency schema:
-  ```yaml
-  dependencies:
-    - type: postgresql
-      exporter:
-        host: postgres.svc.cluster.local
-        secret: postgres-credentials
-  ```
-- Supported exporters: PostgreSQL, Redis, Elasticsearch, Kafka, MongoDB, MySQL
-- Closes the gap when `nthlayer verify` fails due to missing exporters
+### Phase 3.6: Exporter Guidance (✅ DONE - Simplified)
+**Goal:** Help users fix missing exporter metrics
+
+**Original plan:** Generate exporter deployment manifests
+**Decision:** Deferred - infrastructure provisioning is out of scope. Dedicated tools (Helm, kube-prometheus-stack) do this better.
+
+**Implemented instead:** Enhanced `nthlayer verify` output with:
+- Detection of missing exporter metrics (pg_*, redis_*, etc.)
+- Helpful guidance with Helm commands and documentation links
+- Links to official exporter repos
 
 ### Phase 4: Deployment Gates (✅ DONE)
 **Goal:** Deploy blocked when error budget < 10%
