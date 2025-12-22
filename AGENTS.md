@@ -30,34 +30,15 @@ NthLayer is the Reliability Shift Left platform - bringing production readiness 
 
 **Strategic focus:** Compete where they won't go - build-time reliability validation.
 
-### The Three Layers
+### Core Actions
 
-```mermaid
-architecture-beta
-   group git(logos:git-icon) [Git Repository]
-   group nthlayer(mdi:cog) [NthLayer Platform]
-   group observability(mdi:chart-line) [Observability Stack]
+| Action | What NthLayer Does |
+|--------|-------------------|
+| **Generate** | Dashboards, alerts, SLOs, recording rules from service.yaml |
+| **Validate** | Lint PromQL, verify metrics exist, check policies |
+| **Gate** | Block deploys when error budget exhausted |
 
-   service specs(mdi:file-code) [Service Definitions] in git
-
-   service reslayer(mdi:target) [ResLayer SLOs] in nthlayer
-   service govlayer(mdi:shield-check) [GovLayer Policies] in nthlayer
-   service obslayer(mdi:eye) [ObserveLayer Monitoring] in nthlayer
-
-   service prometheus(logos:prometheus) [Prometheus] in observability
-   service grafana(logos:grafana) [Grafana] in observability
-   service pagerduty(logos:pagerduty) [PagerDuty] in observability
-
-   specs:R --> L:reslayer
-   specs:R --> L:govlayer
-   specs:R --> L:obslayer
-
-   reslayer:R --> L:prometheus
-   obslayer:R --> L:grafana
-   obslayer:R --> L:pagerduty
-```
-
-> **See also:** [Full Architecture Documentation](docs-site/architecture.md) for detailed diagrams of workflows and integrations.
+> **See also:** [Full Architecture Documentation](docs-site/architecture.md) for detailed diagrams.
 
 ### Usage Modes
 
@@ -73,18 +54,38 @@ architecture-beta
 
 | Domain | Output | Status |
 |--------|--------|--------|
-| **Dashboards** | Grafana dashboards, Datadog dashboards | ✅ Grafana done, 📋 Datadog planned |
-| **Alerts** | Prometheus rules, Datadog monitors | ✅ Prometheus done, 📋 Datadog planned |
+| **Dashboards** | Grafana dashboards | ✅ Complete |
+| **Alerts** | Prometheus rules | ✅ Complete |
 | **Recording Rules** | Pre-aggregated metrics | ✅ Complete |
 | **PagerDuty** | Teams, schedules, escalation policies | ✅ Complete |
-| **SLOs** | OpenSLO definitions, error budgets | 🔨 ResLayer Phase 1 |
-| **Deployment Gates** | ArgoCD blocking, CI/CD integration | 📋 ResLayer Phase 2 |
-| **Policies** | Resource limits, deployment rules | 📋 GovLayer |
-| **Runbooks** | Auto-generated troubleshooting guides | 📋 ObserveLayer |
-| **Chaos Experiments** | Litmus ChaosEngine manifests | 📋 Phase 8 |
-| **Synthetic Probes** | Cloudprober configs | 📋 Phase 8 |
+| **SLOs** | OpenSLO definitions, error budgets | 🔨 Phase 3 |
+| **Deployment Gates** | ArgoCD/CI blocking | 📋 Phase 4 |
+| **Runbooks** | Auto-generated troubleshooting guides | 🔬 Exploring |
 
 ## Roadmap
+
+### Current Focus: Phases 3 & 4
+
+**Phase 3: SLO Portfolio** - Org-wide reliability visibility
+- `nthlayer portfolio` command with CI/CD exit codes
+- Cross-service SLO aggregation
+- Health scoring and insights
+
+**Phase 4: Deployment Gates** - The key differentiator
+- Block deploys when error budget < threshold
+- ArgoCD, GitHub Actions, GitLab CI integration
+- Policy DSL for gate conditions
+
+*Everything else is deferred until these are complete and adopted.*
+
+### Scope Discipline
+
+Before adding features, ask:
+1. Does it strengthen Generate → Validate → Gate?
+2. Is there a dedicated tool that does this better?
+3. Will this help Phase 3 & 4 adoption?
+
+If unsure, defer to Future Considerations.
 
 ### Strategic Differentiation
 **Primary narrative: Reliability Shift Left**
@@ -100,16 +101,6 @@ architecture-beta
 
 **Complementary tool integrations:**
 - promruval - Enhanced rule validation (40+ validators)
-- Litmus - Chaos experiment generation
-- Cloudprober - Synthetic monitoring config
-
-**Don't compete with (for now):**
-- Incident pattern learning (PagerDuty Insights)
-- Automated incident response (PagerDuty SRE Agent)
-
-**Future consideration (Phase 7):**
-- Adaptive alert tuning, deployment risk scoring, closed-loop policies
-- Decision point: Review after Phase 5 completion
 
 ### Phase 1: Foundation (✅ DONE)
 - service.yaml spec and parser
@@ -161,63 +152,64 @@ architecture-beta
 - Thanos/Mimir/Loki rule support
 - `nthlayer apply --validate-metadata` flag
 
-### Phase 4: AI-Assisted Generation
-**Goal:** Conversational service.yaml creation (complements, doesn't compete with PD)
-- `trellis-ai-epic`: AI/MCP strategy
-- `trellis-mcp-server`: NthLayer as MCP tool for Claude/Cursor
-- `trellis-ai-spec-gen`: "Create a tier-1 API with Redis" → YAML
-- `trellis-ai-slo`: SLO target recommendations
-- `trellis-ai-suggestions`: Best practice recommendations
+### Phase 3.6: Exporter Generation (📋 PLANNED)
+**Goal:** Generate Prometheus exporter deployment manifests from service.yaml
+- `trellis-exporters-gen`: Exporter deployment generation
+- `nthlayer exporters generate` command with format options:
+  - `--format kubernetes` → Deployment + Service + ServiceMonitor
+  - `--format docker-compose` → Docker Compose service definitions
+  - `--format helm` → Helm values file
+  - `--format prometheus` → Prometheus scrape configs
+- Extended dependency schema:
+  ```yaml
+  dependencies:
+    - type: postgresql
+      exporter:
+        host: postgres.svc.cluster.local
+        secret: postgres-credentials
+  ```
+- Supported exporters: PostgreSQL, Redis, Elasticsearch, Kafka, MongoDB, MySQL
+- Closes the gap when `nthlayer verify` fails due to missing exporters
 
-### Phase 5: Deployment Gates (ResLayer Phase 2)
+### Phase 4: Deployment Gates (📋 CRITICAL)
 **Goal:** Deploy blocked when error budget < 10%
 - `trellis-tnr`: Policy YAML DSL
 - `trellis-a4d`: Condition evaluator
 - `trellis-0fl`: ArgoCD blocking
-- Requires CI/CD integration: ArgoCD, GitHub Actions, Tekton, GitLab CI
+- CI/CD integration: ArgoCD, GitHub Actions, Tekton, GitLab CI
 
-### Phase 6: NthLayer Cloud (Future - Monetization)
+### Phase 5: AI-Assisted Generation (📋 OPTIONAL)
+**Goal:** Conversational service.yaml creation
+- `trellis-mcp-server`: NthLayer as MCP tool for Claude/Cursor
+- `trellis-ai-spec-gen`: "Create a tier-1 API with Redis" → YAML
+- `trellis-ai-slo`: SLO target recommendations
+
+*Only pursue if it accelerates Phase 3 & 4 adoption.*
+
+---
+
+### Future Considerations (Deferred)
+
+These are parked until Phases 3 & 4 are complete and adopted.
+
+**NthLayer Cloud**
 - Hosted portfolio dashboard
 - Multi-user / team views
-- Alerting on portfolio health
 - Enterprise features
+- *Decision: Business model, separate from core product*
 
-### Phase 7: Intelligent Reliability (Future - "New Class")
-**Goal:** Adaptive, learning reliability automation - transform from generation tool to intelligent platform
+**Intelligent Reliability**
+- Adaptive alert tuning (ML-based)
+- Deployment risk scoring
+- Closed-loop policy updates
+- *Decision: Review after Phase 4 - different product category*
 
-- `trellis-adaptive-alerts`: Adaptive Alert Tuning
-  - Baseline learning from historical metrics
-  - Auto-adjust thresholds based on seasonality
-  - Anomaly-aware alerting (reduce noise)
+**Reliability Testing**
+- Litmus chaos experiment generation
+- Cloudprober synthetic monitoring
+- *Decision: Dedicated tools exist (Gremlin, Litmus) - integrate don't build*
 
-- `trellis-deploy-risk`: Deployment Risk Scoring
-  - ML model: error budget state + deploy history → risk score
-  - Pre-deploy risk assessment
-  - Integration with deployment gates (Phase 5)
-
-- `trellis-closed-loop`: Closed-Loop Policy Updates
-  - Auto-adjust SLO targets based on actual performance
-  - Suggest tier promotions/demotions
-  - Policy drift detection and correction
-
-**Prerequisites:** Phase 4 (AI foundation), Phase 5 (deployment gates)
-**Decision point:** Review after Phase 5 - compete or complement PagerDuty?
-
-### Phase 8: Reliability Testing (Future)
-**Goal:** Generate reliability tests alongside monitoring - complete Shift Left
-
-- `trellis-litmus`: Litmus Chaos Experiment Generation
-  - Generate chaos experiments from service.yaml dependencies
-  - ChaosHub integration for common failure scenarios
-  - Pod-kill, network-latency, resource-stress experiments
-  - "Test failures before they happen in production"
-
-- `trellis-cloudprober`: Synthetic Monitoring Config
-  - Generate Cloudprober configs from service.yaml endpoints
-  - HTTP, TCP, DNS probes for external monitoring
-  - Probe results feed into SLI metrics
-
-**Prerequisites:** Phase 5 (deployment gates), stable service.yaml spec
+---
 
 ### Technology Templates (Ongoing)
 - `trellis-0cd`: Kafka (consumer lag, partitions, replication)
@@ -556,21 +548,15 @@ Before completing any task:
 
 ## Current Focus Areas
 
-Check `.beads/issues.jsonl` for the latest priorities. Key epics:
+Check `.beads/issues.jsonl` for the latest priorities.
 
-| Epic | Description | Key Issues |
-|------|-------------|------------|
-| **Error Budget Foundation** | SLO tracking, burn rates, budget alerts | `trellis-3h6` |
-| **Deployment Policies & Gates** | Block deploys when error budget exhausted | `trellis-3e6` |
-| **Intelligent Alerts** | Smart alerting with explanations | `trellis-tt3` |
-| **Observability Expansion** | APM, tracing, log aggregation | `trellis-7pw` |
-| **Compliance & Governance** | SOC2, GDPR, audit logging | `trellis-gmi` |
+**Primary Focus:**
+- Phase 3: SLO Portfolio (`trellis-portfolio-*` issues)
+- Phase 4: Deployment Gates (`trellis-tnr`, `trellis-a4d`, `trellis-0fl`)
 
-### Technology Templates to Add
-- `trellis-0cd`: Kafka
-- `trellis-e8w`: MongoDB
-- `trellis-ys8`: RabbitMQ
-- `trellis-uum`: Elasticsearch (✅ done)
+**Secondary:**
+- Technology Templates: Kafka (`trellis-0cd`), MongoDB (`trellis-e8w`)
+- Enhanced Validation: promruval integration (`trellis-promruval`)
 
 ## Gotchas
 
