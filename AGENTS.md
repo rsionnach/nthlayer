@@ -58,25 +58,30 @@ NthLayer is the Reliability Shift Left platform - bringing production readiness 
 | **Alerts** | Prometheus rules | ✅ Complete |
 | **Recording Rules** | Pre-aggregated metrics | ✅ Complete |
 | **PagerDuty** | Teams, schedules, escalation policies | ✅ Complete |
-| **SLOs** | OpenSLO definitions, error budgets | 🔨 Phase 3 |
-| **Deployment Gates** | ArgoCD/CI blocking | 📋 Phase 4 |
+| **SLOs** | OpenSLO definitions, error budgets | ✅ Complete |
+| **Deployment Gates** | CI/CD exit codes, error budget validation | ✅ Complete |
 | **Runbooks** | Auto-generated troubleshooting guides | 🔬 Exploring |
 
 ## Roadmap
 
-### Current Focus: Phases 3 & 4
+### Current Focus: CI/CD Integration & Adoption
 
-**Phase 3: SLO Portfolio** - Org-wide reliability visibility
-- `nthlayer portfolio` command with CI/CD exit codes
-- Cross-service SLO aggregation
-- Health scoring and insights
+**Phase 3: SLO Portfolio** ✅ COMPLETE
+- `nthlayer portfolio` command with CI/CD exit codes (0/1/2)
+- Cross-service SLO aggregation with tier weighting
+- Health scoring (0-100%) and insights
+- Output formats: table, json, csv, markdown
 
-**Phase 4: Deployment Gates** - The key differentiator
-- Block deploys when error budget < threshold
-- ArgoCD, GitHub Actions, GitLab CI integration
-- Policy DSL for gate conditions
+**Phase 4: Deployment Gates** ✅ COMPLETE
+- `nthlayer check-deploy` blocks deploys when error budget exhausted
+- Tier-based thresholds (critical: 10% blocking, standard: advisory)
+- Prometheus integration for live SLO data
+- Exit codes: 0=approved, 1=warning, 2=blocked
 
-*Everything else is deferred until these are complete and adopted.*
+**Next: CI/CD Integration Examples**
+- GitHub Actions workflow templates
+- ArgoCD PreSync hook examples
+- GitLab CI integration
 
 ### Scope Discipline
 
@@ -120,30 +125,16 @@ If unsure, defer to Future Considerations.
 - `trellis-loki-alerts`: Generate LogQL alert rules from service.yaml
 - `trellis-loki-templates`: Technology-specific log patterns (PostgreSQL, Redis, Kafka)
 
-### Phase 3: SLO Portfolio (🔨 NEXT - Differentiator)
+### Phase 3: SLO Portfolio (✅ DONE)
 **Goal:** Stateless, cross-service SLO aggregation for CI/CD pipelines
 
-- `trellis-portfolio-epic`: SLO Portfolio epic
-- `trellis-portfolio-cmd`: `nthlayer portfolio` command
-  - Aggregate SLO status across all services/*.yaml
-  - Query Prometheus in real-time (stateless)
-  - Exit codes: 0=healthy, 1=warning, 2=critical
-- `trellis-portfolio-output`: Multiple output formats
-  - `--format json` → pipe to dashboards, APIs
-  - `--format csv` → spreadsheets, data pipelines
-  - `--format markdown` → PR comments, Slack, docs
-  - `--format table` → terminal (default)
-- `trellis-portfolio-health`: Health scoring by tier
-  - Tier-1 services weighted higher
-  - Org-wide reliability score (0-100)
-- `trellis-portfolio-insights`: Actionable recommendations
-  - "3 services below 99% availability target"
-  - "checkout-service burned 80% of monthly budget"
-
-**Design principles:**
-- Stateless: No database, queries Prometheus each run
-- Pipeline-first: Exit codes, machine-readable output
-- Composable: Output feeds into Grafana, Datadog, Slack, etc.
+**Completed:**
+- `nthlayer portfolio` - Aggregate SLO status across all services
+- Exit codes: 0=healthy, 1=warning, 2=critical
+- Output formats: table, json, csv, markdown
+- Health scoring by tier with org-wide score (0-100)
+- Prometheus integration for live data
+- Actionable insights generation
 
 ### Phase 3.5: Enhanced Validation (📋 PLANNED)
 **Goal:** Beyond pint - comprehensive rule validation with promruval
@@ -171,12 +162,20 @@ If unsure, defer to Future Considerations.
 - Supported exporters: PostgreSQL, Redis, Elasticsearch, Kafka, MongoDB, MySQL
 - Closes the gap when `nthlayer verify` fails due to missing exporters
 
-### Phase 4: Deployment Gates (📋 CRITICAL)
+### Phase 4: Deployment Gates (✅ DONE)
 **Goal:** Deploy blocked when error budget < 10%
-- `trellis-tnr`: Policy YAML DSL
-- `trellis-a4d`: Condition evaluator
-- `trellis-0fl`: ArgoCD blocking
-- CI/CD integration: ArgoCD, GitHub Actions, Tekton, GitLab CI
+
+**Completed:**
+- `nthlayer check-deploy` - Error budget validation with exit codes
+- Tier-based thresholds (critical: 10% blocking, standard: advisory)
+- Prometheus integration for live SLO metrics
+- Blast radius analysis (downstream service impact)
+- Demo mode for VHS recordings
+
+**CI/CD Integration (Examples to Add):**
+- GitHub Actions workflow template
+- ArgoCD PreSync hook
+- GitLab CI gate job
 
 ### Phase 5: AI-Assisted Generation (📋 OPTIONAL)
 **Goal:** Conversational service.yaml creation
@@ -550,11 +549,12 @@ Before completing any task:
 
 Check `.beads/issues.jsonl` for the latest priorities.
 
-**Primary Focus:**
-- Phase 3: SLO Portfolio (`trellis-portfolio-*` issues)
-- Phase 4: Deployment Gates (`trellis-tnr`, `trellis-a4d`, `trellis-0fl`)
+**Completed (Phases 3 & 4):**
+- ✅ SLO Portfolio: `nthlayer portfolio` with all output formats
+- ✅ Deployment Gates: `nthlayer check-deploy` with Prometheus integration
 
-**Secondary:**
+**Next Priority:**
+- CI/CD integration examples (GitHub Actions, ArgoCD, GitLab CI)
 - Technology Templates: Kafka (`trellis-0cd`), MongoDB (`trellis-e8w`)
 - Enhanced Validation: promruval integration (`trellis-promruval`)
 
