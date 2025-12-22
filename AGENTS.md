@@ -136,12 +136,14 @@ If unsure, defer to Future Considerations.
 - Prometheus integration for live data
 - Actionable insights generation
 
-### Phase 3.5: Enhanced Validation (📋 PLANNED)
+### Phase 3.5: Enhanced Validation (✅ DONE)
 **Goal:** Beyond pint - comprehensive rule validation with promruval
-- `trellis-promruval`: Evaluate promruval integration
-- Enhanced metadata validation (playbook URLs exist, label patterns)
+
+**Completed:**
+- `nthlayer validate-metadata` - Label/annotation validation
+- `--use-promruval` flag for 40+ validators
+- `--check-urls` to verify runbook URLs are accessible
 - Thanos/Mimir/Loki rule support
-- `nthlayer apply --validate-metadata` flag
 
 ### Phase 3.6: Exporter Generation (📋 PLANNED)
 **Goal:** Generate Prometheus exporter deployment manifests from service.yaml
@@ -210,9 +212,15 @@ These are parked until Phases 3 & 4 are complete and adopted.
 
 ---
 
-### Technology Templates (Ongoing)
-- `trellis-0cd`: Kafka (consumer lag, partitions, replication)
-- `trellis-e8w`: MongoDB (connections, replication, locks)
+### Technology Templates
+
+**Completed (16 templates):**
+- PostgreSQL, MySQL, Redis, MongoDB, Elasticsearch
+- Kafka, RabbitMQ, NATS, Pulsar
+- Kubernetes, Nginx, HAProxy, Traefik
+- etcd, Consul
+
+**Planned:**
 - `trellis-ai-services`: AI/ML service type (GPU utilization, model latency, inference queue)
 
 ## Core Commands
@@ -549,14 +557,16 @@ Before completing any task:
 
 Check `.beads/issues.jsonl` for the latest priorities.
 
-**Completed (Phases 3 & 4):**
+**Completed (Phases 3, 3.5, 4):**
 - ✅ SLO Portfolio: `nthlayer portfolio` with all output formats
 - ✅ Deployment Gates: `nthlayer check-deploy` with Prometheus integration
+- ✅ Enhanced Validation: `nthlayer validate-metadata --use-promruval`
+- ✅ CI/CD Integration: Examples for GitHub Actions, ArgoCD, GitLab CI, Tekton, Jenkins
+- ✅ Technology Templates: 16 templates (Kafka, MongoDB, Elasticsearch, etc.)
 
 **Next Priority:**
-- CI/CD integration examples (GitHub Actions, ArgoCD, GitLab CI)
-- Technology Templates: Kafka (`trellis-0cd`), MongoDB (`trellis-e8w`)
-- Enhanced Validation: promruval integration (`trellis-promruval`)
+- Phase 3.6: Exporter Generation (K8s/Docker manifests for Prometheus exporters)
+- Phase 5: AI-Assisted Generation (optional - MCP server for Claude/Cursor)
 
 ## Gotchas
 
