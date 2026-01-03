@@ -228,7 +228,6 @@ def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
         for rec in result.recommendations[:3]:
             console.print(f"  [muted]•[/muted] {rec}")
         console.print()
-        console.print("[error]Exit code: 2[/error]")
         return 2
 
     if result.result == GateResult.WARNING:
@@ -239,13 +238,11 @@ def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
         for rec in result.recommendations[:3]:
             console.print(f"  [muted]•[/muted] {rec}")
         console.print()
-        console.print("[warning]Exit code: 1[/warning]")
         return 1
 
     success("Deployment APPROVED")
     console.print(f"[muted]Error budget healthy ({remaining_pct:.1f}% remaining)[/muted]")
     console.print()
-    console.print("[success]Exit code: 0[/success]")
     return 0
 
 
@@ -372,8 +369,6 @@ def _run_demo_mode(service_file: str, environment: str | None = None, blocked: b
         console.print("  [muted]•[/muted] Consider rolling back recent changes")
         console.print("  [muted]•[/muted] Wait for error budget to recover (estimated: 4 hours)")
         console.print()
-
-        console.print("[error]Exit code: 2[/error]")
         return 2
     else:
         # Demo SLO data - shows a warning scenario
@@ -410,6 +405,4 @@ def _run_demo_mode(service_file: str, environment: str | None = None, blocked: b
         console.print("  [muted]•[/muted] Consider smaller deployment batch size")
         console.print("  [muted]•[/muted] Ensure rollback plan is ready")
         console.print()
-
-        console.print("[warning]Exit code: 1[/warning]")
         return 1
