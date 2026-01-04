@@ -102,6 +102,7 @@ nav:
     - SLOs & Error Budgets: concepts/slos.md
   - Reference:
     - Service YAML Schema: reference/service-yaml.md
+    - Technology Templates: reference/technology-templates.md
     - CLI Reference: reference/cli.md
     - Environment Management: commands/environments.md
     - Architecture: architecture.md

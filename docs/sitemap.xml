@@ -2,138 +2,162 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://rsionnach.github.io/nthlayer/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/architecture/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/demo/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
+    </url>
+    <url>
+         <loc>https://rsionnach.github.io/nthlayer/thenewstack/</loc>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/apply/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/check-deploy/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/config/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/environments/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/generate-loki-alerts/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/init/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/portfolio/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/setup/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/slo/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/validate-metadata/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/validate-spec/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/commands/verify/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
+    </url>
+    <url>
+         <loc>https://rsionnach.github.io/nthlayer/concepts/contracts/</loc>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/concepts/deployment-gates/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/concepts/service-specs/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/concepts/shift-left/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/concepts/slos/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
+    </url>
+    <url>
+         <loc>https://rsionnach.github.io/nthlayer/concepts/tiers/</loc>
+         <lastmod>2025-12-20</lastmod>
+    </url>
+    <url>
+         <loc>https://rsionnach.github.io/nthlayer/getting-started/adoption-path/</loc>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/getting-started/first-service/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/getting-started/installation/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/getting-started/quick-start/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/integrations/cicd/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/integrations/grafana/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/integrations/mimir/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
+    </url>
+    <url>
+         <loc>https://rsionnach.github.io/nthlayer/integrations/pagerduty-safety/</loc>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/integrations/pagerduty/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/integrations/prometheus/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/integrations/technologies/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/protect/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/reference/cli/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/reference/service-yaml/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
+    </url>
+    <url>
+         <loc>https://rsionnach.github.io/nthlayer/reference/technology-templates/</loc>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/validate/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
     <url>
          <loc>https://rsionnach.github.io/nthlayer/validate/linting/</loc>
-         <lastmod>2025-12-12</lastmod>
+         <lastmod>2025-12-20</lastmod>
     </url>
 </urlset>
