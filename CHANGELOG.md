@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.1.0a8 (December 21, 2025)
+
+### Code Quality & CI/CD Improvements
+
+#### Type Safety
+- **Mypy errors fixed**: 142 → 0 type errors across all modules
+- Full type annotation coverage in core modules
+
+#### CI/CD Enhancements
+- **Security scanning**: pip-audit for vulnerability detection
+- **Dependabot integration**: Automated dependency updates
+- **Pre-commit hooks**: ruff lint, mypy, pytest (pre-push)
+- **Self-check validation**: NthLayer validates its own example specs
+
+#### GitHub Actions Updates
+- actions/checkout v4 → v6
+- actions/cache v4 → v5
+- actions/setup-python v5 → v6
+
+#### Documentation
+- **Architecture diagrams**: Mermaid diagrams with Iconify icons
+- **Tech stack documentation**: Comprehensive module and component docs
+- **Technology templates reference**: Exporter requirements and metrics documentation
+
+#### Dependencies Updated
+- ruff <0.5.0 → <0.15.0
+- structlog 25.x → 26.x
+- rich 14.x → 15.x
+- mypy 1.11 → 1.20
+- aioboto3 13.x → 16.x
+
+#### CLI Fixes
+- Questionary prompt styling improvements
+- Service type to template mapping fix
+- check-deploy latency SLO handling
+
+---
+
 ## v0.1.0a7 (December 12, 2025)
 
 ### Reliability Shift Left - Major Release
