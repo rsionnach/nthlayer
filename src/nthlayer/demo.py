@@ -37,7 +37,7 @@ from nthlayer.cli.verify import handle_verify_command, register_verify_parser
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 
 # Version - keep in sync with pyproject.toml
-__version__ = "0.1.0a7"
+__version__ = "0.1.0a8"
 
 logger = structlog.get_logger()
 
