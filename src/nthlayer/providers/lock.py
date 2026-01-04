@@ -31,4 +31,4 @@ def load_lock(path: Path | None = None) -> ProviderLock:
 def save_lock(lock: ProviderLock, path: Path | None = None) -> None:
     lock_path = path or DEFAULT_LOCK_PATH
     payload = {"providers": lock.providers}
-    lock_path.write_text(json.dumps(payload, indent=2) + "\n")
+    lock_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

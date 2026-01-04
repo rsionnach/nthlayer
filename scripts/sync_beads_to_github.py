@@ -50,7 +50,7 @@ def load_sync_state():
 def save_sync_state(state):
     """Save sync state."""
     with open(SYNC_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+        json.dump(state, f, indent=2, sort_keys=True)
 
 
 def create_github_issue(bead):

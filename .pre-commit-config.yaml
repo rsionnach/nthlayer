@@ -21,6 +21,7 @@ repos:
         args: [--unsafe]  # Allow custom tags in YAML
       - id: check-added-large-files
         args: ['--maxkb=500']
+        exclude: '^uv\.lock$'
       - id: check-merge-conflict
       - id: detect-private-key
 

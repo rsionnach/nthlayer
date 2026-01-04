@@ -37,7 +37,7 @@ from nthlayer.cli.verify import handle_verify_command, register_verify_parser
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 
 # Version - keep in sync with pyproject.toml
-__version__ = "0.1.0a7"
+__version__ = "0.1.0a8"
 
 logger = structlog.get_logger()
 
@@ -404,9 +404,15 @@ async def demo_grafana(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="nthlayer", description="NthLayer CLI")
+    from rich_argparse import RichHelpFormatter
+
+    parser = argparse.ArgumentParser(
+        prog="nthlayer",
+        description="NthLayer CLI - Reliability requirements as code",
+        formatter_class=RichHelpFormatter,
+    )
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", metavar="command")
 
     # === NEW: Unified apply workflow ===
 

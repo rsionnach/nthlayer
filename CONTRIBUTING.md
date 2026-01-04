@@ -17,12 +17,13 @@ The most valuable contribution right now is **using NthLayer on a real service**
 We welcome pull requests! Here's how to get started:
 
 ```bash
+# Install uv (https://docs.astral.sh/uv/)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Clone and setup
 git clone https://github.com/rsionnach/nthlayer.git
 cd nthlayer
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra dev      # Install dependencies from lockfile
 
 # Install pre-commit hooks (required)
 make pre-commit-install

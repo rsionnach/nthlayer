@@ -38,6 +38,9 @@ venv/
 env/
 ENV/
 
+# uv cache
+.uv/
+
 # IDE
 .vscode/
 .idea/

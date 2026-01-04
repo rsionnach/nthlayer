@@ -301,28 +301,29 @@ class ServiceOrchestrator:
         ]
 
     def _plan_alerts(self) -> List[Dict[str, Any]]:
-        """Plan alert generation."""
-        service_def = self.service_def or {}
-        # Get dependencies
-        deps_resource = next(
-            (r for r in service_def.get("resources", []) if r.get("kind") == "Dependencies"),
-            None,
-        )
+        """Plan alert generation using actual alert generator."""
+        from nthlayer.generators.alerts import generate_alerts_for_service
 
-        if not deps_resource:
+        try:
+            # Generate alerts without writing to get actual count
+            alerts = generate_alerts_for_service(
+                service_file=self.service_yaml,
+                output_file=None,  # Don't write during plan
+                environment=self.env,
+            )
+
+            # Group by severity for summary
+            severity_counts: Dict[str, int] = {}
+            for alert in alerts:
+                severity = getattr(alert, "severity", "unknown")
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+            return [
+                {"severity": sev, "count": count} for sev, count in sorted(severity_counts.items())
+            ]
+        except Exception:
+            # Fall back to empty list on error
             return []
-
-        spec = deps_resource.get("spec", {})
-        alerts = []
-
-        # Count alerts by technology
-        for db in spec.get("databases", []):
-            db_type = db.get("type", "unknown")
-            # Rough estimate of alerts per technology
-            count = {"postgresql": 12, "redis": 8, "mysql": 10, "mongodb": 8}.get(db_type, 5)
-            alerts.append({"technology": db_type, "count": count})
-
-        return alerts
 
     def _plan_dashboard(self) -> List[Dict[str, Any]]:
         """Plan dashboard generation."""
@@ -402,32 +403,19 @@ class ServiceOrchestrator:
         return len(slo_resources)
 
     def _generate_alerts(self) -> int:
-        """Generate alert files."""
-        # TODO: Implement actual alert generation using AlertGenerator
-        # For now, return estimated count
-        service_def = self.service_def or {}
+        """Generate alert files using actual alert generator."""
+        from nthlayer.generators.alerts import generate_alerts_for_service
+
         output_dir = self.output_dir or Path("generated")
-        deps_resource = next(
-            (r for r in service_def.get("resources", []) if r.get("kind") == "Dependencies"),
-            None,
+        output_file = output_dir / "alerts.yaml"
+
+        alerts = generate_alerts_for_service(
+            service_file=self.service_yaml,
+            output_file=output_file,
+            environment=self.env,
         )
 
-        if not deps_resource:
-            return 0
-
-        # Write placeholder
-        output_file = output_dir / "alerts.yaml"
-        with open(output_file, "w") as f:
-            f.write("# Alerts would be generated here\n")
-
-        # Estimate count
-        spec = deps_resource.get("spec", {})
-        count = 0
-        for db in spec.get("databases", []):
-            db_type = db.get("type", "unknown")
-            count += {"postgresql": 12, "redis": 8, "mysql": 10, "mongodb": 8}.get(db_type, 5)
-
-        return count
+        return len(alerts)
 
     def _generate_dashboard(self, push_to_grafana: bool = False) -> int:
         """Generate dashboard file and optionally push to Grafana.
@@ -586,7 +574,7 @@ class ServiceOrchestrator:
                 "note": "Set PAGERDUTY_API_KEY to create resources in PagerDuty",
             }
             with open(output_file, "w") as f:
-                json.dump(config, f, indent=2)
+                json.dump(config, f, indent=2, sort_keys=True)
             return 1
 
         # Create resources in PagerDuty
@@ -619,7 +607,7 @@ class ServiceOrchestrator:
             "warnings": result.warnings,
         }
         with open(output_file, "w") as f:
-            json.dump(result_data, f, indent=2)
+            json.dump(result_data, f, indent=2, sort_keys=True)
 
         # Set up Event Orchestration for routing overrides if needed
         if support_model in ("shared", "sre") and sre_ep_id and result.service_id:

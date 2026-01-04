@@ -352,8 +352,8 @@ See NthLayer in action with real Grafana dashboards and generated configs:
 <summary>Build docs locally</summary>
 
 ```bash
-pip install -e ".[docs]"
-mkdocs serve  # Opens at http://localhost:8000
+uv sync --extra docs
+uv run mkdocs serve  # Opens at http://localhost:8000
 ```
 </details>
 
@@ -362,10 +362,13 @@ mkdocs serve  # Opens at http://localhost:8000
 ## 🤝 Contributing
 
 ```bash
+# Install uv (https://docs.astral.sh/uv/)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 git clone https://github.com/rsionnach/nthlayer.git
 cd nthlayer
 make setup    # Install deps, start services
-make test     # Run tests (84 should pass)
+make test     # Run tests
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.

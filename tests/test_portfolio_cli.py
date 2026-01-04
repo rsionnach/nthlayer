@@ -78,10 +78,10 @@ class TestPortfolioModels:
 
     def test_portfolio_health_org_percentage(self):
         """Test PortfolioHealth calculates org health."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         portfolio = PortfolioHealth(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             total_services=10,
             services_with_slos=8,
             healthy_services=6,

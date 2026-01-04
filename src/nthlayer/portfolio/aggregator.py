@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from nthlayer.portfolio.models import (
@@ -85,7 +85,7 @@ class PortfolioAggregator:
         healthy_services = sum(1 for svc in services if svc.slos and svc.is_healthy)
 
         return PortfolioHealth(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             total_services=len(services),
             services_with_slos=services_with_slos,
             healthy_services=healthy_services,

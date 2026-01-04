@@ -16,37 +16,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --extra dev
 
       - name: Run linting
-        run: |
-          pip install ruff
-          ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E721,E722,B012,I001
+        run: uv run ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E721,E722,B012,I001
 
       - name: Run type checking
-        run: |
-          pip install mypy types-redis types-requests types-PyYAML
-          mypy src/nthlayer --ignore-missing-imports --no-error-summary
+        run: uv run mypy src/nthlayer --ignore-missing-imports --no-error-summary
 
       - name: Run tests
         run: |
-          pytest tests/ \
+          uv run pytest tests/ \
             --ignore=tests/integration/ \
             -v --tb=short \
             -x
@@ -56,64 +46,63 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev
 
       - name: Run ruff
-        run: ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E721,E722,B012,I001
+        run: uv run ruff check src/ tests/ --ignore E501,B008,F841,B007,E402,E721,E722,B012,I001
 
   security:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
+        run: uv python install 3.11
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pip-audit
-          pip install -e ".[dev]"
+        run: uv sync --extra dev
 
       - name: Run pip-audit
         run: |
+          uv pip install pip-audit
           # Note: --strict removed - some transitive deps have unfixable vulns
           # Review periodically and update deps when fixes available
-          pip-audit --progress-spinner off || echo "pip-audit found vulnerabilities (non-blocking)"
+          uv run pip-audit --progress-spinner off || echo "pip-audit found vulnerabilities (non-blocking)"
 
   self-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
+        run: uv python install 3.11
 
       - name: Install NthLayer
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
+        run: uv sync
 
       - name: Validate example service specs
         run: |
           echo "=== Validating example service specs ==="
           # Only validate known-good specs (some examples are intentionally incomplete for demos)
-          nthlayer validate-spec examples/services/checkout-service.yaml
+          uv run nthlayer validate-spec examples/services/checkout-service.yaml
 
       - name: Generate artifacts for example service
         run: |
           echo "=== Generating artifacts for checkout-service ==="
-          nthlayer apply examples/services/checkout-service.yaml --lint
+          uv run nthlayer apply examples/services/checkout-service.yaml --lint
 
       - name: Verify generated artifacts exist
         run: |
