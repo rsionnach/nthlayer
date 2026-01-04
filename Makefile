@@ -1,4 +1,4 @@
-.PHONY: help dev-up dev-down dev-logs test test-cov lint typecheck format clean demo-reconcile mock-server docs docs-serve demo-gifs
+.PHONY: help dev-up dev-down dev-logs test test-cov lint typecheck format clean demo-reconcile mock-server docs docs-serve demo-gifs lock lock-upgrade
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -30,52 +30,52 @@ dev-clean: ## Stop and remove volumes
 
 # Database
 migrate: ## Run database migrations
-	alembic upgrade head
+	uv run alembic upgrade head
 
 migrate-down: ## Rollback last migration
-	alembic downgrade -1
+	uv run alembic downgrade -1
 
 migrate-create: ## Create new migration (use: make migrate-create MSG="description")
-	alembic revision --autogenerate -m "$(MSG)"
+	uv run alembic revision --autogenerate -m "$(MSG)"
 
 # Testing
 test: ## Run tests
-	.venv/bin/python -m pytest tests/ -v
+	uv run pytest tests/ -v
 
 test-cov: ## Run tests with coverage report
-	.venv/bin/python -m pytest tests/ -v --cov=src/nthlayer --cov-report=html --cov-report=term
+	uv run pytest tests/ -v --cov=src/nthlayer --cov-report=html --cov-report=term
 
 test-integration: ## Run integration tests (requires mock server)
-	.venv/bin/python -m pytest tests/integration/ -v
+	uv run pytest tests/integration/ -v
 
 test-watch: ## Run tests in watch mode (requires pytest-watch)
-	.venv/bin/python -m ptw tests/ -- -v
+	uv run ptw tests/ -- -v
 
 # Code quality
 lint: ## Run linting
-	ruff check src/ tests/
+	uv run ruff check src/ tests/
 
 lint-fix: ## Run linting with auto-fix
-	ruff check --fix src/ tests/
+	uv run ruff check --fix src/ tests/
 
 format: ## Format code
-	ruff format src/ tests/
+	uv run ruff format src/ tests/
 
 typecheck: ## Run type checking
-	mypy src/
+	uv run mypy src/
 
 pre-commit-install: ## Install pre-commit hooks
-	pip3 install pre-commit
-	pre-commit install
+	uv pip install pre-commit
+	uv run pre-commit install
 	@echo "✅ Pre-commit hooks installed. Linting will run automatically on commit."
 
 pre-commit-run: ## Run pre-commit on all files
-	pre-commit run --all-files
+	uv run pre-commit run --all-files
 
 # Mock server for testing
 mock-server: ## Start mock API server (simulates PagerDuty, Grafana, etc.)
 	@echo "Starting mock server on http://localhost:8001"
-	python -m tests.mock_server
+	uv run python -m tests.mock_server
 
 # Demo mode
 demo-reconcile: ## Run demo reconciliation workflow
@@ -89,14 +89,21 @@ demo-list: ## List available demo commands
 
 # API server
 api: ## Start API server locally
-	uvicorn nthlayer.api.main:app --reload --host 0.0.0.0 --port 8000
+	uv run uvicorn nthlayer.api.main:app --reload --host 0.0.0.0 --port 8000
 
 # Installation
 install: ## Install package in editable mode
-	pip install -e .
+	uv sync
 
 install-dev: ## Install package with dev dependencies
-	pip install -e ".[dev]"
+	uv sync --extra dev
+
+# Lock file management
+lock: ## Update uv.lock file
+	uv lock
+
+lock-upgrade: ## Upgrade all dependencies and update lock
+	uv lock --upgrade
 
 # Cleanup
 clean: ## Clean up Python cache files
@@ -121,11 +128,11 @@ setup: dev-up install-dev migrate ## Complete setup: start services, install dep
 
 # Documentation
 docs: ## Build documentation site
-	.venv/bin/mkdocs build || mkdocs build
+	uv run --extra docs mkdocs build
 	@echo "✅ Documentation built to docs/"
 
 docs-serve: ## Serve documentation locally
-	.venv/bin/mkdocs serve || mkdocs serve
+	uv run --extra docs mkdocs serve
 
 # Demo GIFs (requires VHS: https://github.com/charmbracelet/vhs)
 demo-gifs: ## Generate CLI demo GIFs using VHS
@@ -135,3 +142,54 @@ demo-gifs: ## Generate CLI demo GIFs using VHS
 	vhs demo/vhs/plan-demo.tape
 	vhs demo/vhs/slo-demo.tape
 	@echo "✅ Demo GIFs generated in demo/vhs/"
+
+AUDIT_DIR := docs/audits/chunkhound
+RUN_DATE  := $(shell date +%F)
+OUT_DIR   := $(AUDIT_DIR)/runs/$(RUN_DATE)
+
+.PHONY: audit audit-weekly audit-init
+
+audit-init:
+	mkdir -p $(OUT_DIR)
+
+audit: audit-init
+	@echo "Running full ChunkHound audit → $(OUT_DIR)"
+	chunkhound research "Map the full execution path of nthlayer plan and nthlayer apply end-to-end. Identify key modules, state/data structures passed between layers, and the top 5 failure points (with citations). Recommend a small refactor to make the flow more testable." \
+		| tee $(OUT_DIR)/01-plan-apply.md
+
+	chunkhound research "Where is tier defined, validated, and used to affect generated artifacts? List all tier decision points and any inconsistencies. Propose a single source-of-truth approach." \
+		| tee $(OUT_DIR)/02-tier.md
+
+	chunkhound research "Explain the secret backend system end-to-end: configuration → resolution → runtime usage. Identify extension points and any security footguns (logging, error messages, default fallbacks). Recommend hardening steps." \
+		| tee $(OUT_DIR)/03-secret-backends.md
+
+	chunkhound research "How are technology templates discovered/selected/applied? Find duplicate or near-duplicate logic across templates or selection code. Propose a consolidation plan that reduces touch points when adding a new template." \
+		| tee $(OUT_DIR)/04-templates.md
+
+	chunkhound research "Document config precedence (env/file/flags/defaults/etc.) and where it’s implemented. Identify missing validation and places where invalid config can pass too far. Recommend where validation should live and how to reuse it across CLI + future integrations." \
+		| tee $(OUT_DIR)/05-config.md
+
+	chunkhound research "Trace how dashboards, alerts, and recording rules are generated and written. Identify any non-determinism, ordering issues, or formatting drift. Recommend steps to ensure reproducible output (and how to test it)." \
+		| tee $(OUT_DIR)/06-determinism.md
+
+	chunkhound research "Audit error handling across the CLI and core modules: patterns used, exit codes, user messaging, and logging. Identify inconsistencies and recommend a standard (including a small shared helper/module)." \
+		| tee $(OUT_DIR)/07-errors-ux.md
+
+	chunkhound research "Identify the likely performance bottlenecks in plan/apply and generation. Point to the functions/loops that scale with repo size / number of services / templates. Recommend 3 optimizations with best ROI and minimal complexity." \
+		| tee $(OUT_DIR)/08-performance.md
+
+audit-weekly: audit-init
+	@echo "Running weekly ChunkHound audit → $(OUT_DIR)"
+	chunkhound research "Map the full execution path of nthlayer plan and nthlayer apply end-to-end. Identify key modules and failure points." \
+		| tee $(OUT_DIR)/01-plan-apply.md
+
+	chunkhound research "Document config precedence and identify missing or inconsistent validation." \
+		| tee $(OUT_DIR)/05-config.md
+
+	chunkhound research "Audit error handling across the CLI and core modules and recommend a consistent standard." \
+		| tee $(OUT_DIR)/07-errors-ux.md
+
+	chunkhound research "List the main entrypoints for nthlayer plan/apply and the functions they call (with file:line citations)." \
+		| tee $(OUT_DIR)/08-performance.md
+	chunkhound research "Weekly performance check: Starting from src/nthlayer/cli/plan.py:119-143 and src/nthlayer/cli/apply.py:1-35, trace into ServiceOrchestrator.plan()/apply(). Identify any NEW or CHANGED potential performance issues introduced by recent changes: repeated parsing, repeated template resolution, repeated file I/O, repeated network calls (Grafana/Prometheus), N^2 loops. Output a short report with (1) top 5 hotspots with file:line citations, (2) what changed since the previous run (if inferable), and (3) 1-2 low-risk optimizations or guardrails/tests to prevent regressions." \
+		| tee "$OUT_DIR/08-performance-weekly.md"

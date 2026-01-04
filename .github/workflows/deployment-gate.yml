@@ -22,18 +22,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        run: uv python install 3.11
 
       - name: Install NthLayer
-        run: pip install -e .
+        run: uv sync
 
       - name: Generate + Lint
         run: |
           echo "=== Stage 1: Generate + Lint ==="
-          nthlayer apply ${{ inputs.service }} --lint
+          uv run nthlayer apply ${{ inputs.service }} --lint
           echo "✅ Artifacts generated and linted"
 
       - name: Check Deployment Gate
@@ -44,7 +45,7 @@ jobs:
           PROMETHEUS_PASSWORD: ${{ secrets.PROMETHEUS_PASSWORD }}
         run: |
           echo "=== Stage 2: Deployment Gate ==="
-          nthlayer check-deploy ${{ inputs.service }}
+          uv run nthlayer check-deploy ${{ inputs.service }}
           EXIT_CODE=$?
 
           if [ $EXIT_CODE -eq 2 ]; then
@@ -60,7 +61,7 @@ jobs:
         if: ${{ inputs.demo_blocked == true }}
         run: |
           echo "=== Stage 2: Deployment Gate (Demo Mode) ==="
-          nthlayer check-deploy ${{ inputs.service }} --demo-blocked
+          uv run nthlayer check-deploy ${{ inputs.service }} --demo-blocked
           echo "::error::Deployment BLOCKED (demo mode)"
           exit 1
 
