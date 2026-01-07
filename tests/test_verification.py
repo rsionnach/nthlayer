@@ -1,5 +1,8 @@
 """Tests for contract verification."""
 
+from unittest.mock import MagicMock, patch
+
+
 from nthlayer.specs.models import Resource
 from nthlayer.verification import (
     MetricSource,
@@ -9,8 +12,10 @@ from nthlayer.verification.extractor import _extract_metrics_from_query
 from nthlayer.verification.models import (
     ContractVerificationResult,
     DeclaredMetric,
+    MetricContract,
     VerificationResult,
 )
+from nthlayer.verification.verifier import MetricVerifier
 
 
 class TestMetricExtraction:
@@ -298,3 +303,253 @@ class TestContractVerificationResult:
         assert contract_result.critical_verified
         assert len(contract_result.missing_optional) == 1
         assert contract_result.exit_code == 1
+
+
+class TestMetricVerifier:
+    """Tests for MetricVerifier class."""
+
+    def test_init_basic(self):
+        """Test basic initialization."""
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        assert verifier.prometheus_url == "http://prometheus:9090"
+        assert verifier.auth is None
+        assert verifier.timeout == 30.0
+
+    def test_init_with_auth(self):
+        """Test initialization with auth credentials."""
+        verifier = MetricVerifier(
+            "http://prometheus:9090",
+            username="admin",
+            password="secret",
+        )
+
+        assert verifier.auth == ("admin", "secret")
+
+    def test_init_trailing_slash_removed(self):
+        """Test trailing slash is removed from URL."""
+        verifier = MetricVerifier("http://prometheus:9090/")
+
+        assert verifier.prometheus_url == "http://prometheus:9090"
+
+    @patch.dict(
+        "os.environ", {"PROMETHEUS_USERNAME": "env_user", "PROMETHEUS_PASSWORD": "env_pass"}
+    )
+    def test_init_env_var_auth(self):
+        """Test auth from environment variables."""
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        assert verifier.auth == ("env_user", "env_pass")
+
+    @patch("httpx.Client")
+    def test_verify_metric_exists(self, mock_client_class):
+        """Test verifying a metric that exists."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "success",
+            "data": [{"__name__": "http_requests_total", "service": "test"}],
+        }
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+        metric = DeclaredMetric(name="http_requests_total", source=MetricSource.SLO_INDICATOR)
+
+        result = verifier.verify_metric(metric, "test-service")
+
+        assert result.exists is True
+        assert result.sample_labels == {"service": "test"}
+
+    @patch("httpx.Client")
+    def test_verify_metric_not_exists(self, mock_client_class):
+        """Test verifying a metric that doesn't exist."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "success", "data": []}
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+        metric = DeclaredMetric(name="nonexistent_metric", source=MetricSource.SLO_INDICATOR)
+
+        result = verifier.verify_metric(metric, "test-service")
+
+        assert result.exists is False
+
+    @patch("httpx.Client")
+    def test_verify_metric_connection_error(self, mock_client_class):
+        """Test verifying metric with connection error."""
+        import httpx
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+        metric = DeclaredMetric(name="http_requests_total", source=MetricSource.SLO_INDICATOR)
+
+        result = verifier.verify_metric(metric, "test-service")
+
+        assert result.exists is False
+        assert result.error is not None
+        assert "Cannot connect" in result.error
+
+    @patch("httpx.Client")
+    def test_verify_metric_timeout(self, mock_client_class):
+        """Test verifying metric with timeout."""
+        import httpx
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.side_effect = httpx.TimeoutException("Timeout")
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+        metric = DeclaredMetric(name="http_requests_total", source=MetricSource.SLO_INDICATOR)
+
+        result = verifier.verify_metric(metric, "test-service")
+
+        assert result.exists is False
+        assert result.error is not None
+        assert "Timeout" in result.error
+
+    @patch("httpx.Client")
+    def test_verify_contract(self, mock_client_class):
+        """Test verifying a full contract."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "success",
+            "data": [{"__name__": "http_requests_total", "service": "test"}],
+        }
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+        contract = MetricContract(
+            service_name="test-service",
+            metrics=[
+                DeclaredMetric(name="http_requests_total", source=MetricSource.SLO_INDICATOR),
+                DeclaredMetric(name="http_duration_seconds", source=MetricSource.OBSERVABILITY),
+            ],
+        )
+
+        result = verifier.verify_contract(contract)
+
+        assert result.service_name == "test-service"
+        assert result.target_url == "http://prometheus:9090"
+        assert len(result.results) == 2
+
+    @patch("httpx.Client")
+    def test_test_connection_success(self, mock_client_class):
+        """Test successful connection test."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        assert verifier.test_connection() is True
+
+    @patch("httpx.Client")
+    def test_test_connection_failure(self, mock_client_class):
+        """Test failed connection test."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        assert verifier.test_connection() is False
+
+    @patch("httpx.Client")
+    def test_test_connection_exception(self, mock_client_class):
+        """Test connection test with exception."""
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.side_effect = Exception("Network error")
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        assert verifier.test_connection() is False
+
+    @patch("httpx.Client")
+    def test_query_series_404(self, mock_client_class):
+        """Test _query_series with 404 response."""
+        import httpx
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Not Found", request=MagicMock(), response=mock_response
+        )
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        exists, labels = verifier._query_series("nonexistent{}")
+
+        assert exists is False
+        assert labels is None
+
+    @patch("httpx.Client")
+    def test_check_metric_falls_back_to_no_service_label(self, mock_client_class):
+        """Test _check_metric_exists falls back when service label not found."""
+        # First call with service label returns empty
+        # Second call without service label returns data
+        mock_response_empty = MagicMock()
+        mock_response_empty.status_code = 200
+        mock_response_empty.json.return_value = {"status": "success", "data": []}
+
+        mock_response_found = MagicMock()
+        mock_response_found.status_code = 200
+        mock_response_found.json.return_value = {
+            "status": "success",
+            "data": [{"__name__": "test_metric", "instance": "localhost:9090"}],
+        }
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.side_effect = [mock_response_empty, mock_response_found]
+        mock_client_class.return_value = mock_client
+
+        verifier = MetricVerifier("http://prometheus:9090")
+
+        exists, labels = verifier._check_metric_exists("test_metric", "test-service")
+
+        assert exists is True
+        assert labels == {"instance": "localhost:9090"}

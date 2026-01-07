@@ -257,12 +257,21 @@ resources:
 class TestSloBlameCommand:
     """Tests for nthlayer slo blame command."""
 
-    def test_blame_shows_coming_soon(self):
-        """Test that blame shows coming soon message (CI/CD integration needed)."""
+    def test_blame_requires_database(self):
+        """Test that blame returns error when database not configured."""
+        import os
+
         from nthlayer.cli.slo import slo_blame_command
 
-        result = slo_blame_command("payment-api")
-        assert result == 0
+        # Ensure database URL is not set
+        old_db_url = os.environ.pop("NTHLAYER_DATABASE_URL", None)
+        try:
+            result = slo_blame_command("payment-api")
+            # Returns 1 when database not configured
+            assert result == 1
+        finally:
+            if old_db_url is not None:
+                os.environ["NTHLAYER_DATABASE_URL"] = old_db_url
 
 
 class TestWindowParsing:
