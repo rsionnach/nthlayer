@@ -20,6 +20,11 @@ import yaml
 
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
+from nthlayer.cli.blast_radius import (
+    handle_blast_radius_command,
+    register_blast_radius_parser,
+)
+from nthlayer.cli.deps import handle_deps_command, register_deps_parser
 from nthlayer.cli.drift import handle_drift_command, register_drift_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
@@ -767,6 +772,10 @@ def build_parser() -> argparse.ArgumentParser:
     # Drift detection command
     register_drift_parser(subparsers)
 
+    # Dependency discovery commands
+    register_deps_parser(subparsers)
+    register_blast_radius_parser(subparsers)
+
     return parser
 
 
@@ -1133,5 +1142,11 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "drift":
         sys.exit(handle_drift_command(args))
+
+    if args.command == "deps":
+        sys.exit(handle_deps_command(args))
+
+    if args.command == "blast-radius":
+        sys.exit(handle_blast_radius_command(args))
 
     parser.print_help()
