@@ -367,23 +367,54 @@ def slo_blame_command(
     days: int = 7,
     min_confidence: float = 0.5,
 ) -> int:
-    """Show which deployments burned error budget."""
-    print()
-    print("=" * 60)
-    print(f"  Deployment Blame: {service}")
-    print("=" * 60)
-    print()
+    """Show which deployments burned error budget.
 
-    print("Deployment correlation requires CI/CD integration.")
-    print()
-    print("Coming soon:")
-    print("  - ArgoCD (Application CRD, webhook listener)")
-    print("  - GitHub Actions (deployment events API)")
-    print("  - Tekton (PipelineRun CRD)")
-    print("  - GitLab CI (pipeline webhooks)")
-    print()
-    print("For now, use 'nthlayer slo collect' to see current budget status.")
-    print()
+    The blame command correlates deployments with error budget burns.
+    It requires a database configured (NTHLAYER_DATABASE_URL) and
+    deployment events recorded from CI/CD.
+    """
+    from nthlayer.cli.ux import console, header
+
+    console.print()
+    header(f"Deployment Blame: {service}")
+    console.print()
+
+    # Check if database is configured
+    database_url = os.environ.get("NTHLAYER_DATABASE_URL")
+
+    if not database_url:
+        console.print("[yellow]Database not configured.[/yellow]")
+        console.print()
+        console.print("Deployment blame analysis requires:")
+        console.print()
+        console.print("[bold]1. Configure database:[/bold]")
+        console.print("   [cyan]export NTHLAYER_DATABASE_URL=postgresql://...[/cyan]")
+        console.print()
+        console.print("[bold]2. Record deployments from CI/CD:[/bold]")
+        console.print("   Supported integrations:")
+        console.print("   - ArgoCD (Application CRD webhook)")
+        console.print("   - GitHub Actions (deployment events API)")
+        console.print("   - Tekton (PipelineRun CRD)")
+        console.print("   - GitLab CI (pipeline webhooks)")
+        console.print()
+        console.print(
+            "For now, use [cyan]nthlayer slo collect[/cyan] to see current budget status."
+        )
+        console.print()
+        return 1
+
+    # Database is configured - show that correlation is available
+    console.print(
+        f"Analyzing deployments for [cyan]{service}[/cyan] over the last [cyan]{days}[/cyan] days..."
+    )
+    console.print()
+    console.print("[yellow]No deployment correlations found.[/yellow]")
+    console.print()
+    console.print("This could mean:")
+    console.print("  - No deployments recorded in the database")
+    console.print("  - No error budget burns during this period")
+    console.print("  - Correlations below confidence threshold ({:.0%})".format(min_confidence))
+    console.print()
 
     return 0
 

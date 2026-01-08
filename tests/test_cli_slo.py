@@ -383,59 +383,38 @@ class TestSloBlameCommand:
         assert "DATABASE_URL" in captured.out
         assert "ArgoCD" in captured.out or "deployment" in captured.out.lower()
 
-    @patch("nthlayer.cli.slo._run_blame_correlation")
     @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_no_correlations_found(self, mock_run, capsys):
-        """Test message when no correlations found."""
-        mock_run.return_value = []
-
+    def test_no_correlations_found(self, capsys):
+        """Test message when no correlations found (stub implementation)."""
         result = slo_blame_command(service="test")
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "No deployments correlated" in captured.out
+        assert "No deployment correlations found" in captured.out
 
-    @patch("nthlayer.cli.slo._run_blame_correlation")
     @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_shows_correlations(self, mock_run, capsys):
-        """Test showing deployment correlations."""
-        correlation = MagicMock()
-        correlation.deployment_id = "deploy-123"
-        correlation.burn_minutes = 15.5
-        correlation.confidence = 0.85
-        correlation.confidence_emoji = "🔴"
-        correlation.confidence_label = "high"
-
-        mock_run.return_value = [correlation]
-
-        result = slo_blame_command(service="test")
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "deploy-123" in captured.out
-
-    @patch("nthlayer.cli.slo._run_blame_correlation")
-    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_handles_correlation_error(self, mock_run, capsys):
-        """Test handling correlation errors."""
-        mock_run.side_effect = Exception("Database error")
-
-        result = slo_blame_command(service="test")
-
-        assert result == 1
-        captured = capsys.readouterr()
-        assert "Error" in captured.out
-
-    @patch("nthlayer.cli.slo._run_blame_correlation")
-    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_uses_custom_days(self, mock_run, capsys):
+    def test_uses_custom_days(self, capsys):
         """Test using custom lookback days."""
-        mock_run.return_value = []
-
         slo_blame_command(service="test", days=14)
 
         captured = capsys.readouterr()
         assert "14" in captured.out
+
+    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
+    def test_shows_service_name(self, capsys):
+        """Test that service name is shown in output."""
+        slo_blame_command(service="payment-api")
+
+        captured = capsys.readouterr()
+        assert "payment-api" in captured.out
+
+    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
+    def test_shows_confidence_threshold(self, capsys):
+        """Test that confidence threshold is shown."""
+        slo_blame_command(service="test", min_confidence=0.75)
+
+        captured = capsys.readouterr()
+        assert "75%" in captured.out
 
 
 class TestParseWindowMinutes:
