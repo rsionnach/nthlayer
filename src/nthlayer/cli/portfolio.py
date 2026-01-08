@@ -7,6 +7,7 @@ Usage:
     nthlayer portfolio --format csv         # CSV export
     nthlayer portfolio --format markdown    # Markdown for PR comments
     nthlayer portfolio --prometheus-url URL # Live data from Prometheus
+    nthlayer portfolio --drift              # Include drift trend analysis
 
 Exit codes:
     0 = healthy (all SLOs meeting targets)
@@ -17,6 +18,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import csv
 import io
 import json
@@ -25,6 +27,7 @@ import os
 from rich.table import Table
 
 from nthlayer.cli.ux import console, header
+from nthlayer.drift import DriftAnalyzer, DriftResult, DriftSeverity, get_drift_defaults
 from nthlayer.portfolio import (
     HealthStatus,
     PortfolioHealth,
@@ -37,6 +40,7 @@ def portfolio_command(
     format: str = "table",
     search_paths: list[str] | None = None,
     prometheus_url: str | None = None,
+    include_drift: bool = False,
 ) -> int:
     """
     Display SLO portfolio health across all services.
@@ -45,6 +49,7 @@ def portfolio_command(
         format: Output format (table, json, csv, markdown)
         search_paths: Optional directories to search for service files
         prometheus_url: Optional Prometheus URL for live SLO data
+        include_drift: If True, include drift trend analysis for each service
 
     Returns:
         Exit code based on health:
@@ -58,28 +63,92 @@ def portfolio_command(
     # Collect portfolio data
     portfolio = collect_portfolio(search_paths, prometheus_url=prom_url)
 
+    # Collect drift data if requested
+    drift_results: dict[str, DriftResult] = {}
+    if include_drift and prom_url:
+        drift_results = _collect_drift_data(portfolio, prom_url)
+
     # Output in requested format
     if format == "json":
-        print(json.dumps(portfolio.to_dict(), indent=2))
+        output = portfolio.to_dict()
+        if drift_results:
+            output["drift"] = {name: r.to_dict() for name, r in drift_results.items()}
+        print(json.dumps(output, indent=2))
     elif format == "csv":
-        _print_csv(portfolio)
+        _print_csv(portfolio, drift_results)
     elif format == "markdown":
-        _print_markdown(portfolio)
+        _print_markdown(portfolio, drift_results)
     else:
-        _print_table(portfolio)
+        _print_table(portfolio, drift_results)
 
-    # Return exit code based on health
-    return _calculate_exit_code(portfolio)
+    # Return exit code based on health (considering drift)
+    return _calculate_exit_code(portfolio, drift_results)
 
 
-def _calculate_exit_code(portfolio: PortfolioHealth) -> int:
+def _collect_drift_data(
+    portfolio: PortfolioHealth,
+    prometheus_url: str,
+) -> dict[str, DriftResult]:
+    """Collect drift data for all services in portfolio.
+
+    Args:
+        portfolio: Portfolio health data
+        prometheus_url: Prometheus URL
+
+    Returns:
+        Dict mapping service name to DriftResult
     """
-    Calculate exit code based on portfolio health.
+    username = os.environ.get("NTHLAYER_METRICS_USER")
+    password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
+
+    analyzer = DriftAnalyzer(
+        prometheus_url=prometheus_url,
+        username=username,
+        password=password,
+    )
+
+    results: dict[str, DriftResult] = {}
+
+    for svc in portfolio.services:
+        # Skip services without SLOs
+        if not svc.slos:
+            continue
+
+        tier = str(svc.tier) if svc.tier else "standard"
+        drift_config = get_drift_defaults(tier)
+
+        # Skip if drift not enabled for this tier
+        if not drift_config.get("enabled", True):
+            continue
+
+        try:
+            result = asyncio.run(
+                analyzer.analyze(
+                    service_name=svc.service,
+                    tier=tier,
+                    slo="availability",
+                    drift_config=drift_config,
+                )
+            )
+            results[svc.service] = result
+        except Exception:
+            # Skip services where drift analysis fails
+            continue
+
+    return results
+
+
+def _calculate_exit_code(
+    portfolio: PortfolioHealth,
+    drift_results: dict[str, DriftResult] | None = None,
+) -> int:
+    """
+    Calculate exit code based on portfolio health and drift.
 
     Returns:
         0: healthy - all SLOs meeting targets (or unknown)
         1: warning - some SLOs degraded but not critical
-        2: critical - SLOs exhausted or in critical state
+        2: critical - SLOs exhausted or in critical state, or critical drift
     """
     has_critical = False
     has_warning = False
@@ -92,6 +161,14 @@ def _calculate_exit_code(portfolio: PortfolioHealth) -> int:
         elif svc.overall_status == HealthStatus.WARNING:
             has_warning = True
 
+    # Check drift results
+    if drift_results:
+        for drift in drift_results.values():
+            if drift.severity == DriftSeverity.CRITICAL:
+                has_critical = True
+            elif drift.severity == DriftSeverity.WARN:
+                has_warning = True
+
     if has_critical:
         return 2
     if has_warning:
@@ -99,7 +176,10 @@ def _calculate_exit_code(portfolio: PortfolioHealth) -> int:
     return 0
 
 
-def _print_table(portfolio: PortfolioHealth) -> None:
+def _print_table(
+    portfolio: PortfolioHealth,
+    drift_results: dict[str, DriftResult] | None = None,
+) -> None:
     """Print portfolio in human-readable table format with rich styling."""
     console.print()
     header("NthLayer SLO Portfolio")
@@ -188,13 +268,79 @@ def _print_table(portfolio: PortfolioHealth) -> None:
 
         console.print()
 
+    # Drift analysis section
+    if drift_results:
+        console.print("[bold]Drift Analysis:[/bold]")
+        console.rule(style="dim")
+
+        drift_table = Table(show_header=True, header_style="bold")
+        drift_table.add_column("Service")
+        drift_table.add_column("Trend", justify="right")
+        drift_table.add_column("Pattern")
+        drift_table.add_column("Exhaustion")
+        drift_table.add_column("Severity")
+
+        # Sort by severity
+        severity_order = {
+            DriftSeverity.CRITICAL: 0,
+            DriftSeverity.WARN: 1,
+            DriftSeverity.INFO: 2,
+            DriftSeverity.NONE: 3,
+        }
+        sorted_drift = sorted(
+            drift_results.items(),
+            key=lambda x: severity_order.get(x[1].severity, 99),
+        )
+
+        for svc_name, drift in sorted_drift:
+            trend_str = f"{drift.metrics.slope_per_week * 100:+.2f}%/wk"
+            trend_color = "red" if drift.metrics.slope_per_week < 0 else "green"
+
+            pattern = drift.pattern.value.replace("_", " ").title()
+
+            if drift.projection.days_until_exhaustion is not None:
+                days = drift.projection.days_until_exhaustion
+                exhaustion_str = f"{days}d"
+                exhaustion_color = "red" if days < 14 else "yellow" if days < 30 else "dim"
+            else:
+                exhaustion_str = "-"
+                exhaustion_color = "dim"
+
+            severity_icons = {
+                DriftSeverity.CRITICAL: "[red]✗[/red]",
+                DriftSeverity.WARN: "[yellow]⚠[/yellow]",
+                DriftSeverity.INFO: "[blue]ℹ[/blue]",
+                DriftSeverity.NONE: "[green]✓[/green]",
+            }
+            severity_icon = severity_icons.get(drift.severity, "[dim]?[/dim]")
+
+            drift_table.add_row(
+                svc_name,
+                f"[{trend_color}]{trend_str}[/]",
+                pattern,
+                f"[{exhaustion_color}]{exhaustion_str}[/]",
+                severity_icon,
+            )
+
+        console.print(drift_table)
+        console.print()
+
     # Summary
     console.rule(style="dim")
-    console.print(
-        f"[bold]Total:[/bold] {portfolio.total_services} services, "
-        f"{portfolio.services_with_slos} with SLOs, "
-        f"{portfolio.total_slos} SLOs"
-    )
+    summary_parts = [
+        f"[bold]Total:[/bold] {portfolio.total_services} services",
+        f"{portfolio.services_with_slos} with SLOs",
+        f"{portfolio.total_slos} SLOs",
+    ]
+    if drift_results:
+        drifting = sum(
+            1
+            for d in drift_results.values()
+            if d.severity in (DriftSeverity.WARN, DriftSeverity.CRITICAL)
+        )
+        if drifting > 0:
+            summary_parts.append(f"[yellow]{drifting} drifting[/yellow]")
+    console.print(", ".join(summary_parts))
     console.print()
 
 
@@ -246,7 +392,10 @@ def _progress_bar(percent: float, width: int = 20) -> str:
     return "█" * filled + "░" * empty
 
 
-def _print_markdown(portfolio: PortfolioHealth) -> None:
+def _print_markdown(
+    portfolio: PortfolioHealth,
+    drift_results: dict[str, DriftResult] | None = None,
+) -> None:
     """Print portfolio in Markdown format for PR comments, Slack, etc."""
     lines = []
 
@@ -309,16 +458,69 @@ def _print_markdown(portfolio: PortfolioHealth) -> None:
             lines.append(f"- {severity_emoji} **{insight.service}:** {insight.message}")
         lines.append("")
 
+    # Drift Analysis
+    if drift_results:
+        lines.append("## Drift Analysis")
+        lines.append("")
+        lines.append("| Service | Trend | Pattern | Exhaustion | Severity |")
+        lines.append("|---------|-------|---------|------------|----------|")
+
+        severity_emojis = {
+            DriftSeverity.CRITICAL: "🔴",
+            DriftSeverity.WARN: "🟡",
+            DriftSeverity.INFO: "🔵",
+            DriftSeverity.NONE: "🟢",
+        }
+
+        for svc_name, drift in drift_results.items():
+            trend_str = f"{drift.metrics.slope_per_week * 100:+.2f}%/wk"
+            pattern = drift.pattern.value.replace("_", " ")
+
+            if drift.projection.days_until_exhaustion is not None:
+                exhaustion_str = f"{drift.projection.days_until_exhaustion}d"
+            else:
+                exhaustion_str = "-"
+
+            severity_emoji = severity_emojis.get(drift.severity, "⚪")
+            lines.append(
+                f"| {svc_name} | {trend_str} | {pattern} | {exhaustion_str} | {severity_emoji} |"
+            )
+
+        lines.append("")
+
     print("\n".join(lines))
 
 
-def _print_csv(portfolio: PortfolioHealth) -> None:
+def _print_csv(
+    portfolio: PortfolioHealth,
+    drift_results: dict[str, DriftResult] | None = None,
+) -> None:
     """Print portfolio in CSV format."""
     rows = portfolio.to_csv_rows()
 
     if not rows:
         print("service,tier,team,type,slo_name,objective,window,status")
         return
+
+    # Add drift columns if available
+    if drift_results:
+        for row in rows:
+            svc_name = row.get("service", "")
+            drift = drift_results.get(svc_name)
+            if drift:
+                row["drift_trend"] = f"{drift.metrics.slope_per_week * 100:.2f}%/wk"
+                row["drift_pattern"] = drift.pattern.value
+                row["drift_exhaustion_days"] = (
+                    str(drift.projection.days_until_exhaustion)
+                    if drift.projection.days_until_exhaustion
+                    else ""
+                )
+                row["drift_severity"] = drift.severity.value
+            else:
+                row["drift_trend"] = ""
+                row["drift_pattern"] = ""
+                row["drift_exhaustion_days"] = ""
+                row["drift_severity"] = ""
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=rows[0].keys())
@@ -358,6 +560,13 @@ def register_portfolio_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Prometheus URL for live SLO data (or set NTHLAYER_PROMETHEUS_URL)",
     )
 
+    parser.add_argument(
+        "--drift",
+        action="store_true",
+        dest="include_drift",
+        help="Include drift trend analysis for each service (requires Prometheus)",
+    )
+
 
 def handle_portfolio_command(args: argparse.Namespace) -> int:
     """Handle portfolio subcommand."""
@@ -365,4 +574,5 @@ def handle_portfolio_command(args: argparse.Namespace) -> int:
         format=getattr(args, "format", "table"),
         search_paths=getattr(args, "search_paths", None),
         prometheus_url=getattr(args, "prometheus_url", None),
+        include_drift=getattr(args, "include_drift", False),
     )

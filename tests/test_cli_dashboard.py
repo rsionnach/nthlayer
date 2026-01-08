@@ -3,9 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.cli.dashboard import generate_dashboard_command
-
 
 MINIMAL_SERVICE_YAML = """
 service:

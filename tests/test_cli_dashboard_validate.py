@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.dashboard_validate import (
     _display_discovery_result,
     _display_final_verdict,

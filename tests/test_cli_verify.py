@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.verify import (
     _demo_verify_output,
     _print_exporter_guidance,

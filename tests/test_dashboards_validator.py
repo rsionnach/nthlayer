@@ -6,7 +6,6 @@ DashboardValidator, and extraction functions.
 
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.dashboards.resolver import ResolutionStatus
 from nthlayer.dashboards.validator import (
     DashboardValidator,

@@ -7,7 +7,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from nthlayer.slos.deployment import Deployment, DeploymentRecorder
 
 

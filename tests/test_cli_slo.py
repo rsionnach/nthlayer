@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.slo import (
     _parse_window_minutes,
     _print_slo_result,

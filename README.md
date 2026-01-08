@@ -68,6 +68,7 @@ Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/C
 |---------|--------------|-------------------|
 | `nthlayer verify` | Validates declared metrics exist in Prometheus | 1 if missing metrics |
 | `nthlayer check-deploy` | Checks error budget - blocks if exhausted | 2 if budget exhausted |
+| `nthlayer drift` | Detects reliability degradation trends over time | 1 warn, 2 critical |
 | `nthlayer apply --lint` | Validates PromQL syntax with pint | 1 if invalid queries |
 
 ### Deployment Gate Example
@@ -292,7 +293,9 @@ nthlayer verify service.yaml    # Verify metrics exist in Prometheus
 
 ```bash
 nthlayer check-deploy service.yaml  # Check error budget gate (exit 2 = blocked)
+nthlayer drift service.yaml         # Analyze reliability drift trends
 nthlayer portfolio              # Org-wide SLO health
+nthlayer portfolio --drift      # Include drift analysis in portfolio
 nthlayer slo collect service.yaml   # Query current budget from Prometheus
 ```
 
@@ -306,6 +309,7 @@ nthlayer slo collect service.yaml   # Query current budget from Prometheus
 | 📊 **SLO Portfolio** | Org-wide reliability view across all services | ✅ Done |
 | 🚦 **Deployment Gates** | Block deploys when error budget exhausted | ✅ Done |
 | ✅ **Contract Verification** | Verify declared metrics exist before promotion | ✅ Done |
+| 📉 **Drift Detection** | Detect reliability degradation trends, project budget exhaustion | ✅ Done |
 | 📝 **Loki Integration** | Generate LogQL alert rules, technology-specific log patterns | 🔨 Next |
 | 🤖 **AI Generation** | Conversational service.yaml creation via MCP | 📋 Planned |
 

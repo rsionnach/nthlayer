@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import yaml
-
 from nthlayer.user_config import (
     ErrorBudgetConfig,
     NthLayerConfig,

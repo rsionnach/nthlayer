@@ -7,7 +7,6 @@ operator evaluation, boolean logic, and built-in functions.
 from datetime import datetime
 
 import pytest
-
 from nthlayer.policies.evaluator import (
     ConditionEvaluator,
     EvaluationResult,

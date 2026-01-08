@@ -9,6 +9,7 @@ NthLayer's protection layer enforces reliability policies in production. When er
 | Feature | Command | What It Does |
 |---------|---------|--------------|
 | **Deployment Gates** | `nthlayer check-deploy` | Block deploys when budget exhausted |
+| **Drift Detection** | `nthlayer drift` | Detect reliability degradation trends |
 | **SLO Portfolio** | `nthlayer portfolio` | Org-wide reliability visibility |
 | **Error Budgets** | `nthlayer slo collect` | Real-time budget consumption |
 
@@ -168,6 +169,64 @@ spec:
             - $(PROMETHEUS_URL)
 ```
 
+## Drift Detection
+
+Deployment gates check the **current** budget state. Drift detection looks at **trends** over time:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Deployment Gate: "Is budget OK right now?"                         │
+│  Drift Detection: "Is budget trending toward exhaustion?"           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Analyze Drift
+
+```bash
+nthlayer drift services/payment-api.yaml \
+  --prometheus-url http://prometheus:9090
+```
+
+Output:
+```
+╭──────────────────────────────────────────────────────────────╮
+│  Drift Analysis: payment-api                                 │
+╰──────────────────────────────────────────────────────────────╯
+
+  Current Budget:     72.34%
+  Trend:              -0.52%/week
+  Pattern:            Gradual Decline
+  Days to Exhaustion: 138 days
+
+  ⚠ Severity: WARN
+  Recommendation: Investigate recent changes.
+```
+
+### Drift Patterns
+
+| Pattern | What It Means | Action |
+|---------|---------------|--------|
+| Gradual Decline | Slow erosion over time | Investigate technical debt |
+| Step Change Down | Sudden drop (incident/bad deploy) | Immediate investigation |
+| Volatile | High variance, no trend | Check for intermittent issues |
+| Stable | No significant trend | Continue monitoring |
+
+### Integrate with Deployment Gates
+
+Add drift analysis to your deployment gate check:
+
+```bash
+nthlayer check-deploy services/api.yaml \
+  --prometheus-url http://prometheus:9090 \
+  --include-drift
+```
+
+### Org-Wide Drift View
+
+```bash
+nthlayer portfolio --drift --prometheus-url http://prometheus:9090
+```
+
 ## The Google SRE Connection
 
 NthLayer automates the [Error Budget Policy](https://sre.google/sre-book/embracing-risk/) from the Google SRE Book:
@@ -183,6 +242,7 @@ NthLayer automates the [Error Budget Policy](https://sre.google/sre-book/embraci
 ## Next Steps
 
 - [Deployment Gates](../commands/check-deploy.md) - Full command reference
+- [Drift Detection](../commands/drift.md) - Trend analysis command
 - [SLO Portfolio](../commands/portfolio.md) - Organization-wide view
 - [Error Budgets](../concepts/slos.md) - Understanding SLOs
 - [CI/CD Integration](../integrations/cicd.md) - Pipeline examples

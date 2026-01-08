@@ -6,7 +6,6 @@ Tests for CLI helper functions and database operations.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from nthlayer.slos.cli_helpers import (
     get_cli_session,
     get_current_budget_from_db,

@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.cli.init import (
     _build_resources_yaml,
     _format_template_resources,

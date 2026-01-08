@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from nthlayer.cli.plan import plan_command, print_plan_json, print_plan_summary
 from nthlayer.orchestrator import PlanResult
 

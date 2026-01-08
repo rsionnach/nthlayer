@@ -6,7 +6,6 @@ output formatting, and error handling.
 
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.cli.templates import _resource_summary, list_templates_command
 
 

@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.dashboards.resolver import (
     EXPORTER_RECOMMENDATIONS,
     MetricResolver,

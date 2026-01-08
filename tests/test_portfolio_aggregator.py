@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from nthlayer.portfolio.aggregator import PortfolioAggregator, collect_portfolio
 from nthlayer.portfolio.models import HealthStatus, InsightType
 

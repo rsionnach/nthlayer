@@ -5,7 +5,6 @@ Tests for configuration and secrets management CLI commands.
 
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.config.cli import (
     REQUIRED_SECRETS,
     _set_alerting_config,

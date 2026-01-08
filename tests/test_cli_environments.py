@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.environments import (
     _diff_dicts,
     diff_envs_command,

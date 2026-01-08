@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.validate_spec import (
     _print_result,
     handle_validate_spec_command,

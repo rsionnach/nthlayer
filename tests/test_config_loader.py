@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import pytest
 import yaml
-
 from nthlayer.config.integrations import IntegrationConfig
 from nthlayer.config.loader import (
     ConfigLoader,

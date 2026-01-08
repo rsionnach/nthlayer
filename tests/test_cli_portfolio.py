@@ -9,7 +9,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.portfolio import (
     _calculate_exit_code,
     _print_csv,
@@ -809,6 +808,7 @@ class TestHandlePortfolioCommand:
             format="json",
             search_paths=["/path"],
             prometheus_url="http://prom:9090",
+            include_drift=True,
         )
 
         result = handle_portfolio_command(args)
@@ -818,6 +818,7 @@ class TestHandlePortfolioCommand:
             format="json",
             search_paths=["/path"],
             prometheus_url="http://prom:9090",
+            include_drift=True,
         )
 
     @patch("nthlayer.cli.portfolio.portfolio_command")
@@ -834,4 +835,5 @@ class TestHandlePortfolioCommand:
             format="table",
             search_paths=None,
             prometheus_url=None,
+            include_drift=False,
         )

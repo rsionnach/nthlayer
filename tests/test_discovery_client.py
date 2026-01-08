@@ -6,9 +6,8 @@ Tests for Prometheus metric discovery client and classifier.
 from unittest.mock import MagicMock, patch
 
 import requests
-
-from nthlayer.discovery.client import MetricDiscoveryClient
 from nthlayer.discovery.classifier import MetricClassifier
+from nthlayer.discovery.client import MetricDiscoveryClient
 from nthlayer.discovery.models import (
     DiscoveredMetric,
     DiscoveryResult,

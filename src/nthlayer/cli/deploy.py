@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from nthlayer.cli.ux import console, error, header, info, success, warning
+from nthlayer.drift import DriftAnalyzer, DriftResult, DriftSeverity, get_drift_defaults
 from nthlayer.slos.collector import BudgetSummary, SLOMetricCollector, SLOResult
 from nthlayer.slos.gates import DeploymentGate, GateResult
 from nthlayer.specs.parser import parse_service_file
@@ -24,11 +25,17 @@ def check_deploy_command(
     environment: str | None = None,
     demo: bool = False,
     demo_blocked: bool = False,
+    include_drift: bool = False,
+    drift_window: str | None = None,
 ) -> int:
     """
     Check if deployment should be allowed based on error budget.
 
     Exit codes: 0 = Approved, 1 = Warning, 2 = Blocked
+
+    Args:
+        include_drift: If True, also check for reliability drift trends
+        drift_window: Override drift analysis window (e.g., "30d")
     """
     if demo:
         return _run_demo_mode(service_file, environment, blocked=False)
@@ -91,7 +98,19 @@ def check_deploy_command(
         downstream_services=downstream_services,
     )
 
-    return _display_gate_result(result, service_context.tier, budget.remaining_percent)
+    # Check drift if requested and not already blocked
+    drift_result = None
+    if include_drift and result.result != GateResult.BLOCKED:
+        drift_result = _check_drift(
+            service_name=service_context.name,
+            tier=service_context.tier,
+            prometheus_url=prom_url,
+            window=drift_window,
+        )
+
+    return _display_gate_result(
+        result, service_context.tier, budget.remaining_percent, drift_result
+    )
 
 
 def _extract_downstream_services(resources: list[Any]) -> list[dict[str, Any]]:
@@ -195,7 +214,56 @@ def _display_budget_summary(budget: BudgetSummary) -> None:
     console.print()
 
 
-def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
+def _check_drift(
+    service_name: str,
+    tier: str,
+    prometheus_url: str,
+    window: str | None = None,
+) -> DriftResult | None:
+    """Check for reliability drift.
+
+    Args:
+        service_name: Name of the service
+        tier: Service tier
+        prometheus_url: Prometheus URL
+        window: Override drift window
+
+    Returns:
+        DriftResult or None if drift check fails
+    """
+    drift_config = get_drift_defaults(tier)
+
+    if not drift_config.get("enabled", True):
+        return None
+
+    username = os.environ.get("NTHLAYER_METRICS_USER")
+    password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
+
+    analyzer = DriftAnalyzer(
+        prometheus_url=prometheus_url,
+        username=username,
+        password=password,
+    )
+
+    try:
+        result = asyncio.run(
+            analyzer.analyze(
+                service_name=service_name,
+                tier=tier,
+                slo="availability",
+                window=window,
+                drift_config=drift_config,
+            )
+        )
+        return result
+    except Exception as e:
+        console.print(f"[muted]Drift check skipped: {e}[/muted]")
+        return None
+
+
+def _display_gate_result(
+    result: Any, tier: str, remaining_pct: float, drift_result: DriftResult | None = None
+) -> int:
     """Display gate result and return exit code."""
     # Display thresholds
     console.print(f"[bold]Thresholds ({tier} tier):[/bold]")
@@ -217,6 +285,21 @@ def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
             console.print(f"    [muted]•[/muted] {svc}")
         console.print()
 
+    # Display drift analysis if available
+    if drift_result is not None:
+        _display_drift_summary(drift_result)
+
+    # Check if drift should block deployment
+    if drift_result is not None and drift_result.severity == DriftSeverity.CRITICAL:
+        error("Deployment BLOCKED")
+        console.print("[muted]Critical reliability drift detected[/muted]")
+        console.print()
+        console.print("[bold]Drift Details:[/bold]")
+        console.print(f"  [muted]•[/muted] {drift_result.summary}")
+        console.print(f"  [muted]•[/muted] {drift_result.recommendation}")
+        console.print()
+        return 2
+
     # Final verdict
     if result.result == GateResult.BLOCKED:
         error("Deployment BLOCKED")
@@ -233,6 +316,9 @@ def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
     if result.result == GateResult.WARNING:
         warning("Deployment allowed with WARNING")
         console.print(f"[muted]Error budget low ({remaining_pct:.1f}% remaining)[/muted]")
+        # Add drift warning if applicable
+        if drift_result is not None and drift_result.severity == DriftSeverity.WARN:
+            console.print(f"[muted]Drift warning: {drift_result.summary}[/muted]")
         console.print()
         console.print("[bold]Recommendations:[/bold]")
         for rec in result.recommendations[:3]:
@@ -240,10 +326,47 @@ def _display_gate_result(result: Any, tier: str, remaining_pct: float) -> int:
         console.print()
         return 1
 
+    # Check for drift warning even if budget is OK
+    if drift_result is not None and drift_result.severity == DriftSeverity.WARN:
+        warning("Deployment allowed with WARNING")
+        console.print(f"[muted]Error budget healthy ({remaining_pct:.1f}% remaining)[/muted]")
+        console.print(f"[muted]Drift warning: {drift_result.summary}[/muted]")
+        console.print()
+        return 1
+
     success("Deployment APPROVED")
     console.print(f"[muted]Error budget healthy ({remaining_pct:.1f}% remaining)[/muted]")
+    if drift_result is not None:
+        console.print(f"[muted]Drift: {drift_result.pattern.value.replace('_', ' ')}[/muted]")
     console.print()
     return 0
+
+
+def _display_drift_summary(drift_result: DriftResult) -> None:
+    """Display drift analysis summary."""
+    severity_icons = {
+        DriftSeverity.NONE: "[success]✓[/success]",
+        DriftSeverity.INFO: "[blue]ℹ[/blue]",
+        DriftSeverity.WARN: "[warning]⚠[/warning]",
+        DriftSeverity.CRITICAL: "[error]✗[/error]",
+    }
+
+    console.print("[bold]Drift Analysis:[/bold]")
+    icon = severity_icons.get(drift_result.severity, "[muted]?[/muted]")
+    trend_str = f"{drift_result.metrics.slope_per_week * 100:+.2f}%/week"
+
+    console.print(
+        f"  {icon} Trend: {trend_str} "
+        f"[muted]| Pattern:[/muted] {drift_result.pattern.value.replace('_', ' ')} "
+        f"[muted]| Confidence:[/muted] {drift_result.metrics.r_squared:.0%}"
+    )
+
+    if drift_result.projection.days_until_exhaustion is not None:
+        days = drift_result.projection.days_until_exhaustion
+        color = "red" if days < 14 else "yellow" if days < 30 else "muted"
+        console.print(f"  [muted]Projected exhaustion:[/muted] [{color}]{days} days[/]")
+
+    console.print()
 
 
 def _show_example_scenarios(

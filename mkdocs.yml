@@ -85,6 +85,7 @@ nav:
   - Protect:
     - Overview: protect/index.md
     - Deployment Gates: commands/check-deploy.md
+    - Drift Detection: commands/drift.md
     - SLO Portfolio: commands/portfolio.md
   - Integrations:
     - CI/CD Pipelines: integrations/cicd.md

@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 from nthlayer.providers.prometheus import (
     DEFAULT_USER_AGENT,
     PrometheusProvider,

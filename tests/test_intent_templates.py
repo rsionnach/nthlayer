@@ -5,7 +5,6 @@ Uses parametrization to test all templates with the same test patterns.
 """
 
 import pytest
-
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
 from nthlayer.dashboards.templates.consul_intent import ConsulIntentTemplate
 from nthlayer.dashboards.templates.elasticsearch_intent import ElasticsearchIntentTemplate
@@ -24,7 +23,6 @@ from nthlayer.dashboards.templates.redis_intent import RedisIntentTemplate
 from nthlayer.dashboards.templates.stream_intent import StreamIntentTemplate
 from nthlayer.dashboards.templates.traefik_intent import TraefikIntentTemplate
 from nthlayer.dashboards.templates.worker_intent import WorkerIntentTemplate
-
 
 # All intent template classes
 INTENT_TEMPLATES = [

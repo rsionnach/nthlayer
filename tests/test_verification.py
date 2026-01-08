@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.specs.models import Resource
 from nthlayer.verification import (
     MetricSource,

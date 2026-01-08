@@ -8,8 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from nthlayer.cli.lint import lint_command, _print_result
+from nthlayer.cli.lint import _print_result, lint_command
 
 
 @pytest.fixture

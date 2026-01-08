@@ -6,7 +6,6 @@ Tests for alert rules, evaluation, and storage.
 from datetime import datetime
 
 import pytest
-
 from nthlayer.slos.alerts import (
     AlertEvaluator,
     AlertEvent,

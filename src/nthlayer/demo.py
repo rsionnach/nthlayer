@@ -20,6 +20,7 @@ import yaml
 
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
+from nthlayer.cli.drift import handle_drift_command, register_drift_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
@@ -576,6 +577,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show demo output with BLOCKED scenario (for VHS recordings)",
     )
+    deploy_parser.add_argument(
+        "--include-drift",
+        action="store_true",
+        help="Include drift analysis in deployment gate check",
+    )
+    deploy_parser.add_argument(
+        "--drift-window",
+        help="Drift analysis window (e.g., 30d, 14d). Uses tier default if not specified",
+    )
 
     init_parser = subparsers.add_parser("init", help="Initialize new NthLayer service")
     init_parser.add_argument(
@@ -753,6 +763,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Validate spec command (conftest/OPA)
     register_validate_spec_parser(subparsers)
+
+    # Drift detection command
+    register_drift_parser(subparsers)
 
     return parser
 
@@ -936,6 +949,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 environment=env,
                 demo=getattr(args, "demo", False),
                 demo_blocked=getattr(args, "demo_blocked", False),
+                include_drift=getattr(args, "include_drift", False),
+                drift_window=getattr(args, "drift_window", None),
             )
         )
 
@@ -1115,5 +1130,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "validate-spec":
         sys.exit(handle_validate_spec_command(args))
+
+    if args.command == "drift":
+        sys.exit(handle_drift_command(args))
 
     parser.print_help()

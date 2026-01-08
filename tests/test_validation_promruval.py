@@ -10,7 +10,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
 from nthlayer.validation.metadata import Severity
 from nthlayer.validation.promruval import (
     PromruvalConfig,

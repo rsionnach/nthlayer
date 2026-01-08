@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from nthlayer.cli.dependencies import validate_dependencies_command
 
 

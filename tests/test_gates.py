@@ -2,7 +2,7 @@
 Tests for deployment gates.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from nthlayer.slos.gates import DeploymentGate, GatePolicy, GateResult
 

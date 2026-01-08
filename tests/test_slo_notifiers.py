@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-
 from nthlayer.slos.alerts import AlertEvent, AlertSeverity
 from nthlayer.slos.notifiers import (
     AlertNotifier,

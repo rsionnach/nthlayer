@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.cli.setup import (
     _create_first_service,
     _generate_service_yaml,

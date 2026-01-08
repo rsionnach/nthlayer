@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-
 from nthlayer.slos.correlator import (
     HIGH_CONFIDENCE,
     LOW_CONFIDENCE,

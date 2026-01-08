@@ -7,7 +7,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from nthlayer.secrets import (
     SecretsManager,
     _sanitize_secret_id,

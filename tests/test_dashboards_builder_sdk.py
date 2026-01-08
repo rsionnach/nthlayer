@@ -12,7 +12,6 @@ Comprehensive tests for DashboardBuilderSDK including:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK, build_dashboard
 from nthlayer.specs.models import Resource, ServiceContext
 
