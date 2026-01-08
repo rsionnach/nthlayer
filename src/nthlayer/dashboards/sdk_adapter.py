@@ -438,7 +438,7 @@ class SDKAdapter:
             JSON string for Grafana import
         """
         model = dash.build()
-        encoder = JSONEncoder(sort_keys=False, indent=2)
+        encoder = JSONEncoder(sort_keys=True, indent=2)
         return encoder.encode(model)
 
     @staticmethod
@@ -448,20 +448,26 @@ class SDKAdapter:
         """
         Add template variables to dashboard.
 
+        Note: This is a placeholder for future SDK variable support.
+        The grafana-foundation-sdk's variable API is not yet fully integrated.
+        Dashboard generation currently works without template variables.
+
         Args:
             dash: Dashboard builder
             variables: List of template variables
 
         Returns:
-            Dashboard with variables added
+            Dashboard unchanged (variables not yet supported)
         """
-        # Note: SDK variable support may need special handling
-        # For now, we'll skip this and handle in the builder integration
-        # TODO: Implement once we understand SDK's variable API
+        # grafana-foundation-sdk variable API integration pending.
+        # Variables are not critical for basic dashboard generation.
         return dash
 
 
 # Convenience functions for common patterns
+# Note: These functions are not currently used by the main dashboard
+# generation flow (DashboardBuilderSDK.build()). They exist as helpers
+# for potential future use cases or direct SDK usage.
 
 
 def create_service_dashboard(
@@ -470,25 +476,21 @@ def create_service_dashboard(
     """
     Create complete dashboard for a service with SLO panels.
 
+    Note: This convenience function is not used by the main dashboard
+    generation flow. Use DashboardBuilderSDK.build() for full functionality.
+
     Args:
         service: Service context
-        slos: List of SLOs to visualize
+        slos: List of SLOs to visualize (currently not added to dashboard)
 
     Returns:
-        Configured dashboard builder
+        Basic dashboard without SLO panels (panel addition not implemented)
     """
     adapter = SDKAdapter()
     dash = adapter.create_dashboard(service)
 
-    # Add SLO panels if provided
-    if slos:
-        for slo in slos:
-            query = adapter.convert_slo_to_query(slo)
-            # Create panel (addition to dashboard handled by builder integration)
-            _panel = adapter.create_timeseries_panel(
-                title=slo.name, description=f"Target: {slo.target}", queries=[query]
-            )
-            # TODO: Wire panel addition once builder integration complete
-            del _panel  # Suppress unused variable warning
+    # Note: SLO panel addition is not implemented in this convenience function.
+    # Use DashboardBuilderSDK.build() which handles SLO panels via templates.
+    # This function exists for direct SDK usage but is incomplete.
 
     return dash

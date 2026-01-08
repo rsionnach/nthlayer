@@ -16,12 +16,17 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from nthlayer.config.secrets import BaseSecretBackend
+from nthlayer.config.secrets import BaseSecretBackend, _sanitize_path
 
 if TYPE_CHECKING:
     from nthlayer.config.secrets import SecretConfig
 
 logger = structlog.get_logger()
+
+
+def _sanitize_error(exc: Exception) -> str:
+    """Sanitize error message to avoid leaking sensitive details."""
+    return type(exc).__name__
 
 
 class VaultSecretBackend(BaseSecretBackend):
@@ -76,7 +81,9 @@ class VaultSecretBackend(BaseSecretBackend):
             data = response.get("data", {}).get("data", {})
             return data.get(key)
         except Exception as e:
-            logger.debug("vault_secret_not_found", path=path, error=str(e))
+            logger.debug(
+                "vault_secret_not_found", path=_sanitize_path(path), error=_sanitize_error(e)
+            )
             return None
 
     def set_secret(self, path: str, value: str) -> bool:
@@ -89,7 +96,7 @@ class VaultSecretBackend(BaseSecretBackend):
             client.secrets.kv.v2.create_or_update_secret(path=full_path, secret={key: value})
             return True
         except Exception as e:
-            logger.error("vault_set_secret_failed", path=path, error=str(e))
+            logger.error("vault_set_secret_failed", error=_sanitize_error(e))
             return False
 
     def list_secrets(self) -> list[str]:
@@ -142,7 +149,9 @@ class AWSSecretBackend(BaseSecretBackend):
                 return data.get(key)
             return secret_string
         except Exception as e:
-            logger.debug("aws_secret_not_found", path=path, error=str(e))
+            logger.debug(
+                "aws_secret_not_found", path=_sanitize_path(path), error=_sanitize_error(e)
+            )
             return None
 
     def set_secret(self, path: str, value: str) -> bool:
@@ -173,7 +182,7 @@ class AWSSecretBackend(BaseSecretBackend):
                 client.create_secret(Name=secret_id, SecretString=json.dumps(secret_data))
             return True
         except Exception as e:
-            logger.error("aws_set_secret_failed", path=path, error=str(e))
+            logger.error("aws_set_secret_failed", error=_sanitize_error(e))
             return False
 
     def list_secrets(self) -> list[str]:
@@ -222,7 +231,9 @@ class AzureSecretBackend(BaseSecretBackend):
             secret = client.get_secret(secret_name)
             return secret.value
         except Exception as e:
-            logger.debug("azure_secret_not_found", path=path, error=str(e))
+            logger.debug(
+                "azure_secret_not_found", path=_sanitize_path(path), error=_sanitize_error(e)
+            )
             return None
 
     def set_secret(self, path: str, value: str) -> bool:
@@ -232,7 +243,7 @@ class AzureSecretBackend(BaseSecretBackend):
             client.set_secret(secret_name, value)
             return True
         except Exception as e:
-            logger.error("azure_set_secret_failed", path=path, error=str(e))
+            logger.error("azure_set_secret_failed", error=_sanitize_error(e))
             return False
 
     def list_secrets(self) -> list[str]:
@@ -280,7 +291,9 @@ class GCPSecretBackend(BaseSecretBackend):
             response = client.access_secret_version(request={"name": secret_path})
             return response.payload.data.decode("UTF-8")
         except Exception as e:
-            logger.debug("gcp_secret_not_found", path=path, error=str(e))
+            logger.debug(
+                "gcp_secret_not_found", path=_sanitize_path(path), error=_sanitize_error(e)
+            )
             return None
 
     def set_secret(self, path: str, value: str) -> bool:
@@ -309,7 +322,7 @@ class GCPSecretBackend(BaseSecretBackend):
             )
             return True
         except Exception as e:
-            logger.error("gcp_set_secret_failed", path=path, error=str(e))
+            logger.error("gcp_set_secret_failed", error=_sanitize_error(e))
             return False
 
     def list_secrets(self) -> list[str]:
@@ -367,7 +380,7 @@ class DopplerSecretBackend(BaseSecretBackend):
             self._secrets_cache = response.json()
             return self._secrets_cache
         except Exception as e:
-            logger.error("doppler_fetch_failed", error=str(e))
+            logger.error("doppler_fetch_failed", error=_sanitize_error(e))
             return {}
 
     def get_secret(self, path: str) -> str | None:
@@ -397,7 +410,7 @@ class DopplerSecretBackend(BaseSecretBackend):
             self._secrets_cache = None
             return True
         except Exception as e:
-            logger.error("doppler_set_failed", error=str(e))
+            logger.error("doppler_set_failed", error=_sanitize_error(e))
             return False
 
     def list_secrets(self) -> list[str]:

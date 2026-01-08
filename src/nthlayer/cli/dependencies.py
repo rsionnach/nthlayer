@@ -15,7 +15,7 @@ from nthlayer.slos.dependencies import (
     detect_circular_dependencies,
     validate_dependencies,
 )
-from nthlayer.specs.parser import parse_service_file
+from nthlayer.specs.parser import ServiceParseError, parse_service_file
 
 
 def validate_dependencies_command(
@@ -69,7 +69,14 @@ def validate_dependencies_command(
                 service_deps[context.name] = [d.name for d in parsed_deps]
                 services[context.name]._deps = parsed_deps  # Store for later
 
-        except (FileNotFoundError, yaml.YAMLError, KeyError, ValueError, TypeError) as e:
+        except (
+            FileNotFoundError,
+            yaml.YAMLError,
+            KeyError,
+            ValueError,
+            TypeError,
+            ServiceParseError,
+        ) as e:
             all_errors.append(f"Error parsing {service_file}: {e}")
 
     console.print(f"[success]✓[/success] Parsed {len(services)} services")

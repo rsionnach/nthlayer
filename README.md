@@ -338,6 +338,7 @@ See NthLayer in action with real Grafana dashboards and generated configs:
 ## 📚 Documentation
 
 **[Full Documentation](https://rsionnach.github.io/nthlayer/)** - Comprehensive guides and reference.
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/rsionnach/nthlayer)
 
 | Quick Links | |
 |-------------|---|

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import httpx
@@ -12,6 +13,9 @@ from nthlayer.config import Settings, get_settings
 
 logger = structlog.get_logger()
 security = HTTPBearer(auto_error=False)
+
+# Environment variable to explicitly allow anonymous access (for development only)
+ALLOW_ANONYMOUS_ENV = "NTHLAYER_ALLOW_ANONYMOUS"
 
 
 class JWTValidator:
@@ -82,10 +86,32 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Extract and validate JWT token from request."""
+    """Extract and validate JWT token from request.
+
+    When authentication is not configured (no JWT/Cognito settings):
+    - By default, returns 503 Service Unavailable (fail-closed security)
+    - If NTHLAYER_ALLOW_ANONYMOUS=true, allows anonymous access (for development)
+
+    Raises:
+        HTTPException: 503 if auth not configured, 401 if credentials missing/invalid
+    """
     if not settings.cognito_user_pool_id and not settings.jwt_jwks_url:
-        logger.warning("auth_disabled", reason="No JWT configuration")
-        return {"sub": "anonymous", "username": "anonymous"}
+        # Check for explicit anonymous access opt-in
+        allow_anonymous = os.environ.get(ALLOW_ANONYMOUS_ENV, "").lower() == "true"
+        if allow_anonymous:
+            logger.warning(
+                "auth_anonymous_access",
+                reason=f"{ALLOW_ANONYMOUS_ENV}=true",
+                warning="Anonymous access enabled - do not use in production",
+            )
+            return {"sub": "anonymous", "username": "anonymous"}
+
+        # Default: fail-closed - reject requests when auth not configured
+        logger.error("auth_not_configured", reason="No JWT/Cognito configuration")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication not configured. Set JWT_JWKS_URL or Cognito settings.",
+        )
 
     if not credentials:
         raise HTTPException(

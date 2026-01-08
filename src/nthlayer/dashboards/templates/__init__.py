@@ -36,31 +36,42 @@ MongoDBTemplate = MongoDBIntentTemplate
 KafkaTemplate = KafkaIntentTemplate
 ElasticsearchTemplate = ElasticsearchIntentTemplate
 
-# Registry of available templates
+# Registry of available templates (technologies + service types)
 TECHNOLOGY_TEMPLATES: Dict[str, Type[TechnologyTemplate]] = {
+    # Database technologies
     "postgres": PostgreSQLIntentTemplate,
     "postgresql": PostgreSQLIntentTemplate,
     "mysql": MySQLIntentTemplate,
     "mariadb": MySQLIntentTemplate,
-    "redis": RedisIntentTemplate,
-    "kubernetes": KubernetesTemplate,
-    "k8s": KubernetesTemplate,
-    "http": HTTPIntentTemplate,
-    "api": HTTPIntentTemplate,
     "mongodb": MongoDBIntentTemplate,
     "mongo": MongoDBIntentTemplate,
+    # Cache technologies
+    "redis": RedisIntentTemplate,
+    # Message queues
     "kafka": KafkaIntentTemplate,
-    "elasticsearch": ElasticsearchIntentTemplate,
-    "elastic": ElasticsearchIntentTemplate,
     "rabbitmq": RabbitmqIntentTemplate,
     "rabbit": RabbitmqIntentTemplate,
-    "nginx": NginxIntentTemplate,
     "nats": NatsIntentTemplate,
     "pulsar": PulsarIntentTemplate,
-    "haproxy": HaproxyIntentTemplate,
-    "traefik": TraefikIntentTemplate,
+    # Search
+    "elasticsearch": ElasticsearchIntentTemplate,
+    "elastic": ElasticsearchIntentTemplate,
+    # Infrastructure
+    "kubernetes": KubernetesTemplate,
+    "k8s": KubernetesTemplate,
     "etcd": EtcdIntentTemplate,
     "consul": ConsulIntentTemplate,
+    # Load balancers / Proxies
+    "nginx": NginxIntentTemplate,
+    "haproxy": HaproxyIntentTemplate,
+    "traefik": TraefikIntentTemplate,
+    # Service types (for health panels)
+    "http": HTTPIntentTemplate,
+    "api": HTTPIntentTemplate,
+    "web": HTTPIntentTemplate,
+    "service": HTTPIntentTemplate,
+    "stream": StreamIntentTemplate,
+    "worker": WorkerIntentTemplate,
 }
 
 
@@ -83,6 +94,39 @@ def get_template(technology: str) -> TechnologyTemplate:
         raise KeyError(f"No template found for technology: {technology}")
 
     return template_class()
+
+
+def get_template_or_none(technology: str) -> TechnologyTemplate | None:
+    """Get template for a technology, returning None if not found.
+
+    This is useful for fallback scenarios where missing templates
+    should trigger legacy behavior rather than exceptions.
+
+    Args:
+        technology: Technology name (postgres, redis, etc.)
+
+    Returns:
+        TechnologyTemplate instance or None if not found
+    """
+    tech_lower = technology.lower()
+    template_class = TECHNOLOGY_TEMPLATES.get(tech_lower)
+
+    if not template_class:
+        return None
+
+    return template_class()
+
+
+def has_template(technology: str) -> bool:
+    """Check if a template exists for a technology.
+
+    Args:
+        technology: Technology name
+
+    Returns:
+        True if template exists
+    """
+    return technology.lower() in TECHNOLOGY_TEMPLATES
 
 
 def get_available_technologies() -> list[str]:
@@ -126,5 +170,9 @@ __all__ = [
     "ElasticsearchTemplate",
     # Functions
     "get_template",
+    "get_template_or_none",
+    "has_template",
     "get_available_technologies",
+    # Registry
+    "TECHNOLOGY_TEMPLATES",
 ]

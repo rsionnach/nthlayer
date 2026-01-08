@@ -18,7 +18,7 @@ from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
 from nthlayer.dashboards.resolver import MetricResolver, create_resolver
 from nthlayer.dashboards.sdk_adapter import SDKAdapter
-from nthlayer.dashboards.templates import get_template
+from nthlayer.dashboards.templates import get_template, get_template_or_none
 from nthlayer.specs.models import Resource, ServiceContext
 
 logger = logging.getLogger(__name__)
@@ -188,7 +188,7 @@ class DashboardBuilderSDK:
 
         # Build and serialize
         dash_model = dash.build()
-        json_str = JSONEncoder(sort_keys=False, indent=2).encode(dash_model)
+        json_str = JSONEncoder(sort_keys=True, indent=2).encode(dash_model)
 
         # Parse to dict for compatibility
         import json
@@ -339,24 +339,18 @@ class DashboardBuilderSDK:
         return panels
 
     def _get_health_intent_template(self, service_type: str):
-        """Get intent-based health template for service type."""
-        try:
-            if service_type == "stream":
-                from nthlayer.dashboards.templates.stream_intent import StreamIntentTemplate
+        """Get intent-based health template for service type.
 
-                return StreamIntentTemplate()
-            elif service_type == "worker":
-                from nthlayer.dashboards.templates.worker_intent import WorkerIntentTemplate
+        Uses centralized template registry instead of hardcoded if-elif chain.
+        Falls back to 'http' template for unknown service types.
+        """
+        # Try exact match first, then fall back to http for unknown types
+        template = get_template_or_none(service_type)
+        if template is not None:
+            return template
 
-                return WorkerIntentTemplate()
-            else:
-                # Default: HTTP-based services (api, web, service)
-                from nthlayer.dashboards.templates.http_intent import HTTPIntentTemplate
-
-                return HTTPIntentTemplate()
-        except ImportError as e:
-            logger.debug(f"Health intent template not available for {service_type}: {e}")
-            return None
+        # Default: HTTP-based services (api, web, service, or unknown)
+        return get_template_or_none("http")
 
     def _build_legacy_health_panels(self) -> List[Any]:
         """Build health panels using hardcoded metrics (legacy behavior)."""
@@ -556,38 +550,12 @@ class DashboardBuilderSDK:
         return panels
 
     def _get_intent_template(self, technology: str):
-        """Get intent-based template for technology."""
-        try:
-            if technology in ("postgresql", "postgres"):
-                from nthlayer.dashboards.templates.postgresql_intent import PostgreSQLIntentTemplate
+        """Get intent-based template for technology.
 
-                return PostgreSQLIntentTemplate()
-            elif technology == "redis":
-                from nthlayer.dashboards.templates.redis_intent import RedisIntentTemplate
-
-                return RedisIntentTemplate()
-            elif technology in ("mongodb", "mongo"):
-                from nthlayer.dashboards.templates.mongodb_intent import MongoDBIntentTemplate
-
-                return MongoDBIntentTemplate()
-            elif technology == "mysql":
-                from nthlayer.dashboards.templates.mysql_intent import MySQLIntentTemplate
-
-                return MySQLIntentTemplate()
-            elif technology == "kafka":
-                from nthlayer.dashboards.templates.kafka_intent import KafkaIntentTemplate
-
-                return KafkaIntentTemplate()
-            elif technology == "elasticsearch":
-                from nthlayer.dashboards.templates.elasticsearch_intent import (
-                    ElasticsearchIntentTemplate,
-                )
-
-                return ElasticsearchIntentTemplate()
-            return None
-        except ImportError as e:
-            logger.debug(f"Intent template not available for {technology}: {e}")
-            return None
+        Uses centralized template registry instead of hardcoded if-elif chain.
+        Returns None if no template found (triggers legacy fallback).
+        """
+        return get_template_or_none(technology)
 
     def _build_legacy_panels(self, technology: str) -> List[Any]:
         """Build panels using legacy templates with hardcoded metrics."""
@@ -684,13 +652,19 @@ class DashboardBuilderSDK:
             return None
 
     def _validate_panels(self, panels: List[Any]) -> List[Any]:
-        """Validate panels against discovered metrics."""
+        """Validate panels against discovered metrics.
+
+        Note: Panel validation during build is intentionally minimal.
+        Full validation (checking if metrics exist in Prometheus) is done
+        via the separate 'nthlayer dashboard validate' command, which allows
+        dashboard generation to work offline without Prometheus connectivity.
+        """
         if not self.validator:
             return panels
 
-        # For now, return all panels
-        # TODO: Implement SDK panel validation
-        logger.warning("SDK panel validation not yet implemented")
+        # Validation is handled separately via 'nthlayer dashboard validate'
+        # to allow offline dashboard generation. The validator checks intents
+        # against Prometheus metrics, but this requires connectivity.
         return panels
 
 

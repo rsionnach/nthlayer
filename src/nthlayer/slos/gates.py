@@ -12,6 +12,8 @@ from datetime import datetime
 from enum import IntEnum
 from typing import Any
 
+from nthlayer.core.tiers import TIER_CONFIGS
+
 
 class GateResult(IntEnum):
     """
@@ -115,11 +117,13 @@ class DeploymentGate:
     - Low: Advisory only
     """
 
-    # Default thresholds (percentage remaining)
+    # Default thresholds derived from centralized tier config
     THRESHOLDS: dict[str, dict[str, float | None]] = {
-        "critical": {"warning": 20.0, "blocking": 10.0},
-        "standard": {"warning": 20.0, "blocking": None},
-        "low": {"warning": 30.0, "blocking": None},
+        tier: {
+            "warning": config.error_budget_warning_pct,
+            "blocking": config.error_budget_blocking_pct,
+        }
+        for tier, config in TIER_CONFIGS.items()
     }
 
     def __init__(self, policy: GatePolicy | None = None):

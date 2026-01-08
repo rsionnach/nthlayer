@@ -60,60 +60,78 @@ class PlanResult:
 
 
 class ResourceDetector:
-    """Detects what resources should be generated from a service definition."""
+    """Detects what resources should be generated from a service definition.
+
+    Uses single-pass indexing to avoid redundant list scans.
+    """
 
     def __init__(self, service_def: Dict[str, Any]):
         self.service_def = service_def
+        self._resource_index: Optional[Dict[str, List[Dict[str, Any]]]] = None
+
+    def _build_index(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Build single-pass resource index by kind.
+
+        Indexes all resources in one O(N) pass instead of scanning
+        multiple times for each resource type check.
+        """
+        if self._resource_index is not None:
+            return self._resource_index
+
+        index: Dict[str, List[Dict[str, Any]]] = {
+            "SLO": [],
+            "Dependencies": [],
+            "Observability": [],
+            "PagerDuty": [],
+        }
+
+        for resource in self.service_def.get("resources", []):
+            kind = resource.get("kind", "")
+            if kind in index:
+                index[kind].append(resource)
+
+        self._resource_index = index
+        return index
 
     def detect(self) -> List[str]:
         """Returns list of resource types to generate."""
+        index = self._build_index()
         resources = []
 
         # Always generate SLOs if defined
-        if self._has_slos():
+        if index["SLO"]:
             resources.append("slos")
             # Auto-add recording rules if SLOs exist
             resources.append("recording-rules")
 
         # Auto-generate alerts if dependencies defined
-        if self._has_dependencies():
+        if self._has_dependencies(index):
             resources.append("alerts")
 
         # Auto-generate dashboard if observability config or dependencies
-        if self._has_observability_config() or self._has_dependencies():
+        if index["Observability"] or self._has_dependencies(index):
             resources.append("dashboard")
 
         # Generate PagerDuty if resource defined
-        if self._has_pagerduty():
+        if index["PagerDuty"]:
             resources.append("pagerduty")
 
         return resources
 
-    def _has_slos(self) -> bool:
-        """Check if service has SLO resources defined."""
-        resources = self.service_def.get("resources", [])
-        return any(r.get("kind") == "SLO" for r in resources)
-
-    def _has_dependencies(self) -> bool:
+    def _has_dependencies(self, index: Dict[str, List[Dict[str, Any]]]) -> bool:
         """Check if service has dependencies (for alert generation)."""
-        resources = self.service_def.get("resources", [])
-        deps_resource = next((r for r in resources if r.get("kind") == "Dependencies"), None)
-
-        if not deps_resource:
+        deps_resources = index["Dependencies"]
+        if not deps_resources:
             return False
 
-        spec = deps_resource.get("spec", {})
+        # Check first Dependencies resource for actual dependency content
+        spec = deps_resources[0].get("spec", {})
         return bool(spec.get("databases") or spec.get("services") or spec.get("external_apis"))
 
-    def _has_observability_config(self) -> bool:
-        """Check if service has observability configuration."""
-        resources = self.service_def.get("resources", [])
-        return any(r.get("kind") == "Observability" for r in resources)
-
-    def _has_pagerduty(self) -> bool:
-        """Check if service has PagerDuty resource defined."""
-        resources = self.service_def.get("resources", [])
-        return any(r.get("kind") == "PagerDuty" for r in resources)
+    def get_resources_by_kind(self, kind: str) -> List[Dict[str, Any]]:
+        """Get all resources of a specific kind (cached)."""
+        index = self._build_index()
+        return index.get(kind, [])
 
 
 class ServiceOrchestrator:
@@ -137,6 +155,7 @@ class ServiceOrchestrator:
         self.service_def: Optional[Dict[str, Any]] = None
         self.service_name: Optional[str] = None
         self.output_dir: Optional[Path] = None
+        self._detector: Optional[ResourceDetector] = None
 
     def _load_service(self) -> None:
         """Load and parse service YAML file."""
@@ -154,15 +173,16 @@ class ServiceOrchestrator:
         if self.output_dir is None:
             self.output_dir = Path("generated") / self.service_name
 
-        # TODO: Apply environment-specific config if env is set
-        if self.env:
-            self._apply_environment_config()
+        # Note: Environment-specific config is applied by individual generators
+        # when they call parse_service_file() with environment=self.env.
+        # This allows each generator to get the merged config appropriate
+        # for the target environment.
 
-    def _apply_environment_config(self) -> None:
-        """Apply environment-specific configuration."""
-        # TODO: Load environment config and merge with service def
-        # For now, this is a placeholder
-        pass
+    def _get_detector(self) -> ResourceDetector:
+        """Get cached resource detector, creating if needed."""
+        if self._detector is None:
+            self._detector = ResourceDetector(self.service_def or {})
+        return self._detector
 
     def plan(self) -> PlanResult:
         """Preview what resources would be generated (dry-run)."""
@@ -181,9 +201,8 @@ class ServiceOrchestrator:
 
         result = PlanResult(service_name=self.service_name, service_yaml=self.service_yaml)
 
-        # Detect what resources to generate
-        detector = ResourceDetector(self.service_def)
-        resource_types = detector.detect()
+        # Detect what resources to generate (uses cached detector)
+        resource_types = self._get_detector().detect()
 
         # Plan each resource type
         try:
@@ -261,10 +280,8 @@ class ServiceOrchestrator:
     def _get_filtered_resources(
         self, skip: Optional[List[str]], only: Optional[List[str]]
     ) -> List[str]:
-        """Detect and filter resource types to generate."""
-        service_def = self.service_def or {}
-        detector = ResourceDetector(service_def)
-        resource_types = detector.detect()
+        """Detect and filter resource types to generate (uses cached detector)."""
+        resource_types = self._get_detector().detect()
 
         if only:
             resource_types = [r for r in resource_types if r in only]
@@ -289,8 +306,7 @@ class ServiceOrchestrator:
 
     def _plan_slos(self) -> List[Dict[str, Any]]:
         """Plan SLO generation."""
-        service_def = self.service_def or {}
-        slo_resources = [r for r in service_def.get("resources", []) if r.get("kind") == "SLO"]
+        slo_resources = self._get_detector().get_resources_by_kind("SLO")
         return [
             {
                 "name": r.get("name"),
@@ -337,21 +353,32 @@ class ServiceOrchestrator:
         ]
 
     def _plan_recording_rules(self) -> List[Dict[str, Any]]:
-        """Plan recording rule generation."""
-        service_def = self.service_def or {}
-        slo_count = len([r for r in service_def.get("resources", []) if r.get("kind") == "SLO"])
-        # Roughly 7 rules per SLO
-        return [{"type": "SLO metrics", "count": slo_count * 7}]
+        """Plan recording rule generation using actual builder."""
+        from nthlayer.recording_rules.builder import build_recording_rules
+        from nthlayer.specs.parser import parse_service_file
+
+        # Parse service file to get context and resources
+        context, resources = parse_service_file(self.service_yaml, environment=self.env)
+
+        # Build recording rules (dry run - just to get counts)
+        groups = build_recording_rules(context, resources)
+
+        if not groups:
+            return []
+
+        # Return breakdown by group
+        return [
+            {"type": group.name, "count": len(group.rules), "interval": group.interval}
+            for group in groups
+        ]
 
     def _plan_pagerduty(self) -> List[Dict[str, Any]]:
         """Plan PagerDuty service creation."""
         service_def = self.service_def or {}
         service_name = self.service_name or "unknown"
-        pd_resource = next(
-            (r for r in service_def.get("resources", []) if r.get("kind") == "PagerDuty"), None
-        )
+        pd_resources = self._get_detector().get_resources_by_kind("PagerDuty")
 
-        if not pd_resource:
+        if not pd_resources:
             return []
 
         service = service_def.get("service", {})
@@ -388,19 +415,28 @@ class ServiceOrchestrator:
     # Generation methods (actually create files)
 
     def _generate_slos(self) -> int:
-        """Generate SLO files."""
-        # TODO: Implement actual SLO generation
-        # For now, return count
-        service_def = self.service_def or {}
+        """Generate SLO files using Sloth generator."""
+        from nthlayer.generators.sloth import generate_sloth_spec
+
         output_dir = self.output_dir or Path("generated")
-        slo_resources = [r for r in service_def.get("resources", []) if r.get("kind") == "SLO"]
+        sloth_output_dir = output_dir / "sloth"
 
-        # Write placeholder file
-        output_file = output_dir / "slos.yaml"
-        with open(output_file, "w") as f:
-            yaml.dump({"slos": slo_resources}, f)
+        # Generate Sloth specification
+        result = generate_sloth_spec(
+            service_file=self.service_yaml,
+            output_dir=sloth_output_dir,
+            environment=self.env,
+        )
 
-        return len(slo_resources)
+        if not result.success:
+            if result.error and "No SLO resources found" in result.error:
+                # No SLOs defined - not an error, just nothing to generate
+                return 0
+            # Log error but don't fail the whole apply
+            print(f"   ⚠️  SLO generation warning: {result.error}")
+            return 0
+
+        return result.slo_count
 
     def _generate_alerts(self) -> int:
         """Generate alert files using actual alert generator."""
@@ -526,17 +562,36 @@ class ServiceOrchestrator:
             print("   Dashboard file saved locally, you can import manually.")
 
     def _generate_recording_rules(self) -> int:
-        """Generate recording rule files."""
-        # TODO: Implement actual recording rule generation
-        service_def = self.service_def or {}
+        """Generate recording rule files using actual builder."""
+        from nthlayer.recording_rules.builder import build_recording_rules
+        from nthlayer.recording_rules.models import create_rule_groups
+        from nthlayer.specs.parser import parse_service_file
+
         output_dir = self.output_dir or Path("generated")
         output_file = output_dir / "recording-rules.yaml"
-        with open(output_file, "w") as f:
-            f.write("# Recording rules would be generated here\n")
 
-        # Estimate count
-        slo_count = len([r for r in service_def.get("resources", []) if r.get("kind") == "SLO"])
-        return slo_count * 7
+        # Parse service file to get context and resources
+        context, resources = parse_service_file(self.service_yaml, environment=self.env)
+
+        # Build recording rules
+        groups = build_recording_rules(context, resources)
+
+        if not groups:
+            # No SLOs or other rule sources, write empty file
+            with open(output_file, "w") as f:
+                f.write("# No recording rules generated (no SLOs defined)\n")
+            return 0
+
+        # Generate YAML and write to file
+        yaml_output = create_rule_groups(groups)
+        with open(output_file, "w") as f:
+            f.write("# Recording rules generated by NthLayer\n")
+            f.write("# Pre-computed SLO metrics for dashboard and alert performance\n")
+            f.write("#\n\n")
+            f.write(yaml_output)
+
+        # Return actual count of rules
+        return sum(len(group.rules) for group in groups)
 
     def _generate_pagerduty(self) -> int:
         """Generate PagerDuty service with tier-based defaults."""
@@ -551,10 +606,23 @@ class ServiceOrchestrator:
         team = service.get("team", "unknown")
         tier = service.get("tier", "medium")
         support_model = service.get("support_model", "self")
-        timezone = service.get("pagerduty", {}).get("timezone", "America/New_York")
+
+        # Extract pagerduty config once (avoid repeated dict creation)
+        pagerduty_config = service.get("pagerduty", {})
+        timezone = pagerduty_config.get("timezone", "America/New_York")
 
         # Get SRE escalation policy ID for shared/sre support models
-        sre_ep_id = service.get("pagerduty", {}).get("sre_escalation_policy_id")
+        sre_ep_id = pagerduty_config.get("sre_escalation_policy_id")
+
+        # Get PagerDuty resource from cached detector (avoid rescanning resources list)
+        pd_resources = self._get_detector().get_resources_by_kind("PagerDuty")
+        pd_resource = pd_resources[0] if pd_resources else None
+        integration_key = None
+        sre_integration_key = None
+        if pd_resource:
+            spec = pd_resource.get("spec", {})
+            integration_key = spec.get("integration_key")
+            sre_integration_key = spec.get("sre_integration_key")
 
         # If no API key, generate config file only (dry-run mode)
         if not api_key:
@@ -618,18 +686,7 @@ class ServiceOrchestrator:
                 sre_escalation_policy_id=sre_ep_id,
             )
 
-        # Generate Alertmanager config if integration key available
-        pd_resource = next(
-            (r for r in service_def.get("resources", []) if r.get("kind") == "PagerDuty"),
-            None,
-        )
-        integration_key = None
-        sre_integration_key = None
-        if pd_resource:
-            spec = pd_resource.get("spec", {})
-            integration_key = spec.get("integration_key")
-            sre_integration_key = spec.get("sre_integration_key")
-
+        # Generate Alertmanager config if integration key available (uses values extracted earlier)
         if integration_key:
             self._generate_alertmanager_config(
                 team=team,

@@ -31,6 +31,29 @@ logger = structlog.get_logger()
 SECRET_REF_PATTERN = re.compile(r"\$\{(\w+):([^}|]+)(?:\|(\w+):([^}]+))?\}")
 
 
+class SecretBackendUnavailableError(Exception):
+    """Raised when a configured secret backend cannot be loaded."""
+
+    def __init__(self, backend: str, reason: str):
+        self.backend = backend
+        self.reason = reason
+        super().__init__(
+            f"Secret backend '{backend}' is unavailable: {reason}. "
+            f"Install the required dependencies or set strict=False to allow fallback."
+        )
+
+
+def _sanitize_path(path: str) -> str:
+    """Sanitize secret path for logging - hide sensitive details."""
+    if not path or len(path) < 4:
+        return "***"
+    # Show first segment only, mask the rest
+    parts = path.split("/")
+    if len(parts) > 1:
+        return f"{parts[0]}/***"
+    return f"{path[:2]}***"
+
+
 class SecretBackend(StrEnum):
     """Supported secret backends."""
 
@@ -46,12 +69,20 @@ class SecretBackend(StrEnum):
 
 @dataclass
 class SecretConfig:
-    """Configuration for secrets resolution."""
+    """Configuration for secrets resolution.
+
+    Attributes:
+        backend: Primary secret backend to use
+        fallback: List of fallback backends if primary unavailable
+        strict: If True, raise error when primary backend unavailable.
+                If False (default), silently fall back to alternatives.
+    """
 
     backend: SecretBackend = SecretBackend.ENV
     fallback: list[SecretBackend] = field(
         default_factory=lambda: [SecretBackend.ENV, SecretBackend.FILE]
     )
+    strict: bool = False  # Raise error if primary backend unavailable
 
     # Vault config
     vault_address: str | None = None
@@ -157,8 +188,7 @@ class FileSecretBackend(BaseSecretBackend):
         except Exception as e:
             logger.warning(
                 "failed_to_load_credentials",
-                file=str(self.credentials_file),
-                error=str(e),
+                error=type(e).__name__,
             )
             self._cache = {}
 
@@ -217,32 +247,39 @@ class FileSecretBackend(BaseSecretBackend):
 
 def _load_cloud_backend(
     backend_type: SecretBackend, config: SecretConfig
-) -> BaseSecretBackend | None:
-    """Lazy-load a cloud backend. Returns None if dependencies not available."""
+) -> tuple[BaseSecretBackend | None, str | None]:
+    """Lazy-load a cloud backend.
+
+    Returns:
+        Tuple of (backend, error_reason). Backend is None if unavailable,
+        error_reason explains why (e.g., missing dependency).
+    """
     try:
         if backend_type == SecretBackend.VAULT:
             from nthlayer.config.secrets.backends import VaultSecretBackend
 
-            return VaultSecretBackend(config)
+            return VaultSecretBackend(config), None
         elif backend_type == SecretBackend.AWS:
             from nthlayer.config.secrets.backends import AWSSecretBackend
 
-            return AWSSecretBackend(config)
+            return AWSSecretBackend(config), None
         elif backend_type == SecretBackend.AZURE:
             from nthlayer.config.secrets.backends import AzureSecretBackend
 
-            return AzureSecretBackend(config)
+            return AzureSecretBackend(config), None
         elif backend_type == SecretBackend.GCP:
             from nthlayer.config.secrets.backends import GCPSecretBackend
 
-            return GCPSecretBackend(config)
+            return GCPSecretBackend(config), None
         elif backend_type == SecretBackend.DOPPLER:
             from nthlayer.config.secrets.backends import DopplerSecretBackend
 
-            return DopplerSecretBackend(config)
+            return DopplerSecretBackend(config), None
     except ImportError as e:
-        logger.debug(f"{backend_type}_backend_unavailable", reason=str(e))
-    return None
+        reason = str(e)
+        logger.debug(f"{backend_type}_backend_unavailable", reason=reason)
+        return None, reason
+    return None, f"Unknown backend type: {backend_type}"
 
 
 class SecretResolver:
@@ -254,36 +291,66 @@ class SecretResolver:
         self._init_backends()
 
     def _init_backends(self):
-        """Initialize configured backends."""
+        """Initialize configured backends.
+
+        Raises:
+            SecretBackendUnavailableError: If strict=True and primary backend unavailable
+        """
         # Core backends - always available
         self._backends[SecretBackend.ENV] = EnvSecretBackend()
         self._backends[SecretBackend.FILE] = FileSecretBackend(self.config.credentials_file)
 
+        # Track errors for primary backend
+        primary_backend_error: str | None = None
+
         # Cloud backends - lazy loaded on demand
         if self.config.vault_address:
-            backend = _load_cloud_backend(SecretBackend.VAULT, self.config)
+            backend, error = _load_cloud_backend(SecretBackend.VAULT, self.config)
             if backend:
                 self._backends[SecretBackend.VAULT] = backend
+            elif self.config.backend == SecretBackend.VAULT:
+                primary_backend_error = error
 
         if self.config.aws_region and self.config.aws_secret_prefix:
-            backend = _load_cloud_backend(SecretBackend.AWS, self.config)
+            backend, error = _load_cloud_backend(SecretBackend.AWS, self.config)
             if backend:
                 self._backends[SecretBackend.AWS] = backend
+            elif self.config.backend == SecretBackend.AWS:
+                primary_backend_error = error
 
         if self.config.azure_vault_url:
-            backend = _load_cloud_backend(SecretBackend.AZURE, self.config)
+            backend, error = _load_cloud_backend(SecretBackend.AZURE, self.config)
             if backend:
                 self._backends[SecretBackend.AZURE] = backend
+            elif self.config.backend == SecretBackend.AZURE:
+                primary_backend_error = error
 
         if self.config.gcp_project_id:
-            backend = _load_cloud_backend(SecretBackend.GCP, self.config)
+            backend, error = _load_cloud_backend(SecretBackend.GCP, self.config)
             if backend:
                 self._backends[SecretBackend.GCP] = backend
+            elif self.config.backend == SecretBackend.GCP:
+                primary_backend_error = error
 
         if os.environ.get("DOPPLER_TOKEN") or self.config.doppler_project:
-            backend = _load_cloud_backend(SecretBackend.DOPPLER, self.config)
+            backend, error = _load_cloud_backend(SecretBackend.DOPPLER, self.config)
             if backend:
                 self._backends[SecretBackend.DOPPLER] = backend
+            elif self.config.backend == SecretBackend.DOPPLER:
+                primary_backend_error = error
+
+        # Check if primary backend is available
+        if self.config.backend not in self._backends:
+            error_reason = primary_backend_error or "Backend not configured"
+            if self.config.strict:
+                raise SecretBackendUnavailableError(self.config.backend, error_reason)
+            else:
+                logger.warning(
+                    "primary_secret_backend_unavailable",
+                    backend=self.config.backend,
+                    reason=error_reason,
+                    fallback=str(self.config.fallback),
+                )
 
     def resolve(self, path: str, backend: SecretBackend | None = None) -> str | None:
         """Resolve a secret by path."""
@@ -303,7 +370,7 @@ class SecretResolver:
             if fallback in self._backends and fallback != self.config.backend:
                 value = self._backends[fallback].get_secret(path)
                 if value is not None:
-                    logger.debug("secret_resolved_from_fallback", path=path, backend=fallback)
+                    logger.debug("secret_resolved_from_fallback", backend=fallback)
                     return value
 
         return None
@@ -411,6 +478,7 @@ def resolve_secret(path: str, backend: SecretBackend | None = None) -> str | Non
 
 __all__ = [
     "SecretBackend",
+    "SecretBackendUnavailableError",
     "SecretConfig",
     "BaseSecretBackend",
     "EnvSecretBackend",

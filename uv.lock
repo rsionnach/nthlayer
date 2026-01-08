@@ -1522,6 +1522,7 @@ dependencies = [
 dev = [
     { name = "aiosqlite" },
     { name = "anyio" },
+    { name = "greenlet" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1549,6 +1550,7 @@ requires-dist = [
     { name = "circuitbreaker", specifier = ">=2.0.0,<3.0.0" },
     { name = "fastapi", specifier = ">=0.111.0,<1.0.0" },
     { name = "grafana-foundation-sdk", specifier = ">=0.0.11" },
+    { name = "greenlet", marker = "extra == 'dev'", specifier = ">=3.0.0,<4.0.0" },
     { name = "httpx", specifier = ">=0.27.0,<0.28.0" },
     { name = "jwcrypto", specifier = ">=1.5.6,<2.0.0" },
     { name = "langchain", specifier = ">=0.3.0,<0.4.0" },

@@ -21,6 +21,7 @@ from typing import Any
 
 import yaml
 
+from nthlayer.core.tiers import VALID_TIERS
 from nthlayer.validation.metadata import Severity, ValidationIssue, ValidationResult
 
 
@@ -260,8 +261,7 @@ class ConftestValidator:
                     )
 
             # Valid tier
-            valid_tiers = {"critical", "standard", "low", "tier-1", "tier-2", "tier-3"}
-            if service.get("tier") and service["tier"] not in valid_tiers:
+            if service.get("tier") and service["tier"] not in VALID_TIERS:
                 result.issues.append(
                     ValidationIssue(
                         severity=Severity.WARNING,

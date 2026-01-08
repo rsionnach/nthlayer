@@ -13,6 +13,7 @@ from nthlayer.cli.ux import (
     text_input,
     warning,
 )
+from nthlayer.core.tiers import TIER_CONFIGS
 from nthlayer.specs.custom_templates import CustomTemplateLoader
 
 # Service type descriptions
@@ -35,12 +36,8 @@ SERVICE_TYPE_TO_TEMPLATE_TYPE = {
     "ml": "api",  # ML services often have API interfaces
 }
 
-# Tier descriptions
-TIERS = {
-    "critical": "Tier 1 - Business critical, highest SLO",
-    "standard": "Tier 2 - Standard service, moderate SLO",
-    "low": "Tier 3 - Low priority, relaxed SLO",
-}
+# Tier descriptions derived from centralized config
+TIERS = {name: config.display_name for name, config in TIER_CONFIGS.items()}
 
 # Common dependencies
 DEPENDENCIES = [
