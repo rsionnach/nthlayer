@@ -2,6 +2,10 @@
 
 Analyze reliability drift for a service by detecting degradation trends over time.
 
+<div align="center">
+  <img src="../assets/drift-demo.gif" alt="nthlayer drift demo" width="700">
+</div>
+
 ## Synopsis
 
 ```bash
