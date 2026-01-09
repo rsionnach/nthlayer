@@ -8,6 +8,7 @@ Commands:
     nthlayer blast-radius <service.yaml> --depth 3 - Limit transitive depth
     nthlayer blast-radius <service.yaml> --json    - Output as JSON
     nthlayer blast-radius <service.yaml> --provider kubernetes - Use only K8s
+    nthlayer blast-radius <service.yaml> --provider backstage  - Use only Backstage
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from nthlayer.dependencies.providers.prometheus import PrometheusDepProvider
 from nthlayer.specs.parser import parse_service_file
 
 # Provider type
-ProviderChoice = Literal["prometheus", "kubernetes", "all"]
+ProviderChoice = Literal["prometheus", "kubernetes", "backstage", "all"]
 
 
 def blast_radius_command(
@@ -41,6 +42,7 @@ def blast_radius_command(
     demo: bool = False,
     provider: ProviderChoice = "all",
     k8s_namespace: Optional[str] = None,
+    backstage_url: Optional[str] = None,
 ) -> int:
     """
     Calculate deployment blast radius for a service.
@@ -59,8 +61,9 @@ def blast_radius_command(
         depth: Maximum depth for transitive analysis
         output_format: Output format ("table" or "json")
         demo: If True, show demo output with sample data
-        provider: Provider to use ("prometheus", "kubernetes", or "all")
+        provider: Provider to use ("prometheus", "kubernetes", "backstage", or "all")
         k8s_namespace: Kubernetes namespace to search (None = all)
+        backstage_url: Backstage catalog URL (or use env var)
 
     Returns:
         Exit code (0, 1, or 2)
@@ -122,6 +125,26 @@ def blast_radius_command(
                 console.print("[muted]Install with: pip install nthlayer[kubernetes][/muted]")
                 return 2
             # Skip silently if "all" and not installed
+
+    # Add Backstage provider
+    if provider in ("backstage", "all"):
+        bs_url = backstage_url or os.environ.get("NTHLAYER_BACKSTAGE_URL")
+        if bs_url:
+            from nthlayer.dependencies.providers.backstage import BackstageDepProvider
+
+            bs_provider = BackstageDepProvider(
+                url=bs_url,
+                token=os.environ.get("NTHLAYER_BACKSTAGE_TOKEN"),
+            )
+            discovery.add_provider(bs_provider)
+            providers_added += 1
+        elif provider == "backstage":
+            error("No Backstage URL provided")
+            console.print()
+            console.print(
+                "[muted]Provide via --backstage-url or NTHLAYER_BACKSTAGE_URL env var[/muted]"
+            )
+            return 2
 
     if providers_added == 0:
         error("No providers available")
@@ -296,7 +319,7 @@ def register_blast_radius_parser(subparsers: argparse._SubParsersAction) -> None
     # Provider selection
     parser.add_argument(
         "--provider",
-        choices=["prometheus", "kubernetes", "all"],
+        choices=["prometheus", "kubernetes", "backstage", "all"],
         default="all",
         help="Dependency provider to use (default: all)",
     )
@@ -305,6 +328,10 @@ def register_blast_radius_parser(subparsers: argparse._SubParsersAction) -> None
         "--namespace",
         dest="k8s_namespace",
         help="Kubernetes namespace to search (default: all namespaces)",
+    )
+    parser.add_argument(
+        "--backstage-url",
+        help="Backstage catalog URL (or set NTHLAYER_BACKSTAGE_URL)",
     )
 
     parser.add_argument(
@@ -340,4 +367,5 @@ def handle_blast_radius_command(args: argparse.Namespace) -> int:
         demo=getattr(args, "demo", False),
         provider=getattr(args, "provider", "all"),
         k8s_namespace=getattr(args, "k8s_namespace", None),
+        backstage_url=getattr(args, "backstage_url", None),
     )

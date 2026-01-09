@@ -1,7 +1,7 @@
 """
 CLI command for dependency discovery.
 
-Shows service dependencies discovered from Prometheus metrics and Kubernetes.
+Shows service dependencies discovered from Prometheus, Kubernetes, and Backstage.
 
 Commands:
     nthlayer deps <service.yaml>              - Show all dependencies
@@ -9,6 +9,7 @@ Commands:
     nthlayer deps <service.yaml> --downstream - Show what calls this service
     nthlayer deps <service.yaml> --json       - Output as JSON
     nthlayer deps <service.yaml> --provider kubernetes - Use only Kubernetes
+    nthlayer deps <service.yaml> --provider backstage  - Use only Backstage
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from nthlayer.dependencies.providers.prometheus import PrometheusDepProvider
 from nthlayer.specs.parser import parse_service_file
 
 # Provider type
-ProviderChoice = Literal["prometheus", "kubernetes", "all"]
+ProviderChoice = Literal["prometheus", "kubernetes", "backstage", "all"]
 
 
 def deps_command(
@@ -44,12 +45,13 @@ def deps_command(
     demo: bool = False,
     provider: ProviderChoice = "all",
     k8s_namespace: Optional[str] = None,
+    backstage_url: Optional[str] = None,
 ) -> int:
     """
     Show dependencies for a service.
 
-    Discovers upstream and downstream dependencies from Prometheus metrics
-    and/or Kubernetes resources.
+    Discovers upstream and downstream dependencies from Prometheus metrics,
+    Kubernetes resources, and/or Backstage catalog.
 
     Exit codes:
         0 - Success
@@ -63,8 +65,9 @@ def deps_command(
         direction: "upstream", "downstream", or "both"
         output_format: Output format ("table" or "json")
         demo: If True, show demo output with sample data
-        provider: Provider to use ("prometheus", "kubernetes", or "all")
+        provider: Provider to use ("prometheus", "kubernetes", "backstage", or "all")
         k8s_namespace: Kubernetes namespace to search (None = all)
+        backstage_url: Backstage catalog URL (or use env var)
 
     Returns:
         Exit code (0, 1, or 2)
@@ -125,6 +128,26 @@ def deps_command(
                 console.print("[muted]Install with: pip install nthlayer[kubernetes][/muted]")
                 return 2
             # Skip silently if "all" and not installed
+
+    # Add Backstage provider
+    if provider in ("backstage", "all"):
+        bs_url = backstage_url or os.environ.get("NTHLAYER_BACKSTAGE_URL")
+        if bs_url:
+            from nthlayer.dependencies.providers.backstage import BackstageDepProvider
+
+            bs_provider = BackstageDepProvider(
+                url=bs_url,
+                token=os.environ.get("NTHLAYER_BACKSTAGE_TOKEN"),
+            )
+            discovery.add_provider(bs_provider)
+            providers_added += 1
+        elif provider == "backstage":
+            error("No Backstage URL provided")
+            console.print()
+            console.print(
+                "[muted]Provide via --backstage-url or NTHLAYER_BACKSTAGE_URL env var[/muted]"
+            )
+            return 2
 
     if providers_added == 0:
         error("No providers available")
@@ -265,12 +288,13 @@ def _demo_deps_output(
     discovery, graph = create_demo_discovery()
 
     # Determine providers to show based on selection
-    if provider == "kubernetes":
-        providers_queried = ["kubernetes"]
-    elif provider == "prometheus":
-        providers_queried = ["prometheus"]
-    else:
-        providers_queried = ["prometheus", "kubernetes"]
+    providers_queried: list[str] = []
+    if provider in ("prometheus", "all"):
+        providers_queried.append("prometheus")
+    if provider in ("kubernetes", "all"):
+        providers_queried.append("kubernetes")
+    if provider in ("backstage", "all"):
+        providers_queried.append("backstage")
 
     # Create demo result
     result = DiscoveryResult(
@@ -278,14 +302,18 @@ def _demo_deps_output(
         providers_queried=providers_queried,
     )
 
-    # Get dependencies from graph
-    result.upstream = graph.get_upstream("payment-api")
-    result.downstream = graph.get_downstream("payment-api")
+    # Get dependencies from graph (prometheus-discovered)
+    if provider in ("prometheus", "all"):
+        result.upstream = graph.get_upstream("payment-api")
+        result.downstream = graph.get_downstream("payment-api")
+    else:
+        result.upstream = []
+        result.downstream = []
+
+    from nthlayer.identity import ServiceIdentity
 
     # Add kubernetes-specific demo dependencies
     if provider in ("kubernetes", "all"):
-        from nthlayer.identity import ServiceIdentity
-
         # Add demo K8s-discovered dependencies to upstream
         k8s_deps = [
             ResolvedDependency(
@@ -311,6 +339,41 @@ def _demo_deps_output(
             ),
         ]
         result.downstream.extend(k8s_downstream)
+
+    # Add backstage-specific demo dependencies
+    if provider in ("backstage", "all"):
+        backstage_deps = [
+            ResolvedDependency(
+                source=ServiceIdentity(canonical_name="payment-api"),
+                target=ServiceIdentity(canonical_name="audit-service"),
+                dep_type=DependencyType.SERVICE,
+                confidence=0.95,
+                providers=["backstage"],
+                metadata={"source": "spec.dependsOn", "namespace": "default"},
+            ),
+            ResolvedDependency(
+                source=ServiceIdentity(canonical_name="payment-api"),
+                target=ServiceIdentity(canonical_name="notification-api"),
+                dep_type=DependencyType.SERVICE,
+                confidence=0.90,
+                providers=["backstage"],
+                metadata={"source": "spec.consumesApis", "namespace": "default"},
+            ),
+        ]
+        result.upstream.extend(backstage_deps)
+
+        # Add downstream from backstage
+        backstage_downstream = [
+            ResolvedDependency(
+                source=ServiceIdentity(canonical_name="refund-service"),
+                target=ServiceIdentity(canonical_name="payment-api"),
+                dep_type=DependencyType.SERVICE,
+                confidence=0.95,
+                providers=["backstage"],
+                metadata={"source": "spec.dependsOn", "namespace": "default"},
+            ),
+        ]
+        result.downstream.extend(backstage_downstream)
 
     if output_format == "json":
         console.print_json(data=_result_to_dict(result, direction))
@@ -342,7 +405,7 @@ def register_deps_parser(subparsers: argparse._SubParsersAction) -> None:
     # Provider selection
     deps_parser.add_argument(
         "--provider",
-        choices=["prometheus", "kubernetes", "all"],
+        choices=["prometheus", "kubernetes", "backstage", "all"],
         default="all",
         help="Dependency provider to use (default: all)",
     )
@@ -351,6 +414,10 @@ def register_deps_parser(subparsers: argparse._SubParsersAction) -> None:
         "--namespace",
         dest="k8s_namespace",
         help="Kubernetes namespace to search (default: all namespaces)",
+    )
+    deps_parser.add_argument(
+        "--backstage-url",
+        help="Backstage catalog URL (or set NTHLAYER_BACKSTAGE_URL)",
     )
 
     # Direction group
@@ -399,4 +466,5 @@ def handle_deps_command(args: argparse.Namespace) -> int:
         demo=getattr(args, "demo", False),
         provider=getattr(args, "provider", "all"),
         k8s_namespace=getattr(args, "k8s_namespace", None),
+        backstage_url=getattr(args, "backstage_url", None),
     )
