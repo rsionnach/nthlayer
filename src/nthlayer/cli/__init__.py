@@ -14,6 +14,7 @@ from nthlayer.cli.environments import (
     validate_env_command,
 )
 from nthlayer.cli.generate import generate_slo_command
+from nthlayer.cli.identity import handle_identity_command, register_identity_parser
 from nthlayer.cli.init import init_command
 from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.pagerduty import setup_pagerduty_command
@@ -22,6 +23,7 @@ from nthlayer.cli.recording_rules import generate_recording_rules_command
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.cli.templates import list_templates_command
 from nthlayer.cli.validate import validate_command
+from nthlayer.cli.validate_slo import handle_validate_slo_command, register_validate_slo_parser
 
 __all__ = [
     "generate_slo_command",
@@ -47,4 +49,10 @@ __all__ = [
     # Ownership commands
     "handle_ownership_command",
     "register_ownership_parser",
+    # Identity commands
+    "handle_identity_command",
+    "register_identity_parser",
+    # Validate SLO commands
+    "handle_validate_slo_command",
+    "register_validate_slo_parser",
 ]

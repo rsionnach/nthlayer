@@ -15,7 +15,6 @@ from nthlayer.identity.ownership_providers.base import (
     OwnershipProviderHealth,
 )
 
-
 # Labels to check for ownership (in priority order)
 OWNER_LABELS = [
     "owner",

@@ -15,7 +15,6 @@ from nthlayer.identity.ownership_providers.base import (
     OwnershipProviderHealth,
 )
 
-
 # Standard CODEOWNERS file locations
 CODEOWNERS_PATHS = [
     "CODEOWNERS",

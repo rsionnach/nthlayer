@@ -1,7 +1,6 @@
 """Tests for identity resolution module."""
 
 import pytest
-
 from nthlayer.identity import (
     IdentityMatch,
     IdentityResolver,

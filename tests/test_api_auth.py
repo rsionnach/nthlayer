@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from jwt.exceptions import InvalidTokenError
-
 from nthlayer.api.auth import ALLOW_ANONYMOUS_ENV, JWTValidator, get_current_user
 from nthlayer.config.settings import Settings
 

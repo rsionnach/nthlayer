@@ -3,13 +3,11 @@
 import pytest
 import respx
 from httpx import Response
-
 from nthlayer.dependencies.models import DependencyType
 from nthlayer.dependencies.providers.backstage import (
     BackstageDepProvider,
     BackstageDepProviderError,
 )
-
 
 # Sample catalog entities for testing
 SAMPLE_ENTITIES = [
