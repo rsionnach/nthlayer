@@ -107,7 +107,7 @@ class BackstageDepProvider(BaseDepProvider):
         self._ensure_initialized()
         assert self._client is not None
 
-        params: list[tuple[str, str]] = []
+        params: list[tuple[str, str | int | float | bool | None]] = []
         if kind:
             params.append(("filter", f"kind={kind}"))
         if namespace or self.namespace:
