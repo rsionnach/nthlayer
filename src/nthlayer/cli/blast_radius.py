@@ -7,6 +7,7 @@ Commands:
     nthlayer blast-radius <service.yaml>           - Calculate deployment risk
     nthlayer blast-radius <service.yaml> --depth 3 - Limit transitive depth
     nthlayer blast-radius <service.yaml> --json    - Output as JSON
+    nthlayer blast-radius <service.yaml> --provider kubernetes - Use only K8s
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-from typing import Optional
+from typing import Literal, Optional
 
 from rich.table import Table
 
@@ -27,6 +28,9 @@ from nthlayer.dependencies import (
 from nthlayer.dependencies.providers.prometheus import PrometheusDepProvider
 from nthlayer.specs.parser import parse_service_file
 
+# Provider type
+ProviderChoice = Literal["prometheus", "kubernetes", "all"]
+
 
 def blast_radius_command(
     service_file: str,
@@ -35,6 +39,8 @@ def blast_radius_command(
     depth: int = 10,
     output_format: str = "table",
     demo: bool = False,
+    provider: ProviderChoice = "all",
+    k8s_namespace: Optional[str] = None,
 ) -> int:
     """
     Calculate deployment blast radius for a service.
@@ -53,6 +59,8 @@ def blast_radius_command(
         depth: Maximum depth for transitive analysis
         output_format: Output format ("table" or "json")
         demo: If True, show demo output with sample data
+        provider: Provider to use ("prometheus", "kubernetes", or "all")
+        k8s_namespace: Kubernetes namespace to search (None = all)
 
     Returns:
         Exit code (0, 1, or 2)
@@ -60,16 +68,6 @@ def blast_radius_command(
     # Demo mode - show sample output
     if demo:
         return _demo_blast_radius_output(service_file, depth, output_format)
-
-    # Resolve Prometheus URL
-    prom_url = prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL")
-    if not prom_url:
-        error("No Prometheus URL provided")
-        console.print()
-        console.print(
-            "[muted]Provide via --prometheus-url or NTHLAYER_PROMETHEUS_URL env var[/muted]"
-        )
-        return 2
 
     # Parse service file
     try:
@@ -81,18 +79,56 @@ def blast_radius_command(
     service_name = context.name or "unknown"
     tier = getattr(context, "tier", "standard") or "standard"
 
-    # Create discovery with Prometheus provider
-    username = os.environ.get("NTHLAYER_METRICS_USER")
-    password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
-
-    provider = PrometheusDepProvider(
-        url=prom_url,
-        username=username,
-        password=password,
-    )
-
+    # Create discovery and add providers
     discovery = DependencyDiscovery()
-    discovery.add_provider(provider)
+    providers_added = 0
+
+    # Add Prometheus provider
+    if provider in ("prometheus", "all"):
+        prom_url = prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL")
+        if prom_url:
+            username = os.environ.get("NTHLAYER_METRICS_USER")
+            password = os.environ.get("NTHLAYER_METRICS_PASSWORD")
+
+            prom_provider = PrometheusDepProvider(
+                url=prom_url,
+                username=username,
+                password=password,
+            )
+            discovery.add_provider(prom_provider)
+            providers_added += 1
+        elif provider == "prometheus":
+            error("No Prometheus URL provided")
+            console.print()
+            console.print(
+                "[muted]Provide via --prometheus-url or NTHLAYER_PROMETHEUS_URL env var[/muted]"
+            )
+            return 2
+
+    # Add Kubernetes provider
+    if provider in ("kubernetes", "all"):
+        try:
+            from nthlayer.dependencies.providers.kubernetes import KubernetesDepProvider
+
+            k8s_provider = KubernetesDepProvider(
+                namespace=k8s_namespace or os.environ.get("NTHLAYER_K8S_NAMESPACE"),
+            )
+            discovery.add_provider(k8s_provider)
+            providers_added += 1
+        except ImportError:
+            if provider == "kubernetes":
+                error("Kubernetes provider not available")
+                console.print()
+                console.print("[muted]Install with: pip install nthlayer[kubernetes][/muted]")
+                return 2
+            # Skip silently if "all" and not installed
+
+    if providers_added == 0:
+        error("No providers available")
+        console.print()
+        console.print("[muted]Provide Prometheus URL or install kubernetes extra[/muted]")
+        return 2
+
     discovery.set_tier(service_name, tier)
 
     # Build dependency graph
@@ -256,6 +292,21 @@ def register_blast_radius_parser(subparsers: argparse._SubParsersAction) -> None
         dest="environment",
         help="Environment name (dev, staging, prod)",
     )
+
+    # Provider selection
+    parser.add_argument(
+        "--provider",
+        choices=["prometheus", "kubernetes", "all"],
+        default="all",
+        help="Dependency provider to use (default: all)",
+    )
+    parser.add_argument(
+        "--k8s-namespace",
+        "--namespace",
+        dest="k8s_namespace",
+        help="Kubernetes namespace to search (default: all namespaces)",
+    )
+
     parser.add_argument(
         "--depth",
         "-d",
@@ -287,4 +338,6 @@ def handle_blast_radius_command(args: argparse.Namespace) -> int:
         depth=getattr(args, "depth", 10),
         output_format=getattr(args, "output_format", "table"),
         demo=getattr(args, "demo", False),
+        provider=getattr(args, "provider", "all"),
+        k8s_namespace=getattr(args, "k8s_namespace", None),
     )
