@@ -1,5 +1,65 @@
 # Changelog
 
+## v0.1.0a11 (January 9, 2026)
+
+### Security Release + Phase 1 & 2 Features
+
+This release includes critical security fixes and two major feature phases.
+
+#### Security Fixes
+- **urllib3** CVE-2025-24810: Decompression-bomb bypass on redirects (2.6.2 → 2.6.3)
+- **langgraph-checkpoint** RCE in JsonPlusSerializer (2.1.2 → 3.0.1 via langgraph 1.0)
+- **ecdsa** Minerva timing attack: Removed entirely (python-jose → PyJWT migration)
+
+#### Phase 1: Drift Detection
+- **`nthlayer drift`** - Analyze SLO reliability trends over time
+- Detects degradation, improvement, and oscillation patterns
+- Statistical significance with confidence intervals
+- Risk scoring based on pattern severity
+- Demo mode with `--demo` flag
+
+#### Phase 2: Dependency Intelligence
+- **`nthlayer deps`** - Discover service dependencies from Prometheus metrics
+- **`nthlayer blast-radius`** - Calculate deployment risk based on downstream dependents
+- **Identity resolution module** - Service name normalization across providers
+- Supports HTTP, gRPC, database, Redis, and Kafka dependency patterns
+- Exit codes for CI/CD gates (0=low, 1=medium, 2=high risk)
+
+#### Code Quality
+- Test coverage expanded to 91% (2564 tests)
+- Migrated from pip to uv for faster dependency management
+- JWT authentication migrated from python-jose to PyJWT
+
+---
+
+## v0.1.0a10 (January 8, 2026)
+
+### PyPI Release
+- Version bump for PyPI publication
+- No functional changes from a9
+
+---
+
+## v0.1.0a9 (January 7, 2026)
+
+### Test Coverage & Core Improvements
+
+#### Test Coverage
+- Expanded test coverage from ~70% to 91%
+- Added comprehensive tests for all CLI commands
+- Integration tests for end-to-end workflows
+
+#### Core Module
+- New `src/nthlayer/core/` module for shared functionality
+- Optimized orchestrator for better performance
+- Improved configuration loading
+
+#### Documentation
+- Updated roadmap with 4-phase technical structure
+- Simplified documentation structure
+
+---
+
 ## v0.1.0a8 (December 21, 2025)
 
 ### Code Quality & CI/CD Improvements
@@ -195,8 +255,9 @@ Initial alpha release with core functionality.
 
 ## Stats
 
-- **Commands:** 10 total
-- **Tests:** 84/84 passing (100%)
-- **Documentation:** 25,000+ words
+- **Commands:** 20+ total
+- **Tests:** 2564 passing (91% coverage)
+- **Documentation:** 30,000+ words
 - **Dashboard Panels:** 40 in template library
 - **Alert Rules:** 400+
+- **Technology Templates:** 18 technologies supported
