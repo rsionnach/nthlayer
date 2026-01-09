@@ -76,6 +76,19 @@ kubernetes = [
     # Kubernetes dependency discovery
     "kubernetes>=28.0.0,<32.0.0",
 ]
+zookeeper = [
+    # Zookeeper dependency discovery
+    "kazoo>=2.9.0,<3.0.0",
+]
+etcd = [
+    # etcd dependency discovery
+    "etcd3>=0.12.0,<1.0.0",
+]
+service-discovery = [
+    # All service discovery providers (Consul uses httpx, already included)
+    "kazoo>=2.9.0,<3.0.0",
+    "etcd3>=0.12.0,<1.0.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
