@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import httpx
 import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError
 
 from nthlayer.config import Settings, get_settings
 
@@ -23,57 +24,44 @@ class JWTValidator:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._jwks: dict[str, Any] | None = None
+        self._jwks_client: PyJWKClient | None = None
 
-    async def _get_jwks(self) -> dict[str, Any]:
-        """Fetch JWKS from configured URL."""
-        if self._jwks:
-            return self._jwks
+    def _get_jwks_url(self) -> str:
+        """Get JWKS URL from settings."""
+        if self.settings.jwt_jwks_url:
+            return str(self.settings.jwt_jwks_url)
 
-        if not self.settings.jwt_jwks_url:
-            if self.settings.cognito_user_pool_id and self.settings.cognito_region:
-                jwks_url = (
-                    f"https://cognito-idp.{self.settings.cognito_region}.amazonaws.com/"
-                    f"{self.settings.cognito_user_pool_id}/.well-known/jwks.json"
-                )
-            else:
-                raise ValueError("No JWKS URL or Cognito configuration provided")
-        else:
-            jwks_url = str(self.settings.jwt_jwks_url)
+        if self.settings.cognito_user_pool_id and self.settings.cognito_region:
+            return (
+                f"https://cognito-idp.{self.settings.cognito_region}.amazonaws.com/"
+                f"{self.settings.cognito_user_pool_id}/.well-known/jwks.json"
+            )
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(jwks_url)
-            response.raise_for_status()
-            jwks_data: dict[str, Any] = response.json()
-            self._jwks = jwks_data
-            return jwks_data
+        raise ValueError("No JWKS URL or Cognito configuration provided")
+
+    def _get_jwks_client(self) -> PyJWKClient:
+        """Get or create JWKS client."""
+        if self._jwks_client is None:
+            jwks_url = self._get_jwks_url()
+            self._jwks_client = PyJWKClient(jwks_url)
+        return self._jwks_client
 
     async def validate_token(self, token: str) -> dict[str, Any]:
         """Validate JWT token and return claims."""
         try:
-            unverified_header = jwt.get_unverified_header(token)
-            kid = unverified_header.get("kid")
+            jwks_client = self._get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
 
-            jwks = await self._get_jwks()
-            key = None
-            for jwk in jwks.get("keys", []):
-                if jwk.get("kid") == kid:
-                    key = jwk
-                    break
-
-            if not key:
-                raise JWTError("Public key not found in JWKS")
-
-            claims = jwt.decode(
+            claims: dict[str, Any] = jwt.decode(
                 token,
-                key,
+                signing_key.key,
                 algorithms=["RS256"],
                 audience=self.settings.cognito_audience,
                 issuer=self.settings.jwt_issuer,
             )
             return claims
 
-        except JWTError as exc:
+        except InvalidTokenError as exc:
             logger.warning("jwt_validation_failed", error=str(exc))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

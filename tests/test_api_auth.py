@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from jose import jwt
+from jwt.exceptions import InvalidTokenError
+
 from nthlayer.api.auth import ALLOW_ANONYMOUS_ENV, JWTValidator, get_current_user
 from nthlayer.config.settings import Settings
 
@@ -13,70 +14,68 @@ from nthlayer.config.settings import Settings
 class TestJWTValidator:
     """Tests for JWTValidator class."""
 
-    @pytest.mark.asyncio
-    async def test_get_jwks_returns_cached(self):
-        """_get_jwks returns cached JWKS if available."""
-        settings = Settings(jwt_jwks_url="https://example.com/jwks")
-        validator = JWTValidator(settings)
-        cached_jwks = {"keys": [{"kid": "test-key"}]}
-        validator._jwks = cached_jwks
-
-        result = await validator._get_jwks()
-
-        assert result == cached_jwks
-
-    @pytest.mark.asyncio
-    async def test_get_jwks_fetches_from_url(self):
-        """_get_jwks fetches from jwt_jwks_url."""
+    def test_get_jwks_url_from_jwt_jwks_url(self):
+        """_get_jwks_url returns jwt_jwks_url when set."""
         settings = Settings(jwt_jwks_url="https://example.com/jwks")
         validator = JWTValidator(settings)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"keys": [{"kid": "fetched-key"}]}
+        result = validator._get_jwks_url()
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_instance = AsyncMock()
-            mock_instance.get.return_value = mock_response
-            mock_client.return_value.__aenter__.return_value = mock_instance
+        assert result == "https://example.com/jwks"
 
-            result = await validator._get_jwks()
-
-        assert result == {"keys": [{"kid": "fetched-key"}]}
-        mock_instance.get.assert_called_once_with("https://example.com/jwks")
-
-    @pytest.mark.asyncio
-    async def test_get_jwks_constructs_cognito_url(self):
-        """_get_jwks constructs Cognito JWKS URL when no jwt_jwks_url."""
+    def test_get_jwks_url_constructs_cognito_url(self):
+        """_get_jwks_url constructs Cognito JWKS URL when no jwt_jwks_url."""
         settings = Settings(
             cognito_user_pool_id="us-east-1_abc123",
             cognito_region="us-east-1",
         )
         validator = JWTValidator(settings)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"keys": [{"kid": "cognito-key"}]}
-
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_instance = AsyncMock()
-            mock_instance.get.return_value = mock_response
-            mock_client.return_value.__aenter__.return_value = mock_instance
-
-            result = await validator._get_jwks()
+        result = validator._get_jwks_url()
 
         expected_url = (
             "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_abc123/.well-known/jwks.json"
         )
-        mock_instance.get.assert_called_once_with(expected_url)
-        assert result == {"keys": [{"kid": "cognito-key"}]}
+        assert result == expected_url
 
-    @pytest.mark.asyncio
-    async def test_get_jwks_raises_when_no_config(self):
-        """_get_jwks raises ValueError when no JWKS config."""
+    def test_get_jwks_url_raises_when_no_config(self):
+        """_get_jwks_url raises ValueError when no JWKS config."""
         settings = Settings()
         validator = JWTValidator(settings)
 
         with pytest.raises(ValueError, match="No JWKS URL or Cognito configuration"):
-            await validator._get_jwks()
+            validator._get_jwks_url()
+
+    def test_get_jwks_client_creates_client(self):
+        """_get_jwks_client creates a PyJWKClient."""
+        settings = Settings(jwt_jwks_url="https://example.com/jwks")
+        validator = JWTValidator(settings)
+
+        with patch("nthlayer.api.auth.PyJWKClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            result = validator._get_jwks_client()
+
+        mock_client_class.assert_called_once_with("https://example.com/jwks")
+        assert result == mock_client
+
+    def test_get_jwks_client_caches_client(self):
+        """_get_jwks_client caches the PyJWKClient."""
+        settings = Settings(jwt_jwks_url="https://example.com/jwks")
+        validator = JWTValidator(settings)
+
+        with patch("nthlayer.api.auth.PyJWKClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            # Call twice
+            result1 = validator._get_jwks_client()
+            result2 = validator._get_jwks_client()
+
+        # Should only create once
+        mock_client_class.assert_called_once()
+        assert result1 == result2
 
     @pytest.mark.asyncio
     async def test_validate_token_success(self):
@@ -88,64 +87,48 @@ class TestJWTValidator:
         )
         validator = JWTValidator(settings)
 
-        # Mock the JWKS
-        mock_jwks = {"keys": [{"kid": "test-kid", "kty": "RSA", "n": "xxx", "e": "AQAB"}]}
-        validator._jwks = mock_jwks
+        # Mock the JWKS client and jwt.decode
+        mock_signing_key = MagicMock()
+        mock_signing_key.key = "test-key"
 
-        # Mock jwt functions
-        with patch.object(jwt, "get_unverified_header") as mock_header:
-            with patch.object(jwt, "decode") as mock_decode:
-                mock_header.return_value = {"kid": "test-kid"}
+        mock_jwks_client = MagicMock()
+        mock_jwks_client.get_signing_key_from_jwt.return_value = mock_signing_key
+
+        with patch.object(validator, "_get_jwks_client", return_value=mock_jwks_client):
+            with patch("nthlayer.api.auth.jwt.decode") as mock_decode:
                 mock_decode.return_value = {"sub": "user123", "email": "user@example.com"}
 
                 result = await validator.validate_token("valid-token")
 
         assert result["sub"] == "user123"
         assert result["email"] == "user@example.com"
+        mock_jwks_client.get_signing_key_from_jwt.assert_called_once_with("valid-token")
+        mock_decode.assert_called_once_with(
+            "valid-token",
+            "test-key",
+            algorithms=["RS256"],
+            audience="test-audience",
+            issuer="https://issuer",
+        )
 
     @pytest.mark.asyncio
-    async def test_validate_token_key_not_found(self):
-        """validate_token raises 401 when key not in JWKS."""
+    async def test_validate_token_invalid_token_error(self):
+        """validate_token raises 401 on InvalidTokenError."""
         settings = Settings(
             jwt_jwks_url="https://example.com/jwks",
             jwt_issuer="https://issuer",
         )
         validator = JWTValidator(settings)
 
-        # Mock JWKS with different key
-        mock_jwks = {"keys": [{"kid": "different-kid"}]}
-        validator._jwks = mock_jwks
+        mock_jwks_client = MagicMock()
+        mock_jwks_client.get_signing_key_from_jwt.side_effect = InvalidTokenError("Token expired")
 
-        with patch.object(jwt, "get_unverified_header") as mock_header:
-            mock_header.return_value = {"kid": "unknown-kid"}
-
+        with patch.object(validator, "_get_jwks_client", return_value=mock_jwks_client):
             with pytest.raises(HTTPException) as exc_info:
-                await validator.validate_token("token-with-unknown-key")
+                await validator.validate_token("expired-token")
 
         assert exc_info.value.status_code == 401
         assert "Invalid authentication credentials" in str(exc_info.value.detail)
-
-    @pytest.mark.asyncio
-    async def test_validate_token_jwt_error(self):
-        """validate_token raises 401 on JWTError."""
-        settings = Settings(
-            jwt_jwks_url="https://example.com/jwks",
-            jwt_issuer="https://issuer",
-        )
-        validator = JWTValidator(settings)
-        validator._jwks = {"keys": [{"kid": "test-kid"}]}
-
-        with patch.object(jwt, "get_unverified_header") as mock_header:
-            with patch.object(jwt, "decode") as mock_decode:
-                from jose import JWTError
-
-                mock_header.return_value = {"kid": "test-kid"}
-                mock_decode.side_effect = JWTError("Token expired")
-
-                with pytest.raises(HTTPException) as exc_info:
-                    await validator.validate_token("expired-token")
-
-        assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_validate_token_integration_with_get_current_user(self):
