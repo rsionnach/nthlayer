@@ -119,11 +119,11 @@ If unsure, defer to Future Considerations.
 - `nthlayer slo collect` - Real-time Prometheus queries (stateless)
 - Blame deferred until CI/CD integration
 
-### Phase 2.5: Loki Integration (📋 PLANNED)
+### Phase 2.5: Loki Integration (✅ DONE)
 **Goal:** Complete observability with logs (same Grafana ecosystem)
-- `trellis-loki-epic`: Loki/LogQL integration
-- `trellis-loki-alerts`: Generate LogQL alert rules from service.yaml
-- `trellis-loki-templates`: Technology-specific log patterns (PostgreSQL, Redis, Kafka)
+- `nthlayer generate-loki-alerts` - Generate LogQL alert rules from service.yaml
+- Technology-specific log patterns (PostgreSQL, Redis, Kafka)
+- Full test coverage in `tests/test_loki.py`
 
 ### Phase 3: SLO Portfolio (✅ DONE)
 **Goal:** Stateless, cross-service SLO aggregation for CI/CD pipelines
