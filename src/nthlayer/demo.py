@@ -26,6 +26,7 @@ from nthlayer.cli.blast_radius import (
 )
 from nthlayer.cli.deps import handle_deps_command, register_deps_parser
 from nthlayer.cli.drift import handle_drift_command, register_drift_parser
+from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
@@ -776,6 +777,9 @@ def build_parser() -> argparse.ArgumentParser:
     register_deps_parser(subparsers)
     register_blast_radius_parser(subparsers)
 
+    # Ownership command
+    register_ownership_parser(subparsers)
+
     return parser
 
 
@@ -1148,5 +1152,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "blast-radius":
         sys.exit(handle_blast_radius_command(args))
+
+    if args.command == "ownership":
+        sys.exit(handle_ownership_command(args))
 
     parser.print_help()

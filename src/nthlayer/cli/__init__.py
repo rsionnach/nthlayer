@@ -15,6 +15,7 @@ from nthlayer.cli.environments import (
 )
 from nthlayer.cli.generate import generate_slo_command
 from nthlayer.cli.init import init_command
+from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.pagerduty import setup_pagerduty_command
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.recording_rules import generate_recording_rules_command
@@ -43,4 +44,7 @@ __all__ = [
     # Portfolio commands
     "handle_portfolio_command",
     "register_portfolio_parser",
+    # Ownership commands
+    "handle_ownership_command",
+    "register_ownership_parser",
 ]

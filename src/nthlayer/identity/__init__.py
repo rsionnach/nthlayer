@@ -13,6 +13,14 @@ from nthlayer.identity.normalizer import (
     extract_service_name,
     normalize_service_name,
 )
+from nthlayer.identity.ownership import (
+    DEFAULT_CONFIDENCE,
+    OwnershipAttribution,
+    OwnershipResolver,
+    OwnershipSignal,
+    OwnershipSource,
+    create_demo_attribution,
+)
 from nthlayer.identity.resolver import IdentityResolver
 
 __all__ = [
@@ -27,4 +35,11 @@ __all__ = [
     "DEFAULT_RULES",
     # Resolver
     "IdentityResolver",
+    # Ownership
+    "OwnershipSource",
+    "OwnershipSignal",
+    "OwnershipAttribution",
+    "OwnershipResolver",
+    "DEFAULT_CONFIDENCE",
+    "create_demo_attribution",
 ]
