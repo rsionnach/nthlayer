@@ -114,7 +114,7 @@ def print_plan_json(plan: PlanResult) -> None:
         "errors": plan.errors,
         "success": plan.success,
     }
-    print(json.dumps(output, indent=2))
+    print(json.dumps(output, indent=2, sort_keys=True))
 
 
 def plan_command(
