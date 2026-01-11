@@ -204,6 +204,13 @@ class ServiceOrchestrator:
         # Detect what resources to generate (uses cached detector)
         resource_types = self._get_detector().detect()
 
+        # Warn if no resources detected
+        if not resource_types:
+            result.errors.append(
+                "No resources detected. Service YAML may be missing SLO, "
+                "Dependencies, Observability, or PagerDuty resources."
+            )
+
         # Plan each resource type
         try:
             if "slos" in resource_types:
@@ -248,7 +255,20 @@ class ServiceOrchestrator:
         assert self.output_dir is not None
 
         result = ApplyResult(service_name=self.service_name, output_dir=self.output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create output directory and verify writability
+        try:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            # Verify directory is writable by attempting to create a test file
+            test_file = self.output_dir / ".nthlayer_write_test"
+            test_file.touch()
+            test_file.unlink()
+        except OSError as e:
+            return ApplyResult(
+                service_name=self.service_name,
+                output_dir=self.output_dir,
+                errors=[f"Output directory not writable: {e}"],
+            )
 
         # Get filtered resource types
         resource_types = self._get_filtered_resources(skip, only)
