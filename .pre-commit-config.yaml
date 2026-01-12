@@ -43,7 +43,7 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: pytest tests/ --ignore=tests/integration/ -x -q --tb=short
+        entry: uv run pytest tests/ --ignore=tests/integration/ -x -q --tb=short
         language: system
         pass_filenames: false
         stages: [pre-push]
@@ -51,7 +51,7 @@ repos:
 
       - id: self-check
         name: self-check (validate spec)
-        entry: nthlayer validate-spec examples/services/checkout-service.yaml
+        entry: uv run nthlayer validate-spec examples/services/checkout-service.yaml
         language: system
         pass_filenames: false
         stages: [pre-push]

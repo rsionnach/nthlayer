@@ -64,10 +64,12 @@ format: ## Format code
 typecheck: ## Run type checking
 	uv run mypy src/
 
-pre-commit-install: ## Install pre-commit hooks
+pre-commit-install: ## Install pre-commit and pre-push hooks
 	uv pip install pre-commit
 	uv run pre-commit install
+	uv run pre-commit install --hook-type pre-push
 	@echo "✅ Pre-commit hooks installed. Linting will run automatically on commit."
+	@echo "✅ Pre-push hooks installed. Tests will run automatically before push."
 
 pre-commit-run: ## Run pre-commit on all files
 	uv run pre-commit run --all-files
@@ -116,7 +118,7 @@ clean: ## Clean up Python cache files
 	find . -type f -name ".coverage" -delete
 
 # Full setup
-setup: dev-up install-dev migrate ## Complete setup: start services, install deps, run migrations
+setup: dev-up install-dev migrate pre-commit-install ## Complete setup: start services, install deps, run migrations, install hooks
 	@echo ""
 	@echo "🎉 Setup complete!"
 	@echo ""
