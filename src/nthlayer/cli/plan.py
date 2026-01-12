@@ -112,6 +112,7 @@ def print_plan_json(plan: PlanResult) -> None:
         "resources": plan.resources,
         "total_resources": plan.total_resources,
         "errors": plan.errors,
+        "warnings": plan.warnings,
         "success": plan.success,
     }
     print(json.dumps(output, indent=2, sort_keys=True))

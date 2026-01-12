@@ -47,6 +47,7 @@ class PlanResult:
     service_yaml: Path
     resources: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
     @property
     def total_resources(self) -> int:
@@ -204,9 +205,9 @@ class ServiceOrchestrator:
         # Detect what resources to generate (uses cached detector)
         resource_types = self._get_detector().detect()
 
-        # Warn if no resources detected
+        # Warn if no resources detected (non-fatal)
         if not resource_types:
-            result.errors.append(
+            result.warnings.append(
                 "No resources detected. Service YAML may be missing SLO, "
                 "Dependencies, Observability, or PagerDuty resources."
             )
