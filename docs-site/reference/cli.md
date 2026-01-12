@@ -184,6 +184,109 @@ Exit codes:
 - `1` = Optional metrics missing (warning)
 - `2` = Critical SLO metrics missing (block)
 
+### validate-slo
+
+Validate that SLO metrics exist in Prometheus.
+
+```bash
+nthlayer validate-slo <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env ENVIRONMENT` | Environment name |
+| `--format FORMAT` | Output: table, json |
+| `--prometheus-url URL` | Prometheus server URL |
+| `--demo` | Show demo output |
+
+Exit codes:
+- `0` = All SLO metrics exist
+- `1` = Some metrics missing
+- `2` = Critical metrics missing
+
+### deps
+
+Show service dependencies from multiple sources.
+
+```bash
+nthlayer deps <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env ENVIRONMENT` | Environment name |
+| `--format FORMAT` | Output: table, json, dot |
+| `--depth N` | Traversal depth (default: 1) |
+| `--providers LIST` | Providers: backstage, k8s, prometheus |
+| `--demo` | Show demo output |
+
+### blast-radius
+
+Calculate deployment blast radius and affected services.
+
+```bash
+nthlayer blast-radius <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env ENVIRONMENT` | Environment name |
+| `--format FORMAT` | Output: table, json |
+| `--depth N` | Traversal depth (default: 2) |
+| `--demo` | Show demo output |
+
+Exit codes:
+- `0` = Low risk (< 5 affected)
+- `1` = Medium risk (5-15 affected)
+- `2` = High risk (> 15 affected)
+
+### ownership
+
+Resolve service ownership from multiple sources.
+
+```bash
+nthlayer ownership <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env ENVIRONMENT` | Environment name |
+| `--format FORMAT` | Output: table, json |
+| `--backstage-url URL` | Backstage catalog URL |
+| `--pagerduty-token TOKEN` | PagerDuty API token |
+| `--demo` | Show demo output |
+
+### identity
+
+Service identity resolution and management.
+
+```bash
+nthlayer identity <subcommand> [options]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `resolve NAME` | Resolve service to canonical name |
+| `list` | List known service identities |
+| `normalize NAME` | Show normalization steps |
+| `add-mapping ALIAS CANONICAL` | Add identity mapping |
+
+### drift
+
+Analyze reliability drift for a service.
+
+```bash
+nthlayer drift <service.yaml> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env ENVIRONMENT` | Environment name |
+| `--format FORMAT` | Output: table, json |
+| `--prometheus-url URL` | Prometheus server URL |
+| `--baseline PERIOD` | Baseline period (default: 30d) |
+| `--demo` | Show demo output |
+
 ### check-deploy
 
 Check deployment gate based on error budget.
