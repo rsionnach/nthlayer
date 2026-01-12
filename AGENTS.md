@@ -119,11 +119,11 @@ If unsure, defer to Future Considerations.
 - `nthlayer slo collect` - Real-time Prometheus queries (stateless)
 - Blame deferred until CI/CD integration
 
-### Phase 2.5: Loki Integration (📋 PLANNED)
+### Phase 2.5: Loki Integration (✅ DONE)
 **Goal:** Complete observability with logs (same Grafana ecosystem)
-- `trellis-loki-epic`: Loki/LogQL integration
-- `trellis-loki-alerts`: Generate LogQL alert rules from service.yaml
-- `trellis-loki-templates`: Technology-specific log patterns (PostgreSQL, Redis, Kafka)
+- `nthlayer generate-loki-alerts` - Generate LogQL alert rules from service.yaml
+- Technology-specific log patterns (PostgreSQL, Redis, Kafka)
+- Full test coverage in `tests/test_loki.py`
 
 ### Phase 3: SLO Portfolio (✅ DONE)
 **Goal:** Stateless, cross-service SLO aggregation for CI/CD pipelines
@@ -451,22 +451,19 @@ git commit -m "..."  # Do not commit to main directly
 
 **Release Process (uses Trusted Publishing - no tokens needed):**
 
+**Required before releasing:**
+1. Update version in `pyproject.toml` (e.g., `"0.1.0a1"` → `"0.1.0a2"`)
+2. **Update `CHANGELOG.md`** - This is mandatory. Include all features, fixes, and breaking changes since last release.
+
 ```bash
-# 1. Update version in pyproject.toml
-# Example: "0.1.0a1" → "0.1.0a2"
-
-# 2. Update CHANGELOG.md with changes
-
-# 3. Commit and tag
+# Commit, tag, and push
 git add pyproject.toml CHANGELOG.md
 git commit -m "release: vX.Y.Z"
 git tag -a vX.Y.Z -m "Release vX.Y.Z - description"
-
-# 4. Push to GitHub
 git push origin develop
 git push origin vX.Y.Z
 
-# 5. Create GitHub Release (triggers PyPI publish)
+# Create GitHub Release (triggers PyPI publish)
 gh release create vX.Y.Z --title "vX.Y.Z - Title" --notes "Release notes here"
 ```
 

@@ -100,7 +100,7 @@ def generate_dashboard_command(
         log(f"   Panels: {panel_count}")
         log("")
 
-        json_str = json.dumps(dashboard_json, indent=2)
+        json_str = json.dumps(dashboard_json, indent=2, sort_keys=True)
 
         if dry_run:
             # Print JSON to stdout (always print for dry run)

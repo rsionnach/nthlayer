@@ -87,6 +87,12 @@ nav:
     - Deployment Gates: commands/check-deploy.md
     - Drift Detection: commands/drift.md
     - SLO Portfolio: commands/portfolio.md
+  - Dependencies:
+    - nthlayer deps: commands/deps.md
+    - Blast Radius: commands/blast-radius.md
+    - Ownership: commands/ownership.md
+    - Identity: commands/identity.md
+    - Validate SLO: commands/validate-slo.md
   - Integrations:
     - CI/CD Pipelines: integrations/cicd.md
     - Prometheus: integrations/prometheus.md
@@ -102,10 +108,13 @@ nav:
     - Service Specs: concepts/service-specs.md
     - SLOs & Error Budgets: concepts/slos.md
   - Reference:
+    - Commands Overview: commands/index.md
     - Service YAML Schema: reference/service-yaml.md
     - Technology Templates: reference/technology-templates.md
     - CLI Reference: reference/cli.md
     - Environment Management: commands/environments.md
+    - SLO Management: commands/slo.md
+    - Configuration: commands/config.md
     - Architecture: architecture.md
 
 extra:

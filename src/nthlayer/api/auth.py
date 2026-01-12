@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import jwt
 import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import jwt
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError
 

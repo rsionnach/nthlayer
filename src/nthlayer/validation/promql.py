@@ -15,7 +15,7 @@ Usage:
         result = lint_alerts_file("generated/payment-api/alerts.yaml")
         if not result.passed:
             for issue in result.issues:
-                print(f"{issue.severity}: {issue.message}")
+                print(f"{issue.severity.value}: {issue.message}")
 """
 
 import re
@@ -25,12 +25,31 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Union
 
+from nthlayer.validation.metadata import Severity
+
+
+def _pint_severity_to_enum(pint_severity: str) -> Severity:
+    """Convert pint severity string to Severity enum.
+
+    pint uses: Bug, Warning, Information, Fatal
+    We normalize to: ERROR, WARNING, INFO
+    """
+    mapping = {
+        "bug": Severity.ERROR,
+        "fatal": Severity.ERROR,
+        "error": Severity.ERROR,
+        "warning": Severity.WARNING,
+        "information": Severity.INFO,
+        "info": Severity.INFO,
+    }
+    return mapping.get(pint_severity.lower(), Severity.WARNING)
+
 
 @dataclass
 class LintIssue:
     """A single linting issue from pint."""
 
-    severity: str  # "Bug", "Warning", "Information"
+    severity: Severity  # Unified severity enum
     rule_name: str  # Name of the alert/recording rule
     check: str  # pint check that failed (e.g., "promql/syntax")
     message: str  # Human-readable description
@@ -39,12 +58,12 @@ class LintIssue:
     @property
     def is_error(self) -> bool:
         """Return True if this is a blocking error."""
-        return self.severity.lower() in ("bug", "fatal", "error")
+        return self.severity == Severity.ERROR
 
     @property
     def is_warning(self) -> bool:
         """Return True if this is a warning."""
-        return self.severity.lower() == "warning"
+        return self.severity == Severity.WARNING
 
 
 @dataclass
@@ -137,7 +156,7 @@ class PintLinter:
                 file_path=file_path,
                 issues=[
                     LintIssue(
-                        severity="Information",
+                        severity=Severity.INFO,
                         rule_name="",
                         check="pint/not-installed",
                         message=(
@@ -154,7 +173,7 @@ class PintLinter:
                 file_path=file_path,
                 issues=[
                     LintIssue(
-                        severity="Bug",
+                        severity=Severity.ERROR,
                         rule_name="",
                         check="file/not-found",
                         message=f"File not found: {file_path}",
@@ -198,7 +217,7 @@ class PintLinter:
                 file_path=file_path,
                 issues=[
                     LintIssue(
-                        severity="Bug",
+                        severity=Severity.ERROR,
                         rule_name="",
                         check="pint/timeout",
                         message="pint timed out after 60 seconds",
@@ -211,7 +230,7 @@ class PintLinter:
                 file_path=file_path,
                 issues=[
                     LintIssue(
-                        severity="Bug",
+                        severity=Severity.ERROR,
                         rule_name="",
                         check="pint/error",
                         message=f"pint failed: {e}",
@@ -241,7 +260,7 @@ class PintLinter:
         for match in pattern.finditer(output):
             issues.append(
                 LintIssue(
-                    severity=match.group("severity"),
+                    severity=_pint_severity_to_enum(match.group("severity")),
                     rule_name=match.group("rule") or "",
                     check=match.group("check") or match.group("check2") or "unknown",
                     message=match.group("message").strip(),
@@ -257,9 +276,9 @@ class PintLinter:
                 line = line.strip()
                 if line and not line.startswith("level="):
                     # Determine severity from content
-                    severity = "Warning"
+                    severity = Severity.WARNING
                     if "error" in line.lower() or "fatal" in line.lower():
-                        severity = "Bug"
+                        severity = Severity.ERROR
 
                     issues.append(
                         LintIssue(

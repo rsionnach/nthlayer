@@ -103,7 +103,7 @@ def print_apply_json(result: ApplyResult) -> None:
         "errors": result.errors,
         "success": result.success,
     }
-    print(json.dumps(output, indent=2))
+    print(json.dumps(output, indent=2, sort_keys=True))
 
 
 def apply_command(

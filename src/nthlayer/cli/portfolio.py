@@ -73,7 +73,7 @@ def portfolio_command(
         output = portfolio.to_dict()
         if drift_results:
             output["drift"] = {name: r.to_dict() for name, r in drift_results.items()}
-        print(json.dumps(output, indent=2))
+        print(json.dumps(output, indent=2, sort_keys=True))
     elif format == "csv":
         _print_csv(portfolio, drift_results)
     elif format == "markdown":

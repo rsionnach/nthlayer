@@ -27,6 +27,8 @@ from nthlayer.cli.blast_radius import (
 from nthlayer.cli.deps import handle_deps_command, register_deps_parser
 from nthlayer.cli.drift import handle_drift_command, register_drift_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
+from nthlayer.cli.identity import handle_identity_command, register_identity_parser
+from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
@@ -34,6 +36,10 @@ from nthlayer.cli.ux import print_banner
 from nthlayer.cli.validate_metadata import (
     handle_validate_metadata_command,
     register_validate_metadata_parser,
+)
+from nthlayer.cli.validate_slo import (
+    handle_validate_slo_command,
+    register_validate_slo_parser,
 )
 from nthlayer.cli.validate_spec import (
     handle_validate_spec_command,
@@ -776,6 +782,15 @@ def build_parser() -> argparse.ArgumentParser:
     register_deps_parser(subparsers)
     register_blast_radius_parser(subparsers)
 
+    # Ownership command
+    register_ownership_parser(subparsers)
+
+    # Identity command
+    register_identity_parser(subparsers)
+
+    # Validate SLO command
+    register_validate_slo_parser(subparsers)
+
     return parser
 
 
@@ -1148,5 +1163,14 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "blast-radius":
         sys.exit(handle_blast_radius_command(args))
+
+    if args.command == "ownership":
+        sys.exit(handle_ownership_command(args))
+
+    if args.command == "identity":
+        sys.exit(handle_identity_command(args))
+
+    if args.command == "validate-slo":
+        sys.exit(handle_validate_slo_command(args))
 
     parser.print_help()

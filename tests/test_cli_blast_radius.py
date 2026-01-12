@@ -2,7 +2,6 @@
 
 import json
 
-
 from nthlayer.cli.blast_radius import blast_radius_command, handle_blast_radius_command
 
 
@@ -80,17 +79,26 @@ tier: standard
         assert "Blast Radius" in captured.out
 
     def test_no_prometheus_url(self, capsys, tmp_path, monkeypatch):
-        """Test error when no Prometheus URL provided."""
+        """Test error when Prometheus provider is selected but no URL provided."""
         # Clear env var
         monkeypatch.delenv("NTHLAYER_PROMETHEUS_URL", raising=False)
 
         service_file = tmp_path / "service.yaml"
-        service_file.write_text("name: test-service\ntier: standard\n")
+        service_file.write_text(
+            """
+service:
+  name: test-service
+  team: platform
+  tier: standard
+  type: api
+"""
+        )
 
         exit_code = blast_radius_command(
             service_file=str(service_file),
             prometheus_url=None,
             demo=False,
+            provider="prometheus",  # Explicitly require prometheus
         )
 
         assert exit_code == 2

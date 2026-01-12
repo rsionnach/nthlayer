@@ -8,6 +8,7 @@ from nthlayer.validation import (
     LintIssue,
     LintResult,
     PintLinter,
+    Severity,
     is_pint_available,
     lint_alerts_file,
 )
@@ -17,21 +18,22 @@ class TestLintIssue:
     """Tests for LintIssue dataclass."""
 
     def test_is_error_bug(self):
-        issue = LintIssue(severity="Bug", rule_name="test", check="test", message="test")
+        issue = LintIssue(severity=Severity.ERROR, rule_name="test", check="test", message="test")
         assert issue.is_error is True
         assert issue.is_warning is False
 
     def test_is_error_fatal(self):
-        issue = LintIssue(severity="Fatal", rule_name="test", check="test", message="test")
+        # Fatal maps to ERROR in the unified Severity enum
+        issue = LintIssue(severity=Severity.ERROR, rule_name="test", check="test", message="test")
         assert issue.is_error is True
 
     def test_is_warning(self):
-        issue = LintIssue(severity="Warning", rule_name="test", check="test", message="test")
+        issue = LintIssue(severity=Severity.WARNING, rule_name="test", check="test", message="test")
         assert issue.is_error is False
         assert issue.is_warning is True
 
     def test_is_information(self):
-        issue = LintIssue(severity="Information", rule_name="test", check="test", message="test")
+        issue = LintIssue(severity=Severity.INFO, rule_name="test", check="test", message="test")
         assert issue.is_error is False
         assert issue.is_warning is False
 
@@ -48,7 +50,7 @@ class TestLintResult:
     def test_passed_with_warnings(self):
         result = LintResult(
             file_path=Path("test.yaml"),
-            issues=[LintIssue(severity="Warning", rule_name="", check="", message="warn")],
+            issues=[LintIssue(severity=Severity.WARNING, rule_name="", check="", message="warn")],
         )
         assert result.passed is True
         assert result.error_count == 0
@@ -57,7 +59,7 @@ class TestLintResult:
     def test_failed_with_error(self):
         result = LintResult(
             file_path=Path("test.yaml"),
-            issues=[LintIssue(severity="Bug", rule_name="", check="", message="error")],
+            issues=[LintIssue(severity=Severity.ERROR, rule_name="", check="", message="error")],
         )
         assert result.passed is False
         assert result.error_count == 1
@@ -69,7 +71,7 @@ class TestLintResult:
     def test_summary_warnings(self):
         result = LintResult(
             file_path=Path("test.yaml"),
-            issues=[LintIssue(severity="Warning", rule_name="", check="", message="warn")],
+            issues=[LintIssue(severity=Severity.WARNING, rule_name="", check="", message="warn")],
         )
         assert "1 warnings" in result.summary()
 
@@ -77,8 +79,8 @@ class TestLintResult:
         result = LintResult(
             file_path=Path("test.yaml"),
             issues=[
-                LintIssue(severity="Bug", rule_name="", check="", message="error"),
-                LintIssue(severity="Warning", rule_name="", check="", message="warn"),
+                LintIssue(severity=Severity.ERROR, rule_name="", check="", message="error"),
+                LintIssue(severity=Severity.WARNING, rule_name="", check="", message="warn"),
             ],
         )
         assert "1 errors" in result.summary()

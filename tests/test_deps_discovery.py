@@ -1,7 +1,6 @@
 """Tests for dependency discovery module."""
 
 import pytest
-
 from nthlayer.dependencies import (
     BlastRadiusResult,
     DependencyDirection,
