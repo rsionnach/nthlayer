@@ -21,5 +21,5 @@ NthLayer: Reliability at build time, not incident time. Validate production read
 ## Releases
 - PyPI uses trusted publisher (no token needed)
 - Create a GitHub release → triggers `.github/workflows/release.yml` → auto-publishes to PyPI
-- Version must be updated in both `pyproject.toml` and `src/nthlayer/demo.py`
+- Version is defined **only** in `pyproject.toml` (single source of truth via importlib.metadata)
 - **CHANGELOG.md must be updated** before every release with all changes since the last release

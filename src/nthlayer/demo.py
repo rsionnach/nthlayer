@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import os
 import sys
+from importlib.metadata import version as get_version
 from typing import Any, Sequence
 
 import structlog
@@ -48,8 +49,8 @@ from nthlayer.cli.validate_spec import (
 from nthlayer.cli.verify import handle_verify_command, register_verify_parser
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 
-# Version - keep in sync with pyproject.toml
-__version__ = "0.1.0a10"
+# Version from package metadata (single source of truth: pyproject.toml)
+__version__ = get_version("nthlayer")
 
 logger = structlog.get_logger()
 

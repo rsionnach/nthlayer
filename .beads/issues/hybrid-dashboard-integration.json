@@ -3,9 +3,15 @@
   "type": "feature",
   "title": "Week 1: Integrate metric discovery with dashboard generation",
   "description": "Build hybrid generator that validates panels against discovered metrics before creation. Target: reduce fix rate from 51% to <10%.",
-  "status": "in_progress",
+  "status": "completed",
   "priority": "P0",
   "parent": "metric-discovery-epic",
-  "tags": ["dashboard-generation", "validation", "week1"],
-  "created_at": "2025-12-02T21:00:00Z"
+  "tags": ["dashboard-generation", "validation", "week1", "completed"],
+  "created_at": "2025-12-02T21:00:00Z",
+  "completed_at": "2026-01-08T00:00:00Z",
+  "deliverables": [
+    "validator.py (7KB) - metric validation before panel creation",
+    "sdk_adapter.py (17KB) - converts NthLayer abstractions to SDK builders",
+    "builder_sdk.py (28KB) - Grafana Foundation SDK integration"
+  ]
 }
