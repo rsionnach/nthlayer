@@ -135,7 +135,7 @@ class RecordingRuleBuilder:
         # Error budget remaining (as ratio)
         rules.append(
             RecordingRule(
-                record="slo:error_budget:ratio",
+                record="slo:error_budget_remaining:ratio",
                 expr=(
                     f'1 - ((1 - slo:availability:ratio{{service="{service}",slo="{slo_name}"}}) / '
                     f"(1 - {objective / 100}))"

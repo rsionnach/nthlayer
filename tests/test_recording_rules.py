@@ -161,7 +161,7 @@ class TestRecordingRuleBuilder:
         assert "slo:requests_total:30d" in rule_names
         assert "slo:requests_success:30d" in rule_names
         assert "slo:availability:ratio" in rule_names
-        assert "slo:error_budget:ratio" in rule_names
+        assert "slo:error_budget_remaining:ratio" in rule_names
 
     def test_latency_slo_rules(self):
         """Test that latency SLO generates correct rules."""

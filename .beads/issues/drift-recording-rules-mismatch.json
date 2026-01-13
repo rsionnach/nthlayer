@@ -1,0 +1,18 @@
+{
+  "id": "drift-recording-rules-mismatch",
+  "type": "bug",
+  "title": "Drift analyzer and recording rule generator use different metric names",
+  "description": "generate-recording-rules created slo:error_budget:ratio but drift analyzer queried for slo:error_budget_remaining:ratio. Tools were incompatible.",
+  "status": "completed",
+  "priority": "P1",
+  "tags": ["bug", "compatibility", "drift", "recording-rules", "fixed"],
+  "created_at": "2026-01-13T22:00:00Z",
+  "completed_at": "2026-01-13T22:30:00Z",
+  "discovered_during": "UAT testing on Synology stack",
+  "affected_files": [
+    "src/nthlayer/recording_rules/builder.py:138",
+    "tests/test_recording_rules.py:164",
+    "documentation/OBSERVABILITY.md"
+  ],
+  "resolution": "Changed recording rule generator to output slo:error_budget_remaining:ratio to match drift analyzer expectations. Updated tests and documentation."
+}
