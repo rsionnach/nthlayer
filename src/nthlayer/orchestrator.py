@@ -148,11 +148,16 @@ class ServiceOrchestrator:
     }
 
     def __init__(
-        self, service_yaml: Path, env: Optional[str] = None, push_to_grafana: bool = False
+        self,
+        service_yaml: Path,
+        env: Optional[str] = None,
+        push_to_grafana: bool = False,
+        prometheus_url: Optional[str] = None,
     ):
         self.service_yaml = service_yaml
         self.env = env
         self.push_to_grafana = push_to_grafana
+        self.prometheus_url = prometheus_url
         self.service_def: Optional[Dict[str, Any]] = None
         self.service_name: Optional[str] = None
         self.output_dir: Optional[Path] = None
@@ -495,6 +500,7 @@ class ServiceOrchestrator:
             dry_run=False,
             full_panels=False,
             quiet=True,
+            prometheus_url=self.prometheus_url,
         )
 
         # If push to Grafana is enabled, use the provider

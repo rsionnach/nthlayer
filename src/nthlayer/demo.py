@@ -476,6 +476,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Validate generated alerts with pint (requires pint to be installed)",
     )
+    apply_parser.add_argument(
+        "--prometheus-url",
+        "-p",
+        help="Prometheus URL for metric discovery (or set NTHLAYER_PROMETHEUS_URL)",
+    )
 
     # === EXISTING COMMANDS ===
 
@@ -658,6 +663,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dashboard_parser.add_argument(
         "--full", action="store_true", help="Include all template panels (default: overview only)"
+    )
+    dashboard_parser.add_argument(
+        "--prometheus-url",
+        "-p",
+        help="Prometheus URL for metric discovery (or set NTHLAYER_PROMETHEUS_URL)",
     )
 
     # Recording rules generation
@@ -855,6 +865,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "apply":
         from nthlayer.cli.apply import apply_command
 
+        prom_url = getattr(args, "prometheus_url", None) or os.environ.get(
+            "NTHLAYER_PROMETHEUS_URL"
+        )
         sys.exit(
             apply_command(
                 service_yaml=args.service_yaml,
@@ -869,6 +882,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 push_grafana=args.push_grafana,
                 push_ruler=getattr(args, "push_ruler", False),
                 lint=args.lint,
+                prometheus_url=prom_url,
             )
         )
 
@@ -1083,6 +1097,11 @@ def main(argv: Sequence[str] | None = None) -> None:
             auto_detect=getattr(args, "auto_env", False),
         )
 
+        # Get Prometheus URL from args or environment
+        prom_url = getattr(args, "prometheus_url", None) or os.environ.get(
+            "NTHLAYER_PROMETHEUS_URL"
+        )
+
         sys.exit(
             generate_dashboard_command(
                 args.service_file,
@@ -1090,6 +1109,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 environment=env,
                 dry_run=args.dry_run,
                 full_panels=getattr(args, "full", False),
+                prometheus_url=prom_url,
             )
         )
 

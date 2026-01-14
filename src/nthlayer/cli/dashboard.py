@@ -18,6 +18,7 @@ def generate_dashboard_command(
     dry_run: bool = False,
     full_panels: bool = False,
     quiet: bool = False,
+    prometheus_url: Optional[str] = None,
 ) -> int:
     """Generate Grafana dashboard from service specification.
 
@@ -28,6 +29,7 @@ def generate_dashboard_command(
         dry_run: Print dashboard JSON without writing file
         full_panels: Include all template panels (default: overview only)
         quiet: Suppress output (for use in orchestrator)
+        prometheus_url: Optional Prometheus URL for metric discovery
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -77,7 +79,11 @@ def generate_dashboard_command(
             log("   Mode: Full panels (all templates)")
         else:
             log("   Mode: Overview panels (key metrics)")
-        dashboard = build_dashboard(context, resources, full_panels=full_panels)
+        if prometheus_url:
+            log(f"   Discovery: {prometheus_url}")
+        dashboard = build_dashboard(
+            context, resources, full_panels=full_panels, prometheus_url=prometheus_url
+        )
 
         # Dashboard is now a dict from SDK builder
         if isinstance(dashboard, dict):
