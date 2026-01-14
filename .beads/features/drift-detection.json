@@ -1,0 +1,82 @@
+{
+  "id": "drift-detection",
+  "type": "feature",
+  "title": "Service Reliability Drift Detection Engine",
+  "description": "Trend analysis to detect gradual SLO degradation before burn-rate alerts fire. Queries historical metrics, calculates trend slopes, projects budget exhaustion, and integrates with CI/CD pipelines.",
+  "status": "implemented",
+  "priority": "P0",
+  "tags": ["feature", "drift", "slo", "monitoring", "cicd"],
+  "created_at": "2026-01-14T00:00:00Z",
+  "specification_file": "DRIFT_DETECTION_SPEC.md",
+  "target_release": "v0.2.0",
+  "specification_summary": {
+    "total_lines": 1138,
+    "sections": [
+      "Architecture",
+      "Service Specification Extension",
+      "Data Models (DriftResult, DriftPattern, DriftSeverity)",
+      "Prometheus Queries",
+      "Core Analysis Logic",
+      "CLI Interface",
+      "CI/CD Integration"
+    ]
+  },
+  "key_features": [
+    {
+      "name": "Trend Analysis",
+      "description": "Linear regression on error budget over time window",
+      "outputs": ["slope_per_week", "r_squared (fit quality)", "current_budget"]
+    },
+    {
+      "name": "Pattern Detection",
+      "patterns": [
+        "stable - No significant trend",
+        "gradual_decline - Slow, steady degradation",
+        "gradual_improvement - Slow recovery",
+        "step_change_down - Sudden drop",
+        "step_change_up - Sudden improvement",
+        "volatile - High variance"
+      ]
+    },
+    {
+      "name": "Budget Projection",
+      "outputs": ["days_until_exhaustion", "projected_budget_30d", "projected_budget_60d", "confidence"]
+    },
+    {
+      "name": "Severity Classification",
+      "levels": ["none", "info", "warn", "critical"],
+      "exit_codes": {"0": "OK", "1": "Warning", "2": "Critical (block deploy)"}
+    },
+    {
+      "name": "CLI Commands",
+      "commands": [
+        "nthlayer drift <service> - Analyze drift",
+        "nthlayer check-deploy --include-drift - Deployment gate",
+        "nthlayer portfolio --drift - Org-wide view"
+      ]
+    },
+    {
+      "name": "Tier-Based Defaults",
+      "tiers": {
+        "critical": {"warn": "-0.2%/week", "critical": "-0.5%/week", "exhaustion_critical": "14d"},
+        "standard": {"warn": "-0.5%/week", "critical": "-1.0%/week", "exhaustion_critical": "7d"},
+        "low": {"warn": "-1.0%/week", "critical": "-2.0%/week", "exhaustion_critical": "3d"}
+      }
+    }
+  ],
+  "implementation_status": "Complete - drift analyzer, CLI commands, and recording rules implemented",
+  "affected_files": [
+    "src/nthlayer/drift/analyzer.py",
+    "src/nthlayer/drift/models.py",
+    "src/nthlayer/drift/patterns.py",
+    "src/nthlayer/cli/drift.py",
+    "src/nthlayer/cli/check_deploy.py",
+    "src/nthlayer/cli/portfolio.py"
+  ],
+  "acceptance_criteria": [
+    "nthlayer drift outputs trend analysis with severity",
+    "check-deploy --include-drift blocks on critical drift",
+    "portfolio --drift shows org-wide drift status",
+    "Exit codes work correctly for CI/CD integration"
+  ]
+}
