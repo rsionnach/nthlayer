@@ -5,6 +5,7 @@ demo walkthroughs, and command dispatch.
 """
 
 import argparse
+from importlib.metadata import version as get_version
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,6 +31,29 @@ from nthlayer.demo import (
     run_grafana_demo,
 )
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
+
+
+class TestVersion:
+    """Tests for version consistency."""
+
+    def test_version_uses_package_metadata(self):
+        """Verify __version__ is read from package metadata, not hardcoded."""
+        from nthlayer.demo import __version__
+
+        package_version = get_version("nthlayer")
+        assert __version__ == package_version, (
+            f"demo.__version__ ({__version__}) does not match package metadata "
+            f"({package_version}). Version should be read from importlib.metadata."
+        )
+
+    def test_version_format_is_valid(self):
+        """Verify version follows PEP 440 format."""
+        from nthlayer.demo import __version__
+
+        # Basic check that version contains expected components
+        assert __version__, "Version should not be empty"
+        # Should start with a digit (e.g., "0.1.0a12")
+        assert __version__[0].isdigit(), f"Version should start with digit: {__version__}"
 
 
 class TestDefaultOrgId:

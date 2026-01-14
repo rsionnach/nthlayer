@@ -41,15 +41,17 @@ bd blocked
 bd dep tree trellis-rpv
 ```
 
-## Current Tasks
+## Completed Milestones
 
-**Epic: Live Demo Infrastructure (trellis-rpv)**
+**Epic: Metric Discovery Integration (metric-discovery-epic)** ✅ Completed Jan 2026
 
-1. ✅ Deploy Fly.io app (trellis-02u) - CLOSED
-2. 🔄 Configure Grafana Cloud scraping (trellis-948) - IN PROGRESS
-3. ⏳ Import dashboard to Grafana (trellis-oh2) - BLOCKED by #2
-4. ⏳ Enable GitHub Pages (trellis-tl4) - BLOCKED by #3
-5. ⏳ Update placeholder URLs (trellis-4f7) - BLOCKED by #3 and #4
+- ✅ Prometheus metric discovery prototype
+- ✅ Metric classification by technology
+- ✅ Dashboard validation infrastructure (Week 1)
+- ✅ Grafana Foundation SDK integration (Week 2)
+- ✅ SDK adapter for type-safe dashboard generation
+
+**Current Release: v0.1.0a12** (Phase 2 - Dependency Intelligence)
 
 ## Files
 

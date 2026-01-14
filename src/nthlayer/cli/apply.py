@@ -119,6 +119,7 @@ def apply_command(
     push_grafana: bool = False,
     push_ruler: bool = False,
     lint: bool = False,
+    prometheus_url: Optional[str] = None,
 ) -> int:
     """
     Generate all resources for a service.
@@ -136,6 +137,7 @@ def apply_command(
         push_grafana: Push dashboard to Grafana Cloud
         push_ruler: Push alerts to Mimir/Cortex Ruler API
         lint: Validate generated alerts with pint
+        prometheus_url: Prometheus URL for metric discovery
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -145,7 +147,9 @@ def apply_command(
         return plan_command(service_yaml, env=env, verbose=verbose)
 
     # Create orchestrator
-    orchestrator = ServiceOrchestrator(Path(service_yaml), env=env, push_to_grafana=push_grafana)
+    orchestrator = ServiceOrchestrator(
+        Path(service_yaml), env=env, push_to_grafana=push_grafana, prometheus_url=prometheus_url
+    )
 
     # Override output directory if specified
     if output_dir:

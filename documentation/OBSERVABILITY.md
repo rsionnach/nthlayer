@@ -245,7 +245,7 @@ groups:
       slo: availability
       objective: '99.95'
 
-  - record: slo:error_budget:ratio
+  - record: slo:error_budget_remaining:ratio
     expr: 1 - ((1 - slo:availability:ratio) / (1 - 0.9995))
     labels:
       service: payment-api
@@ -316,7 +316,7 @@ Recording rules follow Prometheus naming conventions:
 Examples:
 - slo:availability:ratio
 - slo:latency:ratio
-- slo:error_budget:ratio
+- slo:error_budget_remaining:ratio
 - service:http_requests:rate5m
 - service:http_errors:rate5m
 ```

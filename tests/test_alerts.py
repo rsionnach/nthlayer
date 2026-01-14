@@ -287,3 +287,219 @@ def test_list_available_technologies():
     # Should include postgres, redis, etc.
     assert "postgres" in techs
     assert len(techs) > 10
+
+
+# --- Alert Validation Tests ---
+
+
+class TestPromQLLabelExtraction:
+    """Tests for PromQL label extraction from expressions."""
+
+    def test_by_clause_extracts_labels(self):
+        """Test that by() clause labels are extracted."""
+        from nthlayer.alerts.validator import extract_promql_output_labels
+
+        expr = "sum by (namespace, datname) (pg_stat_database_xact_rollback)"
+        labels = extract_promql_output_labels(expr)
+
+        assert labels == {"namespace", "datname"}
+
+    def test_without_clause_marks_removed(self):
+        """Test that without() clause marks labels as removed."""
+        from nthlayer.alerts.validator import extract_promql_output_labels
+
+        expr = "count without (instance, job) (redis_connected_slaves)"
+        labels = extract_promql_output_labels(expr)
+
+        # Should return negative markers for removed labels
+        assert labels == {"!instance", "!job"}
+
+    def test_bare_aggregation_returns_empty(self):
+        """Test that bare aggregation (no by/without) returns empty set."""
+        from nthlayer.alerts.validator import extract_promql_output_labels
+
+        expr = "count(redis_instance_info{role='master'})"
+        labels = extract_promql_output_labels(expr)
+
+        assert labels == set()
+
+    def test_no_aggregation_returns_none(self):
+        """Test that no aggregation returns None (all labels preserved)."""
+        from nthlayer.alerts.validator import extract_promql_output_labels
+
+        expr = "pg_up == 0"
+        labels = extract_promql_output_labels(expr)
+
+        assert labels is None
+
+    def test_multiple_by_clauses(self):
+        """Test expressions with multiple by() clauses."""
+        from nthlayer.alerts.validator import extract_promql_output_labels
+
+        expr = "sum by (a) (x) / sum by (b, c) (y)"
+        labels = extract_promql_output_labels(expr)
+
+        assert labels == {"a", "b", "c"}
+
+
+class TestAnnotationLabelExtraction:
+    """Tests for extracting label references from annotations."""
+
+    def test_extracts_label_references(self):
+        """Test extraction of {{ $labels.xxx }} patterns."""
+        from nthlayer.alerts.validator import extract_annotation_label_refs
+
+        annotations = {
+            "summary": "Alert on {{ $labels.instance }}",
+            "description": "Service {{ $labels.service }} has {{ $labels.job }} issue",
+        }
+
+        labels = extract_annotation_label_refs(annotations)
+        assert labels == {"instance", "service", "job"}
+
+    def test_no_labels_returns_empty(self):
+        """Test annotations with no label references."""
+        from nthlayer.alerts.validator import extract_annotation_label_refs
+
+        annotations = {
+            "summary": "Static alert message",
+            "description": "Value is {{ $value }}",
+        }
+
+        labels = extract_annotation_label_refs(annotations)
+        assert labels == set()
+
+
+class TestAlertValidation:
+    """Tests for alert validation and fixing."""
+
+    def test_fixes_invalid_label_reference_by_clause(self):
+        """Test fixing invalid label reference when by() removes it."""
+        alert = AlertRule(
+            name="PostgresqlHighRollbackRate",
+            expr="sum by (namespace, datname) (pg_stat_database_xact_rollback) > 0.02",
+            duration="0m",
+            severity="warning",
+            annotations={
+                "summary": "High rollback rate (instance {{ $labels.instance }})",
+                "description": "Database {{ $labels.datname }} has issues",
+            },
+            technology="postgres",
+        )
+
+        fixed, result = alert.validate_and_fix()
+
+        # Should have issues
+        assert not result.is_valid
+        assert len(result.issues) > 0
+        assert len(result.fixes_applied) > 0
+
+        # instance should be removed, datname should remain
+        assert "{{ $labels.instance }}" not in fixed.annotations["summary"]
+        assert "{{ $labels.datname }}" in fixed.annotations["description"]
+
+    def test_fixes_invalid_label_reference_without_clause(self):
+        """Test fixing invalid label when without() removes it."""
+        alert = AlertRule(
+            name="RedisDisconnectedSlaves",
+            expr="count without (instance, job) (redis_connected_slaves) > 0",
+            duration="0m",
+            severity="warning",
+            annotations={
+                "summary": "Redis disconnected (instance {{ $labels.instance }})",
+            },
+            technology="redis",
+        )
+
+        fixed, result = alert.validate_and_fix()
+
+        # Should detect and fix instance label
+        assert not result.is_valid
+        assert "{{ $labels.instance }}" not in fixed.annotations["summary"]
+
+    def test_fixes_zero_duration(self):
+        """Test fixing 'for: 0m' duration."""
+        alert = AlertRule(
+            name="TestAlert",
+            expr="up == 0",
+            duration="0m",
+            severity="critical",
+            annotations={"summary": "Test"},
+            technology="postgres",
+        )
+
+        fixed, result = alert.validate_and_fix()
+
+        # Should fix duration
+        assert "1m" == fixed.duration
+        assert any("for" in fix for fix in result.fixes_applied)
+
+    def test_preserves_valid_alert(self):
+        """Test that valid alerts are not modified."""
+        alert = AlertRule(
+            name="PostgresqlDown",
+            expr="pg_up == 0",
+            duration="5m",
+            severity="critical",
+            annotations={
+                "summary": "Postgresql down (instance {{ $labels.instance }})",
+            },
+            technology="postgres",
+        )
+
+        fixed, result = alert.validate_and_fix()
+
+        # No aggregation = all labels preserved, valid duration
+        assert result.is_valid
+        assert len(result.fixes_applied) == 0
+        assert fixed.annotations == alert.annotations
+        assert fixed.duration == alert.duration
+
+    def test_fixes_bare_aggregation_label_refs(self):
+        """Test fixing labels when bare aggregation removes all."""
+        alert = AlertRule(
+            name="RedisMissingMaster",
+            expr="count(redis_instance_info{role='master'}) < 1",
+            duration="5m",
+            severity="critical",
+            annotations={
+                "summary": "Redis missing master (instance {{ $labels.instance }})",
+            },
+            technology="redis",
+        )
+
+        fixed, result = alert.validate_and_fix()
+
+        # count() removes all labels
+        assert not result.is_valid
+        assert "{{ $labels.instance }}" not in fixed.annotations["summary"]
+
+
+class TestAlertValidationIntegration:
+    """Integration tests for alert validation in generation pipeline."""
+
+    def test_generated_alerts_are_validated(self, tmp_path):
+        """Test that generated alerts go through validation."""
+        from nthlayer.generators.alerts import generate_alerts_for_service
+
+        service_file = tmp_path / "test-service.yaml"
+        service_file.write_text("""
+service:
+  name: test-api
+  team: test
+  tier: critical
+  type: api
+
+resources:
+  - kind: Dependencies
+    name: upstream
+    spec:
+      databases:
+        - type: postgres
+""")
+
+        alerts = generate_alerts_for_service(service_file)
+
+        # All alerts should have safe duration (not 0m)
+        for alert in alerts:
+            assert alert.duration != "0m", f"Alert {alert.name} has unsafe duration"
