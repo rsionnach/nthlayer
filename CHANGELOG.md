@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.0a13 (January 14, 2026)
+
+### Alert Template Sync & Bug Fixes
+
+This release adds automated alert template synchronization from the awesome-prometheus-alerts community repository, plus several bug fixes.
+
+#### New Features
+
+- **Alert Template Sync** - Automated synchronization from [awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts)
+  - `scripts/sync_awesome_alerts.py` - Sync script with auto-fix for common template bugs
+  - New `AlertValidator` class for template validation and repair
+  - Fixes label references, syntax issues, and common template errors
+  - GitHub Action workflow for scheduled sync (`.github/workflows/sync-awesome-alerts.yml`)
+
+#### Bug Fixes
+
+- **Dashboard generation** - Fix `$service` variable replacement (now uses actual service name)
+- **CLI** - Add `--prometheus-url` option to dashboard commands
+- **Recording rules** - Align metric name with drift analyzer expectations
+- **CLI version** - Use `importlib.metadata` for single source of truth
+
+#### Internal
+
+- Migrated issue tracking to proper `bd` CLI workflow
+- Updated CLAUDE.md with beads usage documentation
+
+---
+
 ## v0.1.0a12 (January 12, 2026)
 
 ### Phase 2 Complete: Dependency Intelligence & Service Discovery
