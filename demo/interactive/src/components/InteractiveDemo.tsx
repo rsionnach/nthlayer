@@ -52,30 +52,31 @@ export function InteractiveDemo() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-950">
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-6xl h-[700px] flex flex-col rounded-xl overflow-hidden shadow-2xl border border-gray-800">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">N</span>
+      <header className="flex items-center justify-between px-6 py-4 bg-gray-900 border-b border-gray-800">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-lg">N</span>
             </div>
-            <span className="text-white font-semibold">NthLayer</span>
+            <span className="text-white font-semibold text-lg">NthLayer</span>
           </div>
-          <span className="text-gray-500 text-sm hidden sm:inline">Interactive Demo</span>
+          <span className="text-gray-400 text-base hidden sm:inline">Interactive Demo</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleReset}
-            className="px-3 py-1.5 text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+            className="px-4 py-2 text-base text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
           >
             Reset
           </button>
           <a
-            href="https://github.com/rob-fox-consulting/trellis"
+            href="https://github.com/rsionnach/nthlayer"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3 py-1.5 text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded transition-colors hidden sm:inline-block"
+            className="px-4 py-2 text-base text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors hidden sm:inline-block"
           >
             GitHub
           </a>
@@ -86,7 +87,7 @@ export function InteractiveDemo() {
       <div className="flex md:hidden border-b border-gray-800">
         <button
           onClick={() => setActiveTab('editor')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-3 text-base font-medium transition-colors ${
             activeTab === 'editor'
               ? 'text-white bg-gray-800 border-b-2 border-blue-500'
               : 'text-gray-400 hover:text-gray-200'
@@ -96,7 +97,7 @@ export function InteractiveDemo() {
         </button>
         <button
           onClick={() => setActiveTab('terminal')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-3 text-base font-medium transition-colors ${
             activeTab === 'terminal'
               ? 'text-white bg-gray-800 border-b-2 border-blue-500'
               : 'text-gray-400 hover:text-gray-200'
@@ -107,15 +108,15 @@ export function InteractiveDemo() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden bg-gray-900">
         {/* Editor panel - Desktop: always visible, Mobile: tab-controlled */}
         <div
-          className={`w-full md:w-1/2 flex flex-col border-r border-gray-800 ${
+          className={`w-full md:w-1/2 flex flex-col border-r border-gray-700 ${
             activeTab === 'editor' ? 'block' : 'hidden md:flex'
           }`}
         >
-          <div className="px-4 py-2 bg-gray-900 border-b border-gray-800">
-            <span className="text-gray-400 text-sm font-medium">service.yaml</span>
+          <div className="px-4 py-3 bg-gray-800 border-b border-gray-700">
+            <span className="text-gray-300 text-base font-medium">service.yaml</span>
           </div>
           <div className="flex-1">
             <Editor
@@ -126,13 +127,14 @@ export function InteractiveDemo() {
               theme="vs-dark"
               options={{
                 minimap: { enabled: false },
-                fontSize: 14,
+                fontSize: 16,
                 lineNumbers: 'on',
                 scrollBeyondLastLine: false,
                 wordWrap: 'on',
                 tabSize: 2,
                 automaticLayout: true,
                 padding: { top: 16 },
+                lineHeight: 24,
               }}
             />
           </div>
@@ -149,8 +151,8 @@ export function InteractiveDemo() {
       </div>
 
       {/* Footer */}
-      <footer className="px-4 py-2 bg-gray-900 border-t border-gray-800">
-        <p className="text-gray-500 text-xs text-center">
+      <footer className="px-4 py-3 bg-gray-900 border-t border-gray-800">
+        <p className="text-gray-400 text-sm text-center">
           Reliability at build time, not incident time.{' '}
           <a
             href="https://nthlayer.dev"
@@ -162,6 +164,7 @@ export function InteractiveDemo() {
           </a>
         </p>
       </footer>
+      </div>
     </div>
   );
 }

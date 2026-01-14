@@ -206,17 +206,17 @@ Suggestions:
 
   return (
     <div
-      className="h-full bg-gray-900 rounded-lg flex flex-col font-mono text-sm cursor-text"
+      className="h-full bg-gray-900 rounded-lg flex flex-col font-mono text-base cursor-text"
       onClick={handleContainerClick}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-t-lg border-b border-gray-700">
-        <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-500" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500" />
-          <div className="w-3 h-3 rounded-full bg-green-500" />
+      <div className="flex items-center gap-2 px-4 py-3 bg-gray-800 rounded-t-lg border-b border-gray-700">
+        <div className="flex gap-2">
+          <div className="w-3.5 h-3.5 rounded-full bg-red-500" />
+          <div className="w-3.5 h-3.5 rounded-full bg-yellow-500" />
+          <div className="w-3.5 h-3.5 rounded-full bg-green-500" />
         </div>
-        <span className="text-gray-400 text-xs ml-2">nthlayer terminal</span>
+        <span className="text-gray-400 text-sm ml-2">nthlayer terminal</span>
       </div>
 
       {/* Output area */}
@@ -253,13 +253,13 @@ Suggestions:
 
       {/* Suggestions bar */}
       {suggestions.length > 0 && (
-        <div className="px-4 py-2 bg-gray-800 border-t border-gray-700">
-          <div className="text-xs text-gray-500 mb-1">Try:</div>
+        <div className="px-4 py-3 bg-gray-800 border-t border-gray-700">
+          <div className="text-sm text-gray-500 mb-2">Try:</div>
           <div className="flex flex-wrap gap-2">
             {suggestions.map((suggestion, i) => (
               <button
                 key={i}
-                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
                 onClick={() => {
                   setInput(suggestion);
                   inputRef.current?.focus();
@@ -274,8 +274,8 @@ Suggestions:
 
       {/* Tab completions */}
       {tabCompletions.length > 1 && (
-        <div className="px-4 py-2 bg-gray-800 border-t border-gray-700">
-          <div className="text-xs text-gray-500">
+        <div className="px-4 py-3 bg-gray-800 border-t border-gray-700">
+          <div className="text-sm text-gray-500">
             Tab completions: {tabCompletions.map((c, i) => (
               <span key={i} className={i === tabIndex ? 'text-green-400' : 'text-gray-400'}>
                 {c}{i < tabCompletions.length - 1 ? ', ' : ''}
@@ -286,8 +286,8 @@ Suggestions:
       )}
 
       {/* Input area */}
-      <div className="flex items-center px-4 py-3 bg-gray-800 rounded-b-lg border-t border-gray-700">
-        <span className="text-green-400 mr-2">$</span>
+      <div className="flex items-center px-4 py-4 bg-gray-800 rounded-b-lg border-t border-gray-700">
+        <span className="text-green-400 mr-2 text-lg">$</span>
         <input
           ref={inputRef}
           type="text"
@@ -295,7 +295,7 @@ Suggestions:
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={isProcessing}
-          className="flex-1 bg-transparent text-gray-300 outline-none placeholder-gray-600"
+          className="flex-1 bg-transparent text-gray-300 outline-none placeholder-gray-600 text-base"
           placeholder="Type a command..."
           autoComplete="off"
           spellCheck={false}
