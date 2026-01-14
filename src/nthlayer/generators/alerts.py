@@ -216,9 +216,19 @@ def generate_alerts_for_service(
                 for alert in filtered
             ]
 
-            all_alerts.extend(customized)
-            stats[dep] = len(customized)
-            print(f"   ✓ {dep}: {len(customized)} alerts")
+            # Validate and fix common issues (label mismatches, missing 'for' duration)
+            validated = []
+            fixes_count = 0
+            for alert in customized:
+                fixed_alert, result = alert.validate_and_fix()
+                validated.append(fixed_alert)
+                if result.fixes_applied:
+                    fixes_count += 1
+
+            all_alerts.extend(validated)
+            stats[dep] = len(validated)
+            fix_info = f" ({fixes_count} fixed)" if fixes_count else ""
+            print(f"   ✓ {dep}: {len(validated)} alerts{fix_info}")
 
         except Exception as e:
             print(f"   ❌ {dep}: Error loading alerts - {e}")

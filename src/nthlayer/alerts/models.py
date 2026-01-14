@@ -4,8 +4,13 @@ Alert Rule Models
 Data models for representing alerting rules.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
+
+if TYPE_CHECKING:
+    from .validator import ValidationResult
 
 
 @dataclass
@@ -143,6 +148,27 @@ class AlertRule:
         down_keywords = ["down", "unavailable", "unreachable", "offline"]
         name_lower = self.name.lower()
         return any(keyword in name_lower for keyword in down_keywords)
+
+    def validate_and_fix(self) -> tuple["AlertRule", "ValidationResult"]:
+        """
+        Validate alert and fix common issues from upstream templates.
+
+        Fixes:
+        1. Label references in annotations that don't exist in PromQL output
+        2. 'for: 0m' duration changed to minimum safe value (1m)
+
+        Returns:
+            Tuple of (fixed AlertRule, ValidationResult with issues and fixes)
+
+        Example:
+            alert = AlertRule.from_dict(data)
+            fixed_alert, result = alert.validate_and_fix()
+            if result.fixes_applied:
+                print(f"Applied fixes: {result.fixes_applied}")
+        """
+        from .validator import validate_and_fix_alert
+
+        return validate_and_fix_alert(self)
 
     def __repr__(self) -> str:
         return (

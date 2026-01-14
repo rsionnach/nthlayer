@@ -1,0 +1,45 @@
+{
+  "id": "alert-template-label-mismatch",
+  "type": "bug",
+  "title": "Generated alerts reference non-existent labels in annotation templates",
+  "description": "Pint linting reveals that several awesome-prometheus-alerts templates have bugs where PromQL aggregations remove labels that are then referenced in annotation templates ({{ $labels.instance }}). This causes empty/missing values in alert annotations.",
+  "status": "resolved",
+  "resolved_at": "2026-01-14T00:00:00Z",
+  "resolution": "Added post-processing validation in src/nthlayer/alerts/validator.py that parses PromQL to extract available labels and fixes invalid label references in annotations",
+  "priority": "P2",
+  "tags": ["bug", "alerts", "pint", "awesome-prometheus-alerts"],
+  "created_at": "2026-01-14T00:00:00Z",
+  "discovered_during": "UAT pint linting of generated alerts",
+  "source": "awesome-prometheus-alerts templates",
+  "affected_alerts": [
+    {
+      "name": "MongodbReplicationHeadroom",
+      "issue": "sum(avg(...)) removes all labels, but template uses {{ $labels.instance }}",
+      "file": "generated/alerts/analytics-stream.yaml:47-81"
+    },
+    {
+      "name": "RedisDisconnectedSlaves",
+      "issue": "count without (instance, job) removes instance label, but template uses {{ $labels.instance }}",
+      "file": "generated/alerts/analytics-stream.yaml:129-164"
+    },
+    {
+      "name": "RedisMissingMaster",
+      "issue": "count() removes all labels, but template uses {{ $labels.instance }}",
+      "file": "generated/alerts/payment-api-with-deps.yaml:204-238"
+    },
+    {
+      "name": "PostgresqlHighRollbackRate",
+      "issue": "sum by (namespace, datname) excludes instance, but template uses {{ $labels.instance }}",
+      "file": "generated/alerts/payment-api-with-deps.yaml:107-144"
+    }
+  ],
+  "root_cause": "Upstream awesome-prometheus-alerts templates have inconsistent label handling between PromQL expressions and annotation templates",
+  "proposed_fix": [
+    "Option 1: Fork/patch upstream templates with corrected label handling",
+    "Option 2: Add post-processing step to validate/fix label references",
+    "Option 3: Use info/relabel metrics to preserve labels through aggregations",
+    "Option 4: Remove $labels.instance from templates where aggregation strips it"
+  ],
+  "pint_rule": "alerts/template",
+  "severity_from_pint": "Bug"
+}

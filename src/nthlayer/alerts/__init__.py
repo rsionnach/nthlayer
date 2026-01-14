@@ -12,5 +12,6 @@ Features:
 
 from .loader import AlertTemplateLoader
 from .models import AlertRule
+from .validator import ValidationResult, validate_and_fix_alert
 
-__all__ = ["AlertRule", "AlertTemplateLoader"]
+__all__ = ["AlertRule", "AlertTemplateLoader", "ValidationResult", "validate_and_fix_alert"]
