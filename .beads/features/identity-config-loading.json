@@ -1,0 +1,56 @@
+{
+  "id": "identity-config-loading",
+  "type": "feature",
+  "title": "Identity resolver needs config/discovery loading support",
+  "description": "The IdentityResolver class has register() and add_mapping() methods but no way to persist or load identities from external sources. In non-demo mode, resolver is created empty. The add-mapping CLI command is in-memory only.",
+  "status": "open",
+  "priority": "P2",
+  "tags": ["feature", "identity", "configuration"],
+  "created_at": "2026-01-14T00:00:00Z",
+  "discovered_during": "UAT testing - needed identity mappings for testing",
+  "affected_files": [
+    "src/nthlayer/cli/identity.py",
+    "src/nthlayer/identity/resolver.py"
+  ],
+  "current_behavior": [
+    "Demo mode uses hardcoded identities in create_demo_identities()",
+    "Non-demo mode creates empty IdentityResolver()",
+    "add-mapping command is in-memory only per session",
+    "No persistence or loading mechanism exists"
+  ],
+  "proposed_implementation": [
+    {
+      "option": "Config file loading",
+      "description": "Add --identity-config <file> flag to load identities from YAML",
+      "example_config": {
+        "identities": [
+          {
+            "canonical_name": "payment-api",
+            "aliases": ["payments", "payment-service"],
+            "external_ids": {"backstage": "component:default/payment-api"},
+            "attributes": {"team": "payments-team", "tier": "critical"}
+          }
+        ],
+        "mappings": [
+          {"raw": "legacy-payments", "canonical": "payment-api"}
+        ]
+      }
+    },
+    {
+      "option": "Backstage discovery",
+      "description": "Auto-discover identities from Backstage catalog when --backstage-url provided",
+      "details": "Read component entities and build identities from metadata annotations"
+    },
+    {
+      "option": "service.yaml section",
+      "description": "Add identity_mappings section to service.yaml",
+      "example": "identity:\n  canonical_name: payment-api\n  aliases: [payments, pay-api]\n  external_ids:\n    backstage: component:default/payment-api"
+    }
+  ],
+  "acceptance_criteria": [
+    "nthlayer identity list (without --demo) shows loaded identities",
+    "nthlayer identity resolve <name> works with loaded identities",
+    "Mappings persist across CLI invocations",
+    "Backstage integration discovers identities from catalog"
+  ]
+}
