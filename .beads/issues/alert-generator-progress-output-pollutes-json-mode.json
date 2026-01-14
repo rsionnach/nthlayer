@@ -1,0 +1,12 @@
+{
+  "id": "alert-generator-progress-output-pollutes-json-mode",
+  "type": "bug",
+  "title": "Alert generator progress output pollutes JSON mode",
+  "description": "BUG: When using output_format='json' for plan/apply commands, the alert generator in generators/alerts.py prints progress messages to stdout (\ud83d\udcca Loading alerts..., \u2713 postgresql: 15 alerts, etc.) which mixes with JSON output, making it unparseable. The JSON starts after progress messages instead of at character 0. Discovered during test coverage work. Files: src/nthlayer/generators/alerts.py (lines 184-220 print statements). Fix: Add quiet parameter to generate_alerts_for_service() or redirect progress to stderr when caller specifies JSON output.",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-06T12:00:00Z",
+  "updated_at": "2026-01-06T12:00:00Z",
+  "legacy_id": "trellis-alert-json-output"
+}

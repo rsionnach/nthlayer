@@ -1,0 +1,22 @@
+{
+  "id": "conversational-spec-generation",
+  "type": "feature",
+  "title": "Conversational spec generation",
+  "description": "Chat-based service.yaml creation. Examples: 'Create a critical payment API with PostgreSQL and Redis', 'Add Kafka dependency and set latency SLO to 200ms'. Validates against schema, suggests best practices. Works with MCP server or standalone.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T17:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.473099Z",
+  "legacy_id": "trellis-ai-spec-gen",
+  "dependencies": [
+    "trellis-mcp-server"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Phase 5 - Conversational spec generation (AI)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

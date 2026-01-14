@@ -1,0 +1,24 @@
+{
+  "id": "configure-grafana-cloud-to-scrape-fly-io-metrics",
+  "type": "task",
+  "title": "Configure Grafana Cloud to scrape Fly.io metrics",
+  "description": "Need to add scrape job in Grafana Cloud to pull metrics from https://nthlayer-demo.fly.dev/metrics. Metrics endpoint verified working.",
+  "status": "closed",
+  "priority": "P0",
+  "tags": [],
+  "created_at": "2025-12-01T17:07:18.772704Z",
+  "updated_at": "2025-12-01T22:19:01.600047Z",
+  "legacy_id": "trellis-948",
+  "closed_at": "2025-12-01T22:19:01.600047Z",
+  "dependencies": [
+    "trellis-02u",
+    "trellis-cte"
+  ],
+  "comments": [
+    {
+      "author": "robfox",
+      "text": "Added Basic Auth to Fly.io /metrics endpoint. Username: nthlayer, password in METRICS_PASSWORD secret. App deployed. Ready to configure Grafana Cloud Metrics Endpoint integration. See demo/GRAFANA_CLOUD_SETUP.md",
+      "date": "2025-12-01T21:45:42Z"
+    }
+  ]
+}

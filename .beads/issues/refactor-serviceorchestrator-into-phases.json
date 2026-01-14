@@ -1,0 +1,15 @@
+{
+  "id": "refactor-serviceorchestrator-into-phases",
+  "type": "task",
+  "title": "Refactor ServiceOrchestrator into phases",
+  "description": "Architecture: 700-line _apply() method is monolithic. Audit: 01-plan-apply.md. Split into 4 phases: PlanBuilder, ExecutionEngine, ResourceRegistry, ResultCollector. Extract provider-specific logic to separate modules. Files: src/nthlayer/orchestrator.py.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-04T12:00:00Z",
+  "legacy_id": "trellis-ch-orchestrator-refactor",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

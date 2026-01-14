@@ -1,0 +1,16 @@
+{
+  "id": "rich-styling-for-pagerduty-command",
+  "type": "task",
+  "title": "Rich styling for pagerduty command",
+  "description": "Added styled setup output with colored status indicators.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-07T22:00:00Z",
+  "updated_at": "2025-12-08T21:46:16.273761Z",
+  "legacy_id": "trellis-cli-ux-pagerduty",
+  "closed_at": "2025-12-08T22:00:00Z",
+  "dependencies": [
+    "trellis-cli-ux-core"
+  ]
+}

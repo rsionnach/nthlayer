@@ -1,0 +1,19 @@
+{
+  "id": "backstage-developer-portal-integration",
+  "type": "epic",
+  "title": "Backstage Developer Portal Integration",
+  "description": "Integration with Backstage (89% IDP market share). Two phases: 1) Catalog reader - sync service metadata from Backstage API (optional enrichment), 2) Full plugin - display SLO status, error budgets, deployment gate status in service pages. Backstage remains optional - NthLayer works standalone Day 1.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-12T12:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.475253Z",
+  "legacy_id": "trellis-backstage-epic",
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Backstage integration (distribution channel)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "hybrid-catalog-mode",
+  "type": "feature",
+  "title": "Hybrid catalog mode",
+  "description": "Combine catalog metadata with local overrides. Example: catalog_source: backstage, overrides: { tier: 1 }. Local YAML takes precedence over catalog values.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T16:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.48658Z",
+  "legacy_id": "trellis-hybrid-mode",
+  "dependencies": [
+    "trellis-backstage-read"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Hybrid catalog mode (optional)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

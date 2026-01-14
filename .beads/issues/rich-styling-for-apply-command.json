@@ -1,0 +1,16 @@
+{
+  "id": "rich-styling-for-apply-command",
+  "type": "task",
+  "title": "Rich styling for apply command",
+  "description": "Added rich console output to nthlayer apply with colored success/error indicators.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-07T21:30:00Z",
+  "updated_at": "2025-12-08T21:46:16.270563Z",
+  "legacy_id": "trellis-cli-ux-apply",
+  "closed_at": "2025-12-08T22:00:00Z",
+  "dependencies": [
+    "trellis-cli-ux-core"
+  ]
+}

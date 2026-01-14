@@ -1,0 +1,13 @@
+{
+  "id": "cardinality-analysis-in-discovery",
+  "type": "feature",
+  "title": "Cardinality Analysis in Discovery",
+  "description": "Add cardinality analysis to metric discovery:\n\n1. nthlayer analyze command for cardinality report\n2. Warn on high-cardinality metrics (>1000 series)\n3. PromQL queries for top cardinality offenders\n4. Generate cardinality dashboard panels\n5. Integration with trellis-discovery-enhance\n\nEffort: 1 week\nPriority: P2",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-04T15:00:00Z",
+  "updated_at": "2025-12-04T15:00:00Z",
+  "legacy_id": "trellis-cardinality",
+  "closed_at": "2025-12-04T15:15:30.318772Z"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "build-reliability-scorecard-calculator",
+  "type": "task",
+  "title": "Build reliability scorecard calculator",
+  "description": "Per-service scores (0-100): SLO compliance (40%), incident count (30%), deploy success rate (20%), error budget remaining (10%). Team aggregation, 30d/90d trends.",
+  "status": "open",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:21.406514Z",
+  "updated_at": "2025-12-01T21:20:21.406514Z",
+  "legacy_id": "trellis-0gr",
+  "dependencies": [
+    "trellis-tt3",
+    "trellis-ygb"
+  ],
+  "comments": [
+    {
+      "author": "roadmap-prune",
+      "text": "Deferred: Reliability scorecard nice-to-have",
+      "date": "2025-12-05T11:10:36Z"
+    }
+  ]
+}

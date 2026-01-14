@@ -1,0 +1,15 @@
+{
+  "id": "exporter-generation-nthlayer-exporters",
+  "type": "feature",
+  "title": "Exporter Generation (nthlayer exporters)",
+  "description": "Generate Prometheus exporter deployment manifests from service.yaml dependencies. Supports Kubernetes, Docker Compose, Helm, and Prometheus scrape configs. Extended dependency schema with exporter config (host, port, secret). Closes the gap between nthlayer verify failing and user manually configuring exporters.",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-20T15:00:00Z",
+  "updated_at": "2025-12-20T15:00:00Z",
+  "legacy_id": "trellis-exporters-gen",
+  "dependencies": [
+    "trellis-7pw"
+  ]
+}

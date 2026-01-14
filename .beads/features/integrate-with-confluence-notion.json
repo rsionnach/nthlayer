@@ -1,0 +1,22 @@
+{
+  "id": "integrate-with-confluence-notion",
+  "type": "feature",
+  "title": "Integrate with Confluence/Notion",
+  "description": "Auto-publish documentation to Confluence or Notion (API integration), keep in sync with Git sources (CI/CD job), organize by service hierarchy.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:25.23684Z",
+  "updated_at": "2025-12-22T11:18:07.467219Z",
+  "legacy_id": "trellis-9nc",
+  "dependencies": [
+    "trellis-l40"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Confluence/Notion integration",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

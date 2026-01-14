@@ -1,0 +1,16 @@
+{
+  "id": "implement-openslo-parser-and-validator",
+  "type": "task",
+  "title": "Implement OpenSLO parser and validator",
+  "description": "Load SLO definitions from YAML files, validate against OpenSLO spec (v1alpha), store in database. Support time-slicing and occurrence-based SLOs.",
+  "status": "closed",
+  "priority": "P0",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:19.855568Z",
+  "updated_at": "2025-12-22T11:18:07.508115Z",
+  "legacy_id": "trellis-z6x",
+  "closed_at": "2025-12-22T11:17:25.605021Z",
+  "dependencies": [
+    "trellis-3h6"
+  ]
+}

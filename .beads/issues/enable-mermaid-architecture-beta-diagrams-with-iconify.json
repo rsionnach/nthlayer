@@ -1,0 +1,13 @@
+{
+  "id": "enable-mermaid-architecture-beta-diagrams-with-iconify",
+  "type": "task",
+  "title": "Enable Mermaid architecture-beta diagrams with Iconify icons on docs site",
+  "description": "Configured mkdocs-material to render Mermaid architecture-beta diagrams with Iconify icons (logos: and mdi: prefixes).\n\nKey changes:\n- mkdocs.yml: Use mermaid-raw class to prevent auto-processing\n- docs-site/javascripts/mermaid-config.js: Load and register Iconify icon packs\n- Pre-load icons before mermaid.run() to ensure availability\n- Transform pre.mermaid-raw > code to div.mermaid for rendering\n\nIcons render on docs site only (requires JS execution). GitHub markdown shows raw syntax.\n\nDiagrams updated:\n- docs-site/architecture.md (7 diagrams with tech stack docs)\n- AGENTS.md (Three Layers diagram)",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-20T14:00:00Z",
+  "updated_at": "2025-12-20T15:00:00Z",
+  "legacy_id": "trellis-mermaid-icons",
+  "closed_at": "2025-12-20T15:00:00Z"
+}

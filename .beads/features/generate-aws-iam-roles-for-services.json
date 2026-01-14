@@ -1,0 +1,22 @@
+{
+  "id": "generate-aws-iam-roles-for-services",
+  "type": "feature",
+  "title": "Generate AWS IAM roles for services",
+  "description": "Auto-provision least-privilege IAM roles (based on dependencies: S3, DynamoDB, SQS), policy templates, service account mapping (EKS IRSA).",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:23.433908Z",
+  "updated_at": "2025-12-22T11:18:07.491083Z",
+  "legacy_id": "trellis-oi0",
+  "dependencies": [
+    "trellis-yv6"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Out of scope: AWS IAM roles (Terraform/CDK domain)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

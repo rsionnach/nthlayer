@@ -1,0 +1,16 @@
+{
+  "id": "consul-dependency-provider",
+  "type": "feature",
+  "title": "Consul dependency provider",
+  "description": "Discover service dependencies from Consul service catalog. Query /v1/catalog/services and /v1/health/service endpoints. Extract upstream/downstream from service mesh intentions and connect sidecar proxies. Support ACL tokens for authentication. Confidence: 0.90 for explicit intentions, 0.80 for connect proxy discovery.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-09T12:00:00Z",
+  "updated_at": "2026-01-09T21:38:38.024392Z",
+  "legacy_id": "trellis-deps-consul",
+  "closed_at": "2026-01-09T21:37:59.997419Z",
+  "dependencies": [
+    "trellis-deps-backstage"
+  ]
+}

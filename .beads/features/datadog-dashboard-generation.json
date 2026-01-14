@@ -1,0 +1,22 @@
+{
+  "id": "datadog-dashboard-generation",
+  "type": "feature",
+  "title": "Datadog dashboard generation",
+  "description": "Generate Datadog dashboards using Dashboard API. Technology templates for PostgreSQL, Redis, Kubernetes. Similar to Grafana SDK approach.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T16:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.480041Z",
+  "legacy_id": "trellis-datadog-dashboards",
+  "dependencies": [
+    "trellis-datadog"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Datadog dashboard generation",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

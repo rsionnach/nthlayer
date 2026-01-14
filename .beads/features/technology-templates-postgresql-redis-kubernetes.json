@@ -1,0 +1,16 @@
+{
+  "id": "technology-templates-postgresql-redis-kubernetes",
+  "type": "feature",
+  "title": "Technology templates (PostgreSQL, Redis, Kubernetes)",
+  "description": "PostgreSQL: 14 alerts + 12 panels. Redis: 8 alerts + 6 panels. Kubernetes: 10 alerts + 8 panels. Total: 40 production-grade panels",
+  "status": "closed",
+  "priority": "P0",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:17.741388Z",
+  "updated_at": "2025-12-01T21:20:17.86787Z",
+  "legacy_id": "trellis-tkw",
+  "closed_at": "2025-12-01T21:20:17.86787Z",
+  "dependencies": [
+    "trellis-r1m"
+  ]
+}

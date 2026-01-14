@@ -1,0 +1,19 @@
+{
+  "id": "chunkhound-audit-configuration-validation-epic",
+  "type": "epic",
+  "title": "[ChunkHound Audit] Configuration Validation Epic",
+  "description": "Centralized validation module to address 10 identified validation gaps.\n\n**Source:** docs/audits/chunkhound/runs/2026-01-02/05-config.md\n\n**Key Findings:**\n1. No validation immediately after environment merge\n2. Shallow validation before model instantiation\n3. Incomplete ServiceContext field validation (tier, type, support_model not checked)\n4. Minimal resource validation (kind/spec not validated)\n5. Environment name lacks validation (path traversal vulnerability)\n6. Silent variable substitution failures\n7. No validation of environment-specific files\n8. No cross-field validation\n9. Type coercion without validation\n10. File path traversal vulnerability in find_environment_file()\n\n**Proposed Solution:**\nCreate `src/nthlayer/specs/validation.py` as single source of truth:\n- ConfigValidator class with reusable rules\n- validate_raw_config() before model instantiation\n- validate_merged_config() after environment merge\n- validate_environment_name() with path traversal protection\n- validate_variables_exist() for strict variable checking\n\n**Implementation Phases:**\n1. Create validation module (High Priority)\n2. Integrate at parser level (High Priority)\n3. CLI integration (Medium Priority)\n4. Documentation & testing (Medium Priority)",
+  "status": "open",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2026-01-03T21:00:00Z",
+  "updated_at": "2026-01-03T21:00:00Z",
+  "legacy_id": "trellis-audit-validation",
+  "comments": [
+    {
+      "author": "chunkhound-audit",
+      "text": "Source: 05-config.md - Configuration Precedence, Validation Architecture",
+      "date": "2026-01-03T21:23:27Z"
+    }
+  ]
+}

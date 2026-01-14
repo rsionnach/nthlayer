@@ -1,0 +1,22 @@
+{
+  "id": "implement-auto-scaling-policies",
+  "type": "feature",
+  "title": "Implement auto-scaling policies",
+  "description": "Kubernetes HPA (target CPU 70%, memory 80%), AWS Auto Scaling Groups, min/max replicas based on tier (tier-1: min 3, tier-3: min 1), schedule-based scaling.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:24.506275Z",
+  "updated_at": "2025-12-22T11:18:07.490541Z",
+  "legacy_id": "trellis-nw3",
+  "dependencies": [
+    "trellis-3um"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Out of scope: Auto-scaling policies (K8s HPA native)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

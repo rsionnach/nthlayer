@@ -1,0 +1,16 @@
+{
+  "id": "add-rich-styling-to-setup-wizard",
+  "type": "task",
+  "title": "Add rich styling to setup wizard",
+  "description": "Update nthlayer setup with interactive prompts using gum/questionary: styled configuration steps, progress indicators, validation feedback, colored success/error states.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-07T22:00:00Z",
+  "updated_at": "2025-12-12T14:55:18.823632Z",
+  "legacy_id": "trellis-cli-ux-setup",
+  "closed_at": "2025-12-12T14:00:00Z",
+  "dependencies": [
+    "trellis-cli-ux-core"
+  ]
+}

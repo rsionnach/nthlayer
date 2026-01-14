@@ -1,0 +1,19 @@
+{
+  "id": "govlayer-policy-enforcement",
+  "type": "epic",
+  "title": "GovLayer: Policy Enforcement",
+  "description": "Policy engine for deployment governance. Includes: policy DSL, compliance checks, resource limits, approval workflows. Phase 2 of NthLayer platform (after ResLayer).",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T16:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.48549Z",
+  "legacy_id": "trellis-govlayer",
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: GovLayer Policy Enforcement",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "implement-slack-rich-notifications",
+  "type": "task",
+  "title": "Implement Slack rich notifications",
+  "description": "Rich formatting (cards, colors, graphs), @mention service owners, threaded context with error budget details, charts.",
+  "status": "open",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:21.116841Z",
+  "updated_at": "2025-12-01T21:20:21.116841Z",
+  "legacy_id": "trellis-5ay",
+  "dependencies": [
+    "trellis-tt3"
+  ],
+  "comments": [
+    {
+      "author": "roadmap-prune",
+      "text": "Deferred: Slack notifications nice-to-have",
+      "date": "2025-12-05T11:10:36Z"
+    }
+  ]
+}

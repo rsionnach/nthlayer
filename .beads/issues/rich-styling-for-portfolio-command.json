@@ -1,0 +1,16 @@
+{
+  "id": "rich-styling-for-portfolio-command",
+  "type": "task",
+  "title": "Rich styling for portfolio command",
+  "description": "Added rich tables and health indicators to nthlayer portfolio command.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-07T21:30:00Z",
+  "updated_at": "2025-12-08T21:46:16.27124Z",
+  "legacy_id": "trellis-cli-ux-portfolio",
+  "closed_at": "2025-12-08T22:00:00Z",
+  "dependencies": [
+    "trellis-cli-ux-core"
+  ]
+}

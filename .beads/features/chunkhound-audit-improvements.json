@@ -1,0 +1,12 @@
+{
+  "id": "chunkhound-audit-improvements",
+  "type": "epic",
+  "title": "ChunkHound Audit Improvements",
+  "description": "Implementation of recommendations from ChunkHound code audit (2026-01-02). 8 audit files analyzed covering: plan/apply flow, tiers, secrets, templates, config, determinism, errors/UX, and performance. 25+ recommendations organized into 4 phases.",
+  "status": "open",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-04T12:00:00Z",
+  "legacy_id": "trellis-ch-epic"
+}

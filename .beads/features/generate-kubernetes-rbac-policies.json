@@ -1,0 +1,22 @@
+{
+  "id": "generate-kubernetes-rbac-policies",
+  "type": "feature",
+  "title": "Generate Kubernetes RBAC policies",
+  "description": "ServiceAccount, Role, RoleBinding generation. Minimal access patterns based on tier (tier-1: read-only ConfigMaps, tier-2: read-write own namespace).",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:23.528006Z",
+  "updated_at": "2025-12-22T11:18:07.455516Z",
+  "legacy_id": "trellis-102",
+  "dependencies": [
+    "trellis-yv6"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Out of scope: K8s RBAC policies (K8s native)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

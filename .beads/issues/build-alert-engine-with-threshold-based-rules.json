@@ -1,0 +1,23 @@
+{
+  "id": "build-alert-engine-with-threshold-based-rules",
+  "type": "task",
+  "title": "Build alert engine with threshold-based rules",
+  "description": "Budget thresholds (75%, 85%, 95%), burn rate anomalies (2x baseline), incident frequency triggers. Support custom thresholds per tier.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:21.019854Z",
+  "updated_at": "2025-12-22T11:18:07.460956Z",
+  "legacy_id": "trellis-4tu",
+  "dependencies": [
+    "trellis-tt3",
+    "trellis-ygb"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Threshold-based alert engine (Phase 7)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

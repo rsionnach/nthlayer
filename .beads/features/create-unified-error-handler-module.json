@@ -1,0 +1,16 @@
+{
+  "id": "create-unified-error-handler-module",
+  "type": "feature",
+  "title": "Create unified error handler module",
+  "description": "Error handling inconsistent across CLI commands. Audit: 07-errors-ux.md. Create src/nthlayer/core/error_handler.py with @main_with_error_handling decorator, unified Severity enum usage, structured logging with structlog. Expand exit codes: 0=success, 1=warning, 2=blocked, 10=config error, 11=provider error, 12=validation error, 127=unknown.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-05T20:43:45.882184Z",
+  "legacy_id": "trellis-ch-error-handler",
+  "closed_at": "2026-01-05T20:43:45.882182Z",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

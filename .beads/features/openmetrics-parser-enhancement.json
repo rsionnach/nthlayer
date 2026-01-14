@@ -1,0 +1,22 @@
+{
+  "id": "openmetrics-parser-enhancement",
+  "type": "feature",
+  "title": "OpenMetrics Parser Enhancement",
+  "description": "Add lightweight OpenMetrics parsing to enhance existing discovery:\n\n1. Authoritative type detection from scrape headers (vs pattern inference)\n2. Cardinality analysis with configurable threshold warnings\n3. Optional integration with existing MetricDiscoveryClient\n4. New flag: --analyze-metrics for detailed report\n\nEffort: ~4 hours\nPriority: P2 (after Error Budget Foundation)",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T14:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.481655Z",
+  "legacy_id": "trellis-discovery-enhance",
+  "dependencies": [
+    "trellis-3h6"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: OpenMetrics parser enhancement",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

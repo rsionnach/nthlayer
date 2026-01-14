@@ -1,0 +1,13 @@
+{
+  "id": "remove-dead-apply-environment-config-placeholder",
+  "type": "bug",
+  "title": "Remove dead _apply_environment_config() placeholder",
+  "description": "DEAD CODE: orchestrator._apply_environment_config() (line 180-184) is a placeholder that does nothing (pass), but environment merging already happens in parse_service_file() via EnvironmentMerger. The orchestrator calls this method but it has no effect. Should either remove the method or document that it's intentionally a no-op hook.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-06T12:00:00Z",
+  "updated_at": "2026-01-06T12:00:00Z",
+  "legacy_id": "trellis-env-config-dead-code",
+  "closed_at": "2026-01-06T12:00:00Z"
+}

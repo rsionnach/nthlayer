@@ -1,0 +1,16 @@
+{
+  "id": "consolidate-tier-definitions-into-single-source-of-truth",
+  "type": "task",
+  "title": "Consolidate tier definitions into single source of truth",
+  "description": "Tier values (critical/standard/low) defined in 8+ locations with conflicting SLO thresholds (e.g., critical: 99.95% vs 99.9%). Audit: 02-tier.md. Create src/nthlayer/core/tiers.py with TierConfig dataclass, update all references. Files: slos/gates.py, specs/templates.py, validation/conftest.py, cli/init.py.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-04T21:55:24.562563Z",
+  "legacy_id": "trellis-ch-tier-consolidation",
+  "closed_at": "2026-01-04T21:55:24.562561Z",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

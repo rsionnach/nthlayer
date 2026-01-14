@@ -1,0 +1,16 @@
+{
+  "id": "develop-3-5-customer-case-studies",
+  "type": "task",
+  "title": "Develop 3-5 customer case studies",
+  "description": "Document pilot customer results: time/cost savings, ROI calculations ( saved/month), before/after metrics, testimonials. Publish on website and blog.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:26.393299Z",
+  "updated_at": "2025-12-06T11:42:11.426011Z",
+  "legacy_id": "trellis-gxm",
+  "closed_at": "2025-12-06T11:42:02.105609Z",
+  "dependencies": [
+    "trellis-cte"
+  ]
+}

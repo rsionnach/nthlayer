@@ -1,0 +1,29 @@
+{
+  "id": "build-interactive-demo-user-configurable-service-generator",
+  "type": "feature",
+  "title": "Build interactive demo: user-configurable service generator with live dashboard",
+  "description": "**Approach: Pre-Generated Service Gallery (Zero-Cost)**\n\nBuild GitHub Pages demo showcasing NthLayer's capabilities through curated examples.\n\n**Service Gallery (5-8 pre-generated):**\n- payment-api (PostgreSQL, Redis, Kubernetes)\n- checkout-service (MySQL, RabbitMQ, ECS)\n- notification-worker (Redis, Kafka, Kubernetes)\n- analytics-stream (MongoDB, Kafka, Kubernetes)\n- user-service (PostgreSQL, Redis, ECS)\n- recommendation-engine (Redis, Kafka, Kubernetes)\n\n**Each service includes:**\n- Live Grafana dashboard (embedded, public URL)\n- Mock metrics flowing (shows real data)\n- Service YAML displayed (read-only, for reference)\n- Auto-generated: 3 SLOs, 12-40 alerts, recording rules\n- Technology-specific panels (PostgreSQL, Kubernetes, etc)\n\n**User Experience:**\n1. Land on demo page\n2. Browse service gallery (cards with icons)\n3. Click service \u2192 view live dashboard + service YAML\n4. 'Random Service' button for instant demo\n5. Clear CTA: 'Install NthLayer to generate this for your services'\n\n**NO Downloads:**\n- Users cannot download JSON/configs\n- Demo shows capabilities only\n- Must install NthLayer to generate artifacts\n\n**Value Prop:** \n'See NthLayer's technology intelligence in action - detecting dependencies and auto-generating production-ready observability'\n\n**Technical:**\n- Extend current Fly.io app with 4-7 additional mock services\n- Each service has unique mock metrics\n- All dashboards pre-pushed to Grafana Cloud (public)\n- GitHub Pages with clean gallery UI\n\n**Zero-Cost:**\n- Fly.io free tier sufficient (256MB RAM per service)\n- 8 dashboards well within Grafana Cloud free tier\n- GitHub Pages free\n\n**Time estimate:** 1-2 hours",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-02T10:49:35.213799Z",
+  "updated_at": "2026-01-03T21:23:27.6613Z",
+  "legacy_id": "trellis-96z",
+  "comments": [
+    {
+      "author": "robfox",
+      "text": "Refined approach: Pre-generated gallery instead of user-generated configs. No downloadable artifacts - users must install NthLayer. This is a capabilities demo, not a free service.",
+      "date": "2025-12-02T11:07:51Z"
+    },
+    {
+      "author": "robfox",
+      "text": "Created 4 additional service YAMLs:\n- checkout-service (MySQL, RabbitMQ, ECS)\n- notification-worker (Redis, Kafka, Kubernetes)\n- analytics-stream (MongoDB, Kafka, Kubernetes)  \n- user-service (PostgreSQL, Redis, ECS)\n\nEach has unique tech stack showcasing NthLayer's technology intelligence. Next: generate dashboards for all 5 services.",
+      "date": "2025-12-02T11:09:45Z"
+    },
+    {
+      "author": "robfox",
+      "text": "Beads sync to GitHub complete. 8 P0 issues now visible at github.com/rsionnach/nthlayer/issues. Roadmap now public and transparent. Continuing with interactive demo gallery implementation.",
+      "date": "2025-12-02T11:23:34Z"
+    }
+  ]
+}

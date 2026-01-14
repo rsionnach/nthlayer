@@ -1,0 +1,23 @@
+{
+  "id": "generate-github-actions-workflows",
+  "type": "feature",
+  "title": "Generate GitHub Actions workflows",
+  "description": "Auto-generate CI/CD pipelines with tier-appropriate testing (tier-1: security scans, load tests, canary), approval gates, nthlayer policy check integration.",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:22.159285Z",
+  "updated_at": "2025-12-01T21:20:22.159285Z",
+  "legacy_id": "trellis-ca5",
+  "dependencies": [
+    "trellis-3e6",
+    "trellis-tnr"
+  ],
+  "comments": [
+    {
+      "author": "roadmap-prune",
+      "text": "Deferred: GitHub Actions generation nice-to-have",
+      "date": "2025-12-05T11:10:36Z"
+    }
+  ]
+}

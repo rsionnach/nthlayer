@@ -1,0 +1,13 @@
+{
+  "id": "conftest-opa-policy-validation-integration",
+  "type": "feature",
+  "title": "conftest OPA Policy Validation Integration",
+  "description": "Integrate conftest for validating service specs:\n\n1. Add policies/ directory with default rules\n2. Enforce SLO requirements (all prod services need SLO)\n3. Validate generated alerts meet standards\n4. Pre-commit hook for spec changes\n5. --validate flag on nthlayer plan\n\nEffort: 2 days\nPriority: P0 - policy-as-code for specs",
+  "status": "closed",
+  "priority": "P0",
+  "tags": [],
+  "created_at": "2025-12-04T15:00:00Z",
+  "updated_at": "2025-12-12T14:49:38.554761Z",
+  "legacy_id": "trellis-conftest",
+  "closed_at": "2025-12-12T13:00:00Z"
+}

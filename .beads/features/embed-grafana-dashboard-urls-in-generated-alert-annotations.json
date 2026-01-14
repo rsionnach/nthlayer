@@ -1,0 +1,12 @@
+{
+  "id": "embed-grafana-dashboard-urls-in-generated-alert-annotations",
+  "type": "feature",
+  "title": "Embed Grafana dashboard URLs in generated alert annotations",
+  "description": "Since NthLayer generates both alerts AND dashboards, link them together. Add dashboard_url and traces_url annotations to all generated Prometheus alerts. Example: dashboard: 'https://grafana.internal/d/{{ service.name }}'. Low effort since we already know the dashboard UID we generate. Inspired by fatihkoc.net SRE observability article.",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-23T15:00:00Z",
+  "updated_at": "2025-12-23T15:00:00Z",
+  "legacy_id": "trellis-alert-dashboard-links"
+}

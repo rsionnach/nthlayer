@@ -1,0 +1,16 @@
+{
+  "id": "fix-dashboard-json-sort-keys-for-deterministic-output",
+  "type": "bug",
+  "title": "Fix dashboard JSON sort_keys for deterministic output",
+  "description": "Dashboard JSON uses sort_keys=False causing non-deterministic output. Running same service.yaml twice produces different JSON (field ordering varies). Audit: 06-determinism.md. Files: src/nthlayer/dashboards/builder_sdk.py:191, src/nthlayer/dashboards/sdk_adapter.py:441. Fix: Change to sort_keys=True.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-04T21:55:24.562543Z",
+  "legacy_id": "trellis-ch-json-determinism",
+  "closed_at": "2026-01-04T21:55:24.562534Z",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

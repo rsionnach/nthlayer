@@ -1,0 +1,16 @@
+{
+  "id": "cache-resource-detection-results",
+  "type": "task",
+  "title": "Cache resource detection results",
+  "description": "Performance: 5x redundant list scans per detection operation. Audit: 08-performance.md. Files: src/nthlayer/validation/*.py. Fix: Cache detection results, single-pass resource index. Expected 81% reduction in redundant operations.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-05T12:00:00Z",
+  "legacy_id": "trellis-ch-resource-cache",
+  "closed_at": "2026-01-05T12:00:00Z",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

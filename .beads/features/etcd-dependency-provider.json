@@ -1,0 +1,16 @@
+{
+  "id": "etcd-dependency-provider",
+  "type": "feature",
+  "title": "etcd dependency provider",
+  "description": "Discover service dependencies from etcd service registry. Query keys under configurable prefix (e.g., /services/). Support for etcd v3 API. Parse service metadata for upstream/downstream hints. Confidence: 0.85 for registered services.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-09T12:00:00Z",
+  "updated_at": "2026-01-09T21:38:38.028398Z",
+  "legacy_id": "trellis-deps-etcd",
+  "closed_at": "2026-01-09T21:37:59.997419Z",
+  "dependencies": [
+    "trellis-deps-backstage"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "backstage-plugin-for-nthlayer",
+  "type": "feature",
+  "title": "Backstage plugin for NthLayer",
+  "description": "Full Backstage plugin (TypeScript/React) showing: SLO status widget on service cards, error budget visualization, dashboard links, reliability scorecard, deployment gate status. Requires Backstage catalog reader first.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-12T12:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.475797Z",
+  "legacy_id": "trellis-backstage-plugin",
+  "dependencies": [
+    "trellis-backstage-epic",
+    "trellis-backstage-read"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Backstage plugin (distribution channel)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

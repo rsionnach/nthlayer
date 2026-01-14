@@ -1,0 +1,22 @@
+{
+  "id": "generate-pagerduty-on-call-schedules",
+  "type": "feature",
+  "title": "Generate PagerDuty on-call schedules",
+  "description": "Auto-generate from team membership (Backstage/Cortex), respect time zones, follow-the-sun patterns (rotate by region), weekend/holiday coverage rules.",
+  "status": "open",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:22.785699Z",
+  "updated_at": "2025-12-01T21:20:22.785699Z",
+  "legacy_id": "trellis-4dw",
+  "dependencies": [
+    "trellis-411"
+  ],
+  "comments": [
+    {
+      "author": "roadmap-prune",
+      "text": "Deferred: PagerDuty schedules from Backstage",
+      "date": "2025-12-05T11:10:36Z"
+    }
+  ]
+}

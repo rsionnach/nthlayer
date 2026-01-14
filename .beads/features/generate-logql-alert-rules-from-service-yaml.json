@@ -1,0 +1,16 @@
+{
+  "id": "generate-logql-alert-rules-from-service-yaml",
+  "type": "feature",
+  "title": "Generate LogQL alert rules from service.yaml",
+  "description": "Generate Loki alert rules based on service type. Error log patterns, warning thresholds, technology-specific log queries (PostgreSQL error patterns, Redis connection issues).",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-04T20:00:00Z",
+  "updated_at": "2025-12-05T11:39:19.109408Z",
+  "legacy_id": "trellis-loki-alerts",
+  "closed_at": "2025-12-05T12:00:00Z",
+  "dependencies": [
+    "trellis-loki-epic"
+  ]
+}

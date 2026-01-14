@@ -1,0 +1,19 @@
+{
+  "id": "ai-powered-nthlayer",
+  "type": "epic",
+  "title": "AI-Powered NthLayer",
+  "description": "AI capabilities for conversational reliability automation. Extend zero-toil mission: Conversation \u2192 Intent \u2192 service.yaml \u2192 NthLayer \u2192 Complete Stack. Includes MCP server, conversational spec generation, intelligent suggestions, anomaly explanation.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T17:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.469887Z",
+  "legacy_id": "trellis-ai-epic",
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Phase 5 - AI-Powered NthLayer (optional)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

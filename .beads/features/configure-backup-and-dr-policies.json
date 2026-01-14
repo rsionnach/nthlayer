@@ -1,0 +1,22 @@
+{
+  "id": "configure-backup-and-dr-policies",
+  "type": "feature",
+  "title": "Configure backup and DR policies",
+  "description": "Backup schedules based on tier (tier-1: hourly, tier-3: daily), RTO/RPO enforcement (tier-1: RTO=1hr/RPO=15min), multi-region failover (Route53 health checks), disaster recovery runbooks.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:25.710732Z",
+  "updated_at": "2025-12-22T11:18:07.456137Z",
+  "legacy_id": "trellis-115",
+  "dependencies": [
+    "trellis-0cp"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Out of scope: Backup/DR policies (infrastructure concern)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "enhanced-deploy-correlation",
+  "type": "feature",
+  "title": "Enhanced deploy correlation",
+  "description": "3-factor confidence scoring for deploy \u2192 incident correlation: 1) Time proximity (deploy \u2192 incident timing), 2) Service dependencies (if defined), 3) Historical patterns (past deploy issues). Block CI/CD if confidence > 80%.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T16:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.481129Z",
+  "legacy_id": "trellis-deploy-correlation",
+  "dependencies": [
+    "trellis-z2b"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Enhanced deploy correlation",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

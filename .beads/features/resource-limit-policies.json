@@ -1,0 +1,22 @@
+{
+  "id": "resource-limit-policies",
+  "type": "feature",
+  "title": "Resource limit policies",
+  "description": "Enforce resource limits by tier. Tier-1: max 8 CPU, 32GB RAM. Tier-3: max 2 CPU, 4GB RAM. Generate Kubernetes LimitRange/ResourceQuota.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T16:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.501744Z",
+  "legacy_id": "trellis-resource-limits",
+  "dependencies": [
+    "trellis-policy-engine"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Resource limit policies",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

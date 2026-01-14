@@ -1,0 +1,19 @@
+{
+  "id": "chunkhound-audit-template-registry-auto-registration",
+  "type": "epic",
+  "title": "[ChunkHound Audit] Template Registry & Auto-Registration",
+  "description": "Consolidate 18+ technology templates, reduce touch points from 5 to 2.\n\n**Source:** docs/audits/chunkhound/runs/2026-01-02/04-templates.md\n\n**Key Findings:**\n1. Dual-system fragmentation: intent-based + legacy hardcoded templates\n2. 22-line if-elif chain in _get_intent_template() [builder_sdk.py:560-582]\n3. Implicit mysql\u2192postgresql aliasing is undocumented\n4. 5 touch points to add new template: if-elif + import + __init__.py + test + registration\n5. Repeated filesystem scans for discovery (list_available_technologies + get_category_for_technology)\n6. Base class TechnologyTemplate lacks registration mechanism\n7. No template metadata queryable at runtime\n\n**Proposed Solution:**\n1. Create `src/nthlayer/dashboards/templates/registry.py`:\n   - TemplateRegistry class with _intent_templates, _legacy_templates, _aliases dicts\n   - register_intent(), register_legacy(), get_intent_template(), get_legacy_template()\n   - list_all_technologies(), get_template_metadata()\n\n2. Enhance base class with auto-registration via __init_subclass__():\n   - Templates self-register at class definition time\n   - Add tech_name, aliases, category class attributes\n\n3. Create `src/nthlayer/dashboards/templates/aliases.py`:\n   - ALIASES dict for postgres\u2192postgresql, mongo\u2192mongodb\n   - LEGACY_EQUIVALENCES for mysql\u2192postgresql similarity mapping\n\n4. Add unified TemplateDiscovery with @lru_cache for filesystem scans\n\n**Touch Points Reduction:**\n- Before: 5 (if-elif, import, __init__.py, test, registration)\n- After: 2 (class file, test)",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-03T21:00:00Z",
+  "updated_at": "2026-01-03T21:00:00Z",
+  "legacy_id": "trellis-audit-templates",
+  "comments": [
+    {
+      "author": "chunkhound-audit",
+      "text": "Source: 04-templates.md - Technology Template Discovery/Selection/Application",
+      "date": "2026-01-03T21:23:27Z"
+    }
+  ]
+}

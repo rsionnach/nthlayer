@@ -1,0 +1,16 @@
+{
+  "id": "design-and-implement-policy-yaml-dsl",
+  "type": "task",
+  "title": "Design and implement Policy YAML DSL",
+  "description": "Simple DSL for conditions (budget < X%, tier = Y, time_window = business_hours), tier-based selectors, action types (block, notify, create_incident, require_approval).",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:21.809548Z",
+  "updated_at": "2025-12-22T11:18:07.502856Z",
+  "legacy_id": "trellis-tnr",
+  "closed_at": "2025-12-22T11:17:25.605021Z",
+  "dependencies": [
+    "trellis-3e6"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "loki-logql-integration",
+  "type": "epic",
+  "title": "Loki/LogQL Integration",
+  "description": "Generate Loki LogQL alert rules alongside Prometheus alerts. Complete the observability picture with logs. Same ecosystem as Grafana.",
+  "status": "closed",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2025-12-04T20:00:00Z",
+  "updated_at": "2025-12-12T14:31:48.413947Z",
+  "legacy_id": "trellis-loki-epic",
+  "closed_at": "2025-12-12T10:00:00Z"
+}

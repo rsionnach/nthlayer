@@ -1,0 +1,19 @@
+{
+  "id": "chunkhound-audit-orchestrator-testability-resilience",
+  "type": "epic",
+  "title": "[ChunkHound Audit] Orchestrator Testability & Resilience",
+  "description": "Improve plan/apply orchestrator testability and error handling.\n\n**Source:** docs/audits/chunkhound/runs/2026-01-02/01-plan-apply.md\n\n**Key Findings - Top 5 Failure Points:**\n1. CRITICAL: YAML Parse Failure - Entire orchestration aborts\n2. HIGH: Empty Detection - Returns success with 0 resources (silent failure)\n3. MEDIUM-HIGH: Generator Exception Cascade - One generator failure blocks subsequent generators\n4. MEDIUM-HIGH: Output Directory Not Writable - Silent failure, apply reports success but no files exist\n5. MEDIUM: Post-Processing Failures - Lint/push failures block promotion\n\n**Proposed Refactoring (8 hours estimated):**\n\nPhase 1 (1h): Extract Pure Data Layer\n- Create src/nthlayer/core/models.py\n- ParsedService dataclass with properties: slo_resources, dependency_resources\n\nPhase 2 (2h): Separate Parsing and Detection\n- ServiceParser.parse() pure function\n- ResourceDetector.detect() pure function\n- Unit tests without file I/O\n\nPhase 3 (3h): Generator Base Class with Error Isolation\n- Generator ABC with plan()/apply() methods\n- GeneratorResult dataclass (resource_type, success, items, error)\n- Each generator handles its own errors independently\n- Single failure no longer cascades to siblings\n\nPhase 4 (2h): Refactor ServiceOrchestrator\n- Dependency injection for generators\n- Independent error handling per generator\n- Error accumulation instead of early exit\n\n**Test Coverage Improvement:**\n- Before: ~40-50% (integration tests only)\n- After: 80%+ (unit tests for each layer)",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-03T21:00:00Z",
+  "updated_at": "2026-01-03T21:00:00Z",
+  "legacy_id": "trellis-audit-orchestrator",
+  "comments": [
+    {
+      "author": "chunkhound-audit",
+      "text": "Source: 01-plan-apply.md - Full Execution Path Mapping",
+      "date": "2026-01-03T21:23:27Z"
+    }
+  ]
+}

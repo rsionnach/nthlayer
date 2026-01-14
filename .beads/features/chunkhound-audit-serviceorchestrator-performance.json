@@ -1,0 +1,19 @@
+{
+  "id": "chunkhound-audit-serviceorchestrator-performance",
+  "type": "epic",
+  "title": "[ChunkHound Audit] ServiceOrchestrator Performance Optimizations",
+  "description": "Implement 3 low-risk optimizations to eliminate ~81% redundant operations in plan/apply.\n\n**Source:** docs/audits/chunkhound/runs/2026-01-02/08-performance.md\n\n**Bottleneck Categories Identified:**\n\n1. **Repeated Resource Detection** (O(10N) with dry-run):\n   - ResourceDetector instantiated twice (plan + apply)\n   - 5 sequential list iterations per detection (_has_slos, _has_dependencies, etc.)\n   - Lines: orchestrator.py:188-191, 267-273, 89-115\n\n2. **Repeated Metric Resolution** (O(2K) per service):\n   - Hardcoded alert count dict duplicated in _plan_alerts() and _generate_alerts()\n   - Lines: orchestrator.py:316-322, 418-424\n\n3. **Redundant PagerDuty Lookups** (O(2N) per service):\n   - Same resource lookup performed twice in _generate_pagerduty()\n   - Lines: orchestrator.py:564-566, 631-644\n\n**Three Low-Risk Optimizations:**\n\n1. **Cache Resource Detection Results** [CRITICAL, 5 min]\n   - Add _detected_resources cache to ServiceOrchestrator\n   - Single _get_detected_resources() method replaces duplicate detect() calls\n   - Impact: -50% detector overhead\n\n2. **Extract Alert Count to Module Constant** [HIGH, 3 min]\n   - Create ALERT_COUNT_BY_DATABASE_TYPE module constant\n   - Eliminates duplicate dict literals, single source of truth\n   - Impact: Code deduplication, maintainability\n\n3. **Cache PagerDuty Resource Lookup** [HIGH, 4 min]\n   - Single lookup + spec extraction at method start\n   - Remove redundant lines 631-644\n   - Impact: -50% lookup overhead\n\n**Quantified Impact (10 services, 4 resources each):**\n- Before: ~520 redundant operations\n- After: ~100 operations\n- Savings: 81% reduction, ~12 min implementation\n\n**For 50+ microservices:**\n- Audit time: ~2-3 min \u2192 ~25-30 sec (-82%)\n- ~2.5 min developer time saved per audit run",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-03T21:30:00Z",
+  "updated_at": "2026-01-03T21:30:00Z",
+  "legacy_id": "trellis-audit-performance",
+  "comments": [
+    {
+      "author": "chunkhound-audit",
+      "text": "Source: 08-performance.md - ServiceOrchestrator Performance Audit",
+      "date": "2026-01-03T21:23:27Z"
+    }
+  ]
+}

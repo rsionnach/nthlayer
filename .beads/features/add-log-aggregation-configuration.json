@@ -1,0 +1,22 @@
+{
+  "id": "add-log-aggregation-configuration",
+  "type": "feature",
+  "title": "Add log aggregation configuration",
+  "description": "Datadog log pipelines (parsing rules, indexes), CloudWatch log groups, retention policies. Tier-based retention (tier-1: 1yr, tier-3: 30d).",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:19.514726Z",
+  "updated_at": "2025-12-22T11:18:07.477406Z",
+  "legacy_id": "trellis-c5v",
+  "dependencies": [
+    "trellis-7pw"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Log aggregation configuration",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

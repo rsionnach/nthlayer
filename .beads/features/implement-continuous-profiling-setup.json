@@ -1,0 +1,22 @@
+{
+  "id": "implement-continuous-profiling-setup",
+  "type": "feature",
+  "title": "Implement continuous profiling setup",
+  "description": "Datadog continuous profiling, Pyroscope configs. Sampling rates based on traffic volume. CPU/memory flame graphs.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:19.608348Z",
+  "updated_at": "2025-12-01T21:20:19.608348Z",
+  "legacy_id": "trellis-mwq",
+  "dependencies": [
+    "trellis-7pw"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Continuous profiling setup",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "extract-alert-count-mapping-to-module-constant",
+  "type": "task",
+  "title": "Extract alert count mapping to module constant",
+  "description": "Performance: Alert count mapping computed in loop. Audit: 08-performance.md. Fix: Extract to module-level constant for single evaluation.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-05T12:00:00Z",
+  "legacy_id": "trellis-ch-alert-constant",
+  "closed_at": "2026-01-05T12:00:00Z",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

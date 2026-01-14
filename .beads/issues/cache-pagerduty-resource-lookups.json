@@ -1,0 +1,16 @@
+{
+  "id": "cache-pagerduty-resource-lookups",
+  "type": "task",
+  "title": "Cache PagerDuty resource lookups",
+  "description": "Performance: PagerDuty resources looked up multiple times during apply. Audit: 08-performance.md. Files: src/nthlayer/providers/pagerduty.py. Fix: Cache lookups to deduplicate API preparation.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2026-01-04T12:00:00Z",
+  "updated_at": "2026-01-05T12:00:00Z",
+  "legacy_id": "trellis-ch-pagerduty-cache",
+  "closed_at": "2026-01-05T12:00:00Z",
+  "dependencies": [
+    "trellis-ch-epic"
+  ]
+}

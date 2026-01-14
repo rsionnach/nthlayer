@@ -1,0 +1,23 @@
+{
+  "id": "generate-gitlab-ci-pipelines",
+  "type": "feature",
+  "title": "Generate GitLab CI pipelines",
+  "description": "GitLab CI/CD pipeline generation (.gitlab-ci.yml) with testing, deployment stages, policy checks as manual jobs.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:22.255098Z",
+  "updated_at": "2025-12-01T21:20:22.255098Z",
+  "legacy_id": "trellis-t2h",
+  "dependencies": [
+    "trellis-3e6",
+    "trellis-tnr"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: GitLab CI pipeline generation",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

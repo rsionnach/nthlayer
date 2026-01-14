@@ -1,0 +1,22 @@
+{
+  "id": "publish-nthlayer-check-deploy-action-to-marketplace",
+  "type": "task",
+  "title": "Publish nthlayer/check-deploy-action to Marketplace",
+  "description": "Create separate repo nthlayer/check-deploy-action. Publish deployment gate action to GitHub Marketplace. Inputs: service-file, prometheus-url, environment. Outputs: result (approved/warning/blocked), budget-remaining.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-12T12:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.483854Z",
+  "legacy_id": "trellis-gh-actions-deploy",
+  "dependencies": [
+    "trellis-gh-actions"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: check-deploy-action (distribution)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

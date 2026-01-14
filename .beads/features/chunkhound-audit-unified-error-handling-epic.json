@@ -1,0 +1,19 @@
+{
+  "id": "chunkhound-audit-unified-error-handling-epic",
+  "type": "epic",
+  "title": "[ChunkHound Audit] Unified Error Handling Epic",
+  "description": "Create centralized error handling module to address inconsistencies.\n\n**Source:** docs/audits/chunkhound/runs/2026-01-02/07-errors-ux.md\n\n**Key Findings:**\n1. Exit code semantics inconsistent across commands\n2. Exit codes redundantly printed to user (deploy.py lines 244, 251)\n3. Severity classification fragmented: string 'Bug' in promql.py vs Severity.ERROR enum in promruval.py\n4. structlog mandated in AGENTS.md but absent from core validation modules\n5. No standardized error context (service, command, file, line)\n6. Timeout treatment inconsistent (non-blocking bug vs blocking error)\n7. No 'help on error' pattern or recommendations\n\n**Proposed Solution:**\nCreate `src/nthlayer/core/error_handler.py` (~400 lines):\n- ExitCode enum (0, 1, 2, 10-12, 127)\n- Unified Severity enum (INFORMATION, WARNING, ERROR, BUG)\n- ErrorContext dataclass (service, command, phase, file_path, line_number)\n- ValidationIssue dataclass\n- NthLayerError exception hierarchy\n- run_subprocess_with_timeout() helper\n- handle_error() unified handler\n- @main_with_error_handling decorator for CLI commands\n\n**Exit Code Schema:**\n- 0: SUCCESS\n- 1: WARNING (non-blocking)\n- 2: BLOCKED (critical failure)\n- 10: CONFIG_ERROR\n- 11: NETWORK_ERROR\n- 12: PARSE_ERROR\n- 127: FATAL (uncaught)",
+  "status": "open",
+  "priority": "P1",
+  "tags": [],
+  "created_at": "2026-01-03T21:00:00Z",
+  "updated_at": "2026-01-03T21:00:00Z",
+  "legacy_id": "trellis-audit-errors",
+  "comments": [
+    {
+      "author": "chunkhound-audit",
+      "text": "Source: 07-errors-ux.md - Error Handling Audit",
+      "date": "2026-01-03T21:23:27Z"
+    }
+  ]
+}

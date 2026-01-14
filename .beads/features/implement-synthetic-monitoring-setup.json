@@ -1,0 +1,22 @@
+{
+  "id": "implement-synthetic-monitoring-setup",
+  "type": "feature",
+  "title": "Implement synthetic monitoring setup",
+  "description": "Datadog Synthetics, Pingdom uptime checks, geographic probe distribution. Check frequency based on tier (tier-1: 1min, tier-2: 5min, tier-3: 15min).",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:19.42103Z",
+  "updated_at": "2025-12-22T11:18:07.456748Z",
+  "legacy_id": "trellis-1kc",
+  "dependencies": [
+    "trellis-7pw"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Phase 8 - Synthetic monitoring (dedicated tools exist)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "configurable-for-duration-in-alerts",
+  "type": "feature",
+  "title": "Configurable for duration in alerts",
+  "description": "Add configurable 'for' duration to alert generation to prevent false positives during cold starts. Schema: slos.[].alerts.for_duration.page (default 2m), slos.[].alerts.for_duration.ticket (default 15m). SoundCloud uses this pattern to defend against statistical outliers when services start receiving traffic.",
+  "status": "open",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-23T14:00:00Z",
+  "updated_at": "2025-12-23T14:00:00Z",
+  "legacy_id": "trellis-alert-for"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "implement-progressive-delivery-configs",
+  "type": "feature",
+  "title": "Implement progressive delivery configs",
+  "description": "Canary rollout percentages (10%, 50%, 100%), blue/green strategies, traffic splitting rules (Istio VirtualService, Linkerd), automatic rollback on errors.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:22.349774Z",
+  "updated_at": "2025-12-22T11:18:07.468303Z",
+  "legacy_id": "trellis-9ug",
+  "dependencies": [
+    "trellis-3e6"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Progressive delivery configs",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

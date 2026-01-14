@@ -1,0 +1,22 @@
+{
+  "id": "natural-language-queries",
+  "type": "feature",
+  "title": "Natural language queries",
+  "description": "Query NthLayer state conversationally. 'Which services are burning budget fastest?', 'Show me all critical services without runbooks', 'What deploys happened before the incident?' Returns structured data or visualizations.",
+  "status": "open",
+  "priority": "P3",
+  "tags": [],
+  "created_at": "2025-12-04T17:00:00Z",
+  "updated_at": "2025-12-22T11:18:07.470945Z",
+  "legacy_id": "trellis-ai-query",
+  "dependencies": [
+    "trellis-mcp-server"
+  ],
+  "comments": [
+    {
+      "author": "scope-review",
+      "text": "Deferred: Phase 5 - Natural language queries (AI)",
+      "date": "2025-12-22T11:18:07Z"
+    }
+  ]
+}

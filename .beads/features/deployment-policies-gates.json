@@ -1,0 +1,13 @@
+{
+  "id": "deployment-policies-gates",
+  "type": "epic",
+  "title": "Deployment Policies & Gates",
+  "description": "Automated deployment guardrails, policy enforcement, CI/CD generation. 'Deploy blocked, 90% budget consumed.' Policy YAML DSL, ArgoCD integration, progressive delivery.",
+  "status": "closed",
+  "priority": "P2",
+  "tags": [],
+  "created_at": "2025-12-01T21:20:21.656378Z",
+  "updated_at": "2025-12-22T11:18:07.458617Z",
+  "legacy_id": "trellis-3e6",
+  "closed_at": "2025-12-22T11:17:25.605021Z"
+}
