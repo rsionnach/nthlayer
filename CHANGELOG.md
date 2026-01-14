@@ -1,5 +1,79 @@
 # Changelog
 
+## v0.1.0a12 (January 12, 2026)
+
+### Phase 2 Complete: Dependency Intelligence & Service Discovery
+
+This release completes Phase 2 (Dependency Intelligence) and Phase 2.5 (Service Discovery Providers), adding comprehensive service dependency analysis, ownership resolution, and multi-provider discovery.
+
+#### New CLI Commands
+
+- **`nthlayer identity`** - Service identity resolution and normalization
+  - `identity resolve <name>` - Resolve service to canonical name
+  - `identity list` - List known service identities
+  - `identity normalize <name>` - Show normalization steps
+  - `identity add-mapping` - Add custom identity mappings
+
+- **`nthlayer ownership`** - Multi-source ownership attribution
+  - Queries Backstage, PagerDuty, CODEOWNERS, Kubernetes labels
+  - Confidence-based resolution when sources disagree
+  - Shows on-call contact and escalation path
+
+- **`nthlayer validate-slo`** - SLO metric existence validation
+  - Validates SLO metrics exist in Prometheus before deployment
+  - Checks recording rule dependencies
+  - Label consistency validation
+
+#### Enhanced Commands
+
+- **`nthlayer deps`** - Now supports multiple providers
+  - Backstage catalog integration
+  - Kubernetes service discovery
+  - Prometheus metric-based inference
+  - DOT graph output format
+
+- **`nthlayer blast-radius`** - Improved impact analysis
+  - Multi-provider dependency traversal
+  - Configurable depth analysis
+  - Risk scoring with exit codes
+
+#### New Dependency Providers (Phase 2.5)
+
+- **Backstage** - Catalog API integration for service relationships
+- **Kubernetes** - Service/Deployment label-based discovery
+- **Consul** - Service catalog, health checks, Connect intentions
+- **Zookeeper** - Curator-style service discovery
+- **etcd** - Key-value prefix-based discovery
+
+#### New Ownership Providers
+
+- **Backstage** - `spec.owner` from catalog entities
+- **PagerDuty** - Escalation policy owners, on-call schedules
+- **Kubernetes** - `team`/`owner` labels on resources
+- **CODEOWNERS** - GitHub/GitLab code ownership files
+- **Declared** - Explicit `service.team` in service.yaml
+
+#### Developer Experience
+
+- **Pre-push hooks** - Tests run automatically before `git push`
+- `make pre-commit-install` now installs both commit and push hooks
+- `make setup` includes hook installation for new developers
+
+#### Documentation
+
+- New command documentation: deps, blast-radius, ownership, identity, validate-slo
+- Updated CLI reference with all Phase 2 commands
+- Dependencies section added to docs navigation
+
+#### Stats Update
+
+- **Tests:** 2821 passing
+- **New CLI commands:** 4 (identity, ownership, validate-slo + subcommands)
+- **Dependency providers:** 5 (Backstage, Kubernetes, Consul, Zookeeper, etcd)
+- **Ownership providers:** 5 (Backstage, PagerDuty, Kubernetes, CODEOWNERS, declared)
+
+---
+
 ## v0.1.0a11 (January 9, 2026)
 
 ### Security Release + Phase 1 & 2 Features
