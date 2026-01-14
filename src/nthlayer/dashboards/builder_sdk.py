@@ -195,6 +195,12 @@ class DashboardBuilderSDK:
 
         dashboard_dict = json.loads(json_str)
 
+        # Substitute $service variable with actual service name
+        json_str = json.dumps(dashboard_dict)
+        json_str = json_str.replace('"$service"', f'"{self.context.name}"')
+        json_str = json_str.replace("$service", self.context.name)
+        dashboard_dict = json.loads(json_str)
+
         # Post-process panels to add noValue messages for guidance panels
         self._apply_no_value_messages(dashboard_dict, all_panels)
 
