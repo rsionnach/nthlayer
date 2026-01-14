@@ -329,6 +329,26 @@ class TestBuildDashboard:
 
         assert "dashboard" in result
 
+    def test_substitutes_service_variable_in_queries(self, api_context, slo_resource):
+        """Build substitutes $service variable with actual service name."""
+        import json
+
+        builder = DashboardBuilderSDK(
+            service_context=api_context,
+            resources=[slo_resource],
+        )
+
+        result = builder.build()
+
+        # Convert to JSON and check for $service
+        dashboard_json = json.dumps(result)
+
+        # Should not contain $service variable
+        assert "$service" not in dashboard_json
+
+        # Should contain the actual service name in queries
+        assert "test-api" in dashboard_json
+
 
 class TestApplyNoValueMessages:
     """Tests for _apply_no_value_messages method."""
