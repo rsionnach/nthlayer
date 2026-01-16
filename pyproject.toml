@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "grafana-foundation-sdk>=0.0.11",
     "fastapi>=0.111.0,<1.0.0",
-    "uvicorn[standard]>=0.27.0,<0.29",
+    "uvicorn[standard]>=0.27.0,<0.41",
     "mangum>=0.17.0,<0.20.0",
     "pydantic>=2.7.0,<3.0.0",
     "pydantic-settings>=2.2.1,<3.0.0",
