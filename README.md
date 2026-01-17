@@ -2,77 +2,25 @@
   <a href="https://github.com/rsionnach/nthlayer">
     <img src="presentations/public/nthlayer_dark_banner.png" alt="NthLayer" width="400">
   </a>
-
   <br><br>
-
-  <img src="demo/vhs/nthlayer-apply.gif" alt="nthlayer apply demo" width="700">
 </div>
 
 # NthLayer
 
-### The Missing Layer of Reliability
+**Shift-left reliability for platform teams.**
 
-**Reliability requirements as code.**
+Define reliability requirements as code. Validate SLOs against dependency chains. Detect drift before incidents. Gate deployments on real data.
 
 [![Status: Alpha](https://img.shields.io/badge/Status-Alpha-orange?style=for-the-badge)](https://github.com/rsionnach/nthlayer)
 [![PyPI](https://img.shields.io/pypi/v/nthlayer?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/nthlayer/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE.txt)
 [![Alert Rules](https://img.shields.io/badge/Alert_Rules-593+-red?style=for-the-badge&logo=prometheus&logoColor=white)](https://github.com/samber/awesome-prometheus-alerts)
 
-NthLayer lets you define what "production-ready" means for a service,
-then generates, validates, and enforces those requirements automatically.
-
-**Define once. Generate everything. Block bad deploys.**
-
----
-
-## The Problem
-
-For every new service, teams are expected to:
-- Manually create dashboards
-- Hand-craft alerts and recording rules
-- Define SLOs and error budgets
-- Configure incident escalation
-- Decide if a service is "ready" for production
-
-These decisions are usually made **after deployment**, enforced **inconsistently**, or revisited **only during incidents**.
-
-## The Solution
-
-NthLayer moves reliability left in the delivery lifecycle:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ service.yaml → generate → lint → verify → check-deploy → deploy            │
-│                   ↓         ↓       ↓           ↓                          │
-│               artifacts   valid?  metrics?  budget ok?                     │
-│                                                                            │
-│ "Is this production-ready?" - answered BEFORE deployment                   │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+## TL;DR
 
 ```bash
-# In your Tekton/GitHub Actions pipeline:
-nthlayer apply service.yaml --lint    # Generate + validate PromQL syntax
-nthlayer verify service.yaml          # Verify declared metrics exist
-nthlayer check-deploy service.yaml    # Check error budget gate
-# Only if all pass: deploy to production
+pip install nthlayer
 ```
-
-Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/Cortex**
-
----
-
-## 🚦 Shift Left Features
-
-| Command | What It Does | Pipeline Exit Code |
-|---------|--------------|-------------------|
-| `nthlayer verify` | Validates declared metrics exist in Prometheus | 1 if missing metrics |
-| `nthlayer check-deploy` | Checks error budget - blocks if exhausted | 2 if budget exhausted |
-| `nthlayer drift` | Detects reliability degradation trends over time | 1 warn, 2 critical |
-| `nthlayer apply --lint` | Validates PromQL syntax with pint | 1 if invalid queries |
-
-### Deployment Gate Example
 
 <div align="center">
   <img src="demo/vhs/check-deploy-demo.gif" alt="nthlayer check-deploy demo" width="700">
@@ -80,288 +28,209 @@ Works with: **Tekton**, **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Mimir/C
 
 ---
 
-## ⚡ Quick Start
+## ⚠️ The Problem
 
-```bash
-pipx install nthlayer
+Reliability decisions happen too late. Teams set SLOs in isolation, deploy without checking error budgets, and discover missing metrics during incidents. Dashboards are inconsistent. Alerts are copy-pasted. Nobody validates whether a 99.99% target is even achievable given dependencies.
 
-nthlayer apply service.yaml
+## 💡 The Solution
 
-# Output: generated/payment-api/
-#   ├── dashboard.json       → Grafana
-#   ├── alerts.yaml          → Prometheus
-#   ├── slos.yaml            → OpenSLO
-#   └── recording-rules.yaml → Prometheus
+NthLayer moves reliability left:
+
+```
+service.yaml → validate → check-deploy → deploy
+                  │            │
+                  │            └── Error budget ok? Drift acceptable?
+                  │
+                  └── SLO feasible? Dependencies support it? Metrics exist?
 ```
 
 ---
 
-## What NthLayer Is
+## ⚡ Core Features
 
-- A **reliability specification** that defines production-readiness
-- A **compiler** from service intent to operational reality
-- A **CI/CD-native** way to standardize reliability across teams
+### Drift Detection
 
-NthLayer integrates with existing tools (Prometheus, Grafana, PagerDuty) but operates **before** them - deciding what is allowed to reach production.
+Predict SLO exhaustion before it happens. Don't wait for the budget to hit zero.
 
-## What NthLayer Is Not
+```bash
+$ nthlayer drift payment-api
 
-- Not a service catalog
-- Not an observability platform
-- Not an incident management system
-- Not a runtime control plane
+payment-api: CRITICAL
+  Current: 73.2% budget remaining
+  Trend: -2.1%/day (gradual decline)
+  Projection: Budget exhausts in 23 days
 
-NthLayer **complements** these systems by ensuring services meet reliability expectations before they are deployed.
+  Recommendation: Investigate error rate increase before next release
+```
 
-## Why NthLayer?
+### Dependency-Aware SLO Validation
 
-| With NthLayer | Without NthLayer |
-|---------------|------------------|
-| Platform teams encode reliability standards **once** | Standards recreated per service |
-| Service teams inherit sane defaults **automatically** | Each team invents their own |
-| "Is this production-ready?" = **deterministic check** | "Is this ready?" = negotiated opinion |
-| Reliability is **enforced by default** | Reliability is **reactive and inconsistent** |
+Your SLO ceiling is your weakest dependency chain. NthLayer calculates it.
+
+```bash
+$ nthlayer validate-slo payment-api
+
+Target: 99.99% availability
+Dependencies:
+  → postgresql (99.95%)
+  → redis (99.99%)
+  → user-service (99.9%)
+
+Serial availability: 99.84%
+✗ INFEASIBLE: Target exceeds dependency ceiling by 0.15%
+
+Recommendation: Reduce target to 99.8% or improve user-service SLO
+```
+
+### Deployment Gates
+
+Block deploys when error budget is exhausted or drift is critical.
+
+```bash
+$ nthlayer check-deploy payment-api
+
+ERROR: Deployment blocked
+  - Error budget: -47 minutes (exhausted)
+  - Drift severity: critical
+  - 3 P1 incidents in last 7 days
+
+Exit code: 2 (BLOCKED)
+```
+
+### Blast Radius Analysis
+
+Understand impact before making changes.
+
+```bash
+$ nthlayer blast-radius payment-api
+
+Direct dependents (3):
+  • checkout-service (critical) - 847K req/day
+  • order-service (critical) - 523K req/day
+  • refund-worker (standard) - 12K req/day
+
+Transitive impact: 12 services, 2.1M daily requests
+Risk: HIGH - affects checkout flow
+```
+
+### Metric Recommendations
+
+Enforce OpenTelemetry conventions. Know what's missing before production.
+
+```bash
+$ nthlayer recommend-metrics payment-api
+
+Required (SLO-critical):
+  ✓ http.server.request.duration    FOUND
+  ✗ http.server.active_requests     MISSING
+
+Run with --show-code for instrumentation examples.
+```
+
+### Artifact Generation
+
+Generate dashboards, alerts, and SLOs from a single spec.
+
+```bash
+$ nthlayer apply service.yaml
+
+Generated:
+  → dashboard.json (Grafana)
+  → alerts.yaml (Prometheus)
+  → recording-rules.yaml (Prometheus)
+  → slos.yaml (OpenSLO)
+```
 
 ---
 
-## 📥 What You Put In
+## 🚀 Quick Start
 
-### 1. Service Spec (`service.yaml`)
+```bash
+# Install
+pip install nthlayer
+
+# Create a service spec
+nthlayer init
+
+# Validate and generate
+nthlayer apply service.yaml
+
+# Check deployment readiness
+nthlayer check-deploy payment-api
+```
+
+### Minimal `service.yaml`
 
 ```yaml
-# Minimal example (5 lines)
 name: payment-api
 tier: critical
 type: api
-dependencies:
-  - postgresql
-```
-
-### 2. Environment Variables (optional)
-
-```bash
-# 📟 PagerDuty - auto-create team, escalation policy, service
-export PAGERDUTY_API_KEY=...
-
-# 📊 Grafana - auto-push dashboards
-export NTHLAYER_GRAFANA_URL=...
-export NTHLAYER_GRAFANA_API_KEY=...
-export NTHLAYER_GRAFANA_ORG_ID=1              # Default: 1
-
-# 🔍 Prometheus - metric discovery for intent resolution
-export NTHLAYER_PROMETHEUS_URL=...
-export NTHLAYER_METRICS_USER=...              # If auth required
-export NTHLAYER_METRICS_PASSWORD=...
-```
-
----
-
-## 📤 What You Get Out
-
-| Output | File | Deploy To |
-|--------|------|-----------|
-| 📊 Dashboard | `generated/<service>/dashboard.json` | Grafana |
-| 🚨 Alerts | `generated/<service>/alerts.yaml` | Prometheus |
-| 🎯 SLOs | `generated/<service>/slos.yaml` | OpenSLO-compatible |
-| ⚡ Recording Rules | `generated/<service>/recording-rules.yaml` | Prometheus |
-| 📟 PagerDuty | Created via API | Team, escalation policy, service |
-
----
-
-## 📊 SLO Portfolio
-
-Track reliability across your entire organization:
-
-<div align="center">
-  <img src="demo/vhs/portfolio-demo.gif" alt="nthlayer portfolio demo" width="700">
-</div>
-
-```bash
-nthlayer portfolio              # Org-wide reliability view
-nthlayer portfolio --format json  # Machine-readable for dashboards
-nthlayer slo collect service.yaml  # Query current budget from Prometheus
-```
-
----
-
-## 📝 Full Service Example
-
-```yaml
-name: payment-api
-tier: critical              # critical | standard | low
-type: api                   # api | worker | stream
 team: payments
 
-slos:
-  availability: 99.95       # Generates Prometheus alerts
-  latency_p99_ms: 200       # Generates histogram queries
-
 dependencies:
-  - postgresql              # Adds PostgreSQL panels
-  - redis                   # Adds Redis panels
-  - kubernetes              # Adds K8s pod metrics
-
-pagerduty:
-  enabled: true
-  support_model: self       # self | shared | sre | business_hours
+  - postgresql
+  - redis
 ```
+
+See [full spec reference](https://rsionnach.github.io/nthlayer/reference/service-yaml/) for all options.
 
 ---
 
-## 💰 The Value
+## 🔄 CI/CD Integration
 
-### Generation: 20 hours → 5 minutes per service
-
-| Task | Manual Effort | With NthLayer |
-|------|---------------|---------------|
-| 🎯 Define SLOs & error budgets | 6 hours | Generated from tier |
-| 🚨 Research & configure alerts | 4 hours | 400+ battle-tested rules |
-| 📊 Build Grafana dashboards | 5 hours | 12-28 panels auto-generated |
-| 📟 PagerDuty escalation setup | 2 hours | Tier-based defaults |
-| 📋 Write recording rules | 3 hours | 20+ pre-computed metrics |
-
-### Validation: Catch issues before production
-
-| Problem | Without NthLayer | With NthLayer |
-|---------|------------------|---------------|
-| Missing metrics | Discover after deploy | `nthlayer verify` blocks promotion |
-| Invalid PromQL | Prometheus rejects rules | `--lint` catches in CI |
-| Policy violations | Manual review | `nthlayer validate-spec` enforces |
-| Exhausted budget | Deploy anyway, incident | `check-deploy` blocks risky deploys |
-
-### At Scale
-
-| Scale | Generation Saved | Incidents Prevented* |
-|-------|------------------|---------------------|
-| 🚀 50 services | 996 hours ($100K) | ~12/year |
-| 📈 200 services | 3,983 hours ($400K) | ~48/year |
-| 🏢 1,000 services | 19,917 hours ($2M) | ~240/year |
-
-<sub>*Estimated based on 60% reduction in "missing monitoring" incidents. Value at $100/hr engineering cost.</sub>
-
----
-
-## 🧠 How It Works
-
-### Generation
-
-| Step | What Happens |
-|------|--------------|
-| 🎯 **Intent Resolution** | Maps "availability SLO" → best matching PromQL query |
-| 🔀 **Type Routing** | API services get HTTP metrics, workers get job metrics |
-| ⚡ **Tier Defaults** | Critical = 99.95% SLO + 5min escalation, Low = 99.5% + 60min |
-| 🏗️ **Technology Templates** | 23 built-in: PostgreSQL, Redis, Kafka, MongoDB, etc. |
-
-### CI/CD Pipeline
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Generate  │───▶│   Validate  │───▶│   Protect   │───▶│   Deploy    │
-│ nthlayer    │    │ --lint      │    │ check-deploy│    │ kubectl     │
-│ apply       │    │ verify      │    │             │    │ argocd      │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-      │                  │                  │
-      ▼                  ▼                  ▼
-  artifacts         exit 1 if          exit 2 if
-  to git            invalid            budget exhausted
+```yaml
+# GitHub Actions
+- name: Validate reliability
+  run: |
+    nthlayer validate-slo ${{ matrix.service }}
+    nthlayer check-deploy ${{ matrix.service }}
 ```
 
 Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins**
 
 ---
 
-## 🛠️ CLI Commands
+## 🎯 How It's Different
 
-### Generate
-
-```bash
-nthlayer init                   # Interactive service.yaml creation
-nthlayer plan service.yaml      # Preview what will be generated
-nthlayer apply service.yaml     # Generate all artifacts
-nthlayer apply --push           # Also push dashboard to Grafana
-nthlayer apply --push-ruler     # Push alerts to Mimir/Cortex Ruler API
-```
-
-### Validate
-
-```bash
-nthlayer apply --lint           # Validate PromQL syntax (pint)
-nthlayer validate-spec service.yaml  # Check against policies (OPA/Rego)
-nthlayer verify service.yaml    # Verify metrics exist in Prometheus
-```
-
-### Protect
-
-```bash
-nthlayer check-deploy service.yaml  # Check error budget gate (exit 2 = blocked)
-nthlayer drift service.yaml         # Analyze reliability drift trends
-nthlayer portfolio              # Org-wide SLO health
-nthlayer portfolio --drift      # Include drift analysis in portfolio
-nthlayer slo collect service.yaml   # Query current budget from Prometheus
-```
-
----
-
-## 🔮 Coming Soon
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| 💰 **Error Budgets** | Track budget consumption, correlate with deploys | ✅ Done |
-| 📊 **SLO Portfolio** | Org-wide reliability view across all services | ✅ Done |
-| 🚦 **Deployment Gates** | Block deploys when error budget exhausted | ✅ Done |
-| ✅ **Contract Verification** | Verify declared metrics exist before promotion | ✅ Done |
-| 📉 **Drift Detection** | Detect reliability degradation trends, project budget exhaustion | ✅ Done |
-| 📝 **Loki Integration** | Generate LogQL alert rules, technology-specific log patterns | 🔨 Next |
-| 🤖 **AI Generation** | Conversational service.yaml creation via MCP | 📋 Planned |
-
----
-
-## 📦 Installation
-
-```bash
-# Recommended
-pipx install nthlayer
-
-# Or with pip
-pip install nthlayer
-
-# Verify
-nthlayer --version
-```
-
----
-
-## 🌐 Live Demo
-
-See NthLayer in action with real Grafana dashboards and generated configs:
-
-[![Live Dashboards](https://img.shields.io/badge/Live-Dashboards-blue?logo=grafana&style=for-the-badge)](https://nthlayer.grafana.net)
-[![Interactive Demo](https://img.shields.io/badge/Interactive-Demo-green?style=for-the-badge)](https://rsionnach.github.io/nthlayer/demo/)
+| Traditional Approach | NthLayer |
+|---------------------|----------|
+| Set SLOs in isolation | Validate against dependency chains |
+| Alert when budget exhausted | Predict exhaustion with drift detection |
+| Discover missing metrics in incidents | Enforce before deployment |
+| Manual dashboard creation | Generate from spec |
+| "Is this ready?" = opinion | "Is this ready?" = deterministic check |
 
 ---
 
 ## 📚 Documentation
 
 **[Full Documentation](https://rsionnach.github.io/nthlayer/)** - Comprehensive guides and reference.
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/rsionnach/nthlayer)
 
-| Quick Links | |
-|-------------|---|
-| 🚀 [Quick Start](https://rsionnach.github.io/nthlayer/getting-started/quick-start/) | Get running in 5 minutes |
-| 🔧 [Setup Wizard](https://rsionnach.github.io/nthlayer/commands/setup/) | Interactive configuration |
-| 📊 [SLO Portfolio](https://rsionnach.github.io/nthlayer/commands/portfolio/) | Org-wide reliability view |
-| 🔌 [18 Technologies](https://rsionnach.github.io/nthlayer/integrations/technologies/) | PostgreSQL, Redis, Kafka... |
-| 📖 [CLI Reference](https://rsionnach.github.io/nthlayer/reference/cli/) | All commands |
-| 🤝 [Contributing](CONTRIBUTING.md) | How to contribute |
+| Guide | Description |
+|-------|-------------|
+| [Quick Start](https://rsionnach.github.io/nthlayer/getting-started/quick-start/) | Get running in 5 minutes |
+| [Drift Detection](https://rsionnach.github.io/nthlayer/features/drift/) | Predict SLO exhaustion |
+| [Dependency Discovery](https://rsionnach.github.io/nthlayer/features/dependencies/) | Automatic dependency mapping |
+| [CI/CD Integration](https://rsionnach.github.io/nthlayer/guides/cicd/) | Pipeline setup |
+| [CLI Reference](https://rsionnach.github.io/nthlayer/reference/cli/) | All commands |
 
-<details>
-<summary>Build docs locally</summary>
+---
 
-```bash
-uv sync --extra docs
-uv run mkdocs serve  # Opens at http://localhost:8000
-```
-</details>
+## 🗺️ Roadmap
+
+- [x] Artifact generation (dashboards, alerts, SLOs)
+- [x] Deployment gates (check-deploy)
+- [x] Error budget tracking
+- [x] Portfolio view
+- [x] Drift detection
+- [x] Dependency discovery
+- [x] validate-slo
+- [x] blast-radius
+- [ ] Metric recommendations
+- [ ] MCP server integration
+- [ ] Backstage plugin
 
 ---
 
@@ -389,25 +258,4 @@ MIT - See [LICENSE.txt](LICENSE.txt)
 
 ## 🙏 Acknowledgments
 
-### Core Dependencies
-- [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) - Dashboard generation SDK (Apache 2.0)
-- [awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts) - 580+ battle-tested alert rules (CC BY 4.0)
-- [pint](https://github.com/cloudflare/pint) - PromQL linting and validation (Apache 2.0)
-- [conftest](https://github.com/open-policy-agent/conftest) / [OPA](https://github.com/open-policy-agent/opa) - Policy validation (Apache 2.0)
-- [PagerDuty Python SDK](https://github.com/PagerDuty/pdpyras) - Incident management integration (MIT)
-
-### Architecture Inspiration
-- [autograf](https://github.com/FUSAKLA/autograf) - Dynamic Prometheus metric discovery
-- [Sloth](https://github.com/slok/sloth) - SLO specification and burn rate calculations
-- [OpenSLO](https://github.com/openslo/openslo) - SLO specification standard
-
-### CLI & Documentation
-- [Rich](https://github.com/Textualize/rich) - Terminal formatting and styling (MIT)
-- [Questionary](https://github.com/tmbo/questionary) - Interactive CLI prompts (MIT)
-- [MkDocs Material](https://github.com/squidfunk/mkdocs-material) - Documentation theme (MIT)
-- [VHS](https://github.com/charmbracelet/vhs) - Terminal demo recordings (MIT)
-- [Nord Theme](https://www.nordtheme.com/) - Color palette inspiration (MIT)
-
-### Tooling
-- [Shields.io](https://shields.io/) - Badges
-- [Slidev](https://sli.dev/) - Presentation framework
+Built on [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk), [awesome-prometheus-alerts](https://github.com/samber/awesome-prometheus-alerts), [pint](https://github.com/cloudflare/pint), and [OpenSLO](https://github.com/openslo/openslo). Inspired by [Sloth](https://github.com/slok/sloth) and [autograf](https://github.com/FUSAKLA/autograf).
