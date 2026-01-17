@@ -242,6 +242,68 @@ resources:
     assert "rules" in data["groups"][0]
 
 
+def test_generate_alerts_quiet_mode(tmp_path, capsys):
+    """Test that quiet mode suppresses progress output.
+
+    This ensures JSON output from plan/apply commands isn't polluted
+    by alert generator progress messages.
+    """
+    from nthlayer.generators.alerts import generate_alerts_for_service
+
+    # Create temp service file with dependencies
+    service_file = tmp_path / "test-service.yaml"
+    service_file.write_text("""
+service:
+  name: test-api
+  team: test
+  tier: critical
+  type: api
+
+resources:
+  - kind: Dependencies
+    name: upstream
+    spec:
+      databases:
+        - name: postgres-main
+          type: postgres
+""")
+
+    # Generate alerts with quiet=True
+    alerts = generate_alerts_for_service(service_file, quiet=True)
+
+    # Should still generate alerts
+    assert len(alerts) > 0
+
+    # Should not produce any stdout output
+    captured = capsys.readouterr()
+    assert captured.out == "", f"Expected no output, but got: {captured.out}"
+
+
+def test_generate_alerts_no_deps_quiet_mode(tmp_path, capsys):
+    """Test that quiet mode suppresses output even when no dependencies."""
+    from nthlayer.generators.alerts import generate_alerts_for_service
+
+    # Create temp service file without dependencies
+    service_file = tmp_path / "test-service.yaml"
+    service_file.write_text("""
+service:
+  name: test-api
+  team: test
+  tier: critical
+  type: api
+""")
+
+    # Generate alerts with quiet=True
+    alerts = generate_alerts_for_service(service_file, quiet=True)
+
+    # Should return empty list
+    assert alerts == []
+
+    # Should not produce any stdout output
+    captured = capsys.readouterr()
+    assert captured.out == "", f"Expected no output, but got: {captured.out}"
+
+
 def test_alert_template_loader_caching():
     """Test that loader caches results"""
     loader = AlertTemplateLoader()

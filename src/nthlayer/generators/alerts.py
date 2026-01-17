@@ -139,6 +139,7 @@ def generate_alerts_for_service(
     runbook_url: str = "",
     notification_channel: str = "",
     routing: str | None = None,
+    quiet: bool = False,
 ) -> List[AlertRule]:
     """Generate alerts for a service based on its dependencies.
 
@@ -158,6 +159,8 @@ def generate_alerts_for_service(
         notification_channel: Notification channel (pagerduty, slack, etc.)
         routing: PagerDuty routing label (sre, team, shared). If None, uses
                  service's support_model.
+        quiet: If True, suppress progress output to stdout. Use when calling
+               programmatically or when output format is machine-readable.
 
     Returns:
         List of generated AlertRule objects
@@ -181,11 +184,13 @@ def generate_alerts_for_service(
     deps = extract_dependencies(resources)
 
     if not deps:
-        print("⚠️  No dependencies found in service definition")
-        print("   Add a Dependencies resource to enable alert generation")
+        if not quiet:
+            print("⚠️  No dependencies found in service definition")
+            print("   Add a Dependencies resource to enable alert generation")
         return []
 
-    print(f"📊 Loading alerts for dependencies: {', '.join(sorted(deps))}")
+    if not quiet:
+        print(f"📊 Loading alerts for dependencies: {', '.join(sorted(deps))}")
 
     # Load alerts for each dependency
     loader = AlertTemplateLoader()
@@ -196,7 +201,8 @@ def generate_alerts_for_service(
         try:
             alerts = loader.load_technology(dep)
             if not alerts:
-                print(f"   ⚠️  {dep}: No alerts found")
+                if not quiet:
+                    print(f"   ⚠️  {dep}: No alerts found")
                 stats[dep] = 0
                 continue
 
@@ -227,24 +233,29 @@ def generate_alerts_for_service(
 
             all_alerts.extend(validated)
             stats[dep] = len(validated)
-            fix_info = f" ({fixes_count} fixed)" if fixes_count else ""
-            print(f"   ✓ {dep}: {len(validated)} alerts{fix_info}")
+            if not quiet:
+                fix_info = f" ({fixes_count} fixed)" if fixes_count else ""
+                print(f"   ✓ {dep}: {len(validated)} alerts{fix_info}")
 
         except Exception as e:
-            print(f"   ❌ {dep}: Error loading alerts - {e}")
+            if not quiet:
+                print(f"   ❌ {dep}: Error loading alerts - {e}")
             stats[dep] = 0
 
     if not all_alerts:
-        print("\n⚠️  No alerts generated")
+        if not quiet:
+            print("\n⚠️  No alerts generated")
         return []
 
-    print(f"\n✅ Generated {len(all_alerts)} total alerts")
-    print(f"   Breakdown: {', '.join(f'{k}={v}' for k, v in stats.items() if v > 0)}")
+    if not quiet:
+        print(f"\n✅ Generated {len(all_alerts)} total alerts")
+        print(f"   Breakdown: {', '.join(f'{k}={v}' for k, v in stats.items() if v > 0)}")
 
     # Write output if specified
     if output_file:
         write_prometheus_yaml(all_alerts, output_file, context.name)
-        print(f"   Written to: {output_file}")
+        if not quiet:
+            print(f"   Written to: {output_file}")
 
     return all_alerts
 

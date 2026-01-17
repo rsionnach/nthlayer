@@ -348,10 +348,12 @@ class ServiceOrchestrator:
 
         try:
             # Generate alerts without writing to get actual count
+            # Use quiet=True to suppress progress output (avoids polluting JSON output)
             alerts = generate_alerts_for_service(
                 service_file=self.service_yaml,
                 output_file=None,  # Don't write during plan
                 environment=self.env,
+                quiet=True,
             )
 
             # Group by severity for summary
@@ -471,10 +473,12 @@ class ServiceOrchestrator:
         output_dir = self.output_dir or Path("generated")
         output_file = output_dir / "alerts.yaml"
 
+        # Use quiet=True to suppress progress output (avoids polluting JSON output)
         alerts = generate_alerts_for_service(
             service_file=self.service_yaml,
             output_file=output_file,
             environment=self.env,
+            quiet=True,
         )
 
         return len(alerts)
