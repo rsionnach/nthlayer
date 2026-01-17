@@ -1,0 +1,39 @@
+# Basic NthLayer PR Check
+#
+# This workflow validates your service configuration on every PR.
+# It runs the `plan` command to preview what resources would be generated
+# and posts a comment with the results.
+#
+# Usage:
+#   1. Copy this file to .github/workflows/nthlayer.yml in your repository
+#   2. Update the `service` input to point to your service.yaml file
+#   3. Commit and push to enable the workflow
+
+name: NthLayer Reliability Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'service.yaml'
+      - 'services/**/*.yaml'
+
+jobs:
+  reliability-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run NthLayer Check
+        uses: rsionnach/nthlayer@v1
+        with:
+          command: plan
+          service: service.yaml
+          fail-on: error
+          comment: 'true'
+          upload-sarif: 'true'

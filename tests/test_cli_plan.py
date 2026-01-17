@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from nthlayer.cli.plan import plan_command, print_plan_json, print_plan_summary
+from nthlayer.cli.plan import plan_command, print_plan_summary
 from nthlayer.orchestrator import PlanResult
 
 
@@ -178,18 +178,18 @@ class TestPlanCommand:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
 
-        # Verify structure
-        assert output["service_name"] == "minimal-service"
-        assert "resources" in output
-        assert "total_resources" in output
-        assert output["success"] is True
-        assert output["errors"] == []
+        # Verify new formatter structure
+        assert output["service"] == "minimal-service"
+        assert output["command"] == "plan"
+        assert "checks" in output
+        assert "summary" in output
+        assert output["summary"]["status"] in ("pass", "warn", "fail")
 
     def test_plan_text_output(self, sample_service_yaml, capsys):
         """Test plan with text output format."""
         result = plan_command(
             service_yaml=sample_service_yaml,
-            output_format="text",
+            output_format="table",
         )
 
         captured = capsys.readouterr()
@@ -209,7 +209,7 @@ class TestPlanCommand:
         """Test plan with PagerDuty configuration."""
         result = plan_command(
             service_yaml=service_with_pagerduty_yaml,
-            output_format="text",
+            output_format="table",
         )
 
         # Should succeed
@@ -284,52 +284,6 @@ class TestPrintPlanSummary:
         assert "apply" in captured.out.lower()
 
 
-class TestPrintPlanJson:
-    """Tests for print_plan_json function."""
-
-    def test_outputs_valid_json(self, successful_plan_result, capsys):
-        """Test that output is valid JSON."""
-        print_plan_json(successful_plan_result)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-
-        assert output["service_name"] == "test-service"
-        # Total is sum of all resource counts in the fixture
-        assert output["total_resources"] > 0
-        assert output["success"] is True
-
-    def test_includes_all_fields(self, successful_plan_result, capsys):
-        """Test that all expected fields are included."""
-        print_plan_json(successful_plan_result)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-
-        expected_fields = [
-            "service_name",
-            "service_yaml",
-            "resources",
-            "total_resources",
-            "errors",
-            "success",
-        ]
-        for field in expected_fields:
-            assert field in output
-
-    def test_resources_structure(self, successful_plan_result, capsys):
-        """Test that resources have expected structure."""
-        print_plan_json(successful_plan_result)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-
-        resources = output["resources"]
-        assert "slos" in resources
-        assert len(resources["slos"]) == 2
-        assert resources["slos"][0]["name"] == "availability"
-
-
 class TestPlanIntegration:
     """Integration tests for plan command."""
 
@@ -340,7 +294,7 @@ class TestPlanIntegration:
         # First plan
         plan_result = plan_command(
             service_yaml=sample_service_yaml,
-            output_format="text",
+            output_format="table",
         )
         assert plan_result == 0
 
@@ -348,7 +302,7 @@ class TestPlanIntegration:
         apply_result = apply_command(
             service_yaml=sample_service_yaml,
             output_dir=str(tmp_path / "output"),
-            output_format="text",
+            output_format="table",
         )
 
         # Both should succeed
@@ -360,14 +314,14 @@ class TestPlanIntegration:
         dev_result = plan_command(
             service_yaml=sample_service_yaml,
             env="dev",
-            output_format="text",
+            output_format="table",
         )
 
         # Plan for prod
         prod_result = plan_command(
             service_yaml=sample_service_yaml,
             env="prod",
-            output_format="text",
+            output_format="table",
         )
 
         # Both should succeed

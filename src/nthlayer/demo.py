@@ -436,7 +436,16 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("service_yaml", help="Path to service YAML file")
     plan_parser.add_argument("--env", help="Environment (dev, staging, prod)")
     plan_parser.add_argument(
-        "--output", choices=["text", "json"], default="text", help="Output format"
+        "--format",
+        "-f",
+        choices=["table", "json", "sarif", "junit", "markdown"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    plan_parser.add_argument(
+        "--output",
+        "-o",
+        help="Write output to file instead of stdout",
     )
     plan_parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed information"
@@ -857,7 +866,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             plan_command(
                 service_yaml=args.service_yaml,
                 env=args.env,
-                output_format=args.output,
+                output_format=args.format,
+                output_file=args.output,
                 verbose=args.verbose,
             )
         )

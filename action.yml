@@ -1,0 +1,201 @@
+name: 'NthLayer Reliability Check'
+description: 'Validate service reliability in CI/CD pipelines. Supports SLO validation, deployment gates, drift detection, and blast radius analysis.'
+author: 'NthLayer'
+
+inputs:
+  command:
+    description: 'NthLayer command to run (plan, check-deploy, drift, validate-slo, blast-radius)'
+    required: false
+    default: 'plan'
+  service:
+    description: 'Path to service.yaml file'
+    required: true
+  environment:
+    description: 'Deployment environment (dev, staging, prod)'
+    required: false
+    default: 'prod'
+  prometheus-url:
+    description: 'Prometheus server URL'
+    required: false
+  prometheus-username:
+    description: 'Prometheus basic auth username'
+    required: false
+  prometheus-password:
+    description: 'Prometheus basic auth password'
+    required: false
+  grafana-url:
+    description: 'Grafana server URL'
+    required: false
+  grafana-api-key:
+    description: 'Grafana API key'
+    required: false
+  fail-on:
+    description: 'Failure threshold (error, warning, none)'
+    required: false
+    default: 'error'
+  comment:
+    description: 'Post PR comment with results'
+    required: false
+    default: 'true'
+  upload-sarif:
+    description: 'Upload SARIF to GitHub Security tab'
+    required: false
+    default: 'true'
+
+outputs:
+  status:
+    description: 'Overall check status (pass, warn, fail)'
+    value: ${{ steps.run.outputs.status }}
+  errors:
+    description: 'Number of errors found'
+    value: ${{ steps.run.outputs.errors }}
+  warnings:
+    description: 'Number of warnings found'
+    value: ${{ steps.run.outputs.warnings }}
+  json-result:
+    description: 'Full JSON output'
+    value: ${{ steps.run.outputs.json_result }}
+  sarif-file:
+    description: 'Path to SARIF output file'
+    value: ${{ steps.run.outputs.sarif_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install NthLayer
+      shell: bash
+      run: pip install nthlayer
+
+    - name: Run NthLayer Check
+      id: run
+      shell: bash
+      env:
+        PROMETHEUS_URL: ${{ inputs.prometheus-url }}
+        PROMETHEUS_USERNAME: ${{ inputs.prometheus-username }}
+        PROMETHEUS_PASSWORD: ${{ inputs.prometheus-password }}
+        GRAFANA_URL: ${{ inputs.grafana-url }}
+        GRAFANA_API_KEY: ${{ inputs.grafana-api-key }}
+      run: |
+        set +e
+
+        # Create output directory
+        mkdir -p .nthlayer-output
+
+        # Build command arguments
+        CMD="nthlayer ${{ inputs.command }} ${{ inputs.service }}"
+
+        if [ -n "$PROMETHEUS_URL" ]; then
+          CMD="$CMD --prometheus-url $PROMETHEUS_URL"
+        fi
+
+        if [ "${{ inputs.environment }}" != "prod" ]; then
+          CMD="$CMD --env ${{ inputs.environment }}"
+        fi
+
+        # Run command with JSON output to capture results
+        $CMD --format json > .nthlayer-output/result.json 2>&1
+        EXIT_CODE=$?
+
+        # Generate SARIF output
+        $CMD --format sarif --output .nthlayer-output/results.sarif 2>/dev/null || true
+
+        # Generate Markdown output for PR comment
+        $CMD --format markdown > .nthlayer-output/comment.md 2>/dev/null || true
+
+        set -e
+
+        # Parse JSON result for outputs
+        if [ -f .nthlayer-output/result.json ]; then
+          STATUS=$(cat .nthlayer-output/result.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('summary',{}).get('status','unknown'))" 2>/dev/null || echo "unknown")
+          ERRORS=$(cat .nthlayer-output/result.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('summary',{}).get('errors',0))" 2>/dev/null || echo "0")
+          WARNINGS=$(cat .nthlayer-output/result.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('summary',{}).get('warnings',0))" 2>/dev/null || echo "0")
+        else
+          STATUS="fail"
+          ERRORS="1"
+          WARNINGS="0"
+        fi
+
+        echo "status=$STATUS" >> $GITHUB_OUTPUT
+        echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+        echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
+        echo "sarif_file=.nthlayer-output/results.sarif" >> $GITHUB_OUTPUT
+
+        # Store JSON result (escape for GitHub Actions)
+        JSON_RESULT=$(cat .nthlayer-output/result.json | tr '\n' ' ' | sed 's/"/\\"/g' || echo "{}")
+        echo "json_result=$JSON_RESULT" >> $GITHUB_OUTPUT
+
+        # Determine if we should fail
+        SHOULD_FAIL=false
+        if [ "${{ inputs.fail-on }}" = "error" ] && [ "$ERRORS" -gt 0 ]; then
+          SHOULD_FAIL=true
+        elif [ "${{ inputs.fail-on }}" = "warning" ] && [ "$WARNINGS" -gt 0 -o "$ERRORS" -gt 0 ]; then
+          SHOULD_FAIL=true
+        fi
+
+        # Save failure state for later steps
+        echo "should_fail=$SHOULD_FAIL" >> $GITHUB_OUTPUT
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.upload-sarif == 'true' && hashFiles('.nthlayer-output/results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: .nthlayer-output/results.sarif
+        category: nthlayer
+
+    - name: Post PR Comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const commentPath = '.nthlayer-output/comment.md';
+
+          if (!fs.existsSync(commentPath)) {
+            console.log('No comment file found, skipping');
+            return;
+          }
+
+          const body = fs.readFileSync(commentPath, 'utf8');
+
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+
+          const existingComment = comments.find(c =>
+            c.body.includes('<!-- nthlayer -->')
+          );
+
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body,
+            });
+          }
+
+    - name: Check Failure Threshold
+      if: steps.run.outputs.should_fail == 'true'
+      shell: bash
+      run: |
+        echo "::error::NthLayer check failed with ${{ steps.run.outputs.errors }} errors and ${{ steps.run.outputs.warnings }} warnings"
+        exit 1
+
+branding:
+  icon: 'shield'
+  color: 'blue'

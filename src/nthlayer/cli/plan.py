@@ -2,16 +2,23 @@
 CLI command for planning (dry-run) service resource generation.
 """
 
-import json
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Optional
 
+from nthlayer.cli.formatters import (
+    CheckResult,
+    CheckStatus,
+    ReliabilityReport,
+    format_report,
+)
 from nthlayer.cli.ux import console, error, header, warning
 from nthlayer.orchestrator import PlanResult, ServiceOrchestrator
 
 
 def print_plan_summary(plan: PlanResult) -> None:
-    """Print beautiful plan summary."""
+    """Print beautiful plan summary (table format)."""
     console.print()
     header(f"Plan: {plan.service_name}")
     console.print()
@@ -104,22 +111,111 @@ def print_plan_summary(plan: PlanResult) -> None:
     console.print()
 
 
-def print_plan_json(plan: PlanResult) -> None:
-    """Print plan in JSON format."""
-    output = {
-        "service_name": plan.service_name,
-        "service_yaml": str(plan.service_yaml),
-        "resources": plan.resources,
-        "total_resources": plan.total_resources,
-        "errors": plan.errors,
-        "warnings": plan.warnings,
-        "success": plan.success,
-    }
-    print(json.dumps(output, indent=2, sort_keys=True))
+def plan_to_report(plan: PlanResult) -> ReliabilityReport:
+    """Convert PlanResult to ReliabilityReport for formatting."""
+    checks = []
+
+    # Check for errors
+    if plan.errors:
+        for err in plan.errors:
+            checks.append(
+                CheckResult(
+                    name="Configuration Error",
+                    status=CheckStatus.FAIL,
+                    message=err,
+                    rule_id="NTHLAYER001",
+                    location=str(plan.service_yaml),
+                )
+            )
+    else:
+        # SLOs check
+        if "slos" in plan.resources:
+            slos = plan.resources["slos"]
+            checks.append(
+                CheckResult(
+                    name="SLO Definition",
+                    status=CheckStatus.PASS,
+                    message=f"{len(slos)} SLOs defined",
+                    details={"slo_count": len(slos)},
+                )
+            )
+
+        # Alerts check
+        if "alerts" in plan.resources:
+            alerts = plan.resources["alerts"]
+            total_count = sum(a.get("count", 0) for a in alerts)
+            checks.append(
+                CheckResult(
+                    name="Alert Generation",
+                    status=CheckStatus.PASS,
+                    message=f"{total_count} alerts will be generated",
+                    details={"alert_count": total_count},
+                )
+            )
+
+        # Dashboard check
+        if "dashboard" in plan.resources:
+            dashboards = plan.resources["dashboard"]
+            checks.append(
+                CheckResult(
+                    name="Dashboard Generation",
+                    status=CheckStatus.PASS,
+                    message=f"{len(dashboards)} dashboards will be generated",
+                    details={"dashboard_count": len(dashboards)},
+                )
+            )
+
+        # Recording rules check
+        if "recording-rules" in plan.resources:
+            rules = plan.resources["recording-rules"]
+            total_count = sum(r.get("count", 0) for r in rules)
+            checks.append(
+                CheckResult(
+                    name="Recording Rules",
+                    status=CheckStatus.PASS,
+                    message=f"{total_count} recording rules will be generated",
+                    details={"rule_count": total_count},
+                )
+            )
+
+        # No resources warning
+        if not plan.resources:
+            checks.append(
+                CheckResult(
+                    name="Resource Detection",
+                    status=CheckStatus.WARN,
+                    message="No resources detected in service definition",
+                )
+            )
+
+    # Add warnings
+    for warn in plan.warnings:
+        checks.append(
+            CheckResult(
+                name="Warning",
+                status=CheckStatus.WARN,
+                message=warn,
+            )
+        )
+
+    return ReliabilityReport(
+        service=plan.service_name,
+        command="plan",
+        checks=checks,
+        summary={"total_resources": plan.total_resources},
+        metadata={
+            "service_yaml": str(plan.service_yaml),
+            "resources": plan.resources,
+        },
+    )
 
 
 def plan_command(
-    service_yaml: str, env: Optional[str] = None, output_format: str = "text", verbose: bool = False
+    service_yaml: str,
+    env: Optional[str] = None,
+    output_format: str = "table",
+    output_file: Optional[str] = None,
+    verbose: bool = False,
 ) -> int:
     """
     Preview what resources would be generated (dry-run).
@@ -127,7 +223,8 @@ def plan_command(
     Args:
         service_yaml: Path to service YAML file
         env: Environment name (dev, staging, prod)
-        output_format: Output format (text, json, yaml)
+        output_format: Output format (table, json, sarif, junit, markdown)
+        output_file: Optional file path to write output
         verbose: Show detailed information
 
     Returns:
@@ -136,9 +233,22 @@ def plan_command(
     orchestrator = ServiceOrchestrator(Path(service_yaml), env=env)
     result = orchestrator.plan()
 
-    if output_format == "json":
-        print_plan_json(result)
-    else:  # text (default)
+    # Use table format with rich console output
+    if output_format == "table" and not output_file:
         print_plan_summary(result)
+    else:
+        # Convert to report and use formatter
+        report = plan_to_report(result)
+        output = format_report(
+            report,
+            output_format=output_format,
+            output_file=output_file,
+        )
+
+        # Print to stdout if not writing to file
+        if not output_file:
+            print(output)
+        else:
+            console.print(f"[success]Output written to {output_file}[/success]")
 
     return 0 if result.success else 1

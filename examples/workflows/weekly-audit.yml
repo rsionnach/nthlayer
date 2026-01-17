@@ -1,0 +1,140 @@
+# Weekly NthLayer Audit
+#
+# This workflow runs comprehensive reliability audits weekly:
+# - SLO validation for all services
+# - Blast radius analysis
+# - Drift detection
+#
+# Results are compiled into a GitHub Issue for review.
+
+name: Weekly Reliability Audit
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    # Allow manual trigger
+
+env:
+  PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install NthLayer
+        run: pip install nthlayer
+
+      - name: Run SLO Validation
+        id: slo
+        run: |
+          mkdir -p reports/slo
+          for service in services/*.yaml; do
+            NAME=$(basename "$service" .yaml)
+            echo "Validating $NAME..."
+            nthlayer validate-slo "$service" \
+              --prometheus-url "${{ env.PROMETHEUS_URL }}" \
+              --format markdown > "reports/slo/${NAME}.md" 2>&1 || true
+          done
+
+      - name: Run Blast Radius Analysis
+        id: blast
+        run: |
+          mkdir -p reports/blast
+          for service in services/*.yaml; do
+            NAME=$(basename "$service" .yaml)
+            echo "Analyzing blast radius for $NAME..."
+            nthlayer blast-radius "$service" \
+              --format markdown > "reports/blast/${NAME}.md" 2>&1 || true
+          done
+
+      - name: Run Drift Detection
+        id: drift
+        run: |
+          mkdir -p reports/drift
+          for service in services/*.yaml; do
+            NAME=$(basename "$service" .yaml)
+            echo "Checking drift for $NAME..."
+            nthlayer drift "$service" \
+              --prometheus-url "${{ env.PROMETHEUS_URL }}" \
+              --format markdown > "reports/drift/${NAME}.md" 2>&1 || true
+          done
+
+      - name: Generate Summary Report
+        id: report
+        run: |
+          cat > reports/summary.md << 'EOF'
+          # Weekly Reliability Audit Report
+
+          Generated: $(date -u +"%Y-%m-%d %H:%M UTC")
+
+          ## SLO Validation
+
+          EOF
+
+          for f in reports/slo/*.md; do
+            [ -f "$f" ] && cat "$f" >> reports/summary.md
+          done
+
+          cat >> reports/summary.md << 'EOF'
+
+          ## Blast Radius Analysis
+
+          EOF
+
+          for f in reports/blast/*.md; do
+            [ -f "$f" ] && cat "$f" >> reports/summary.md
+          done
+
+          cat >> reports/summary.md << 'EOF'
+
+          ## Drift Detection
+
+          EOF
+
+          for f in reports/drift/*.md; do
+            [ -f "$f" ] && cat "$f" >> reports/summary.md
+          done
+
+      - name: Create Audit Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('reports/summary.md', 'utf8');
+            const date = new Date().toISOString().split('T')[0];
+
+            // Count issues
+            const errors = (report.match(/❌/g) || []).length;
+            const warnings = (report.match(/⚠️/g) || []).length;
+            const passes = (report.match(/✅/g) || []).length;
+
+            let status = '✅ All Healthy';
+            let labels = ['reliability', 'audit'];
+            if (errors > 0) {
+              status = `❌ ${errors} Critical Issues`;
+              labels.push('priority:high');
+            } else if (warnings > 0) {
+              status = `⚠️ ${warnings} Warnings`;
+              labels.push('priority:medium');
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[NthLayer Audit] ${date} - ${status}`,
+              body: report,
+              labels: labels
+            });
