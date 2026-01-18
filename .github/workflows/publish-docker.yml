@@ -60,8 +60,12 @@ jobs:
 
       - name: Verify image
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          SIZE=$(docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }} --format "{{.Size}}")
+          # Use the first tag from metadata (handles both release and push events)
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "Verifying image: $IMAGE_TAG"
+          sleep 5  # Brief delay for registry propagation
+          docker pull "$IMAGE_TAG"
+          SIZE=$(docker images "$IMAGE_TAG" --format "{{.Size}}")
           echo "Image size: $SIZE"
           # Verify image works
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }} --version
+          docker run --rm "$IMAGE_TAG" --version
