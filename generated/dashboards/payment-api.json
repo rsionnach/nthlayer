@@ -1,11 +1,12 @@
 {
   "dashboard": {
-    "title": "payment-api - Service Dashboard",
+    "annotations": {},
+    "description": "Auto-generated dashboard for payment-api service",
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
     "panels": [
       {
-        "id": 1,
-        "type": "row",
-        "title": "SLO Metrics",
         "collapsed": false,
         "gridPos": {
           "h": 1,
@@ -13,623 +14,568 @@
           "x": 0,
           "y": 0
         },
-        "panels": []
+        "id": 0,
+        "panels": [],
+        "title": "SLO Metrics",
+        "type": "row"
       },
       {
-        "id": 2,
-        "title": "Availability SLO",
-        "type": "gauge",
-        "targets": [
-          {
-            "expr": "sum(rate(http_requests_total{service=\"$service\",status!~\"5..\"}[5m])) / sum(rate(http_requests_total{service=\"$service\"}[5m])) * 100",
-            "legendFormat": "Availability %",
-            "refId": "A"
-          }
-        ],
+        "description": "Target: 99.9%",
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
         "gridPos": {
-          "h": 8,
-          "w": 6,
+          "h": 9,
+          "w": 12,
           "x": 0,
           "y": 1
         },
-        "description": "Current availability vs 99.95% SLO target",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "percent",
-            "decimals": 2,
-            "min": 0,
-            "max": 100,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "value": 0,
-                  "color": "red"
-                },
-                {
-                  "value": 98.95,
-                  "color": "yellow"
-                },
-                {
-                  "value": 99.95,
-                  "color": "green"
-                }
-              ]
-            }
-          }
-        },
-        "options": {
-          "showThresholdLabels": false,
-          "showThresholdMarkers": true
-        }
-      },
-      {
-        "id": 3,
-        "title": "Latency-P95 SLO",
-        "type": "timeseries",
+        "options": null,
+        "repeatDirection": "h",
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p50",
+            "expr": "sum(rate(http_requests_total{service=\"payment-api\",status=~\"[1234]..\"}[5m]))\n/\nsum(rate(http_requests_total{service=\"payment-api\"}[5m]))\n",
+            "legendFormat": "availability",
             "refId": "A"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p95",
-            "refId": "B"
-          },
-          {
-            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p99",
-            "refId": "C"
           }
         ],
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 6,
-          "y": 1
-        },
-        "description": "Request latency percentiles (target: 99.0% under 500ms)",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ms",
-            "decimals": 0,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "value": 0,
-                  "color": "green"
-                },
-                {
-                  "value": 400.0,
-                  "color": "yellow"
-                },
-                {
-                  "value": 500,
-                  "color": "red"
-                }
-              ]
-            }
-          }
-        },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
+        "title": "availability",
+        "transformations": [],
+        "transparent": false,
+        "type": "timeseries"
       },
       {
-        "id": 4,
-        "title": "Latency-P99 SLO",
-        "type": "timeseries",
+        "description": "Target: 99.0%",
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 1
+        },
+        "options": null,
+        "repeatDirection": "h",
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p50",
+            "expr": "histogram_quantile(0.95,\n  sum(rate(http_request_duration_seconds_bucket{service=\"payment-api\"}[5m])) by (le)\n)\n",
+            "legendFormat": "latency-p95",
             "refId": "A"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p95",
-            "refId": "B"
-          },
-          {
-            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p99",
-            "refId": "C"
           }
         ],
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 18,
-          "y": 1
-        },
-        "description": "Request latency percentiles (target: 95.0% under 500ms)",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ms",
-            "decimals": 0,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "value": 0,
-                  "color": "green"
-                },
-                {
-                  "value": 400.0,
-                  "color": "yellow"
-                },
-                {
-                  "value": 500,
-                  "color": "red"
-                }
-              ]
-            }
-          }
-        },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
+        "title": "latency-p95",
+        "transformations": [],
+        "transparent": false,
+        "type": "timeseries"
       },
       {
-        "id": 5,
-        "type": "row",
-        "title": "Service Health",
         "collapsed": false,
         "gridPos": {
           "h": 1,
           "w": 24,
           "x": 0,
-          "y": 9
-        },
-        "panels": []
-      },
-      {
-        "id": 6,
-        "title": "Request Rate",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "sum(rate(http_requests_total{service=\"$service\"}[5m]))",
-            "legendFormat": "Requests/sec",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {
-          "h": 8,
-          "w": 8,
-          "x": 0,
           "y": 10
         },
-        "description": "HTTP requests per second",
+        "id": 0,
+        "panels": [],
+        "title": "Service Health",
+        "type": "row"
+      },
+      {
+        "description": "Total requests per second",
         "fieldConfig": {
-          "defaults": {
-            "unit": "reqps",
-            "decimals": 1
-          }
+          "defaults": {},
+          "overrides": []
         },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
-      },
-      {
-        "id": 7,
-        "title": "Error Rate",
-        "type": "timeseries",
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 11
+        },
+        "options": null,
+        "repeatDirection": "h",
         "targets": [
           {
-            "expr": "sum(rate(http_requests_total{service=\"$service\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{service=\"$service\"}[5m])) * 100",
-            "legendFormat": "Error %",
+            "expr": "sum(rate(http_requests_total{service=\"payment-api\"}[5m]))",
+            "legendFormat": "{{http}}",
             "refId": "A"
           }
         ],
-        "gridPos": {
-          "h": 8,
-          "w": 8,
-          "x": 8,
-          "y": 10
-        },
+        "title": "Request Rate",
+        "transformations": [],
+        "transparent": false,
+        "type": "timeseries"
+      },
+      {
         "description": "Percentage of requests returning 5xx errors",
         "fieldConfig": {
-          "defaults": {
-            "unit": "percent",
-            "decimals": 2,
-            "min": 0,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "value": 0,
-                  "color": "green"
-                },
-                {
-                  "value": 1,
-                  "color": "yellow"
-                },
-                {
-                  "value": 5,
-                  "color": "red"
-                }
-              ]
-            }
-          }
+          "defaults": {},
+          "overrides": []
         },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
-      },
-      {
-        "id": 8,
-        "title": "Response Time (p95)",
-        "type": "timeseries",
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 11
+        },
+        "options": null,
+        "repeatDirection": "h",
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service=\"$service\"}[5m])) * 1000",
-            "legendFormat": "p95 latency",
+            "expr": "sum(rate(http_requests_total{service=\"payment-api\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{service=\"payment-api\"}[5m])) * 100",
+            "legendFormat": "error %",
             "refId": "A"
           }
         ],
-        "gridPos": {
-          "h": 8,
-          "w": 8,
-          "x": 16,
-          "y": 10
-        },
-        "description": "95th percentile response time",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ms",
-            "decimals": 0
-          }
-        },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
+        "title": "Error Rate",
+        "transformations": [],
+        "transparent": false,
+        "type": "timeseries"
       },
       {
-        "id": 9,
-        "type": "row",
-        "title": "Dependencies",
+        "description": "95th percentile request duration",
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        },
+        "options": null,
+        "repeatDirection": "h",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service=\"payment-api\"}[5m])))",
+            "legendFormat": "{{http}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Request Latency (p95)",
+        "transformations": [],
+        "transparent": false,
+        "type": "timeseries"
+      },
+      {
         "collapsed": false,
         "gridPos": {
           "h": 1,
           "w": 24,
           "x": 0,
-          "y": 18
+          "y": 29
         },
-        "panels": []
+        "id": 0,
+        "panels": [],
+        "title": "Dependencies",
+        "type": "row"
       },
       {
-        "id": 10,
+        "description": "### PostgreSQL Connections - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.connections`: No metric found for postgresql.connections. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n- `postgresql.max_connections`: No metric found for postgresql.max_connections. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.connections: your_custom_metric\n  postgresql.max_connections: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 30
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
         "title": "PostgreSQL Connections",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "pg_stat_database_numbackends{service=\"$service\"}",
-            "legendFormat": "{{datname}} connections",
-            "refId": "A"
-          },
-          {
-            "expr": "pg_settings_max_connections{service=\"$service\"}",
-            "legendFormat": "Max connections",
-            "refId": "B"
-          }
-        ],
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 0,
-          "y": 19
-        },
-        "description": "Active database connections vs max connections limit",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "short",
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "value": 0,
-                  "color": "green"
-                },
-                {
-                  "value": 80,
-                  "color": "yellow"
-                },
-                {
-                  "value": 95,
-                  "color": "red"
-                }
-              ]
-            }
-          }
-        },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
       },
       {
-        "id": 11,
-        "title": "Cache Hit Ratio (Redis)",
-        "type": "gauge",
-        "targets": [
-          {
-            "expr": "sum(rate(cache_hits_total{service=\"$service\"}[5m])) / (sum(rate(cache_hits_total{service=\"$service\"}[5m])) + sum(rate(cache_misses_total{service=\"$service\"}[5m]))) * 100",
-            "legendFormat": "Cache hit %",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {
-          "h": 8,
-          "w": 6,
-          "x": 12,
-          "y": 19
-        },
-        "description": "Redis cache hit ratio - percentage of cache hits vs total requests",
+        "description": "### Active Queries - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.active_queries`: No metric found for postgresql.active_queries. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.active_queries: your_custom_metric\n```",
         "fieldConfig": {
           "defaults": {
-            "unit": "percent",
-            "decimals": 2,
-            "min": 0,
-            "max": 100,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "value": 0,
-                  "color": "red"
-                },
-                {
-                  "value": 95,
-                  "color": "yellow"
-                },
-                {
-                  "value": 99,
-                  "color": "green"
-                }
-              ]
-            }
-          }
-        },
-        "options": {
-          "showThresholdLabels": false,
-          "showThresholdMarkers": true
-        }
-      },
-      {
-        "id": 12,
-        "title": "Query Duration (p95)",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.95, rate(pg_stat_statements_mean_exec_time_seconds_bucket{service=\"$service\"}[5m]))",
-            "legendFormat": "p95 query time",
-            "refId": "A"
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
           },
-          {
-            "expr": "histogram_quantile(0.99, rate(pg_stat_statements_mean_exec_time_seconds_bucket{service=\"$service\"}[5m]))",
-            "legendFormat": "p99 query time",
-            "refId": "B"
-          }
-        ],
+          "overrides": []
+        },
         "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 18,
-          "y": 19
-        },
-        "description": "Query execution time percentiles",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "s",
-            "decimals": 3
-          }
-        },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
-      },
-      {
-        "id": 13,
-        "title": "Pod Status",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "kube_pod_status_phase{service=\"$service\",phase=\"Running\"}",
-            "legendFormat": "Running",
-            "refId": "A"
-          },
-          {
-            "expr": "kube_pod_status_phase{service=\"$service\",phase=\"Pending\"}",
-            "legendFormat": "Pending",
-            "refId": "B"
-          },
-          {
-            "expr": "kube_pod_status_phase{service=\"$service\",phase=\"Failed\"}",
-            "legendFormat": "Failed",
-            "refId": "C"
-          }
-        ],
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 0,
-          "y": 27
-        },
-        "description": "Number of pods in each status",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "short",
-            "decimals": 0
-          }
-        },
-        "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
-      },
-      {
-        "id": 14,
-        "title": "CPU Usage",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "sum(rate(container_cpu_usage_seconds_total{service=\"$service\",container!=\"\"}[5m])) by (pod)",
-            "legendFormat": "{{pod}}",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {
-          "h": 8,
+          "h": 9,
           "w": 12,
           "x": 12,
-          "y": 27
-        },
-        "description": "CPU cores used per pod",
-        "fieldConfig": {
-          "defaults": {
-            "unit": "short",
-            "decimals": 2
-          }
+          "y": 30
         },
         "options": {
-          "tooltip": {
-            "mode": "multi"
-          },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Active Queries",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
       },
       {
-        "id": 15,
-        "title": "Memory Usage",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "sum(container_memory_working_set_bytes{service=\"$service\",container!=\"\"}) by (pod)",
-            "legendFormat": "{{pod}}",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 0,
-          "y": 35
-        },
-        "description": "Memory usage per pod",
+        "description": "### Cache Hit Ratio - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.cache_hit`: No metric found for postgresql.cache_hit. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.cache_hit: your_custom_metric\n```",
         "fieldConfig": {
           "defaults": {
-            "unit": "bytes",
-            "decimals": 0
-          }
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 39
         },
         "options": {
-          "tooltip": {
-            "mode": "multi"
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Cache Hit Ratio",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Transaction Rate - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.transactions_committed`: No metric found for postgresql.transactions_committed. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n- `postgresql.transactions_rolled_back`: No metric found for postgresql.transactions_rolled_back. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.transactions_committed: your_custom_metric\n  postgresql.transactions_rolled_back: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
           },
-          "legend": {
-            "displayMode": "list",
-            "placement": "bottom"
-          }
-        }
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 39
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Transaction Rate",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Database Size - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.database_size`: No metric found for postgresql.database_size. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.database_size: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 48
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Database Size",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Deadlocks - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.deadlocks`: No metric found for postgresql.deadlocks. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.deadlocks: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 48
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Deadlocks",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Table Bloat (Dead Tuples) - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.table_bloat`: No metric found for postgresql.table_bloat. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.table_bloat: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 57
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Table Bloat (Dead Tuples)",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Connection Pool Utilization - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `postgresql.connections`: No metric found for postgresql.connections. Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n\n**To enable, install exporter:**\n```\nhelm install postgres-exporter prometheus-community/prometheus-postgres-exporter\n```\n\n[Documentation](https://github.com/prometheus-community/postgres_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  postgresql.connections: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install postgres_exporter: helm install postgres-exporter prometheus-community/prometheus-postgres-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 57
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Connection Pool Utilization",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Redis Memory Usage - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.memory`: No metric found for redis.memory. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.memory: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 66
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Redis Memory Usage",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Cache Hit Rate - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.hits`: No metric found for redis.hits. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.hits: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 66
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Cache Hit Rate",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Connected Clients - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.connections`: No metric found for redis.connections. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.connections: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 75
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Connected Clients",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Cache Hits vs Misses - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.hits`: No metric found for redis.hits. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n- `redis.misses`: No metric found for redis.misses. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.hits: your_custom_metric\n  redis.misses: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 75
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Cache Hits vs Misses",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Evicted Keys - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.evicted_keys`: No metric found for redis.evicted_keys. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.evicted_keys: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 84
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Evicted Keys",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Expired Keys - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.expired_keys`: No metric found for redis.expired_keys. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.expired_keys: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 84
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Expired Keys",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Commands/sec - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.commands`: No metric found for redis.commands. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.commands: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 0,
+          "y": 93
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Commands/sec",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
+      },
+      {
+        "description": "### Total Keys - Needs Instrumentation\n\nThis panel requires metrics that aren't currently being collected.\n\n**Missing metrics:**\n- `redis.keys`: No metric found for redis.keys. Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter\n\n**To enable, install exporter:**\n```\nhelm install redis-exporter prometheus-community/prometheus-redis-exporter\n```\n\n[Documentation](https://github.com/oliver006/redis_exporter)\n\n**Or add custom metric in service YAML:**\n```yaml\nmetrics:\n  redis.keys: your_custom_metric\n```",
+        "fieldConfig": {
+          "defaults": {
+            "noValue": "Install redis_exporter: helm install redis-exporter prometheus-community/prometheus-redis-exporter"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 12,
+          "x": 12,
+          "y": 93
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none"
+        },
+        "repeatDirection": "h",
+        "title": "Total Keys",
+        "transformations": [],
+        "transparent": false,
+        "type": "stat"
       }
     ],
-    "editable": true,
-    "timezone": "browser",
+    "schemaVersion": 36,
+    "style": "dark",
     "tags": [
-      "nthlayer",
-      "auto-generated",
-      "payments",
-      "critical"
+      "payments-team",
+      "critical",
+      "api"
     ],
+    "templating": {},
     "time": {
       "from": "now-6h",
       "to": "now"
     },
-    "refresh": "30s",
-    "schemaVersion": 38,
-    "version": 0,
-    "uid": "payment-api-overview",
-    "description": "Auto-generated dashboard for payment-api service",
-    "templating": {
-      "list": [
-        {
-          "name": "service",
-          "label": "Service",
-          "type": "query",
-          "query": "label_values(up{service=\"payment-api\"}, service)",
-          "multi": false,
-          "includeAll": false,
-          "datasource": "Prometheus",
-          "current": {
-            "text": "payment-api",
-            "value": "payment-api"
-          }
-        },
-        {
-          "name": "namespace",
-          "label": "Namespace",
-          "type": "query",
-          "query": "label_values(up{service=\"$service\"}, namespace)",
-          "multi": false,
-          "includeAll": false,
-          "datasource": "Prometheus"
-        }
-      ]
-    }
+    "timezone": "browser",
+    "title": "payment-api - Service Dashboard",
+    "uid": "payment-api-overview"
   },
-  "overwrite": true,
-  "message": "Generated by NthLayer"
+  "message": "Auto-generated dashboard for payment-api",
+  "overwrite": true
 }

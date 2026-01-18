@@ -42,6 +42,7 @@ dependencies = [
     "numpy>=1.24.0,<3.0.0",
     # Dependency discovery
     "cachetools>=5.3.0,<6.0.0",
+    "opentelemetry-semantic-conventions>=0.60b1",
 ]
 
 [project.scripts]
