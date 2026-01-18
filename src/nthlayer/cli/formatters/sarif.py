@@ -60,7 +60,7 @@ def format_sarif(report: ReliabilityReport) -> str:
         ],
     }
 
-    return json.dumps(sarif, indent=2)
+    return json.dumps(sarif, indent=2, sort_keys=True)
 
 
 def _get_used_rules(checks: list[CheckResult]) -> dict[str, dict[str, Any]]:

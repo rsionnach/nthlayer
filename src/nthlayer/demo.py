@@ -31,6 +31,10 @@ from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.identity import handle_identity_command, register_identity_parser
 from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
+from nthlayer.cli.recommend_metrics import (
+    handle_recommend_metrics_command,
+    register_recommend_metrics_parser,
+)
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.cli.ux import print_banner
@@ -811,6 +815,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Validate SLO command
     register_validate_slo_parser(subparsers)
 
+    # Recommend metrics command
+    register_recommend_metrics_parser(subparsers)
+
     return parser
 
 
@@ -1203,5 +1210,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "validate-slo":
         sys.exit(handle_validate_slo_command(args))
+
+    if args.command == "recommend-metrics":
+        sys.exit(handle_recommend_metrics_command(args))
 
     parser.print_help()

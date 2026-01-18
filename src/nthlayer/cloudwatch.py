@@ -73,7 +73,9 @@ class MetricsCollector:
 _metrics_collector: MetricsCollector | None = None
 
 
-def get_metrics_collector(namespace: str = "NthLayer", region: str = "eu-west-1") -> MetricsCollector:
+def get_metrics_collector(
+    namespace: str = "NthLayer", region: str = "eu-west-1"
+) -> MetricsCollector:
     """Get singleton metrics collector."""
     global _metrics_collector
     if _metrics_collector is None:

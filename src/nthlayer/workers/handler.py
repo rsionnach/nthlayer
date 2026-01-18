@@ -13,7 +13,7 @@ from nthlayer.db.repositories import RunRepository
 from nthlayer.db.session import get_session, init_engine
 from nthlayer.domain.models import RunStatus
 from nthlayer.logging import configure_logging
-from nthlayer.metrics import get_metrics_collector
+from nthlayer.cloudwatch import get_metrics_collector
 from nthlayer.providers import create_provider
 from nthlayer.tracing import init_xray, trace_async
 from nthlayer.workflows.team_reconcile import TeamReconcileState, TeamReconcileWorkflow
