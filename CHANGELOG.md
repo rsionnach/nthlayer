@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.1.0a14 (January 18, 2026)
+
+### CI/CD Proliferation, SLO Ceiling Validation & Metrics Recommendation Engine
+
+This release adds three major features for production reliability enforcement.
+
+#### New CLI Commands
+
+- **`nthlayer recommend-metrics`** - Metrics recommendation based on service type
+  - 7 service type templates: api, grpc, worker, queue-consumer, database-client, gateway, cache
+  - Runtime-specific metrics: Python, JVM, Go, Node.js
+  - Prometheus metric discovery with 50+ alias mappings
+  - Integration with official `opentelemetry-semantic-conventions` package
+  - `--check` flag to validate against live Prometheus
+  - `--show-code` flag for instrumentation snippets
+
+- **`nthlayer validate-slo-ceiling`** - SLO ceiling validation
+  - Validates SLO targets don't exceed what dependencies can support
+  - Calculates maximum achievable availability based on dependency SLAs
+  - Warns when SLO targets are unrealistic given dependency constraints
+
+#### CI/CD Integration
+
+- **Output formatters** for CI/CD pipelines
+  - GitHub Actions annotations (`--format github`)
+  - GitLab CI reports (`--format gitlab`)
+  - JSON output (`--format json`)
+  - Quiet mode (`-q`) to suppress non-essential output
+
+- **GitHub Action** workflow for automated validation
+  - Ready-to-use action at `.github/actions/nthlayer-validate`
+
+#### Internal
+
+- Renamed `metrics.py` to `cloudwatch.py` to avoid module naming conflict
+- Added `opentelemetry-semantic-conventions` as dependency
+- 96% test coverage on the metrics module
+
+---
+
 ## v0.1.0a13 (January 14, 2026)
 
 ### Alert Template Sync & Bug Fixes
