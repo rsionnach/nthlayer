@@ -63,7 +63,7 @@ def format_json(report: ReliabilityReport) -> str:
     if report.metadata:
         output["metadata"] = report.metadata
 
-    return json.dumps(output, indent=2, sort_keys=False, default=str)
+    return json.dumps(output, indent=2, sort_keys=True, default=str)
 
 
 def _normalize_check_name(name: str) -> str:
