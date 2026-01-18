@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Reliability Scorecard Calculator
+
+- **`nthlayer scorecard`** - Per-service reliability scores (0-100)
+  - Weighted score components: SLO Compliance (40%), Incident Score (30%), Deploy Success Rate (20%), Error Budget Remaining (10%)
+  - Score bands: EXCELLENT (90+), GOOD (75-89), FAIR (50-74), POOR (25-49), CRITICAL (0-24)
+  - Team aggregation with tier weighting (tier-1: 3x, tier-2: 2x, tier-3: 1x)
+  - Output formats: table, json, csv
+  - `--by-team` flag for team-level view
+  - Exit codes for CI/CD: 0=excellent/good, 1=fair, 2=poor/critical
+  - 36 tests with 100% coverage on core module
+
+---
+
 ## v0.1.0a14 (January 18, 2026)
 
 ### CI/CD Proliferation, SLO Ceiling Validation & Metrics Recommendation Engine

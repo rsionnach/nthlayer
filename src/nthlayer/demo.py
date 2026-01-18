@@ -35,6 +35,10 @@ from nthlayer.cli.recommend_metrics import (
     handle_recommend_metrics_command,
     register_recommend_metrics_parser,
 )
+from nthlayer.cli.scorecard import (
+    handle_scorecard_command,
+    register_scorecard_parser,
+)
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.cli.ux import print_banner
@@ -818,6 +822,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Recommend metrics command
     register_recommend_metrics_parser(subparsers)
 
+    # Scorecard command
+    register_scorecard_parser(subparsers)
+
     return parser
 
 
@@ -1213,5 +1220,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "recommend-metrics":
         sys.exit(handle_recommend_metrics_command(args))
+
+    if args.command == "scorecard":
+        sys.exit(handle_scorecard_command(args))
 
     parser.print_help()
