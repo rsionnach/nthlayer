@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from nthlayer.core.tiers import VALID_TIERS
+from nthlayer.slos.ceiling import validate_slo_ceiling
 from nthlayer.validation.metadata import Severity, ValidationIssue, ValidationResult
 
 
@@ -336,6 +337,9 @@ class ConftestValidator:
                 if resource.get("kind") == "SLO":
                     self._validate_slo(resource, result, service)
 
+            # SLO ceiling validation based on dependencies
+            self._validate_slo_ceiling(spec, result, service)
+
         result.rules_checked = 1
         return result
 
@@ -399,6 +403,83 @@ class ConftestValidator:
                     message=f"Critical tier availability SLO '{name}' has low objective",
                 )
             )
+
+    def _validate_slo_ceiling(self, spec: dict, result: ValidationResult, service: dict) -> None:
+        """
+        Validate that SLO objectives don't exceed achievable ceiling.
+
+        Based on Google SRE's "Rule of the Extra 9": your SLO cannot
+        exceed the product of your dependencies' SLAs.
+
+        This is OPT-IN: only runs if at least one dependency has an
+        explicit `sla` field. Teams not ready for this can omit the field.
+        """
+        # Check each SLO against the ceiling
+        resources = spec.get("resources", [])
+
+        for resource in resources:
+            if resource.get("kind") != "SLO":
+                continue
+
+            slo_name = resource.get("name", "unnamed")
+            slo_spec = resource.get("spec", {})
+            objective = slo_spec.get("objective")
+
+            if objective is None:
+                continue  # Skip if no objective (already flagged by other validation)
+
+            # Validate against ceiling using the full spec
+            ceiling_result = validate_slo_ceiling(objective, spec)
+
+            # Skip if not opted in (no dependencies have sla field)
+            if not ceiling_result.opted_in:
+                continue
+
+            if not ceiling_result.is_valid:
+                # Target exceeds ceiling
+                result.issues.append(
+                    ValidationIssue(
+                        severity=Severity.WARNING,
+                        rule_name="slo.ceiling.exceeded",
+                        validator="native",
+                        message=(
+                            f"SLO '{slo_name}': {ceiling_result.message}. "
+                            "Consider lowering target."
+                        ),
+                        suggestion=(
+                            f"Max achievable: {ceiling_result.ceiling_slo:.2f}% based on: "
+                            + ", ".join(
+                                f"{d}={s:.2f}%" for d, s in ceiling_result.dependency_slas.items()
+                            )
+                        ),
+                    )
+                )
+            elif ceiling_result.dependencies_missing_sla:
+                # Some dependencies missing SLA (info, not warning)
+                missing_list = ", ".join(ceiling_result.dependencies_missing_sla)
+                result.issues.append(
+                    ValidationIssue(
+                        severity=Severity.INFO,
+                        rule_name="slo.ceiling.partial",
+                        validator="native",
+                        message=(f"SLO '{slo_name}': {ceiling_result.message}"),
+                        suggestion=f"Add 'sla' field to: {missing_list}",
+                    )
+                )
+            elif ceiling_result.ceiling_slo - objective < 0.1:
+                # Warn if very close to ceiling (less than 0.1% margin)
+                result.issues.append(
+                    ValidationIssue(
+                        severity=Severity.INFO,
+                        rule_name="slo.ceiling.tight_margin",
+                        validator="native",
+                        message=(
+                            f"SLO '{slo_name}': target {objective:.2f}% has tight margin "
+                            f"to ceiling {ceiling_result.ceiling_slo:.2f}%"
+                        ),
+                        suggestion="Consider lower target for application-level issues",
+                    )
+                )
 
 
 def is_conftest_available() -> bool:

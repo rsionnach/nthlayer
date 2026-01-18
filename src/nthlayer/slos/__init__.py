@@ -14,6 +14,14 @@ from nthlayer.slos.alerts import (
     get_alert_storage,
 )
 from nthlayer.slos.calculator import ErrorBudgetCalculator
+from nthlayer.slos.ceiling import (
+    CeilingValidationResult,
+    DependencySLA,
+    calculate_slo_ceiling,
+    extract_dependencies_from_spec,
+    extract_dependencies_with_slas,
+    validate_slo_ceiling,
+)
 from nthlayer.slos.collector import SLOCollector, collect_and_store_budget, collect_service_budgets
 from nthlayer.slos.correlator import CorrelationResult, CorrelationWindow, DeploymentCorrelator
 from nthlayer.slos.deployment import Deployment, DeploymentRecorder
@@ -29,11 +37,13 @@ __all__ = [
     "AlertRule",
     "AlertSeverity",
     "AlertType",
+    "CeilingValidationResult",
     "CorrelationResult",
     "CorrelationWindow",
     "Deployment",
     "DeploymentCorrelator",
     "DeploymentRecorder",
+    "DependencySLA",
     "ErrorBudget",
     "ErrorBudgetCalculator",
     "OpenSLOParserError",
@@ -44,9 +54,13 @@ __all__ = [
     "SlackNotifier",
     "TimeWindow",
     "TimeWindowType",
+    "calculate_slo_ceiling",
     "collect_and_store_budget",
     "collect_service_budgets",
+    "extract_dependencies_from_spec",
+    "extract_dependencies_with_slas",
     "get_alert_storage",
     "parse_slo_dict",
     "parse_slo_file",
+    "validate_slo_ceiling",
 ]
