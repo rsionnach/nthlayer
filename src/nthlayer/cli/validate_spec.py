@@ -6,6 +6,8 @@ Uses conftest when available, falls back to native validation.
 
 from pathlib import Path
 
+from rich.markup import escape
+
 from nthlayer.cli.ux import console, error, header, success, warning
 from nthlayer.validation import Severity, is_conftest_available
 from nthlayer.validation.conftest import ConftestValidator, ValidationResult
@@ -113,7 +115,9 @@ def _print_result(result: ValidationResult, verbose: bool) -> None:
                 icon = "[info]ℹ[/info]"
 
             rule_info = f" [muted]({issue.rule_name})[/muted]" if issue.rule_name else ""
-            console.print(f"  {icon} [{issue.validator}]{rule_info} {issue.message}")
+            # Escape brackets in message to prevent Rich markup interpretation
+            safe_message = escape(issue.message)
+            console.print(f"  {icon} {rule_info} {safe_message}")
 
             if verbose and issue.suggestion:
                 console.print(f"      [muted]→ {issue.suggestion}[/muted]")

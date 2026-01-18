@@ -1,0 +1,45 @@
+# Payment API with Partial SLAs - UAT Service Definition
+# Tests partial SLA warning (some deps missing SLA field)
+#
+# Ceiling calculation (known deps only):
+#   postgresql (99.95%) × stripe (99.9%) = 99.85%
+#
+# SLO 99.5% < ceiling 99.85% → PASS but INFO about missing SLAs
+
+service:
+  name: payment-api
+  team: payments-team
+  tier: critical
+  type: api
+
+resources:
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.5  # Below ceiling - should pass
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="payment-api",status=~"[1234].."}[5m]))
+          /
+          sum(rate(http_requests_total{service="payment-api"}[5m]))
+
+  # Dependencies with PARTIAL SLA values
+  - kind: Dependencies
+    name: stack
+    spec:
+      databases:
+        - name: postgresql
+          type: postgresql
+          sla: 99.95  # Has SLA
+        - name: redis-cache
+          type: redis
+          # No SLA - should be reported as missing
+      external_apis:
+        - name: stripe
+          sla: 99.9  # Has SLA
+      messaging:
+        - name: redpanda
+          type: kafka
+          # No SLA - should be reported as missing

@@ -1,0 +1,66 @@
+# Payment API with Dependency SLAs - UAT Service Definition
+# Tests SLO ceiling validation (Google SRE "Rule of the Extra 9")
+#
+# Ceiling calculation:
+#   postgresql (99.95%) × redis (99.99%) × stripe (99.9%) = 99.84%
+#
+# Test scenarios:
+#   1. SLO 99.9% > ceiling 99.84% → WARNING: exceeds ceiling
+#   2. SLO 99.5% < ceiling 99.84% → PASS: achievable
+
+service:
+  name: payment-api
+  team: payments-team
+  tier: critical
+  type: api
+
+resources:
+  # Availability SLO - set high to trigger ceiling warning
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.9  # Exceeds ceiling of 99.84%
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="payment-api",status=~"[1234].."}[5m]))
+          /
+          sum(rate(http_requests_total{service="payment-api"}[5m]))
+
+  # Latency SLO - p95
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 500
+        query: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{service="payment-api"}[5m])) by (le)
+          )
+
+  # Dependencies WITH explicit SLA values (opts in to ceiling validation)
+  - kind: Dependencies
+    name: stack
+    spec:
+      databases:
+        - name: postgresql
+          type: postgresql
+          criticality: high
+          sla: 99.95  # AWS RDS SLA
+        - name: redis-cache
+          type: redis
+          criticality: medium
+          sla: 99.99  # ElastiCache SLA
+      external_apis:
+        - name: stripe
+          sla: 99.9  # Stripe's published SLA
+      messaging:
+        - name: redpanda
+          type: kafka
+          criticality: medium
+          # No SLA - tests "partial SLA" warning

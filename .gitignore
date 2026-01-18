@@ -109,3 +109,6 @@ redis-data/
 # Metric discovery test scripts (contains credentials via env vars)
 test_metric_discovery.py
 create_metric_discovery_epic.sh
+
+# UAT documentation (contains local environment credentials)
+UAT.md
