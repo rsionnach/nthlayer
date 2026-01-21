@@ -51,7 +51,6 @@ nthlayer validate-spec services/payment-api.yaml
 # ✓ Required fields present (name, team, tier, type)
 # ✓ Tier value valid (critical)
 # ✓ SLO objectives within range
-# ✓ Critical tier has PagerDuty configured
 ```
 
 ### 2. Lint Generated PromQL

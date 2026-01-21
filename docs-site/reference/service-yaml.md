@@ -20,7 +20,7 @@ dependencies:
 
 # Custom resource definitions
 resources:
-  - kind: string          # SLO, Alert, PagerDuty, Dependencies
+  - kind: string          # SLO, Alert, Dependencies
     name: string          # Resource identifier
     spec: object          # Resource-specific configuration
 
@@ -84,9 +84,9 @@ Service type determines default metrics and SLOs:
 
 Team responsible for the service. Used for:
 
-- PagerDuty team creation
 - Dashboard grouping
 - Alert routing
+- Scorecard aggregation
 
 ```yaml
 team: payments
@@ -147,19 +147,6 @@ resources:
       annotations:
         summary: "High error rate"
         description: "{{ $value | humanizePercentage }}"
-```
-
-#### PagerDuty Resource
-
-```yaml
-resources:
-  - kind: PagerDuty
-    name: alerting
-    spec:
-      urgency: high         # high, low
-      auto_create: true     # Create team/service automatically
-      service_id: PXXXXXX   # Use existing service
-      escalation_policy: PXXXXXX
 ```
 
 #### Dependencies Resource
@@ -248,12 +235,6 @@ resources:
         sum(rate(http_requests_total{service="payment-api"}[5m])) > 0.01
       for: 5m
       severity: critical
-
-  - kind: PagerDuty
-    name: alerting
-    spec:
-      urgency: high
-      auto_create: true
 
 environments:
   production:

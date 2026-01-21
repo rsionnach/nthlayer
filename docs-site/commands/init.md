@@ -101,13 +101,6 @@ resources:
         type: latency
         percentile: 99
 
-  # PagerDuty (auto-added for critical tier)
-  - kind: PagerDuty
-    name: alerting
-    spec:
-      urgency: high
-      auto_create: true
-
   # Dependencies
   - kind: Dependencies
     name: deps
@@ -141,7 +134,7 @@ resources:
 
 | Selection | Generated Resources |
 |-----------|---------------------|
-| Tier: critical | Higher SLO targets, PagerDuty |
+| Tier: critical | Higher SLO targets |
 | Tier: standard | Standard SLO targets |
 | Tier: low | Lower SLO targets |
 | Type: api | Latency SLO |

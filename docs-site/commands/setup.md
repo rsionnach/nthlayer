@@ -42,9 +42,6 @@ Quick Setup
    Grafana URL [http://localhost:3000]:
    API Key (press Enter to skip): ****
 
-3. PagerDuty Configuration (optional)
-   Configure PagerDuty? [y/N]:
-
 Testing Connections
 ----------------------------------------
   Prometheus (http://localhost:9090)
@@ -70,7 +67,7 @@ This includes:
 
 - Multiple Prometheus/Grafana profiles (dev, staging, prod)
 - Cloud secret backends (Vault, AWS Secrets Manager, etc.)
-- Detailed PagerDuty and Slack configuration
+- Slack notification configuration
 
 ## Test Connections Only
 
@@ -88,9 +85,6 @@ Testing Connections
 
   Grafana (http://localhost:3000)
     [OK] Connected - Org: Main Org
-
-  PagerDuty
-    [OK] Connected - 3 escalation policies
 
 All configured services are operational!
 ```
@@ -116,8 +110,6 @@ grafana:
       api_key_secret: grafana/api_key
 
 alerting:
-  pagerduty:
-    enabled: false
   slack:
     enabled: false
 ```
@@ -130,7 +122,6 @@ Alternatively, configure via environment variables:
 export NTHLAYER_PROMETHEUS_URL=http://prometheus:9090
 export NTHLAYER_GRAFANA_URL=http://grafana:3000
 export NTHLAYER_GRAFANA_API_KEY=glsa_xxxxx
-export PAGERDUTY_API_KEY=u+xxxxx
 ```
 
 ## See Also

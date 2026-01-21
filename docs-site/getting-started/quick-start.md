@@ -18,7 +18,6 @@ This guides you through configuring:
 
 - **Prometheus** - For metric discovery and SLO queries
 - **Grafana** - For dashboard deployment (optional)
-- **PagerDuty** - For alerting integration (optional)
 
 Example output:
 ```

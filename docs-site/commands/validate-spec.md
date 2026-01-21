@@ -77,7 +77,6 @@ Policy: service.rego
   ✓ deny_invalid_tier: PASSED
   ✓ deny_invalid_type: PASSED
   ✓ deny_critical_without_slo: PASSED
-  ✓ deny_critical_without_pagerduty: PASSED
 
 Policy: slo.rego
   ✓ deny_invalid_objective: PASSED
@@ -100,7 +99,6 @@ NthLayer includes default policies in `policies/`:
 | `deny_invalid_tier` | Error | Tier must be critical/standard/low |
 | `deny_invalid_type` | Error | Type must be api/worker/stream/web/batch/ml |
 | `deny_critical_without_slo` | Error | Critical tier requires SLO |
-| `deny_critical_without_pagerduty` | Error | Critical tier requires PagerDuty |
 
 ### slo.rego
 

@@ -43,14 +43,6 @@ The question is: *What happens to the business if this service fails?*
 | Latency P99 threshold | > 500ms | > 2s | > 5s |
 | Availability threshold | < 99.9% | < 99% | < 95% |
 
-### PagerDuty Escalation
-
-| Aspect | Critical | Standard | Low |
-|--------|----------|----------|-----|
-| Initial urgency | High | Low | Low |
-| Escalation delay | 5 minutes | 30 minutes | 60 minutes |
-| Auto-resolve | No | After 30 min | After 60 min |
-
 ## Choosing a Tier
 
 ### Ask These Questions
@@ -108,12 +100,6 @@ tier: critical
 slos:
   - name: availability
     target: 99.99  # Override: stricter than critical default (99.95)
-
-resources:
-  - kind: PagerDuty
-    spec:
-      urgency: high
-      escalation_delay: 3m  # Override: faster than critical default (5m)
 ```
 
 ## Tier Changes

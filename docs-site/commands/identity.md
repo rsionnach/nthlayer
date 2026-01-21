@@ -2,7 +2,7 @@
 
 Service identity resolution and management for consistent naming across systems.
 
-Services often have different names across systems (Kubernetes, Prometheus, PagerDuty, etc.). This command helps resolve and normalize service identities.
+Services often have different names across systems (Kubernetes, Prometheus, Backstage, etc.). This command helps resolve and normalize service identities.
 
 ## Usage
 
@@ -63,7 +63,6 @@ Canonical Name: checkout-service
 Known Aliases:
   • checkout-svc (kubernetes deployment)
   • checkout_service (prometheus metrics)
-  • checkout-service-prod (pagerduty)
   • CheckoutService (backstage)
 
 Resolution Path:
@@ -139,7 +138,6 @@ Identities are discovered from:
 2. **Backstage** - Catalog entity names
 3. **Kubernetes** - Deployment/Service names
 4. **Prometheus** - Metric label values
-5. **PagerDuty** - Service names
 
 ## Configuration
 
@@ -170,7 +168,7 @@ service:
   identity:
     kubernetes: checkout-svc
     prometheus: checkout_service
-    pagerduty: Checkout Service
+    backstage: CheckoutService
 ```
 
 ## Use Cases

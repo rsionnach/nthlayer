@@ -2,7 +2,7 @@
 
 Resolve service ownership from multiple sources with confidence-based attribution.
 
-This command queries Backstage, PagerDuty, CODEOWNERS, and Kubernetes labels to determine who owns a service.
+This command queries Backstage, CODEOWNERS, and Kubernetes labels to determine who owns a service.
 
 ## Usage
 
@@ -17,7 +17,6 @@ nthlayer ownership <service.yaml> [options]
 | `--env ENVIRONMENT` | Environment name (dev, staging, prod) |
 | `--format {table,json}` | Output format (default: table) |
 | `--backstage-url URL` | Backstage catalog URL |
-| `--pagerduty-token TOKEN` | PagerDuty API token |
 | `--k8s-namespace NAMESPACE` | Kubernetes namespace to search |
 | `--codeowners-root PATH` | Root directory for CODEOWNERS file |
 | `--demo` | Show demo output with sample data |
@@ -27,7 +26,6 @@ nthlayer ownership <service.yaml> [options]
 | Variable | Description |
 |----------|-------------|
 | `NTHLAYER_BACKSTAGE_URL` | Default Backstage catalog URL |
-| `PAGERDUTY_API_KEY` | PagerDuty API token |
 | `KUBECONFIG` | Kubernetes configuration file |
 
 ## Examples
@@ -54,7 +52,6 @@ Ownership Sources:
 │ Source          │ Owner           │ Confidence │ Details                     │
 ├─────────────────┼─────────────────┼────────────┼─────────────────────────────┤
 │ Backstage       │ payments-team   │ 0.95       │ spec.owner in catalog       │
-│ PagerDuty       │ payments-team   │ 0.90       │ Escalation policy owner     │
 │ CODEOWNERS      │ @acme/payments  │ 0.85       │ /services/checkout/**       │
 │ Kubernetes      │ team=payments   │ 0.80       │ Label on deployment         │
 │ service.yaml    │ payments-team   │ 1.00       │ service.team field          │
@@ -121,13 +118,6 @@ metadata:
 spec:
   owner: payments-team
 ```
-
-### PagerDuty (0.90 confidence)
-
-Queries PagerDuty for:
-- Service escalation policy owners
-- On-call schedules
-- Team membership
 
 ### CODEOWNERS (0.85 confidence)
 

@@ -40,8 +40,6 @@ Grafana:
     API Key: ****
 
 Alerting:
-  PagerDuty: enabled
-    Escalation Policy: P123ABC
   Slack: disabled
   Datadog: disabled
 ```
@@ -76,9 +74,6 @@ nthlayer config set prometheus.profiles.default.url http://prometheus:9090
 
 # Set Grafana API key (prompts for secret)
 nthlayer config set grafana.profiles.default.api_key --secret
-
-# Enable PagerDuty
-nthlayer config set alerting.pagerduty.enabled true
 ```
 
 ## Configuration File
@@ -111,10 +106,6 @@ grafana:
       api_key_secret: grafana/api_key
 
 alerting:
-  pagerduty:
-    enabled: true
-    api_key_secret: pagerduty/api_key
-    default_escalation_policy: P123ABC
   slack:
     enabled: false
     webhook_url_secret: slack/webhook_url
@@ -135,9 +126,6 @@ export NTHLAYER_PROMETHEUS_URL=http://prometheus:9090
 export NTHLAYER_GRAFANA_URL=http://grafana:3000
 export NTHLAYER_GRAFANA_API_KEY=glsa_xxxxx
 export NTHLAYER_GRAFANA_ORG_ID=1
-
-# PagerDuty
-export PAGERDUTY_API_KEY=u+xxxxx
 ```
 
 ## Multiple Profiles

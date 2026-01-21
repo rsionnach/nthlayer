@@ -64,7 +64,6 @@ kubectl apply -f generated/
 | **Alerts** | Prometheus alert rules with best-practice thresholds |
 | **SLOs** | OpenSLO-compatible definitions with error budgets |
 | **Recording Rules** | Pre-aggregated metrics for performance |
-| **PagerDuty** | Teams, schedules, and escalation policies |
 
 ## Key Features
 

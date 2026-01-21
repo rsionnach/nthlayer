@@ -20,7 +20,6 @@ architecture-beta
 
    service prometheus(logos:prometheus) [Prometheus] in observability
    service grafana(logos:grafana) [Grafana] in observability
-   service pagerduty(logos:pagerduty) [PagerDuty] in observability
 
    specs:R --> L:reslayer
    specs:R --> L:govlayer
@@ -28,7 +27,6 @@ architecture-beta
 
    reslayer:R --> L:prometheus
    obslayer:R --> L:grafana
-   obslayer:R --> L:pagerduty
 ```
 
 ---
@@ -44,7 +42,6 @@ NthLayer is built on these core technologies:
 | **HTTP Client** | httpx | Async HTTP for Prometheus, Grafana APIs |
 | **Validation** | Pydantic | Schema validation for service specs |
 | **Dashboard SDK** | grafana-foundation-sdk | Type-safe Grafana dashboard generation |
-| **PagerDuty SDK** | pagerduty | Official PagerDuty API client |
 | **Database** | SQLAlchemy + PostgreSQL | State storage (optional, for SLO history) |
 | **Cache** | Redis | Caching layer (optional) |
 | **Logging** | structlog | Structured JSON logging |
@@ -73,7 +70,6 @@ NthLayer is organized into these modules:
 | `alerts/` | Generate Prometheus alerting rules | `AlertTemplateLoader`, `AlertRule` |
 | `recording_rules/` | Generate Prometheus recording rules for performance | `build_recording_rules()`, `RecordingRule` |
 | `slos/` | SLO definitions, error budgets, and tracking | `SLO`, `ErrorBudgetCalculator`, `SLOCollector` |
-| `pagerduty/` | PagerDuty teams, schedules, escalation policies | `PagerDutyResourceManager`, `EventOrchestrationManager` |
 | `loki/` | Generate LogQL alerting rules | `LokiAlertGenerator`, `LogQLAlert` |
 
 ### Validation and Verification
@@ -95,9 +91,8 @@ NthLayer is organized into these modules:
 
 | Module | Purpose | Key Components |
 |--------|---------|----------------|
-| `providers/` | External service integrations | Grafana, Prometheus, PagerDuty providers |
-| `clients/` | HTTP clients with retry/circuit breaker | `CortexClient`, `PagerDutyClient`, `SlackNotifier` |
-| `integrations/` | High-level integration helpers | `PagerDutySetupResult` |
+| `providers/` | External service integrations | Grafana, Prometheus providers |
+| `clients/` | HTTP clients with retry/circuit breaker | `CortexClient`, `SlackNotifier` |
 
 ---
 
@@ -188,25 +183,21 @@ architecture-beta
    service slogen(mdi:target) [SLO Generator] in processing
    service alertgen(mdi:bell-alert) [Alert Generator] in processing
    service dashgen(mdi:view-dashboard) [Dashboard Builder] in processing
-   service pdgen(logos:pagerduty) [PagerDuty Setup] in processing
 
    service slofile(mdi:file-check) [SLO File] in outputgrp
    service alertfile(mdi:file-alert) [Alert Rules] in outputgrp
    service dashfile(mdi:file-chart) [Dashboard] in outputgrp
    service recfile(mdi:file-clock) [Recording Rules] in outputgrp
-   service pdfile(mdi:file-cog) [PagerDuty Config] in outputgrp
 
    specfile:R --> L:parser
    parser:R --> L:slogen
    parser:R --> L:alertgen
    parser:R --> L:dashgen
-   parser:R --> L:pdgen
 
    slogen:R --> L:slofile
    slogen:R --> L:recfile
    alertgen:R --> L:alertfile
    dashgen:R --> L:dashfile
-   pdgen:R --> L:pdfile
 ```
 
 ### Verification Flow
@@ -294,13 +285,11 @@ architecture-beta
 
    service prometheus(logos:prometheus) [Prometheus] in observability
    service grafana(logos:grafana) [Grafana] in observability
-   service pagerduty(logos:pagerduty) [PagerDuty] in observability
 
    developer:R --> L:pipeline
    pipeline:R --> L:nthlayer
    nthlayer:R --> L:prometheus
    nthlayer:R --> L:grafana
-   nthlayer:R --> L:pagerduty
 ```
 
 ### Environment Variables
@@ -310,7 +299,6 @@ architecture-beta
 | `NTHLAYER_PROMETHEUS_URL` | Prometheus server URL |
 | `NTHLAYER_GRAFANA_URL` | Grafana server URL |
 | `NTHLAYER_GRAFANA_API_KEY` | Grafana API key |
-| `PAGERDUTY_API_KEY` | PagerDuty API key |
 
 ---
 

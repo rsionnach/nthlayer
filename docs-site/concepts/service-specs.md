@@ -40,7 +40,7 @@ resources:
 | `team` | Team responsible for the service |
 | `description` | Human-readable description |
 | `dependencies` | List of technology dependencies |
-| `resources` | Custom SLO, alert, or PagerDuty configs |
+| `resources` | Custom SLO and alert configs |
 
 ## Service Types
 
@@ -144,17 +144,6 @@ resources:
         summary: "High latency on payment-api"
 ```
 
-### PagerDuty
-
-```yaml
-resources:
-  - kind: PagerDuty
-    name: alerting
-    spec:
-      urgency: high
-      auto_create: true
-```
-
 ## Environment Overrides
 
 Different settings per environment:
@@ -193,7 +182,6 @@ nthlayer validate payment-api.yaml
 ✓ payment-api.yaml is valid
   - 2 SLOs defined
   - 2 dependencies (postgresql, redis)
-  - PagerDuty integration enabled
 ```
 
 ## Examples

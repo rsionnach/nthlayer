@@ -49,22 +49,15 @@ resources:
       indicator:
         type: latency
         percentile: 99
-
-  # PagerDuty configuration
-  - kind: PagerDuty
-    name: alerting
-    spec:
-      urgency: high
-      auto_create: true
 ```
 
 ## Service Tiers
 
-| Tier | Availability | Latency (p99) | Escalation |
-|------|--------------|---------------|------------|
-| **1 (Critical)** | 99.95% | 200ms | 5 min |
-| **2 (Standard)** | 99.9% | 500ms | 15 min |
-| **3 (Low)** | 99.5% | 1000ms | 30 min |
+| Tier | Availability | Latency (p99) | Error Budget (30d) |
+|------|--------------|---------------|-------------------|
+| **1 (Critical)** | 99.95% | 200ms | 21.6 min |
+| **2 (Standard)** | 99.9% | 500ms | 43.2 min |
+| **3 (Low)** | 99.5% | 1000ms | 3.6 hours |
 
 ## Service Types
 

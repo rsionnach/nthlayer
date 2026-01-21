@@ -167,55 +167,7 @@ Total: 18 services, 16 with SLOs, 45 SLOs
 ```
 
 !!! tip "Cross-Vendor Aggregation"
-    **Why this matters:** PagerDuty can't give you this view—they want you locked into their ecosystem.
-    NthLayer aggregates SLOs across any backend (Prometheus, Datadog, etc.) in a single, vendor-neutral portfolio.
-
----
-
-## PagerDuty Integration
-
-Complete incident response setup with tier-based escalation policies.
-
-<div class="grid" markdown>
-
-<div class="grid cards" markdown>
-
--   :fontawesome-solid-users:{ .lg .middle } **Team Management**
-
-    ---
-
-    Auto-creates teams with manager roles assigned to API key owner
-
--   :fontawesome-solid-calendar:{ .lg .middle } **On-Call Schedules**
-
-    ---
-
-    Primary, secondary, and manager schedules with weekly rotation
-
--   :fontawesome-solid-clock:{ .lg .middle } **Tier-Based Timing**
-
-    ---
-
-    Critical: 5→15→30min | High: 15→30→60min | Low: 60min only
-
--   :fontawesome-solid-link:{ .lg .middle } **Service Linking**
-
-    ---
-
-    Services linked to escalation policies with urgency settings
-
-</div>
-
-</div>
-
-### Support Models
-
-| Model | Description |
-|-------|-------------|
-| `self` | Team handles all alerts 24/7 |
-| `shared` | Team (day) + SRE (off-hours) |
-| `sre` | SRE handles all alerts |
-| `business_hours` | Team (9-5) + low-priority queue |
+    **Why this matters:** NthLayer aggregates SLOs across any backend (Prometheus, Datadog, etc.) in a single, vendor-neutral portfolio.
 
 ---
 
@@ -238,7 +190,7 @@ From a single `service.yaml`, NthLayer generates:
 # Install NthLayer
 pipx install nthlayer
 
-# Interactive setup (configures Prometheus, Grafana, PagerDuty)
+# Interactive setup (configures Prometheus, Grafana)
 nthlayer setup
 
 # Generate configs for your service

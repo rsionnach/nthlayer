@@ -152,19 +152,6 @@ Generate recording rules only.
 nthlayer generate-recording-rules <service.yaml>
 ```
 
-### setup-pagerduty
-
-Configure PagerDuty for service.
-
-```bash
-nthlayer setup-pagerduty <service.yaml> [options]
-```
-
-| Option | Description |
-|--------|-------------|
-| `--api-key KEY` | PagerDuty API key |
-| `--dry-run` | Preview changes |
-
 ### verify
 
 Verify declared metrics exist in Prometheus (contract verification).
@@ -253,7 +240,6 @@ nthlayer ownership <service.yaml> [options]
 | `--env ENVIRONMENT` | Environment name |
 | `--format FORMAT` | Output: table, json |
 | `--backstage-url URL` | Backstage catalog URL |
-| `--pagerduty-token TOKEN` | PagerDuty API token |
 | `--demo` | Show demo output |
 
 ### identity
@@ -466,7 +452,6 @@ nthlayer secrets <subcommand>
 | `MIMIR_RULER_URL` | Mimir/Cortex Ruler API URL |
 | `MIMIR_TENANT_ID` | Mimir tenant ID (multi-tenant) |
 | `MIMIR_API_KEY` | Mimir API key (if auth required) |
-| `PAGERDUTY_API_KEY` | PagerDuty API key |
 | `NTHLAYER_PROFILE` | Config profile to use |
 
 ## Exit Codes
