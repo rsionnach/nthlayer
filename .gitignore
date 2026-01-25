@@ -112,3 +112,9 @@ create_metric_discovery_epic.sh
 
 # UAT documentation (contains local environment credentials)
 UAT.md
+
+# Specification and planning documents (local development)
+*SPEC.md
+*PLAN.md
+*_SPEC.md
+*_PLAN.md
