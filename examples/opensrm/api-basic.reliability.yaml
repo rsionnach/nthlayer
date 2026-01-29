@@ -1,0 +1,24 @@
+# OpenSRM Service Reliability Manifest
+# Basic API service example
+#
+# This is the minimal configuration for an API service.
+# Run: nthlayer validate examples/opensrm/api-basic.reliability.yaml
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: user-api
+  team: platform
+  tier: standard
+  description: User management API
+spec:
+  type: api
+  slos:
+    availability:
+      target: 99.9
+      window: 30d
+    latency:
+      target: 200
+      unit: ms
+      percentile: p99
+      window: 30d

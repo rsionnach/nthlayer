@@ -130,20 +130,32 @@ VALID_RESOURCE_KINDS = {
     "DeploymentGate",
 }
 
-# Valid service tiers
+# Valid service tiers (OpenSRM adds 'high' between critical and standard)
 VALID_TIERS = {
     "critical",
+    "high",  # NEW: OpenSRM tier between critical and standard
     "standard",
     "low",
 }
 
-# Valid service types
+# Valid service types (OpenSRM defines 6 types, NthLayer adds 'web')
 VALID_SERVICE_TYPES = {
-    "api",
-    "web",
-    "background-job",
-    "pipeline",
-    "database",
+    "api",  # Request/response services
+    "worker",  # Background processors (OpenSRM canonical name)
+    "stream",  # Event processors
+    "ai-gate",  # AI decision services with judgment SLOs
+    "batch",  # Scheduled jobs (OpenSRM canonical name)
+    "database",  # Managed database instances
+    "web",  # Web frontend (NthLayer extension)
+    # Legacy aliases (deprecated, use canonical names)
+    "background-job",  # → worker
+    "pipeline",  # → batch
+}
+
+# Type aliases for backward compatibility
+SERVICE_TYPE_ALIASES = {
+    "background-job": "worker",  # NthLayer legacy → OpenSRM
+    "pipeline": "batch",  # NthLayer legacy → OpenSRM
 }
 
 # Valid support models

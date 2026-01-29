@@ -1,0 +1,105 @@
+# OpenSRM Service Reliability Manifest
+# Critical API service with full configuration
+#
+# This example shows all available configuration options for a critical API service.
+# Run: nthlayer validate examples/opensrm/api-critical.reliability.yaml
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: payment-api
+  team: payments
+  tier: critical
+  description: Payment processing API - handles all payment transactions
+  labels:
+    domain: commerce
+    cost-center: revenue
+    compliance: pci-dss
+  annotations:
+    owner: "@payments-team"
+    last-reviewed: "2026-01-15"
+spec:
+  type: api
+
+  # SLO definitions - internal targets
+  slos:
+    availability:
+      target: 99.95
+      window: 30d
+      description: Service availability excluding planned maintenance
+    latency:
+      target: 200
+      unit: ms
+      percentile: p99
+      window: 30d
+      description: 99th percentile response time
+    error_rate:
+      target: 0.1
+      window: 7d
+      description: 5xx error rate as percentage
+
+  # External contract - promises to consumers
+  # Internal SLOs should be tighter than contracts
+  contract:
+    availability: 0.999  # 99.9% promised to consumers
+    latency:
+      p99: 500ms  # 500ms promised p99 latency
+
+  # Service dependencies
+  dependencies:
+    - name: postgres-primary
+      type: database
+      critical: true
+      database_type: postgresql
+      slo:
+        availability: 99.99
+    - name: redis-cache
+      type: cache
+      critical: false
+    - name: stripe-api
+      type: api
+      critical: true
+      manifest: https://api.stripe.com/.well-known/srm.yaml
+
+  # Ownership information
+  ownership:
+    team: payments
+    slack: "#payments-oncall"
+    email: payments-oncall@example.com
+    escalation: payments-escalation
+    pagerduty:
+      service_id: P123ABC
+      escalation_policy_id: P456DEF
+    runbook: https://wiki.example.com/runbooks/payment-api
+    documentation: https://docs.example.com/payment-api
+
+  # Observability configuration
+  observability:
+    metrics_prefix: payment_api
+    logs_label: app=payment-api
+    traces_service: payment-api
+    prometheus_job: payment-api
+    labels:
+      environment: production
+
+  # Deployment configuration
+  deployment:
+    environments:
+      - production
+      - staging
+      - development
+    gates:
+      error_budget:
+        enabled: true
+        threshold: 0.10  # Block if < 10% budget remaining
+      slo_compliance:
+        threshold: 0.99
+      recent_incidents:
+        p1_max: 0
+        p2_max: 2
+        lookback: 7d
+    rollback:
+      automatic: true
+      criteria:
+        error_rate_increase: 5%
+        latency_increase: 50%

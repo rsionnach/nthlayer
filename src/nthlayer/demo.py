@@ -27,6 +27,7 @@ from nthlayer.cli.blast_radius import (
 )
 from nthlayer.cli.deps import handle_deps_command, register_deps_parser
 from nthlayer.cli.drift import handle_drift_command, register_drift_parser
+from nthlayer.cli.migrate import handle_migrate_command, register_migrate_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.identity import handle_identity_command, register_identity_parser
 from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
@@ -825,6 +826,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Scorecard command
     register_scorecard_parser(subparsers)
 
+    # Migrate command (legacy to OpenSRM)
+    register_migrate_parser(subparsers)
+
     return parser
 
 
@@ -1223,5 +1227,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "scorecard":
         sys.exit(handle_scorecard_command(args))
+
+    if args.command == "migrate":
+        sys.exit(handle_migrate_command(args))
 
     parser.print_help()

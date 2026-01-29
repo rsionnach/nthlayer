@@ -1,0 +1,68 @@
+# OpenSRM Service Reliability Manifest
+# Stream processor service
+#
+# Stream processors handle continuous event flows from sources like Kafka.
+# SLOs focus on throughput, lag, and processing guarantees.
+# Run: nthlayer validate examples/opensrm/stream.reliability.yaml
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: order-events-processor
+  team: orders
+  tier: high
+  description: Processes order events from Kafka for analytics and fulfillment
+  labels:
+    domain: orders
+    stream: kafka
+    consumer-group: order-processor-v2
+spec:
+  type: stream
+
+  slos:
+    availability:
+      target: 99.95
+      window: 30d
+      description: Consumer process availability
+    throughput:
+      minimum: 5000  # Minimum 5000 events/second
+      unit: rps
+      window: 30d
+      description: Event processing rate
+    error_rate:
+      target: 0.01
+      window: 7d
+      description: Event processing failure rate
+
+  dependencies:
+    - name: kafka-cluster
+      type: queue
+      critical: true
+      slo:
+        availability: 99.99
+    - name: clickhouse
+      type: database
+      critical: true
+      database_type: clickhouse
+    - name: fulfillment-api
+      type: api
+      critical: true
+
+  ownership:
+    team: orders
+    slack: "#orders-oncall"
+    runbook: https://wiki/runbooks/order-events-processor
+
+  observability:
+    metrics_prefix: order_events
+    labels:
+      consumer_group: order-processor-v2
+      kafka_cluster: production
+
+  deployment:
+    environments:
+      - production
+      - staging
+    gates:
+      error_budget:
+        enabled: true

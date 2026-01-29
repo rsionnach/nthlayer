@@ -1,0 +1,111 @@
+# OpenSRM Service Reliability Manifest
+# AI Gate service with judgment SLOs
+#
+# AI gates are decision-making services that require additional
+# reliability metrics around decision quality and calibration.
+# Run: nthlayer validate examples/opensrm/ai-gate.reliability.yaml
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: fraud-detector
+  team: risk
+  tier: critical
+  description: Real-time fraud detection service using ML models
+  labels:
+    domain: risk
+    model-type: gradient-boost
+    ml-platform: sagemaker
+spec:
+  type: ai-gate
+
+  # Standard SLOs
+  slos:
+    availability:
+      target: 99.9
+      window: 30d
+      description: Service availability for decision requests
+    latency:
+      target: 100
+      unit: ms
+      percentile: p99
+      window: 30d
+      description: Decision latency - critical for checkout flow
+
+    # Judgment SLOs - AI-specific reliability metrics
+    reversal_rate:
+      target: 0.05  # Max 5% of decisions reversed by humans
+      window: 7d
+      description: Human override rate - indicates trust in AI decisions
+    high_confidence_failure:
+      target: 0.01  # Max 1% failures on high-confidence decisions
+      window: 7d
+      description: Failures where model was highly confident
+    calibration:
+      target: 0.05  # Max 5% ECE (Expected Calibration Error)
+      window: 30d
+      description: How well confidence scores match actual accuracy
+    feedback_latency:
+      target: 3600  # Ground truth available within 1 hour
+      window: 30d
+      description: Time until we know if decision was correct
+
+  # Contract for downstream consumers
+  contract:
+    availability: 0.999
+    latency:
+      p99: 200ms
+    judgment:
+      reversal_rate: 0.10  # Promise max 10% reversal rate
+
+  # Dependencies
+  dependencies:
+    - name: feature-store
+      type: database
+      critical: true
+      slo:
+        availability: 99.99
+        latency_p99: 50ms
+    - name: model-registry
+      type: api
+      critical: false
+
+  # AI-specific instrumentation
+  instrumentation:
+    telemetry_events:
+      - name: decision
+        fields:
+          - request_id
+          - confidence
+          - predicted_class
+          - features_hash
+      - name: feedback
+        fields:
+          - request_id
+          - actual_class
+          - feedback_source
+          - latency_ms
+    feedback_loop: feedback-collector
+    ground_truth_source: chargeback-processor
+
+  # Ownership
+  ownership:
+    team: risk
+    slack: "#risk-ml-oncall"
+    runbook: https://wiki/runbooks/fraud-detector
+    pagerduty:
+      service_id: PFRAUD01
+      escalation_policy_id: PMLTEAM1
+
+  # Deployment with ML-specific gates
+  deployment:
+    environments:
+      - production
+      - shadow  # Shadow mode for model validation
+      - staging
+    gates:
+      error_budget:
+        enabled: true
+        threshold: 0.15
+      slo_compliance:
+        threshold: 0.99

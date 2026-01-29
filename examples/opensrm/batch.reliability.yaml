@@ -1,0 +1,51 @@
+# OpenSRM Service Reliability Manifest
+# Batch processing service
+#
+# Batch jobs run on schedules to process large amounts of data.
+# SLOs focus on completion rate and duration.
+# Run: nthlayer validate examples/opensrm/batch.reliability.yaml
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: daily-report-generator
+  team: analytics
+  tier: standard
+  description: Generates daily business reports and exports to S3
+  labels:
+    domain: analytics
+    schedule: daily
+    output: s3
+spec:
+  type: batch
+
+  slos:
+    availability:
+      target: 99.0  # Allow for maintenance windows
+      window: 30d
+      description: Job execution success rate
+    error_rate:
+      target: 1.0
+      window: 7d
+      description: Job failure rate (allow some retries)
+
+  dependencies:
+    - name: redshift
+      type: database
+      critical: true
+      database_type: redshift
+      slo:
+        availability: 99.9
+    - name: s3-bucket
+      type: database
+      critical: true
+      database_type: s3
+
+  ownership:
+    team: analytics
+    slack: "#analytics-jobs"
+    runbook: https://wiki/runbooks/daily-report-generator
+
+  deployment:
+    environments:
+      - production

@@ -1,0 +1,49 @@
+# OpenSRM Service Reliability Manifest
+# Worker service (background processor)
+#
+# Workers process jobs from queues asynchronously.
+# SLOs focus on throughput and processing time.
+# Run: nthlayer validate examples/opensrm/worker.reliability.yaml
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: email-sender
+  team: notifications
+  tier: standard
+  description: Processes email jobs from the notification queue
+  labels:
+    domain: notifications
+    queue: sqs
+spec:
+  type: worker
+
+  slos:
+    availability:
+      target: 99.9
+      window: 30d
+      description: Worker process availability
+    throughput:
+      minimum: 100  # Minimum 100 jobs/second
+      unit: rps
+      window: 30d
+      description: Sustained processing rate
+    error_rate:
+      target: 0.5
+      window: 7d
+      description: Job failure rate
+
+  dependencies:
+    - name: sqs-queue
+      type: queue
+      critical: true
+    - name: sendgrid-api
+      type: api
+      critical: true
+      slo:
+        availability: 99.95
+
+  ownership:
+    team: notifications
+    slack: "#notifications-oncall"
+    runbook: https://wiki/runbooks/email-sender
