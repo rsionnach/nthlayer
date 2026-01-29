@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### OpenSRM: Service Reliability Manifest Format
+
+- **New format: `apiVersion: srm/v1`** - Declarative service reliability manifests
+  - Unified `ReliabilityManifest` internal model that both OpenSRM and legacy NthLayer formats normalize to
+  - OpenSRM YAML parser with validation for all spec sections
+  - Format auto-detection loader — existing legacy files continue to work
+  - Support for 7 service types: api, worker, stream, ai-gate, batch, database, web
+  - AI gate services with judgment SLOs (reversal rate, calibration, feedback latency)
+  - Deployment gates: error budget, SLO compliance, recent incidents
+  - External contracts with internal SLO margin validation
+  - Example manifests for all service types in `examples/opensrm/`
+
+- **Generator migration to ReliabilityManifest** - All generators now accept both formats
+  - `generate_alerts_from_manifest()` — alert generation from manifest
+  - `generate_sloth_from_manifest()` — Sloth SLO spec generation from manifest
+  - `ManifestDashboardBuilder` — Grafana dashboard generation from manifest
+  - `generate_loki_alerts_from_manifest()` — Loki alert generation from manifest
+  - `recommend_metrics_from_manifest()` — metric recommendations from manifest
+  - Recording rules manifest builder adapter
+  - Shared `extract_dependency_technologies()` helper consolidating duplicated logic
+  - `ReliabilityManifest.as_service_context()` factory for backward compatibility
+
+- **`nthlayer migrate`** - CLI command to convert legacy format to OpenSRM
+
+#### Bug Fixes
+
+- Fix `recommend_metrics` returning `slo_ready=True` when no metric template found
+- Add logging to sloth generator exception handlers (previously silent)
+- Warn on invalid dependency criticality values in OpenSRM parser and legacy loader
+- Fix queue dependencies silently dropped in dashboard manifest builder
+- Fix `ServiceContext` type annotation in sloth `convert_to_sloth_slo`
+- Remove unused `Contract` import from loader
+- Fix f-strings without placeholders in OpenSRM parser
+- Fix mypy type errors in sloth indicator dict and alerts routing argument
+
 ### Reliability Scorecard Calculator
 
 - **`nthlayer scorecard`** - Per-service reliability scores (0-100)
@@ -12,6 +47,13 @@
   - `--by-team` flag for team-level view
   - Exit codes for CI/CD: 0=excellent/good, 1=fair, 2=poor/critical
   - 36 tests with 100% coverage on core module
+
+#### Dependencies
+
+- Update httpx from <0.28.0 to <0.29.0
+- Update pytest from <9.0.0 to <10.0.0
+- Update respx from <0.22.0 to <0.23.0
+- Update pytest-asyncio requirement
 
 ---
 
