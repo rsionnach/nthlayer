@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from nthlayer.specs.helpers import extract_dependency_technologies
+from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import Resource
 
 from .models import LogQLAlert
@@ -95,6 +97,30 @@ class LokiAlertGenerator:
             f"(type={service_type}, deps={dependencies})"
         )
         return alerts
+
+    def generate_from_manifest(
+        self,
+        manifest: ReliabilityManifest,
+        labels: dict[str, str] | None = None,
+    ) -> list[LogQLAlert]:
+        """Generate LogQL alerts from ReliabilityManifest.
+
+        Args:
+            manifest: ReliabilityManifest instance
+            labels: Additional labels to add to alerts
+
+        Returns:
+            List of LogQLAlert objects
+        """
+        dependencies = extract_dependency_technologies(manifest)
+
+        return self.generate_for_service(
+            service_name=manifest.name,
+            service_type=manifest.type,
+            dependencies=dependencies,
+            tier=manifest.tier,
+            labels={"team": manifest.team, **(labels or {})},
+        )
 
     def _generate_service_alerts(
         self,
@@ -313,6 +339,31 @@ def extract_dependencies_from_resources(resources: list[Resource]) -> list[str]:
                 dependencies.append(svc_type.lower())
 
     return list(set(dependencies))
+
+
+def generate_loki_alerts_from_manifest(
+    manifest: ReliabilityManifest,
+    output_dir: str | Path | None = None,
+) -> tuple[list[LogQLAlert], Path | None]:
+    """Generate Loki alerts from ReliabilityManifest.
+
+    Args:
+        manifest: ReliabilityManifest instance
+        output_dir: Optional output directory for ruler file
+
+    Returns:
+        Tuple of (alerts list, output file path or None)
+    """
+    generator = LokiAlertGenerator()
+    alerts = generator.generate_from_manifest(manifest)
+
+    output_path = None
+    if output_dir:
+        output_dir = Path(output_dir)
+        output_path = output_dir / manifest.name / "loki-alerts.yaml"
+        generator.write_ruler_file(alerts, output_path, group_name=manifest.name)
+
+    return alerts, output_path
 
 
 def generate_loki_alerts_for_service_file(

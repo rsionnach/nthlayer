@@ -7,6 +7,8 @@ and validates coverage against discovered metrics from Prometheus.
 
 from __future__ import annotations
 
+import logging
+
 from nthlayer.metrics.models import (
     MetricDefinition,
     MetricMatch,
@@ -15,7 +17,27 @@ from nthlayer.metrics.models import (
 from nthlayer.metrics.runtime import get_runtime_metrics
 from nthlayer.metrics.standards.aliases import METRIC_ALIASES, get_aliases_for_canonical
 from nthlayer.metrics.templates.registry import get_template, resolve_template_metrics
-from nthlayer.specs.models import ServiceContext
+from nthlayer.specs.manifest import ReliabilityManifest
+from nthlayer.specs.models import ServiceContext  # Used by recommend_metrics
+
+logger = logging.getLogger(__name__)
+
+
+def recommend_metrics_from_manifest(
+    manifest: ReliabilityManifest,
+    discovered_metrics: list[str] | None = None,
+) -> MetricRecommendation:
+    """Generate metric recommendations from ReliabilityManifest.
+
+    Args:
+        manifest: ReliabilityManifest instance
+        discovered_metrics: List of metric names discovered from Prometheus
+
+    Returns:
+        MetricRecommendation with matched metrics and coverage stats
+    """
+    context = manifest.as_service_context()
+    return recommend_metrics(context, discovered_metrics)
 
 
 def recommend_metrics(
@@ -45,7 +67,13 @@ def recommend_metrics(
         template = get_template("api")
 
     if not template:
-        # Should never happen, but handle gracefully
+        # No template available - cannot assess coverage
+        logger.warning(
+            "No metric template found for service type '%s' "
+            "(service: %s). Coverage cannot be assessed.",
+            context.type,
+            context.name,
+        )
         return MetricRecommendation(
             service=context.name,
             service_type=context.type,
@@ -54,9 +82,9 @@ def recommend_metrics(
             required=[],
             recommended=[],
             runtime_metrics=[],
-            required_coverage=1.0,
-            recommended_coverage=1.0,
-            slo_ready=True,
+            required_coverage=0.0,
+            recommended_coverage=0.0,
+            slo_ready=False,
         )
 
     # Resolve metrics with inheritance

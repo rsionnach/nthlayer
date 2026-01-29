@@ -9,6 +9,8 @@ from typing import Any, List
 import yaml
 
 from nthlayer.alerts import AlertRule, AlertTemplateLoader
+from nthlayer.specs.helpers import extract_dependency_technologies
+from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import Resource
 from nthlayer.specs.parser import parse_service_file
 
@@ -132,6 +134,43 @@ def filter_by_tier(alerts: List[AlertRule], tier: str) -> List[AlertRule]:
         return alerts
 
 
+def generate_alerts_from_manifest(
+    manifest: ReliabilityManifest,
+    output_file: Path | None = None,
+    runbook_url: str = "",
+    notification_channel: str = "",
+    routing: str | None = None,
+    quiet: bool = False,
+) -> List[AlertRule]:
+    """Generate alerts from ReliabilityManifest.
+
+    Args:
+        manifest: ReliabilityManifest instance
+        output_file: Optional output path for generated alerts
+        runbook_url: Base URL for runbooks
+        notification_channel: Notification channel (pagerduty, slack, etc.)
+        routing: PagerDuty routing label. If None, uses manifest.support_model.
+        quiet: If True, suppress progress output
+
+    Returns:
+        List of generated AlertRule objects
+    """
+    deps = extract_dependency_technologies(manifest)
+    alert_routing = routing or manifest.support_model
+
+    return _generate_alerts_impl(
+        service_name=manifest.name,
+        team=manifest.team,
+        tier=manifest.tier,
+        dependencies=deps,
+        output_file=output_file,
+        runbook_url=runbook_url,
+        notification_channel=notification_channel,
+        routing=alert_routing,
+        quiet=quiet,
+    )
+
+
 def generate_alerts_for_service(
     service_file: Path,
     output_file: Path | None = None,
@@ -177,27 +216,66 @@ def generate_alerts_for_service(
     context, resources = parse_service_file(service_file, environment=environment)
 
     # Determine routing label (for PagerDuty Event Orchestration)
-    # Use explicit routing if provided, otherwise use service's support_model
-    alert_routing = routing or getattr(context, "support_model", "")
+    alert_routing: str = routing or getattr(context, "support_model", "") or ""
 
     # Extract dependencies
     deps = extract_dependencies(resources)
 
-    if not deps:
+    return _generate_alerts_impl(
+        service_name=context.name,
+        team=context.team,
+        tier=context.tier,
+        dependencies=deps,
+        output_file=output_file,
+        runbook_url=runbook_url,
+        notification_channel=notification_channel,
+        routing=alert_routing,
+        quiet=quiet,
+    )
+
+
+def _generate_alerts_impl(
+    service_name: str,
+    team: str,
+    tier: str,
+    dependencies: List[str],
+    output_file: Path | None = None,
+    runbook_url: str = "",
+    notification_channel: str = "",
+    routing: str = "",
+    quiet: bool = False,
+) -> List[AlertRule]:
+    """Core alert generation logic shared by both APIs.
+
+    Args:
+        service_name: Name of the service
+        team: Team owning the service
+        tier: Service tier (critical, standard, low)
+        dependencies: List of technology dependency names
+        output_file: Optional output path for generated alerts
+        runbook_url: Base URL for runbooks
+        notification_channel: Notification channel
+        routing: PagerDuty routing label
+        quiet: If True, suppress progress output
+
+    Returns:
+        List of generated AlertRule objects
+    """
+    if not dependencies:
         if not quiet:
             print("⚠️  No dependencies found in service definition")
             print("   Add a Dependencies resource to enable alert generation")
         return []
 
     if not quiet:
-        print(f"📊 Loading alerts for dependencies: {', '.join(sorted(deps))}")
+        print(f"📊 Loading alerts for dependencies: {', '.join(sorted(dependencies))}")
 
     # Load alerts for each dependency
     loader = AlertTemplateLoader()
     all_alerts = []
     stats = {}
 
-    for dep in sorted(deps):
+    for dep in sorted(dependencies):
         try:
             alerts = loader.load_technology(dep)
             if not alerts:
@@ -207,17 +285,17 @@ def generate_alerts_for_service(
                 continue
 
             # Filter by tier
-            filtered = filter_by_tier(alerts, context.tier)
+            filtered = filter_by_tier(alerts, tier)
 
             # Customize for service
             customized = [
                 alert.customize_for_service(
-                    service_name=context.name,
-                    team=context.team,
-                    tier=context.tier,
+                    service_name=service_name,
+                    team=team,
+                    tier=tier,
                     notification_channel=notification_channel,
                     runbook_url=runbook_url,
-                    routing=alert_routing,
+                    routing=routing,
                 )
                 for alert in filtered
             ]
@@ -253,7 +331,7 @@ def generate_alerts_for_service(
 
     # Write output if specified
     if output_file:
-        write_prometheus_yaml(all_alerts, output_file, context.name)
+        write_prometheus_yaml(all_alerts, output_file, service_name)
         if not quiet:
             print(f"   Written to: {output_file}")
 

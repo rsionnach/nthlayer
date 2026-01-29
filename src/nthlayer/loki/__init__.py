@@ -10,7 +10,10 @@ Features:
 - Grafana Loki ruler format output
 """
 
-from .generator import LokiAlertGenerator
+from .generator import (
+    LokiAlertGenerator,
+    generate_loki_alerts_from_manifest,
+)
 from .models import LogQLAlert
 from .templates import LOG_PATTERNS, get_patterns_for_technology
 
@@ -19,4 +22,6 @@ __all__ = [
     "LogQLAlert",
     "LOG_PATTERNS",
     "get_patterns_for_technology",
+    # New API (ReliabilityManifest)
+    "generate_loki_alerts_from_manifest",
 ]

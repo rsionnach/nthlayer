@@ -6,13 +6,18 @@ Generates Sloth specification YAML from NthLayer service definitions.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from nthlayer.specs.manifest import ReliabilityManifest, SLODefinition
+from nthlayer.specs.models import ServiceContext
 from nthlayer.specs.parser import parse_service_file, render_resource_spec
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -134,6 +139,7 @@ def generate_sloth_spec(
         )
 
     except Exception as e:
+        logger.error("Sloth generation failed for %s: %s", service_file, e)
         return SlothGenerationResult(
             success=False,
             service="unknown",
@@ -141,10 +147,142 @@ def generate_sloth_spec(
         )
 
 
+def generate_sloth_from_manifest(
+    manifest: ReliabilityManifest, output_dir: str | Path
+) -> SlothGenerationResult:
+    """Generate Sloth specification from ReliabilityManifest.
+
+    Args:
+        manifest: ReliabilityManifest instance
+        output_dir: Directory to write Sloth spec
+
+    Returns:
+        SlothGenerationResult with generation details
+    """
+    try:
+        if not manifest.slos:
+            return SlothGenerationResult(
+                success=False,
+                service=manifest.name,
+                error="No SLOs found in manifest",
+            )
+
+        # Build Sloth spec
+        slos: list[dict[str, Any]] = []
+        sloth_spec: dict[str, Any] = {
+            "version": "prometheus/v1",
+            "service": manifest.name,
+            "labels": {
+                "tier": manifest.tier,
+                "team": manifest.team,
+                "type": manifest.type,
+            },
+            "slos": slos,
+        }
+
+        # Convert each SLO definition to Sloth format
+        for slo in manifest.slos:
+            sloth_slo = _convert_slo_definition_to_sloth(slo, manifest)
+            slos.append(sloth_slo)
+
+        # Write output
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_file = output_dir / f"{manifest.name}.yaml"
+        with open(output_file, "w") as f:
+            yaml.dump(sloth_spec, f, sort_keys=False, default_flow_style=False)
+
+        return SlothGenerationResult(
+            success=True,
+            service=manifest.name,
+            output_file=output_file,
+            slo_count=len(manifest.slos),
+        )
+
+    except Exception as e:
+        logger.error(
+            "Sloth generation from manifest failed for %s: %s",
+            manifest.name,
+            e,
+        )
+        return SlothGenerationResult(
+            success=False,
+            service=manifest.name,
+            error=str(e),
+        )
+
+
+def _convert_slo_definition_to_sloth(
+    slo: SLODefinition,
+    manifest: ReliabilityManifest,
+) -> dict[str, Any]:
+    """Convert SLODefinition to Sloth SLO format.
+
+    Handles ${service} variable substitution in indicator queries.
+
+    Args:
+        slo: SLO definition from manifest
+        manifest: Parent manifest for context (service name, tier)
+
+    Returns:
+        Sloth SLO dict
+    """
+    # Determine indicator type
+    indicator_type = slo.slo_type or slo.name
+    if not slo.slo_type:
+        logger.debug(
+            "SLO '%s' has no explicit slo_type, using name '%s' as type",
+            slo.name,
+            slo.name,
+        )
+
+    query = slo.indicator_query or ""
+    if not query:
+        logger.warning(
+            "SLO '%s' in manifest '%s' has no indicator_query. "
+            "Generated Sloth spec will have empty PromQL queries.",
+            slo.name,
+            manifest.name,
+        )
+
+    # Substitute template variables (matching legacy render_resource_spec behavior)
+    query = query.replace("${service}", manifest.name)
+    query = query.replace("${team}", manifest.team)
+    query = query.replace("${tier}", manifest.tier)
+    query = query.replace("${type}", manifest.type)
+
+    # Build SLI based on indicator type
+    indicator: dict[str, Any] = {
+        "type": indicator_type,
+        "query": query,
+    }
+    if "latency" in indicator_type:
+        # Use target as threshold for latency SLOs
+        indicator["threshold_ms"] = slo.target
+
+    sli = convert_indicator_to_sli(indicator)
+
+    # Build alerting config
+    alerting = generate_alerting_config(
+        slo.name,
+        manifest.name,
+        manifest.tier,
+    )
+
+    return {
+        "name": slo.name,
+        "objective": slo.target,
+        "description": slo.description or f"{slo.target}% {slo.name.replace('-', ' ')}",
+        "sli": sli,
+        "alerting": alerting,
+    }
+
+
 def convert_to_sloth_slo(
     slo_name: str,
     spec: dict[str, Any],
-    service_context: Any,
+    service_context: ServiceContext,
 ) -> dict[str, Any]:
     """
     Convert NthLayer SLO spec to Sloth SLO format.
@@ -158,7 +296,6 @@ def convert_to_sloth_slo(
         Sloth SLO dict
     """
     objective = spec.get("objective", 99.9)
-    _window = spec.get("window", "30d")  # Reserved for future use
     indicator = spec.get("indicator", {})
 
     # Build SLI based on indicator type
@@ -237,14 +374,18 @@ def _extract_error_query(availability_query: str) -> str:
     Input: sum(rate(http[code!~"5.."]])) / sum(rate(http))
     Output: sum(rate(http[code=~"5.."]))
     """
+    if not availability_query:
+        return ""
+
     # For availability query, error is the complement
     # This is a simplification - may need enhancement
+    parts = availability_query.split("/")
     if "code!~" in availability_query:
         # Has error exclusion - convert to inclusion
-        return availability_query.split("/")[0].strip().replace("code!~", "code=~")
+        return parts[0].strip().replace("code!~", "code=~")
 
     # Default: assume numerator is good events, need to invert
-    return availability_query.split("/")[0].strip()
+    return parts[0].strip()
 
 
 def _extract_total_query(availability_query: str) -> str:
@@ -254,8 +395,12 @@ def _extract_total_query(availability_query: str) -> str:
     Input: sum(rate(http[code!~"5.."])) / sum(rate(http))
     Output: sum(rate(http))
     """
-    if "/" in availability_query:
-        return availability_query.split("/")[1].strip()
+    if not availability_query:
+        return ""
+
+    parts = availability_query.split("/")
+    if len(parts) > 1:
+        return parts[1].strip()
 
     return availability_query
 

@@ -15,6 +15,10 @@ from nthlayer.dashboards.intents import (
     get_intents_for_technology,
     list_technologies,
 )
+from nthlayer.dashboards.manifest_builder import (
+    ManifestDashboardBuilder,
+    build_dashboard_from_manifest,
+)
 from nthlayer.dashboards.panel_spec import (
     GuidancePanelSpec,
     PanelSpec,
@@ -29,6 +33,9 @@ from nthlayer.dashboards.resolver import (
 )
 
 __all__ = [
+    # Manifest API (ReliabilityManifest)
+    "ManifestDashboardBuilder",
+    "build_dashboard_from_manifest",
     # Intent Registry
     "MetricIntent",
     "ALL_INTENTS",
