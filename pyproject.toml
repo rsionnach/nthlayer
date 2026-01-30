@@ -41,7 +41,7 @@ dependencies = [
     "scipy>=1.11.0,<2.0.0",
     "numpy>=1.24.0,<3.0.0",
     # Dependency discovery
-    "cachetools>=5.3.0,<6.0.0",
+    "cachetools>=5.3.0,<7.0.0",
     "opentelemetry-semantic-conventions>=0.60b1",
 ]
 
