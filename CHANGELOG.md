@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.1.0a15 (January 30, 2026)
 
 ### OpenSRM: Service Reliability Manifest Format
 
