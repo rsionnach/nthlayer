@@ -16,6 +16,11 @@ Legacy usage (still supported):
 """
 
 # New unified API (recommended)
+from nthlayer.specs.contracts import (
+    ContractRegistry,
+    validate_dependency_expectations,
+    validate_transitive_feasibility,
+)
 from nthlayer.specs.helpers import extract_dependency_technologies
 from nthlayer.specs.loader import (
     LegacyFormatWarning,
@@ -69,6 +74,10 @@ __all__ = [
     "ManifestLoadError",
     "LegacyFormatWarning",
     "is_manifest_file",
+    # Contract validation
+    "ContractRegistry",
+    "validate_dependency_expectations",
+    "validate_transitive_feasibility",
     # OpenSRM parser
     "parse_opensrm",
     "parse_opensrm_file",

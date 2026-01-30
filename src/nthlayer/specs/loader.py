@@ -36,7 +36,12 @@ from nthlayer.specs.manifest import (
     SLODefinition,
     SourceFormat,
 )
-from nthlayer.specs.opensrm_parser import OpenSRMParseError, is_opensrm_format, parse_opensrm
+from nthlayer.specs.opensrm_parser import (
+    OpenSRMParseError,
+    is_opensrm_format,
+    parse_opensrm,
+    resolve_opensrm_template,
+)
 
 
 class ManifestLoadError(Exception):
@@ -118,6 +123,12 @@ def load_manifest(
     # Parse based on format
     if use_format == SourceFormat.OPENSRM:
         try:
+            # Resolve template before parsing
+            template_dir = _find_template_dir(path)
+            data, _template_warnings = resolve_opensrm_template(data, template_dir)
+            # Template warnings are informational; logged but don't block loading
+            for tw in _template_warnings:
+                logger.warning(tw)
             return parse_opensrm(data, source_file=str(path))
         except OpenSRMParseError as e:
             raise ManifestLoadError(str(e)) from e
@@ -405,6 +416,33 @@ def _extract_ownership(
             break
 
     return ownership
+
+
+def _find_template_dir(manifest_path: Path) -> Path | None:
+    """
+    Find the template directory for a manifest file.
+
+    Searches for:
+    1. .nthlayer/templates/ in parent directories
+    2. templates/ alongside the manifest file
+    """
+    # Search parent directories for .nthlayer/templates/
+    current = manifest_path.resolve().parent
+    for _ in range(10):  # Limit depth to avoid infinite traversal
+        candidate = current / ".nthlayer" / "templates"
+        if candidate.is_dir():
+            return candidate
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    # Fall back to templates/ alongside manifest
+    templates_dir = manifest_path.resolve().parent / "templates"
+    if templates_dir.is_dir():
+        return templates_dir
+
+    return None
 
 
 def is_manifest_file(file_path: str | Path) -> bool:

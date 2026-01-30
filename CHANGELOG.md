@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### OpenSRM Phase 4: Contract & Dependency Validation
+
+- **Contract registry** (`ContractRegistry`) — file-based registry that scans directories for manifest contracts, enabling cross-service validation (spec 11.3 Optional)
+- **Dependency expectation validation** — warns when a dependency's expected availability exceeds the provider's published contract (spec 11.3 Recommended)
+- **Transitive feasibility check** — warns when a service's contract availability is mathematically infeasible given its critical dependency chain (serial chain model, spec 11.3 Optional)
+- **Template resolution** — OpenSRM templates are now resolved and deep-merged before parsing, with service-wins override semantics (spec 8.3)
+- **Circular template detection** — templates that reference other templates are detected and warned about (spec 8.3.4 no-chaining rule, spec 11.2 Recommended)
+- **Contract validation wired into validator** — `validate_service_file()` now runs `validate_contracts()` for OpenSRM files and accepts an optional `ContractRegistry` for cross-service checks
+- **CLI `--registry-dir` flag** — `nthlayer validate --registry-dir <dir>` enables dependency and transitive feasibility validation against a directory of manifests
+- **`metadata.template` passed through** in OpenSRM parser (previously parsed but not stored on manifest)
+
+All new validation produces warnings (not errors) per spec Recommended/Optional priority.
+
 ## v0.1.0a15 (January 30, 2026)
 
 ### OpenSRM: Service Reliability Manifest Format
@@ -23,6 +38,15 @@
   - Recording rules manifest builder adapter
   - Shared `extract_dependency_technologies()` helper consolidating duplicated logic
   - `ReliabilityManifest.as_service_context()` factory for backward compatibility
+
+- **CLI migration to `load_as_legacy()` bridge** - All CLI commands now work with OpenSRM files
+  - `load_as_legacy()` bridge function auto-detects format and routes to correct parser
+  - OpenSRM files: `load_manifest()` → `as_service_context()` + `as_resources()`
+  - Legacy files: direct `parse_service_file()` fallback for full compatibility
+  - `ReliabilityManifest.as_resources()` converts SLOs, dependencies, and PagerDuty to Resource objects
+  - All 17 CLI commands migrated (`validate`, `plan`, `generate-dashboard`, `generate-alerts`, etc.)
+  - All generators, orchestrator, and portfolio aggregator migrated
+  - `parse_service_file()` remains available for direct import (non-breaking)
 
 - **`nthlayer migrate`** - CLI command to convert legacy format to OpenSRM
 

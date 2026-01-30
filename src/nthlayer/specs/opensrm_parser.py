@@ -152,6 +152,8 @@ def parse_opensrm(
         contract=contract,
         # AI Gate
         instrumentation=instrumentation,
+        # Template
+        template=metadata.get("template"),
         # Source tracking
         source_format=SourceFormat.OPENSRM,
         source_file=source_file,
@@ -417,3 +419,108 @@ def _parse_instrumentation(instr_data: dict[str, Any] | None) -> Instrumentation
         feedback_loop=instr_data.get("feedback_loop"),
         ground_truth_source=instr_data.get("ground_truth_source"),
     )
+
+
+# =============================================================================
+# Template Resolution (Spec 8.3)
+# =============================================================================
+
+
+def resolve_opensrm_template(
+    manifest_data: dict[str, Any],
+    template_dir: str | Path | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """
+    Resolve OpenSRM template inheritance.
+
+    If the manifest has metadata.template, loads the template file and
+    deep-merges spec fields (template as base, manifest overrides).
+
+    Spec 8.3 rule 4: templates cannot inherit from other templates
+    (no-chaining). If the loaded template itself has metadata.template,
+    we warn and skip merging.
+
+    Args:
+        manifest_data: Parsed YAML manifest data
+        template_dir: Directory to search for template files
+
+    Returns:
+        Tuple of (resolved data, list of warnings)
+    """
+    warnings: list[str] = []
+    metadata = manifest_data.get("metadata", {})
+    template_name = metadata.get("template")
+
+    if not template_name:
+        return manifest_data, warnings
+
+    if template_dir is None:
+        warnings.append(f"Template '{template_name}' specified but no template directory found")
+        return manifest_data, warnings
+
+    template_dir = Path(template_dir)
+
+    # Find template file
+    template_file = template_dir / f"{template_name}.yaml"
+    if not template_file.exists():
+        template_file = template_dir / f"{template_name}.yml"
+    if not template_file.exists():
+        warnings.append(f"Template '{template_name}' not found in {template_dir}")
+        return manifest_data, warnings
+
+    # Load template
+    try:
+        with open(template_file) as f:
+            template_data = yaml.safe_load(f)
+    except Exception as e:
+        warnings.append(f"Failed to load template '{template_name}': {e}")
+        return manifest_data, warnings
+
+    if not isinstance(template_data, dict):
+        warnings.append(f"Template '{template_name}' is not a valid YAML object")
+        return manifest_data, warnings
+
+    # Check for chaining (spec 8.3 rule 4: no-chaining)
+    template_metadata = template_data.get("metadata", {})
+    if template_metadata.get("template"):
+        warnings.append(
+            f"Template '{template_name}' itself references template "
+            f"'{template_metadata['template']}' (chaining not allowed per spec 8.3.4)"
+        )
+        return manifest_data, warnings
+
+    # Deep merge: template spec as base, manifest spec overrides
+    template_spec = template_data.get("spec", {})
+    manifest_spec = manifest_data.get("spec", {})
+    merged_spec = _deep_merge_spec(template_spec, manifest_spec)
+
+    result = dict(manifest_data)
+    result["spec"] = merged_spec
+
+    return result, warnings
+
+
+def _deep_merge_spec(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """
+    Deep merge two spec dicts with override-wins semantics.
+
+    Special case: the 'slos' key does leaf-level replacement —
+    each SLO name in override replaces the entire SLO definition
+    from base (spec 8.3.2).
+    """
+    result = dict(base)
+
+    for key, value in override.items():
+        if key == "slos":
+            # SLO leaf-level replacement: each named SLO replaces entirely
+            base_slos = dict(result.get("slos", {}))
+            if isinstance(value, dict):
+                for slo_name, slo_def in value.items():
+                    base_slos[slo_name] = slo_def
+            result["slos"] = base_slos
+        elif key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge_spec(result[key], value)
+        else:
+            result[key] = value
+
+    return result

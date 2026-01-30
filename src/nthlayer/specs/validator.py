@@ -12,13 +12,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from nthlayer.specs.models import VALID_RESOURCE_KINDS
-from nthlayer.specs.manifest import SERVICE_TYPE_ALIASES, VALID_SERVICE_TYPES, VALID_TIERS
+from nthlayer.specs.contracts import (
+    ContractRegistry,
+    validate_dependency_expectations,
+    validate_transitive_feasibility,
+)
 from nthlayer.specs.loader import (
     LegacyFormatWarning,
     ManifestLoadError,
     load_manifest,
 )
+from nthlayer.specs.manifest import SERVICE_TYPE_ALIASES, VALID_SERVICE_TYPES, VALID_TIERS
+from nthlayer.specs.models import VALID_RESOURCE_KINDS
 from nthlayer.specs.parser import ServiceParseError, parse_service_file
 from nthlayer.specs.template import validate_template_variables
 
@@ -61,6 +66,7 @@ def validate_service_file(
     environment: str | None = None,
     strict: bool = False,
     validate_filename: bool = True,
+    contract_registry: ContractRegistry | None = None,
 ) -> ValidationResult:
     """
     Validate service YAML file.
@@ -132,6 +138,16 @@ def validate_service_file(
             service_context = MockContext(manifest)
             resources = []  # OpenSRM manifests have SLOs inline, not as resources
             resource_count = len(manifest.slos) + len(manifest.dependencies)
+
+            # Contract validation (OpenSRM only)
+            contract_warnings = manifest.validate_contracts()
+            warnings.extend(contract_warnings)
+
+            if contract_registry is not None:
+                dep_warnings = validate_dependency_expectations(manifest, contract_registry)
+                warnings.extend(dep_warnings)
+                trans_warnings = validate_transitive_feasibility(manifest, contract_registry)
+                warnings.extend(trans_warnings)
 
         except ManifestLoadError as e:
             return ValidationResult(

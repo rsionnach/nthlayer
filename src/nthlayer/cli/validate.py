@@ -12,6 +12,7 @@ def validate_command(
     service_file: str,
     environment: str | None = None,
     strict: bool = False,
+    registry_dir: str | None = None,
 ) -> int:
     """
     Validate service definition file.
@@ -20,6 +21,7 @@ def validate_command(
         service_file: Path to service YAML file
         environment: Optional environment name (dev, staging, prod)
         strict: Treat warnings as errors
+        registry_dir: Optional directory to scan for contract registry
 
     Returns:
         Exit code (0 = valid, 1 = invalid)
@@ -31,7 +33,21 @@ def validate_command(
         console.print(f"[info]Environment:[/info] {environment}")
         console.print()
 
-    result = validate_service_file(service_file, environment=environment, strict=strict)
+    contract_registry = None
+    if registry_dir:
+        from nthlayer.specs.contracts import ContractRegistry
+
+        console.print(f"[info]Contract registry:[/info] {registry_dir}")
+        contract_registry = ContractRegistry.from_directory(registry_dir)
+        console.print(f"[info]Registered contracts:[/info] {len(contract_registry.services)}")
+        console.print()
+
+    result = validate_service_file(
+        service_file,
+        environment=environment,
+        strict=strict,
+        contract_registry=contract_registry,
+    )
 
     if result.valid:
         success("Valid service definition")
