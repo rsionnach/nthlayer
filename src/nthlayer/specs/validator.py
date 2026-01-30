@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from nthlayer.specs.models import VALID_RESOURCE_KINDS
-from nthlayer.specs.manifest import VALID_SERVICE_TYPES, VALID_TIERS
+from nthlayer.specs.manifest import SERVICE_TYPE_ALIASES, VALID_SERVICE_TYPES, VALID_TIERS
 from nthlayer.specs.loader import (
     LegacyFormatWarning,
     ManifestLoadError,
@@ -191,8 +191,9 @@ def validate_service_file(
             f"Must be one of: {', '.join(sorted(VALID_TIERS))}"
         )
 
-    # Validate type
-    if service_context.type not in VALID_SERVICE_TYPES:
+    # Validate type (accept canonical types and legacy aliases)
+    all_valid_types = VALID_SERVICE_TYPES | set(SERVICE_TYPE_ALIASES.keys())
+    if service_context.type not in all_valid_types:
         errors.append(
             f"Invalid type: '{service_context.type}'. "
             f"Must be one of: {', '.join(sorted(VALID_SERVICE_TYPES))}"

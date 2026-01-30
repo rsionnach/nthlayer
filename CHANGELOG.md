@@ -31,7 +31,15 @@
 - Fix `recommend_metrics` returning `slo_ready=True` when no metric template found
 - Add logging to sloth generator exception handlers (previously silent)
 - Warn on invalid dependency criticality values in OpenSRM parser and legacy loader
-- Fix queue dependencies silently dropped in dashboard manifest builder
+- Fix dependency dashboard panels using application service name instead of exporter service name in PromQL queries (e.g. `service="postgresql"` instead of `service="payment-api"`)
+- Fix intent resolution producing empty guidance panels when no MetricResolver configured; now uses first candidate metric name as fallback
+- Fix gauge panels missing min/max; only set explicit max for percent/percentunit units
+- Fix queue dependencies silently dropped in dashboard builder — Kafka, RabbitMQ, etc. now generate panels
+- Fix validator rejecting legacy type aliases (`background-job`, `pipeline`)
+- Add Redpanda as template alias for Kafka (wire-compatible)
+- Fix `recommend_metrics` returning `slo_ready=True` when no metric template found
+- Add logging to sloth generator exception handlers (previously silent)
+- Warn on invalid dependency criticality values in OpenSRM parser and legacy loader
 - Fix `ServiceContext` type annotation in sloth `convert_to_sloth_slo`
 - Remove unused `Contract` import from loader
 - Fix f-strings without placeholders in OpenSRM parser
