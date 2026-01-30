@@ -141,7 +141,7 @@ class IntentBasedTemplate(TechnologyTemplate):
                 return self._build_guidance_panel(spec, unresolved_intents)
 
         # Build the actual panel
-        return Panel(
+        panel = Panel(
             title=spec.title,
             panel_type=self._panel_type_to_string(spec.panel_type),
             targets=targets,
@@ -149,6 +149,17 @@ class IntentBasedTemplate(TechnologyTemplate):
             unit=spec.unit,
             grid_pos={"h": spec.height, "w": spec.width, "x": 0, "y": 0},
         )
+
+        # Gauge panels need min/max for correct rendering
+        if spec.panel_type == PanelType.GAUGE:
+            panel.min = 0
+            if spec.unit == "percent":
+                panel.max = 100
+            elif spec.unit == "percentunit":
+                panel.max = 1
+            # Other units: omit max so Grafana auto-scales
+
+        return panel
 
     def _resolve_intent(self, intent: str) -> ResolutionResult:
         """
@@ -166,10 +177,25 @@ class IntentBasedTemplate(TechnologyTemplate):
         if self.resolver:
             result = self.resolver.resolve(intent)
         else:
-            # No resolver - return unresolved
-            result = ResolutionResult(
-                intent=intent, status=ResolutionStatus.UNRESOLVED, message="No resolver configured"
-            )
+            # No resolver - use first candidate from intent definition as
+            # a reasonable default so panels render with standard metric
+            # names instead of being empty guidance shells.
+            from nthlayer.dashboards.intents import get_intent
+
+            intent_def = get_intent(intent)
+            if intent_def and intent_def.candidates:
+                result = ResolutionResult(
+                    intent=intent,
+                    status=ResolutionStatus.FALLBACK,
+                    metric_name=intent_def.candidates[0],
+                    message=f"No resolver; using default candidate: {intent_def.candidates[0]}",
+                )
+            else:
+                result = ResolutionResult(
+                    intent=intent,
+                    status=ResolutionStatus.UNRESOLVED,
+                    message="No resolver configured and no candidates defined",
+                )
 
         self._resolution_results[intent] = result
         return result

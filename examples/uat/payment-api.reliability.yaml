@@ -1,0 +1,58 @@
+# Payment API - OpenSRM UAT Service Reliability Manifest
+# Equivalent of payment-api.yaml in OpenSRM format (apiVersion: srm/v1)
+# Matches metrics from fake-payment-api container
+
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+
+metadata:
+  name: payment-api
+  team: payments-team
+  tier: critical
+  description: Payment API service for processing transactions
+
+spec:
+  type: api
+
+  slos:
+    availability:
+      target: 99.9
+      window: 30d
+      type: availability
+      description: "99.9% availability over 30 days"
+      query: |
+        sum(rate(http_requests_total{service="payment-api",status=~"[1234].."}[5m]))
+        /
+        sum(rate(http_requests_total{service="payment-api"}[5m]))
+
+    latency-p95:
+      target: 99.0
+      window: 30d
+      type: latency
+      percentile: p95
+      unit: ms
+      description: "99% of requests under 500ms at p95"
+      query: |
+        histogram_quantile(0.95,
+          sum(rate(http_request_duration_seconds_bucket{service="payment-api"}[5m])) by (le)
+        )
+
+  dependencies:
+    - name: postgresql
+      type: database
+      critical: true
+      criticality: high
+      database_type: postgresql
+    - name: redis-cache
+      type: cache
+      critical: false
+      criticality: medium
+    - name: redpanda
+      type: queue
+      critical: false
+      criticality: medium
+
+  ownership:
+    team: payments-team
+    slack: "#payments-oncall"
+    runbook: "https://wiki.example.com/payments/runbook"

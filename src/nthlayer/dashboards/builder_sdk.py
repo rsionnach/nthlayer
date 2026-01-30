@@ -497,6 +497,7 @@ class DashboardBuilderSDK:
             # Extract dependencies
             databases = dep_spec.get("databases", []) if isinstance(dep_spec, dict) else []
             caches = dep_spec.get("caches", []) if isinstance(dep_spec, dict) else []
+            queues = dep_spec.get("queues", []) if isinstance(dep_spec, dict) else []
 
             # Combine all technology dependencies
             all_deps = []
@@ -514,6 +515,13 @@ class DashboardBuilderSDK:
                     else getattr(cache, "type", "redis")
                 )
                 all_deps.append(("cache", cache_type))
+            for queue in queues:
+                queue_type = (
+                    queue.get("type", "kafka")
+                    if isinstance(queue, dict)
+                    else getattr(queue, "type", "kafka")
+                )
+                all_deps.append(("queue", queue_type))
 
             # Build panels for each dependency
             for _dep_category, dep_type in all_deps:
@@ -540,8 +548,11 @@ class DashboardBuilderSDK:
             if self.resolver:
                 intent_template.resolver = self.resolver
 
-            # Get panels (resolved through intent system)
-            template_panels = intent_template.get_panels("$service")
+            # Use the technology type as service label for dependency panels.
+            # Infrastructure exporters (postgres_exporter, redis_exporter, etc.)
+            # label metrics with their own service name (e.g. "postgresql"),
+            # not the parent application's name (e.g. "payment-api").
+            template_panels = intent_template.get_panels(technology)
 
             # Convert to SDK panels
             for old_panel in template_panels:
@@ -573,7 +584,9 @@ class DashboardBuilderSDK:
 
         template = get_template(technology)
         if template and hasattr(template, "get_panels"):
-            template_panels = template.get_panels(self.context.name)
+            # Use technology name for dependency panels — infrastructure exporters
+            # label metrics with their own service name, not the application's.
+            template_panels = template.get_panels(technology)
 
             for old_panel in template_panels:
                 sdk_panel = self._convert_panel_to_sdk(old_panel)

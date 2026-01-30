@@ -49,6 +49,7 @@ TECHNOLOGY_TEMPLATES: Dict[str, Type[TechnologyTemplate]] = {
     "redis": RedisIntentTemplate,
     # Message queues
     "kafka": KafkaIntentTemplate,
+    "redpanda": KafkaIntentTemplate,  # Kafka wire-compatible
     "rabbitmq": RabbitmqIntentTemplate,
     "rabbit": RabbitmqIntentTemplate,
     "nats": NatsIntentTemplate,
