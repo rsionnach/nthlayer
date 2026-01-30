@@ -1,5 +1,5 @@
 name: 'NthLayer Reliability Check'
-description: 'Validate service reliability in CI/CD pipelines. Supports SLO validation, deployment gates, drift detection, and blast radius analysis.'
+description: 'Validate service reliability in CI/CD pipelines. Supports SLO validation, deploy gates, drift detection, blast radius analysis.'
 author: 'NthLayer'
 
 inputs:
