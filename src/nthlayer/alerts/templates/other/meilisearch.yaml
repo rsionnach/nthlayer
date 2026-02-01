@@ -1,0 +1,25 @@
+# Meilisearch Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: meilisearch
+  rules:
+  - alert: MeilisearchIndexIsEmpty
+    expr: meilisearch_index_docs_count == 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Meilisearch index is empty (instance {{ $labels.instance }})
+      description: "Meilisearch instance is down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: MeilisearchHttpResponseTime
+    expr: meilisearch_http_response_time_seconds > 0.5
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Meilisearch http response time (instance {{ $labels.instance }})
+      description: "Meilisearch http response time is too high\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

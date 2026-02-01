@@ -1,0 +1,18 @@
+# Grafana Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: grafana
+  rules:
+  - alert: GrafanaAlloyServiceDown
+    expr: 'count by (instance) (alloy_build_info) unless count by (instance) (alloy_build_info offset 2m)  '
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Grafana Alloy service down (instance {{ $labels.instance }})
+      description: "Alloy on (instance {{ $labels.instance }}) is not responding or has stopped running.\n  VALUE = {{ $value\
+        \ }}\n  LABELS = {{ $labels }}"

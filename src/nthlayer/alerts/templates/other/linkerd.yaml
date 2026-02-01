@@ -1,0 +1,19 @@
+# Linkerd Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: linkerd
+  rules:
+  - alert: LinkerdHighErrorRate
+    expr: sum(rate(request_errors_total[1m])) by (deployment, statefulset, daemonset) / sum(rate(request_total[1m])) by (deployment,
+      statefulset, daemonset) * 100 > 10
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Linkerd high error rate (instance {{ $labels.instance }})
+      description: "Linkerd error rate for {{ $labels.deployment | $labels.statefulset | $labels.daemonset }} is over 10%\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

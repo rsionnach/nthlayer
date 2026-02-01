@@ -1,0 +1,18 @@
+# Jvm Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: jvm
+  rules:
+  - alert: JvmMemoryFillingUp
+    expr: (sum by (instance)(jvm_memory_used_bytes{area="heap"}) / sum by (instance)(jvm_memory_max_bytes{area="heap"})) *
+      100 > 80
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: JVM memory filling up (instance {{ $labels.instance }})
+      description: "JVM memory is filling up (> 80%)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
