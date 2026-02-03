@@ -161,20 +161,25 @@ class TestSlackNotifier:
         # Check attachments color (green for info)
         assert payload["attachments"][0]["color"] == "#36a64f"
 
-    def test_format_slack_message_with_action_buttons(self, sample_alert_event):
-        """Test Slack message includes action buttons when burned_minutes > 0."""
+    def test_format_slack_message_with_grafana_button(
+        self,
+        sample_alert_event,
+        monkeypatch,
+    ):
+        """Test Slack message includes dashboard button when Grafana URL is set."""
+        monkeypatch.setenv("NTHLAYER_GRAFANA_URL", "http://grafana.local:3000")
         notifier = SlackNotifier("https://hooks.slack.com/test")
 
         payload = notifier._format_slack_message(sample_alert_event)
 
-        # Should have action buttons since burned_minutes > 0
         action_blocks = [b for b in payload["blocks"] if b.get("type") == "actions"]
         assert len(action_blocks) == 1
-        assert len(action_blocks[0]["elements"]) == 2
-        assert action_blocks[0]["elements"][0]["text"]["text"] == "View Error Budget"
+        btn = action_blocks[0]["elements"][0]
+        assert btn["text"]["text"] == "View Dashboard"
+        assert "grafana.local:3000" in btn["url"]
 
-    def test_format_slack_message_no_action_buttons(self):
-        """Test Slack message has no action buttons when burned_minutes = 0."""
+    def test_format_slack_message_no_action_buttons_without_grafana(self):
+        """Test Slack message has no action buttons when Grafana URL is not set."""
         event = AlertEvent(
             id="alert-001",
             rule_id="rule-001",

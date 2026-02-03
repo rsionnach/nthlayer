@@ -1,0 +1,77 @@
+# Payment API - UAT Service Definition
+# Matches metrics from fake-payment-api container
+
+service:
+  name: payment-api
+  team: payments-team
+  tier: critical
+  type: api
+
+resources:
+  # Availability SLO - matches fake service metrics
+  - kind: SLO
+    name: availability
+    spec:
+      objective: 99.9
+      window: 30d
+      indicator:
+        type: availability
+        query: |
+          sum(rate(http_requests_total{service="payment-api",status=~"[1234].."}[5m]))
+          /
+          sum(rate(http_requests_total{service="payment-api"}[5m]))
+
+  # Latency SLO - p95
+  - kind: SLO
+    name: latency-p95
+    spec:
+      objective: 99.0
+      window: 30d
+      indicator:
+        type: latency
+        percentile: 95
+        threshold_ms: 500
+        query: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{service="payment-api"}[5m])) by (le)
+          )
+
+  # Alert rules for budget monitoring
+  - kind: Alerts
+    name: alert-rules
+    spec:
+      channels:
+        slack_webhook: "${NTHLAYER_SLACK_WEBHOOK_ALERT}"
+      rules:
+        - name: budget-warning
+          type: budget_threshold
+          slo: availability
+          threshold: 0.75
+          severity: warning
+        - name: budget-critical
+          type: budget_threshold
+          slo: availability
+          threshold: 0.90
+          severity: critical
+        - name: high-burn
+          type: burn_rate
+          slo: "*"
+          threshold: 3.0
+          severity: warning
+      auto_rules: false
+
+  # Dependencies for dashboard generation
+  - kind: Dependencies
+    name: stack
+    spec:
+      databases:
+        - name: postgresql
+          type: postgresql
+          criticality: high
+        - name: redis-cache
+          type: redis
+          criticality: medium
+      messaging:
+        - name: redpanda
+          type: kafka
+          criticality: medium

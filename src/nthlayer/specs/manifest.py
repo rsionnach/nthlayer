@@ -16,6 +16,8 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from nthlayer.specs.alerting import AlertingConfig
+    from nthlayer.specs.models import Resource
     from nthlayer.specs.models import ServiceContext as ServiceContextType
 
 
@@ -205,6 +207,9 @@ class Observability:
     # Prometheus-specific
     prometheus_job: str | None = None
 
+    # Grafana dashboard URL (or set NTHLAYER_GRAFANA_URL env var)
+    grafana_url: str | None = None
+
     # Custom labels for generated resources
     labels: dict[str, str] = field(default_factory=dict)
 
@@ -348,6 +353,7 @@ class ReliabilityManifest:
     observability: Observability | None = None
     deployment: DeploymentConfig | None = None
     contract: Contract | None = None  # External promises to consumers
+    alerting: AlertingConfig | None = None
 
     # ==========================================================================
     # AI Gate Specific
@@ -471,6 +477,121 @@ class ReliabilityManifest:
             environment=self.environment,
             pagerduty=pagerduty,
         )
+
+    def as_resources(self, context: ServiceContextType | None = None) -> list[Resource]:
+        """
+        Convert manifest SLOs and dependencies to legacy Resource objects.
+
+        Enables OpenSRM manifests to work with all existing generators
+        that consume (ServiceContext, list[Resource]).
+
+        Args:
+            context: Optional ServiceContext to attach to resources.
+                     If None, one is created via as_service_context().
+
+        Returns:
+            List of Resource objects (SLO, Dependencies, PagerDuty).
+        """
+        from nthlayer.specs.models import Resource
+
+        if context is None:
+            context = self.as_service_context()
+
+        resources: list[Resource] = []
+
+        # Convert SLOs
+        for slo in self.slos:
+            indicator: dict[str, Any] = {}
+            if slo.slo_type:
+                indicator["type"] = slo.slo_type
+            if slo.indicator_query:
+                indicator["query"] = slo.indicator_query
+
+            spec: dict[str, Any] = {
+                "objective": slo.target,
+                "window": slo.window,
+            }
+            if indicator:
+                spec["indicator"] = indicator
+
+            resources.append(
+                Resource(
+                    kind="SLO",
+                    name=slo.name,
+                    spec=spec,
+                    context=context,
+                )
+            )
+
+        # Convert dependencies
+        if self.dependencies:
+            dep_spec: dict[str, Any] = {
+                "databases": [],
+                "caches": [],
+                "services": [],
+                "queues": [],
+            }
+            for dep in self.dependencies:
+                if dep.type == "database":
+                    dep_spec["databases"].append(
+                        {
+                            "name": dep.name,
+                            "type": dep.database_type or "unknown",
+                        }
+                    )
+                elif dep.type == "cache":
+                    cache_type = "redis"
+                    name_lower = dep.name.lower()
+                    if "memcache" in name_lower or "memcached" in name_lower:
+                        cache_type = "memcached"
+                    dep_spec["caches"].append(
+                        {
+                            "name": dep.name,
+                            "type": cache_type,
+                        }
+                    )
+                elif dep.type == "queue":
+                    dep_spec["queues"].append(
+                        {
+                            "name": dep.name,
+                            "type": dep.name.split("-")[0].lower(),
+                        }
+                    )
+                elif dep.type == "api":
+                    dep_spec["services"].append(
+                        {
+                            "name": dep.name,
+                            "type": dep.type,
+                        }
+                    )
+
+            resources.append(
+                Resource(
+                    kind="Dependencies",
+                    name="dependencies",
+                    spec=dep_spec,
+                    context=context,
+                )
+            )
+
+        # Convert PagerDuty ownership
+        if self.ownership and self.ownership.pagerduty:
+            pd = self.ownership.pagerduty
+            pd_spec: dict[str, Any] = {}
+            if pd.service_id:
+                pd_spec["service_id"] = pd.service_id
+            if pd.escalation_policy_id:
+                pd_spec["escalation_policy"] = pd.escalation_policy_id
+            resources.append(
+                Resource(
+                    kind="PagerDuty",
+                    name="pagerduty",
+                    spec=pd_spec,
+                    context=context,
+                )
+            )
+
+        return resources
 
     def validate_contracts(self) -> list[str]:
         """

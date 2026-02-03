@@ -131,6 +131,9 @@ def parse_opensrm(
     # Parse contract
     contract = _parse_contract(spec.get("contract"))
 
+    # Parse alerting
+    alerting = _parse_alerting(spec.get("alerting"))
+
     # Parse instrumentation (for ai-gate)
     instrumentation = _parse_instrumentation(spec.get("instrumentation"))
 
@@ -150,6 +153,7 @@ def parse_opensrm(
         observability=observability,
         deployment=deployment,
         contract=contract,
+        alerting=alerting,
         # AI Gate
         instrumentation=instrumentation,
         # Template
@@ -317,6 +321,7 @@ def _parse_observability(obs_data: dict[str, Any] | None) -> Observability | Non
         logs_label=obs_data.get("logs_label"),
         traces_service=obs_data.get("traces_service"),
         prometheus_job=obs_data.get("prometheus_job"),
+        grafana_url=obs_data.get("grafana_url"),
         labels=obs_data.get("labels", {}),
     )
 
@@ -384,6 +389,15 @@ def _parse_recent_incidents_gate(gate_data: dict[str, Any] | None) -> RecentInci
         p2_max=gate_data.get("p2_max", 2),
         lookback=gate_data.get("lookback", "7d"),
     )
+
+
+def _parse_alerting(alerting_data: dict[str, Any] | None) -> Any:
+    """Parse alerting from OpenSRM spec.alerting section."""
+    if not alerting_data:
+        return None
+    from nthlayer.specs.alerting import parse_alerting_config
+
+    return parse_alerting_config(alerting_data)
 
 
 def _parse_contract(contract_data: dict[str, Any] | None) -> Contract | None:

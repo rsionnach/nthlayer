@@ -21,15 +21,16 @@ import yaml
 
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
+from nthlayer.cli.alerts import handle_alerts_command, register_alerts_parser
 from nthlayer.cli.blast_radius import (
     handle_blast_radius_command,
     register_blast_radius_parser,
 )
 from nthlayer.cli.deps import handle_deps_command, register_deps_parser
 from nthlayer.cli.drift import handle_drift_command, register_drift_parser
-from nthlayer.cli.migrate import handle_migrate_command, register_migrate_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.identity import handle_identity_command, register_identity_parser
+from nthlayer.cli.migrate import handle_migrate_command, register_migrate_parser
 from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.recommend_metrics import (
@@ -830,6 +831,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Scorecard command
     register_scorecard_parser(subparsers)
 
+    # Alert evaluation commands
+    register_alerts_parser(subparsers)
+
     # Migrate command (legacy to OpenSRM)
     register_migrate_parser(subparsers)
 
@@ -1232,6 +1236,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "scorecard":
         sys.exit(handle_scorecard_command(args))
+
+    if args.command == "alerts":
+        sys.exit(handle_alerts_command(args))
 
     if args.command == "migrate":
         sys.exit(handle_migrate_command(args))
