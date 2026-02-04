@@ -229,6 +229,71 @@ slos:
     metric: custom_latency_histogram_seconds_bucket
 ```
 
+## OpenSRM Contract Validation
+
+When using the OpenSRM format (`apiVersion: srm/v1`), NthLayer supports richer contract validation through the `ContractRegistry`.
+
+### Contract Block
+
+OpenSRM manifests can declare external contracts — promises your service makes to consumers:
+
+```yaml
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: payment-api
+  tier: critical
+spec:
+  type: api
+  slos:
+    availability:
+      target: 99.95          # Internal target (tighter)
+      window: 30d
+  contract:
+    availability: 0.999      # External promise (99.9%)
+    latency:
+      p99: 500ms
+  dependencies:
+    - name: user-service
+      type: api
+      critical: true
+      slo:
+        availability: 99.9   # What you expect from this dependency
+```
+
+Internal SLOs should be tighter than external contracts, giving margin for operational variance.
+
+### Cross-Service Validation with `--registry-dir`
+
+The `--registry-dir` flag enables validation across multiple service manifests:
+
+```bash
+nthlayer validate services/payment-api.yaml --registry-dir services/
+```
+
+This scans the directory to build a `ContractRegistry`, then validates:
+
+1. **Dependency expectation validation** — Warns when a dependency's expected availability (in `dependencies[].slo`) exceeds the provider's published contract. For example, if `payment-api` expects `user-service` at 99.99% but `user-service` only contracts 99.9%.
+
+2. **Transitive feasibility check** — Warns when a service's contract availability is mathematically infeasible given its critical dependency chain. Uses a serial chain model: if your critical dependencies have availabilities of 99.95% and 99.9%, your maximum achievable is ~99.85%.
+
+All contract validation produces warnings (not errors) to allow progressive adoption.
+
+### ContractRegistry
+
+The `ContractRegistry` is a file-based registry that scans directories for manifest contracts:
+
+```python
+from nthlayer.specs.contracts import ContractRegistry
+
+# Build registry from a directory of manifests
+registry = ContractRegistry.from_directory("services/")
+
+# Validate a specific manifest against the registry
+warnings = registry.validate_dependency_expectations(manifest)
+warnings += registry.validate_transitive_feasibility(manifest)
+```
+
 ## Platform Team Checklist
 
 Before rolling out NthLayer verification to your organization:

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Intelligent Alerts Pipeline
+
+- **`nthlayer alerts` command family** — evaluate, show, explain, test subcommands for alert management
+- **AlertPipeline** — full pipeline evaluation against live or simulated budget data with notification support
+- **AlertEvaluator** — rule resolution engine combining explicit and auto-generated alert rules per tier
+- **ExplanationEngine** — context-aware budget explanations with technology-specific investigation actions
+- **Alert simulation** — `nthlayer alerts test --simulate-burn 80` to preview what would fire at a given burn level
+- **Multiple output formats** — table, JSON, YAML, and Markdown output for CI/CD integration
+- Exit codes for CI/CD: 0=healthy, 1=warnings, 2=critical
+
 ### OpenSRM Phase 4: Contract & Dependency Validation
 
 - **Contract registry** (`ContractRegistry`) — file-based registry that scans directories for manifest contracts, enabling cross-service validation (spec 11.3 Optional)
@@ -61,9 +71,6 @@ All new validation produces warnings (not errors) per spec Recommended/Optional 
 - Fix queue dependencies silently dropped in dashboard builder — Kafka, RabbitMQ, etc. now generate panels
 - Fix validator rejecting legacy type aliases (`background-job`, `pipeline`)
 - Add Redpanda as template alias for Kafka (wire-compatible)
-- Fix `recommend_metrics` returning `slo_ready=True` when no metric template found
-- Add logging to sloth generator exception handlers (previously silent)
-- Warn on invalid dependency criticality values in OpenSRM parser and legacy loader
 - Fix `ServiceContext` type annotation in sloth `convert_to_sloth_slo`
 - Remove unused `Contract` import from loader
 - Fix f-strings without placeholders in OpenSRM parser
@@ -416,7 +423,9 @@ Initial alpha release with core functionality.
 
 ---
 
-## Phase 4: PagerDuty Integration (December 2025)
+## Pre-release
+
+### Phase 4: PagerDuty Integration (December 2025)
 
 ### Complete PagerDuty Integration
 - **Tier-based escalation policies** - Critical (5/15/30min), High (15/30/60min), Medium (30/60min), Low (60min)
@@ -435,7 +444,7 @@ Initial alpha release with core functionality.
 - Warnings grouped at end
 - Removed cluttery box drawing
 
-## Phase 3: Observability Suite (December 2025)
+### Phase 3: Observability Suite (December 2025)
 
 ### Phase 3D: Polish & Documentation
 - Added dashboard customization (--full flag for 28+ panels)
@@ -461,7 +470,7 @@ Initial alpha release with core functionality.
 - CLI command: `generate-dashboard`
 - 6-12 panels per service with SLO, health, and technology metrics
 
-## Weeks 7-8: Multi-Environment Support
+### Weeks 7-8: Multi-Environment Support
 
 - Multi-environment configuration system (dev, staging, prod)
 - Environment-specific overrides
@@ -469,7 +478,7 @@ Initial alpha release with core functionality.
 - Variable substitution (${env}, ${service}, ${team})
 - CLI commands: `list-environments`, `diff-envs`, `validate-env`
 
-## Weeks 1-6: Foundation
+### Weeks 1-6: Foundation
 
 ### Alert Generation
 - 400+ battle-tested alert rules from awesome-prometheus-alerts
@@ -486,9 +495,9 @@ Initial alpha release with core functionality.
 
 ## Stats
 
-- **Commands:** 20+ total
-- **Tests:** 2564 passing (91% coverage)
+- **Commands:** 30+ total
+- **Tests:** 3,364 passing
 - **Documentation:** 30,000+ words
-- **Dashboard Panels:** 40 in template library
-- **Alert Rules:** 400+
-- **Technology Templates:** 18 technologies supported
+- **Dashboard Panels:** 50+ in template library
+- **Alert Rules:** 580+
+- **Technology Templates:** 21 technologies supported

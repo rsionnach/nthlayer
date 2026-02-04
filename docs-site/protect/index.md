@@ -11,6 +11,9 @@ NthLayer's protection layer enforces reliability policies in production. When er
 | **Deployment Gates** | `nthlayer check-deploy` | Block deploys when budget exhausted |
 | **Drift Detection** | `nthlayer drift` | Detect reliability degradation trends |
 | **SLO Portfolio** | `nthlayer portfolio` | Org-wide reliability visibility |
+| **Reliability Scorecard** | `nthlayer scorecard` | Quantitative per-service reliability scores (0-100) |
+| **Intelligent Alerts** | `nthlayer alerts` | Context-aware alert evaluation and budget explanations |
+| **Metric Recommendations** | `nthlayer recommend-metrics` | Validate instrumentation coverage |
 | **Error Budgets** | `nthlayer slo collect` | Real-time budget consumption |
 
 ## Why Deployment Gates?
@@ -239,10 +242,41 @@ NthLayer automates the [Error Budget Policy](https://sre.google/sre-book/embraci
 | Release Freeze | Calendar reminders | Automatic blocking |
 | Budget Visibility | Monthly reports | `nthlayer portfolio` |
 
+## Reliability Scorecard
+
+Quantify reliability across your organization with weighted scores:
+
+```bash
+nthlayer scorecard --prometheus-url http://prometheus:9090
+```
+
+Scores combine SLO compliance (40%), incident score (30%), deploy success (20%), and error budget (10%) into a 0-100 score per service. Use `--by-team` for team-level aggregation. Exit codes enable CI/CD gating: 0=good, 1=fair, 2=poor.
+
+See [nthlayer scorecard](../commands/scorecard.md) for full reference.
+
+## Intelligent Alerts
+
+Evaluate alert rules and get context-aware explanations:
+
+```bash
+# Evaluate alerts against live data
+nthlayer alerts evaluate services/payment-api.yaml \
+  --prometheus-url http://prometheus:9090
+
+# Simulate burn and see what would fire
+nthlayer alerts test services/payment-api.yaml --simulate-burn 90
+```
+
+The explanation engine provides technology-specific investigation actions based on your service's dependencies and type.
+
+See [nthlayer alerts](../commands/alerts.md) for full reference.
+
 ## Next Steps
 
 - [Deployment Gates](../commands/check-deploy.md) - Full command reference
 - [Drift Detection](../commands/drift.md) - Trend analysis command
 - [SLO Portfolio](../commands/portfolio.md) - Organization-wide view
+- [Reliability Scorecard](../commands/scorecard.md) - Quantitative scoring
+- [Intelligent Alerts](../commands/alerts.md) - Alert evaluation and simulation
 - [Error Budgets](../concepts/slos.md) - Understanding SLOs
 - [CI/CD Integration](../integrations/cicd.md) - Pipeline examples

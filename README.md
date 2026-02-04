@@ -172,7 +172,7 @@ dependencies:
   - redis
 ```
 
-See [full spec reference](https://rsionnach.github.io/nthlayer/reference/service-yaml/) for all options.
+NthLayer also supports the [OpenSRM format](https://rsionnach.github.io/nthlayer/concepts/opensrm/) (`apiVersion: srm/v1`) for contracts, deployment gates, and more. See [full spec reference](https://rsionnach.github.io/nthlayer/reference/service-yaml/) for all options.
 
 ---
 
@@ -228,7 +228,15 @@ Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins
 - [x] Dependency discovery
 - [x] validate-slo
 - [x] blast-radius
-- [ ] Metric recommendations
+- [x] Metric recommendations
+- [x] OpenSRM manifest format (`srm/v1`)
+- [x] Reliability scorecard
+- [x] Loki alert generation
+- [x] Recording rules generation
+- [x] Contract & dependency validation
+- [x] Intelligent alerts pipeline
+- [x] Identity resolution & ownership
+- [x] CI/CD GitHub Action
 - [ ] MCP server integration
 - [ ] Backstage plugin
 
