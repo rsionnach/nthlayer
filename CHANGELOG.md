@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.0a16 (February 4, 2026)
 
 ### Intelligent Alerts Pipeline
 
@@ -24,6 +24,27 @@
 - **`metadata.template` passed through** in OpenSRM parser (previously parsed but not stored on manifest)
 
 All new validation produces warnings (not errors) per spec Recommended/Optional priority.
+
+#### Bug Fixes
+
+- Fix policy evaluator parentheses regex matching function-call arguments
+
+#### Dependencies
+
+- Update rich from <14.0.0 to <15.0.0
+- Update cachetools requirement
+- Update mangum requirement
+- Update python-json-logger requirement
+- Update langchain from <0.4.0 to <1.3.0
+- Resolve yanked numpy 2.4.0 in lockfile
+
+#### CI
+
+- Bump actions/checkout from 4 to 6
+- Bump github/codeql-action from 3 to 4
+- Bump peter-evans/create-pull-request from 5 to 8
+
+---
 
 ## v0.1.0a15 (January 30, 2026)
 
