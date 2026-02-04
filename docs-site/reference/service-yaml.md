@@ -245,6 +245,132 @@ environments:
           objective: 99.99
 ```
 
+## OpenSRM Format (`srm/v1`)
+
+NthLayer also supports the OpenSRM format — a richer, namespaced schema that adds contracts, deployment gates, ownership, and cross-service validation. Both formats are fully supported and auto-detected.
+
+### OpenSRM Schema
+
+```yaml
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+
+metadata:
+  name: string              # Service identifier
+  team: string              # Owning team
+  tier: string              # critical, standard, low
+  description: string       # Human-readable description
+  labels: object            # Arbitrary key-value labels
+  annotations: object       # Metadata annotations
+  template: string          # Optional base template name
+
+spec:
+  type: string              # api, worker, stream, ai-gate, batch, database, web
+
+  slos:                     # SLO definitions (map, not list)
+    <slo-name>:
+      target: number        # Target value
+      window: string        # Time window (e.g. 30d)
+      unit: string          # ms, percent (optional)
+      percentile: string    # p50, p99, etc. (optional)
+
+  contract:                 # External promises to consumers
+    availability: number    # e.g. 0.999 for 99.9%
+    latency:
+      p99: string           # e.g. 500ms
+
+  dependencies:             # Upstream dependencies
+    - name: string          # Dependency identifier
+      type: string          # database, cache, api, queue
+      critical: boolean     # Is this a critical dependency?
+      database_type: string # postgresql, mysql, etc. (for type: database)
+      slo:
+        availability: number
+
+  ownership:                # Team and escalation info
+    team: string
+    slack: string
+    email: string
+    escalation: string
+    pagerduty:
+      service_id: string
+      escalation_policy_id: string
+    runbook: string
+    documentation: string
+
+  observability:            # Metric and tracing config
+    metrics_prefix: string
+    logs_label: string
+    traces_service: string
+    prometheus_job: string
+    labels: object
+
+  deployment:               # Deployment configuration
+    environments: list      # Environment names
+    gates:
+      error_budget:
+        enabled: boolean
+        threshold: number   # Block if budget below this ratio
+      slo_compliance:
+        threshold: number
+      recent_incidents:
+        p1_max: integer
+        p2_max: integer
+        lookback: string    # e.g. 7d
+    rollback:
+      automatic: boolean
+      criteria:
+        error_rate_increase: string
+        latency_increase: string
+```
+
+### OpenSRM Example
+
+```yaml
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: payment-api
+  team: payments
+  tier: critical
+spec:
+  type: api
+  slos:
+    availability:
+      target: 99.95
+      window: 30d
+    latency:
+      target: 200
+      unit: ms
+      percentile: p99
+      window: 30d
+  contract:
+    availability: 0.999
+    latency:
+      p99: 500ms
+  dependencies:
+    - name: postgres-primary
+      type: database
+      critical: true
+      database_type: postgresql
+      slo:
+        availability: 99.99
+    - name: redis-cache
+      type: cache
+      critical: false
+  ownership:
+    team: payments
+    slack: "#payments-oncall"
+    runbook: https://wiki.example.com/runbooks/payment-api
+  deployment:
+    gates:
+      error_budget:
+        enabled: true
+        threshold: 0.10
+```
+
+See [OpenSRM Format](../concepts/opensrm.md) for a full guide and migration instructions.
+
 ## Validation
 
 ```bash

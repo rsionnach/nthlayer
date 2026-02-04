@@ -9,15 +9,16 @@ Shift reliability left into your CI/CD pipeline. Validate before deploy, not aft
 ## The Reliability Pipeline
 
 ```
-   service.yaml
+   service.yaml / *.reliability.yaml
         │
         ▼
 ┌───────────┐     ┌───────────┐     ┌───────────┐
 │  Generate │ ──▶ │  Validate │ ──▶ │  Protect  │ ──▶ Deploy
 └───────────┘     └───────────┘     └───────────┘
    apply            verify           check-deploy
-   init             validate-spec    portfolio
-                    --lint
+   init             validate-spec    scorecard
+   migrate          --lint           alerts
+                                     portfolio
 ```
 
 | Stage | What Happens | Exit Code |
@@ -39,14 +40,40 @@ Teams deploy code without reliability validation:
 
 NthLayer shifts reliability left - from incident response to CI/CD:
 
-```yaml title="service.yaml"
-name: payment-api
-tier: critical
-type: api
-dependencies:
-  - postgresql
-  - redis
-```
+=== "Legacy Format"
+
+    ```yaml title="service.yaml"
+    name: payment-api
+    tier: critical
+    type: api
+    dependencies:
+      - postgresql
+      - redis
+    ```
+
+=== "OpenSRM Format"
+
+    ```yaml title="payment-api.reliability.yaml"
+    apiVersion: srm/v1
+    kind: ServiceReliabilityManifest
+    metadata:
+      name: payment-api
+      tier: critical
+    spec:
+      type: api
+      slos:
+        availability:
+          target: 99.95
+          window: 30d
+      contract:
+        availability: 0.999
+      dependencies:
+        - name: postgresql
+          type: database
+          critical: true
+    ```
+
+Both formats are supported. Use `nthlayer migrate` to convert legacy files.
 
 ```bash
 # Generate → Validate → Protect → Deploy
@@ -96,6 +123,26 @@ Verify declared metrics exist before deploy:
 
 ```bash
 nthlayer verify service.yaml --prometheus-url $PROM_URL
+```
+
+### Reliability Scorecard
+
+Quantify reliability across your organization:
+
+```bash
+nthlayer scorecard --prometheus-url $PROM_URL
+# 0-100 score per service: SLO compliance, incidents, deploys, budget
+# Exit codes: 0=good, 1=fair, 2=poor — use in CI/CD gates
+```
+
+### Intelligent Alerts
+
+Context-aware alert evaluation with technology-specific explanations:
+
+```bash
+nthlayer alerts evaluate services/ --path services/
+nthlayer alerts explain services/payment-api.yaml
+nthlayer alerts test services/payment-api.yaml --simulate-burn 90
 ```
 
 ### 23 Technology Templates

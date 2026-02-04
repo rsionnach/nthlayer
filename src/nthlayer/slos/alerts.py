@@ -21,6 +21,7 @@ logger = structlog.get_logger()
 
 class AlertSeverity(Enum):
     """Alert severity levels."""
+
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -28,32 +29,33 @@ class AlertSeverity(Enum):
 
 class AlertType(Enum):
     """Types of alert conditions."""
+
     BUDGET_THRESHOLD = "budget_threshold"  # Budget consumed > X%
-    BURN_RATE = "burn_rate"                # Burn rate > Xx baseline
-    BUDGET_EXHAUSTION = "budget_exhaustion" # Budget will exhaust soon
+    BURN_RATE = "burn_rate"  # Burn rate > Xx baseline
+    BUDGET_EXHAUSTION = "budget_exhaustion"  # Budget will exhaust soon
 
 
 @dataclass
 class AlertRule:
     """Alert rule definition."""
-    
+
     id: str
     service: str
     slo_id: str
     alert_type: AlertType
     severity: AlertSeverity
-    
+
     # Rule parameters
     threshold: float  # e.g., 0.75 for 75% consumed
-    
+
     # Notification config
     slack_webhook: str | None = None
     pagerduty_key: str | None = None
-    
+
     # Metadata
     enabled: bool = True
     created_at: datetime = field(default_factory=datetime.utcnow)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -73,7 +75,7 @@ class AlertRule:
 @dataclass
 class AlertEvent:
     """Alert event that was triggered."""
-    
+
     id: str
     rule_id: str
     service: str
@@ -83,7 +85,7 @@ class AlertEvent:
     message: str
     details: dict[str, Any]
     triggered_at: datetime = field(default_factory=datetime.utcnow)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -101,10 +103,10 @@ class AlertEvent:
 
 class AlertEvaluator:
     """Evaluates alert rules against error budgets."""
-    
+
     def __init__(self) -> None:
         pass
-    
+
     def evaluate_budget_threshold(
         self,
         budget: ErrorBudget,
@@ -112,21 +114,21 @@ class AlertEvaluator:
     ) -> AlertEvent | None:
         """
         Evaluate budget threshold alert.
-        
+
         Triggers when budget consumed exceeds threshold.
-        
+
         Args:
             budget: Current error budget
             rule: Alert rule to evaluate
-            
+
         Returns:
             AlertEvent if triggered, None otherwise
         """
         percent_consumed = budget.percent_consumed / 100  # Convert to 0-1
-        
+
         if percent_consumed < rule.threshold:
             return None
-        
+
         logger.info(
             "budget_threshold_triggered",
             service=budget.service,
@@ -134,7 +136,7 @@ class AlertEvaluator:
             percent_consumed=budget.percent_consumed,
             threshold=rule.threshold * 100,
         )
-        
+
         # Create alert event
         event = AlertEvent(
             id=f"alert-{budget.service}-{int(datetime.utcnow().timestamp())}",
@@ -152,9 +154,9 @@ class AlertEvaluator:
                 "status": budget.status.value,
             },
         )
-        
+
         return event
-    
+
     def evaluate_burn_rate(
         self,
         budget: ErrorBudget,
@@ -162,20 +164,20 @@ class AlertEvaluator:
     ) -> AlertEvent | None:
         """
         Evaluate burn rate alert.
-        
+
         Triggers when burn rate exceeds threshold multiplier
         (e.g., 3x baseline).
-        
+
         Args:
             budget: Current error budget
             rule: Alert rule to evaluate
-            
+
         Returns:
             AlertEvent if triggered, None otherwise
         """
         if not budget.burn_rate or budget.burn_rate < rule.threshold:
             return None
-        
+
         logger.info(
             "burn_rate_triggered",
             service=budget.service,
@@ -183,7 +185,7 @@ class AlertEvaluator:
             burn_rate=budget.burn_rate,
             threshold=rule.threshold,
         )
-        
+
         # Create alert event
         event = AlertEvent(
             id=f"alert-{budget.service}-{int(datetime.utcnow().timestamp())}",
@@ -200,9 +202,77 @@ class AlertEvaluator:
                 "remaining_minutes": budget.remaining_minutes,
             },
         )
-        
+
         return event
-    
+
+    def evaluate_budget_exhaustion(
+        self,
+        budget: ErrorBudget,
+        rule: AlertRule,
+    ) -> AlertEvent | None:
+        """
+        Evaluate budget exhaustion alert.
+
+        Triggers when the projected exhaustion time is within
+        ``rule.threshold`` hours.
+
+        Args:
+            budget: Current error budget
+            rule: Alert rule to evaluate
+
+        Returns:
+            AlertEvent if triggered, None otherwise
+        """
+        if not budget.burn_rate or budget.burn_rate <= 1.0:
+            return None
+
+        # Project hours until exhaustion
+        if budget.remaining_minutes <= 0:
+            hours_remaining = 0.0
+        else:
+            # burn_rate is a multiplier of baseline burn; compute absolute
+            # burn rate in minutes/hour.  Baseline = total_budget / window_hours.
+            if budget.total_budget_minutes <= 0:
+                return None
+            period_hours = (budget.period_end - budget.period_start).total_seconds() / 3600
+            if period_hours <= 0:
+                return None
+            expected_burn_per_hour = budget.total_budget_minutes / (period_hours or 1)
+            actual_burn_per_hour = expected_burn_per_hour * budget.burn_rate
+            if actual_burn_per_hour <= 0:
+                return None
+            hours_remaining = budget.remaining_minutes / actual_burn_per_hour
+
+        if hours_remaining > rule.threshold:
+            return None
+
+        logger.info(
+            "budget_exhaustion_triggered",
+            service=budget.service,
+            slo_id=budget.slo_id,
+            hours_remaining=hours_remaining,
+            threshold_hours=rule.threshold,
+        )
+
+        event = AlertEvent(
+            id=f"alert-{budget.service}-{int(datetime.utcnow().timestamp())}",
+            rule_id=rule.id,
+            service=budget.service,
+            slo_id=budget.slo_id,
+            severity=rule.severity,
+            title=f"Budget Exhaustion Alert: {budget.service}",
+            message=self._format_exhaustion_message(budget, rule, hours_remaining),
+            details={
+                "hours_remaining": round(hours_remaining, 2),
+                "threshold_hours": rule.threshold,
+                "burn_rate": budget.burn_rate,
+                "remaining_minutes": budget.remaining_minutes,
+                "alert_type": AlertType.BUDGET_EXHAUSTION.value,
+                "exhaustion_hours": round(hours_remaining, 2),
+            },
+        )
+        return event
+
     def evaluate_rules(
         self,
         budget: ErrorBudget,
@@ -210,44 +280,46 @@ class AlertEvaluator:
     ) -> list[AlertEvent]:
         """
         Evaluate all rules for a budget.
-        
+
         Args:
             budget: Current error budget
             rules: List of alert rules to evaluate
-            
+
         Returns:
             List of triggered alert events
         """
         events = []
-        
+
         for rule in rules:
             if not rule.enabled:
                 continue
-            
+
             event = None
-            
+
             if rule.alert_type == AlertType.BUDGET_THRESHOLD:
                 event = self.evaluate_budget_threshold(budget, rule)
             elif rule.alert_type == AlertType.BURN_RATE:
                 event = self.evaluate_burn_rate(budget, rule)
-            
+            elif rule.alert_type == AlertType.BUDGET_EXHAUSTION:
+                event = self.evaluate_budget_exhaustion(budget, rule)
+
             if event:
                 events.append(event)
-        
+
         return events
-    
+
     def _format_threshold_message(self, budget: ErrorBudget, rule: AlertRule) -> str:
         """Format threshold alert message."""
         threshold_pct = rule.threshold * 100
         consumed_pct = budget.percent_consumed
-        
+
         severity_emoji = {
             AlertSeverity.INFO: "ℹ️",
             AlertSeverity.WARNING: "⚠️",
             AlertSeverity.CRITICAL: "🔥",
         }
         emoji = severity_emoji.get(rule.severity, "⚠️")
-        
+
         message = (
             f"{emoji} *Error Budget Alert*\n\n"
             f"*Service:* `{budget.service}`\n"
@@ -256,7 +328,7 @@ class AlertEvaluator:
             f"*Remaining:* {budget.remaining_minutes:.1f} minutes\n"
             f"*Status:* {budget.status.value.upper()}\n\n"
         )
-        
+
         if consumed_pct >= 90:
             message += "⚠️ *CRITICAL: Budget nearly exhausted!*\n"
             message += "Consider deployment freeze or immediate action.\n"
@@ -265,14 +337,35 @@ class AlertEvaluator:
             message += "Review recent changes and incidents.\n"
         else:
             message += "ℹ️ Budget threshold exceeded. Monitor closely.\n"
-        
+
         return message
-    
+
+    def _format_exhaustion_message(
+        self, budget: ErrorBudget, rule: AlertRule, hours_remaining: float
+    ) -> str:
+        """Format budget exhaustion alert message."""
+        message = (
+            f"🕐 *Budget Exhaustion Alert*\n\n"
+            f"*Service:* `{budget.service}`\n"
+            f"*SLO:* `{budget.slo_id}`\n"
+            f"*Projected Exhaustion:* {hours_remaining:.1f} hours "
+            f"(threshold: {rule.threshold:.0f}h)\n"
+            f"*Burn Rate:* {budget.burn_rate:.2f}x baseline\n"
+            f"*Remaining:* {budget.remaining_minutes:.1f} minutes\n\n"
+        )
+        if hours_remaining <= 1:
+            message += "🚨 *CRITICAL: Budget exhaustion imminent!*\n"
+        elif hours_remaining <= 6:
+            message += "⚠️ *WARNING: Budget will exhaust within hours.*\n"
+        else:
+            message += "ℹ️ Budget exhaustion approaching. Plan accordingly.\n"
+        return message
+
     def _format_burn_rate_message(self, budget: ErrorBudget, rule: AlertRule) -> str:
         """Format burn rate alert message."""
         burn_rate = budget.burn_rate or 0
         threshold = rule.threshold
-        
+
         message = (
             f"🔥 *High Burn Rate Alert*\n\n"
             f"*Service:* `{budget.service}`\n"
@@ -281,7 +374,7 @@ class AlertEvaluator:
             f"*Burned:* {budget.burned_minutes:.1f} minutes\n"
             f"*Remaining:* {budget.remaining_minutes:.1f} minutes\n\n"
         )
-        
+
         if burn_rate >= 6:
             message += "🚨 *CRITICAL: Burn rate extremely high!*\n"
             message += "Budget will exhaust in hours. Investigate immediately.\n"
@@ -290,61 +383,55 @@ class AlertEvaluator:
             message += "Check recent deployments and incidents.\n"
         else:
             message += "ℹ️ Burn rate above normal. Monitor situation.\n"
-        
+
         return message
 
 
 class AlertRuleStorage:
     """Storage for alert rules (simple in-memory for MVP)."""
-    
+
     def __init__(self) -> None:
         self._rules: dict[str, list[AlertRule]] = {}
-    
+
     def add_rule(self, rule: AlertRule) -> None:
         """Add an alert rule for a service."""
         if rule.service not in self._rules:
             self._rules[rule.service] = []
-        
+
         # Remove existing rule with same ID
-        self._rules[rule.service] = [
-            r for r in self._rules[rule.service] 
-            if r.id != rule.id
-        ]
-        
+        self._rules[rule.service] = [r for r in self._rules[rule.service] if r.id != rule.id]
+
         self._rules[rule.service].append(rule)
-        
+
         logger.info(
             "alert_rule_added",
             rule_id=rule.id,
             service=rule.service,
             alert_type=rule.alert_type.value,
         )
-    
+
     def get_rules(self, service: str) -> list[AlertRule]:
         """Get all alert rules for a service."""
         return self._rules.get(service, [])
-    
+
     def get_all_rules(self) -> dict[str, list[AlertRule]]:
         """Get all alert rules."""
         return self._rules
-    
+
     def delete_rule(self, rule_id: str, service: str) -> bool:
         """Delete an alert rule."""
         if service not in self._rules:
             return False
-        
+
         before_count = len(self._rules[service])
-        self._rules[service] = [
-            r for r in self._rules[service]
-            if r.id != rule_id
-        ]
+        self._rules[service] = [r for r in self._rules[service] if r.id != rule_id]
         after_count = len(self._rules[service])
-        
+
         deleted = before_count > after_count
-        
+
         if deleted:
             logger.info("alert_rule_deleted", rule_id=rule_id, service=service)
-        
+
         return deleted
 
 

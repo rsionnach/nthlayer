@@ -6,7 +6,6 @@ operator evaluation, boolean logic, and built-in functions.
 
 from datetime import datetime
 
-import pytest
 from nthlayer.policies.evaluator import (
     ConditionEvaluator,
     EvaluationResult,
@@ -407,16 +406,8 @@ class TestBuiltinFunctions:
 
         assert evaluator.evaluate("weekday()") is False
 
-    @pytest.mark.xfail(
-        reason="Known bug: parentheses handling evaluates function args as conditions"
-    )
     def test_freeze_period_inside(self):
-        """Test freeze_period() when inside freeze.
-
-        NOTE: This test documents a bug where functions with arguments fail
-        because the parentheses-handling loop incorrectly evaluates function
-        arguments as conditions. See issue trellis-evaluator-parens-bug.
-        """
+        """Test freeze_period() when inside freeze."""
         # Dec 25, 2024
         now = datetime(2024, 12, 25, 10, 0)
         ctx = PolicyContext(now=now)
@@ -425,14 +416,7 @@ class TestBuiltinFunctions:
         assert evaluator.evaluate("freeze_period('2024-12-20', '2025-01-02')") is True
 
     def test_freeze_period_outside(self):
-        """Test freeze_period() when outside freeze.
-
-        NOTE: This test passes but for the wrong reason due to a bug where
-        functions with arguments always return False. The freeze_period function
-        should return False because we're outside the freeze period, but it
-        actually returns False because of the parentheses-handling bug.
-        See issue trellis-evaluator-parens-bug.
-        """
+        """Test freeze_period() when outside freeze."""
         # Dec 10, 2024
         now = datetime(2024, 12, 10, 10, 0)
         ctx = PolicyContext(now=now)
@@ -651,15 +635,8 @@ class TestIntegration:
         expr = "business_hours() AND (tier == 'critical' OR budget_remaining < 20)"
         assert evaluator.evaluate(expr) is True
 
-    @pytest.mark.xfail(
-        reason="Known bug: parentheses handling evaluates function args as conditions"
-    )
     def test_freeze_period_with_override(self):
-        """Test freeze period with environment override.
-
-        NOTE: This test documents a bug where functions with arguments fail.
-        See issue trellis-evaluator-parens-bug.
-        """
+        """Test freeze period with environment override."""
         # During freeze period
         now = datetime(2024, 12, 25, 10, 0)
         ctx = PolicyContext(now=now, environment="dev")

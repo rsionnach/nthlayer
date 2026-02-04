@@ -71,9 +71,11 @@ nav:
     - Interactive Setup: commands/setup.md
     - Your First Service: getting-started/first-service.md
     - Adoption Path: getting-started/adoption-path.md
+    - OpenSRM Format: concepts/opensrm.md
   - Generate:
     - nthlayer apply: commands/apply.md
     - nthlayer init: commands/init.md
+    - nthlayer migrate: commands/migrate.md
     - SLO Generation: commands/generate-slo.md
     - Alert Generation: commands/generate-alerts.md
     - Dashboard Generation: commands/generate-dashboard.md
@@ -92,6 +94,7 @@ nav:
     - Drift Detection: commands/drift.md
     - SLO Portfolio: commands/portfolio.md
     - Reliability Scorecard: commands/scorecard.md
+    - Intelligent Alerts: commands/alerts.md
     - Metric Recommendations: commands/recommend-metrics.md
   - Dependencies:
     - nthlayer deps: commands/deps.md
@@ -114,7 +117,7 @@ nav:
   - Reference:
     - Commands Overview: commands/index.md
     - Service YAML Schema: reference/service-yaml.md
-    - Technology Templates: reference/technology-templates.md
+    - Technology Templates: integrations/technologies.md
     - CLI Reference: reference/cli.md
     - Environment Management: commands/environments.md
     - SLO Management: commands/slo.md

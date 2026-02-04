@@ -21,6 +21,7 @@ NthLayer provides a comprehensive CLI for managing your reliability stack.
 | [`nthlayer validate-spec`](validate-spec.md) | Validate service.yaml against OPA policies |
 | [`nthlayer validate-metadata`](validate-metadata.md) | Validate rule metadata (labels, annotations, URLs) |
 | [`nthlayer validate-slo`](validate-slo.md) | Validate SLO metrics exist in Prometheus |
+| [`nthlayer recommend-metrics`](recommend-metrics.md) | Recommend metrics based on service type and runtime |
 | `nthlayer lint` | Lint Prometheus alert rules with pint |
 
 ## Dependency Intelligence
@@ -40,6 +41,13 @@ NthLayer provides a comprehensive CLI for managing your reliability stack.
 | [`nthlayer portfolio`](portfolio.md) | View org-wide SLO health |
 | [`nthlayer check-deploy`](check-deploy.md) | Check deployment gate (error budget validation) |
 | [`nthlayer drift`](drift.md) | Analyze reliability drift for a service |
+| [`nthlayer scorecard`](scorecard.md) | Calculate per-service reliability scores |
+
+## Alerts & Monitoring
+
+| Command | Description |
+|---------|-------------|
+| [`nthlayer alerts`](alerts.md) | Evaluate, simulate, and explain alert rules |
 
 ## Environment Management
 
@@ -55,6 +63,7 @@ NthLayer provides a comprehensive CLI for managing your reliability stack.
 |---------|-------------|
 | [`nthlayer setup`](setup.md) | Interactive first-time setup |
 | [`nthlayer init`](init.md) | Initialize new NthLayer service |
+| [`nthlayer migrate`](migrate.md) | Migrate legacy format to OpenSRM |
 | [`nthlayer config`](config.md) | Configuration management |
 | `nthlayer secrets` | Secrets management |
 

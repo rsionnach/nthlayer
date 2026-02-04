@@ -22,21 +22,26 @@ class NotificationError(Exception):
 
 class SlackNotifier:
     """Send notifications to Slack via webhook."""
-    
+
     def __init__(self, webhook_url: str, timeout: float = 10.0) -> None:
         self.webhook_url = webhook_url
         self.timeout = timeout
-    
-    async def send_alert(self, event: AlertEvent) -> dict[str, Any]:
+
+    async def send_alert(
+        self,
+        event: AlertEvent,
+        explanation: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Send alert to Slack.
-        
+
         Args:
             event: Alert event to send
-            
+            explanation: Optional BudgetExplanation for richer messages
+
         Returns:
             Response from Slack
-            
+
         Raises:
             NotificationError: If sending fails
         """
@@ -46,10 +51,10 @@ class SlackNotifier:
             slo_id=event.slo_id,
             severity=event.severity.value,
         )
-        
+
         # Format Slack message
-        payload = self._format_slack_message(event)
-        
+        payload = self._format_slack_message(event, explanation=explanation)
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -57,15 +62,15 @@ class SlackNotifier:
                     json=payload,
                 )
                 response.raise_for_status()
-            
+
             logger.info(
                 "slack_alert_sent",
                 service=event.service,
                 slo_id=event.slo_id,
             )
-            
+
             return {"status": "sent", "channel": "slack"}
-            
+
         except httpx.HTTPError as exc:
             logger.error(
                 "slack_alert_failed",
@@ -73,19 +78,23 @@ class SlackNotifier:
                 error=str(exc),
             )
             raise NotificationError(f"Failed to send Slack alert: {exc}") from exc
-    
-    def _format_slack_message(self, event: AlertEvent) -> dict[str, Any]:
-        """Format alert as Slack message."""
+
+    def _format_slack_message(
+        self,
+        event: AlertEvent,
+        explanation: Any | None = None,
+    ) -> dict[str, Any]:
+        """Format alert as Slack message, optionally enriched with explanation."""
         # Color based on severity
         color_map = {
-            "info": "#36a64f",      # Green
-            "warning": "#ff9900",   # Orange
+            "info": "#36a64f",  # Green
+            "warning": "#ff9900",  # Orange
             "critical": "#ff0000",  # Red
         }
         color = color_map.get(event.severity.value, "#999999")
-        
+
         # Build Slack blocks
-        blocks = [
+        blocks: list[dict[str, Any]] = [
             {
                 "type": "header",
                 "text": {
@@ -100,43 +109,47 @@ class SlackNotifier:
                     "text": event.message,
                 },
             },
+        ]
+
+        # Inject explanation blocks if available
+        if explanation is not None:
+            blocks.extend(_format_explanation_blocks(explanation))
+
+        blocks.append(
             {
                 "type": "context",
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"*Triggered:* {event.triggered_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                        "text": (
+                            f"*Triggered:* "
+                            f"{event.triggered_at.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        ),
                     },
                 ],
             },
-        ]
-        
-        # Add action buttons
-        if event.details.get("burned_minutes", 0) > 0:
-            blocks.append({
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "View Error Budget",
+        )
+
+        # Add Grafana dashboard button if URL is available
+        grafana_url = _resolve_dashboard_url(event.service)
+        if grafana_url:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "View Dashboard",
+                            },
+                            "url": grafana_url,
+                            "action_id": "view_dashboard",
                         },
-                        "url": f"https://your-nthlayer.com/slos/{event.service}",
-                        "action_id": "view_budget",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Check Deployments",
-                        },
-                        "url": f"https://your-nthlayer.com/deployments/{event.service}",
-                        "action_id": "view_deployments",
-                    },
-                ],
-            })
-        
+                    ],
+                }
+            )
+
         return {
             "text": event.title,  # Fallback text
             "blocks": blocks,
@@ -149,24 +162,70 @@ class SlackNotifier:
         }
 
 
+def _resolve_dashboard_url(service: str) -> str | None:
+    """Return Grafana dashboard URL from NTHLAYER_GRAFANA_URL env var."""
+    import os
+
+    base = os.environ.get("NTHLAYER_GRAFANA_URL")
+    if base:
+        return f"{base.rstrip('/')}/d/{service}-overview/{service}"
+    return None
+
+
+def _format_explanation_blocks(explanation: Any) -> list[dict[str, Any]]:
+    """Convert a BudgetExplanation into Slack Block Kit sections."""
+    blocks: list[dict[str, Any]] = []
+    if hasattr(explanation, "causes") and explanation.causes:
+        causes_text = "\n".join(f"\u2022 {c}" for c in explanation.causes)
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Possible Causes:*\n{causes_text}",
+                },
+            }
+        )
+    if hasattr(explanation, "recommended_actions") and explanation.recommended_actions:
+        actions_text = "\n".join(
+            f"{i+1}. {a.action}"
+            for i, a in enumerate(sorted(explanation.recommended_actions, key=lambda x: x.priority))
+        )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Recommended Actions:*\n{actions_text}",
+                },
+            }
+        )
+    return blocks
+
+
 class PagerDutyNotifier:
     """Send notifications to PagerDuty."""
-    
+
     def __init__(self, integration_key: str, timeout: float = 10.0) -> None:
         self.integration_key = integration_key
         self.timeout = timeout
         self.api_url = "https://events.pagerduty.com/v2/enqueue"
-    
-    async def send_alert(self, event: AlertEvent) -> dict[str, Any]:
+
+    async def send_alert(
+        self,
+        event: AlertEvent,
+        explanation: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Send alert to PagerDuty.
-        
+
         Args:
             event: Alert event to send
-            
+            explanation: Unused — accepted for API compatibility
+
         Returns:
             Response from PagerDuty
-            
+
         Raises:
             NotificationError: If sending fails
         """
@@ -176,15 +235,15 @@ class PagerDutyNotifier:
             slo_id=event.slo_id,
             severity=event.severity.value,
         )
-        
+
         # Only send critical alerts to PagerDuty
         if event.severity.value != "critical":
             logger.info("skipping_non_critical_pagerduty_alert")
             return {"status": "skipped", "reason": "not_critical"}
-        
+
         # Format PagerDuty event
         payload = self._format_pagerduty_event(event)
-        
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -193,15 +252,15 @@ class PagerDutyNotifier:
                 )
                 response.raise_for_status()
                 result = response.json()
-            
+
             logger.info(
                 "pagerduty_alert_sent",
                 service=event.service,
                 dedup_key=result.get("dedup_key"),
             )
-            
+
             return {"status": "sent", "channel": "pagerduty", "dedup_key": result.get("dedup_key")}
-            
+
         except httpx.HTTPError as exc:
             logger.error(
                 "pagerduty_alert_failed",
@@ -209,7 +268,7 @@ class PagerDutyNotifier:
                 error=str(exc),
             )
             raise NotificationError(f"Failed to send PagerDuty alert: {exc}") from exc
-    
+
     def _format_pagerduty_event(self, event: AlertEvent) -> dict[str, Any]:
         """Format alert as PagerDuty event."""
         return {
@@ -228,38 +287,43 @@ class PagerDutyNotifier:
 
 class AlertNotifier:
     """Unified alert notifier that routes to multiple channels."""
-    
+
     def __init__(self) -> None:
         self.notifiers: dict[str, Any] = {}
-    
+
     def add_slack(self, webhook_url: str) -> None:
         """Add Slack notifier."""
         self.notifiers["slack"] = SlackNotifier(webhook_url)
-    
+
     def add_pagerduty(self, integration_key: str) -> None:
         """Add PagerDuty notifier."""
         self.notifiers["pagerduty"] = PagerDutyNotifier(integration_key)
-    
-    async def send_alert(self, event: AlertEvent) -> dict[str, Any]:
+
+    async def send_alert(
+        self,
+        event: AlertEvent,
+        explanation: Any | None = None,
+    ) -> dict[str, Any]:
         """
         Send alert to all configured channels.
-        
+
         Args:
             event: Alert event to send
-            
+            explanation: Optional BudgetExplanation for richer messages
+
         Returns:
             Status of each notification
         """
         results = {}
-        
+
         for channel, notifier in self.notifiers.items():
             try:
-                result = await notifier.send_alert(event)
+                result = await notifier.send_alert(event, explanation=explanation)
                 results[channel] = result
             except NotificationError as exc:
                 results[channel] = {
                     "status": "failed",
                     "error": str(exc),
                 }
-        
+
         return results

@@ -225,6 +225,9 @@ def _parse_legacy_to_manifest(
         if ownership:
             ownership.pagerduty = pagerduty_config
 
+    # Parse alerting from resources
+    alerting = _extract_alerting_from_resources(resources_data)
+
     return ReliabilityManifest(
         # Metadata
         name=name,
@@ -238,6 +241,7 @@ def _parse_legacy_to_manifest(
         slos=slos,
         dependencies=dependencies,
         ownership=ownership,
+        alerting=alerting,
         # Legacy fields
         language=service_data.get("language"),
         framework=service_data.get("framework"),
@@ -388,6 +392,20 @@ def _extract_dependencies_from_resources(
     return dependencies
 
 
+def _extract_alerting_from_resources(
+    resources: list[dict[str, Any]],
+) -> Any:
+    """Extract alerting config from legacy ``kind: Alerts`` resources."""
+    for resource in resources:
+        if resource.get("kind") != "Alerts":
+            continue
+        spec = resource.get("spec", {})
+        from nthlayer.specs.alerting import parse_alerting_config
+
+        return parse_alerting_config(spec)
+    return None
+
+
 def _extract_ownership(
     service_data: dict[str, Any],
     resources: list[dict[str, Any]],
@@ -492,3 +510,60 @@ def is_manifest_file(file_path: str | Path) -> bool:
         return False
 
     return False
+
+
+def load_as_legacy(
+    file_path: str | Path,
+    environment: str | None = None,
+) -> tuple:
+    """
+    Load a service file and return (ServiceContext, list[Resource]).
+
+    Detects the file format automatically:
+    - **OpenSRM** (apiVersion: srm/v1): parsed via ``load_manifest()`` then
+      converted with ``manifest.as_service_context()`` / ``manifest.as_resources()``.
+    - **Legacy** (service: + resources:): delegates to ``parse_service_file()``
+      which preserves template resolution, environment merging, and variable
+      substitution — zero behaviour change for existing users.
+
+    Args:
+        file_path: Path to the service/manifest YAML file.
+        environment: Optional environment name for overrides.
+
+    Returns:
+        Tuple of (ServiceContext, list[Resource]).
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ManifestLoadError: If parsing fails.
+    """
+    from nthlayer.specs.models import ServiceContext
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Service file not found: {file_path}")
+
+    # Sniff format
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ManifestLoadError(f"Invalid YAML in {file_path}: {e}") from e
+
+    if not isinstance(data, dict):
+        raise ManifestLoadError(f"Expected YAML object in {file_path}")
+
+    if is_opensrm_format(data):
+        # OpenSRM path: load_manifest → convert
+        manifest = load_manifest(path, environment=environment)
+        ctx: ServiceContext = manifest.as_service_context()
+        resources = manifest.as_resources(ctx)
+        return ctx, resources
+
+    # Legacy path: full-fidelity parse (templates, env merge, variable substitution)
+    from nthlayer.specs.parser import ServiceParseError, parse_service_file
+
+    try:
+        return parse_service_file(file_path, environment=environment)
+    except ServiceParseError as e:
+        raise ManifestLoadError(str(e)) from e

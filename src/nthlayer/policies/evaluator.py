@@ -179,7 +179,7 @@ class ConditionEvaluator:
         # Handle parentheses first
         while "(" in expr:
             # Find innermost parentheses
-            match = re.search(r"\(([^()]+)\)", expr)
+            match = re.search(r"(?<!\w)\(([^()]+)\)", expr)
             if match:
                 inner = match.group(1)
                 result = self._evaluate_expression(inner)
