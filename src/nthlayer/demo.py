@@ -555,6 +555,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--grafana-url", help="Base URL for Grafana dashboard links"
     )
 
+    # Backstage entity generation
+    generate_backstage_parser = subparsers.add_parser(
+        "generate-backstage", help="Generate Backstage entity JSON from service definition"
+    )
+    generate_backstage_parser.add_argument("service_file", help="Path to service YAML file")
+    generate_backstage_parser.add_argument(
+        "--output", "-o", help="Output directory (default: generated/{service}/)"
+    )
+    generate_backstage_parser.add_argument(
+        "--env", "--environment", dest="environment", help="Environment name (dev, staging, prod)"
+    )
+    generate_backstage_parser.add_argument(
+        "--auto-env",
+        action="store_true",
+        help="Auto-detect environment from context (CI/CD env vars)",
+    )
+    generate_backstage_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without writing file"
+    )
+    generate_backstage_parser.add_argument(
+        "--prometheus-url",
+        "-p",
+        help="Prometheus URL for live data (optional, not used in static mode)",
+    )
+
     validate_parser = subparsers.add_parser("validate", help="Validate service definition")
     validate_parser.add_argument("service_file", help="Path to service YAML file")
     validate_parser.add_argument(
@@ -963,6 +988,29 @@ def main(argv: Sequence[str] | None = None) -> None:
                 runbook_url=args.runbook_url or "",
                 notification_channel=args.notification_channel or "",
                 grafana_url=getattr(args, "grafana_url", None) or "",
+            )
+        )
+
+    if args.command == "generate-backstage":
+        from nthlayer.cli.backstage import generate_backstage_command
+        from nthlayer.specs.environment_detection import get_environment
+
+        env = get_environment(
+            explicit_env=getattr(args, "environment", None),
+            auto_detect=getattr(args, "auto_env", False),
+        )
+
+        prom_url = getattr(args, "prometheus_url", None) or os.environ.get(
+            "NTHLAYER_PROMETHEUS_URL"
+        )
+
+        sys.exit(
+            generate_backstage_command(
+                args.service_file,
+                output=args.output,
+                environment=env,
+                dry_run=args.dry_run,
+                prometheus_url=prom_url,
             )
         )
 

@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nthlayer.dev/schemas/v1/backstage-entity.json",
+  "title": "NthLayer Backstage Entity",
+  "description": "JSON artifact for Backstage integration with NthLayer reliability data",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "service"],
+  "properties": {
+    "schemaVersion": {
+      "const": "v1",
+      "description": "Schema version for forward compatibility"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when this artifact was generated"
+    },
+    "service": {
+      "$ref": "#/$defs/serviceContext"
+    },
+    "slos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/slo"
+      },
+      "description": "Service Level Objectives defined for this service"
+    },
+    "errorBudget": {
+      "$ref": "#/$defs/errorBudgetSummary"
+    },
+    "score": {
+      "$ref": "#/$defs/serviceScore"
+    },
+    "deploymentGate": {
+      "$ref": "#/$defs/deploymentGate"
+    },
+    "links": {
+      "$ref": "#/$defs/links"
+    }
+  },
+  "$defs": {
+    "serviceContext": {
+      "type": "object",
+      "required": ["name", "team", "tier", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Service name (lowercase-with-hyphens)"
+        },
+        "team": {
+          "type": "string",
+          "description": "Owning team identifier"
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["critical", "high", "standard", "low"],
+          "description": "Service tier for SLO thresholds and alerting"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["api", "worker", "stream", "ai-gate", "batch", "database", "web"],
+          "description": "Service type"
+        },
+        "description": {
+          "type": ["string", "null"],
+          "description": "Human-readable service description"
+        },
+        "supportModel": {
+          "type": "string",
+          "enum": ["self", "shared", "sre", "business_hours"],
+          "default": "self",
+          "description": "Support model for on-call routing"
+        }
+      }
+    },
+    "slo": {
+      "type": "object",
+      "required": ["name", "target", "window"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "SLO name (e.g., availability, latency-p99)"
+        },
+        "target": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Target percentage (e.g., 99.9)"
+        },
+        "window": {
+          "type": "string",
+          "description": "Time window (e.g., 30d, 7d)"
+        },
+        "sloType": {
+          "type": ["string", "null"],
+          "enum": ["availability", "latency", "error_rate", "throughput", "judgment", null],
+          "description": "SLO type classification"
+        },
+        "description": {
+          "type": ["string", "null"],
+          "description": "Human-readable SLO description"
+        },
+        "currentValue": {
+          "type": ["number", "null"],
+          "description": "Current measured value (null if live data not available)"
+        },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["healthy", "warning", "critical", "exhausted", null],
+          "description": "Current SLO status based on error budget consumption"
+        }
+      }
+    },
+    "errorBudgetSummary": {
+      "type": "object",
+      "properties": {
+        "totalMinutes": {
+          "type": ["number", "null"],
+          "description": "Total error budget in minutes for the window"
+        },
+        "consumedMinutes": {
+          "type": ["number", "null"],
+          "description": "Error budget consumed in minutes"
+        },
+        "remainingMinutes": {
+          "type": ["number", "null"],
+          "description": "Error budget remaining in minutes"
+        },
+        "remainingPercent": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of error budget remaining"
+        },
+        "burnRate": {
+          "type": ["number", "null"],
+          "description": "Current burn rate multiplier (null if live data not available)"
+        },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["healthy", "warning", "critical", "exhausted", null],
+          "description": "Overall error budget status"
+        }
+      }
+    },
+    "serviceScore": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Weighted reliability score (0-100)"
+        },
+        "grade": {
+          "type": ["string", "null"],
+          "enum": ["A", "B", "C", "D", "F", null],
+          "description": "Letter grade (A=excellent, B=good, C=fair, D=poor, F=critical)"
+        },
+        "band": {
+          "type": ["string", "null"],
+          "enum": ["excellent", "good", "fair", "poor", "critical", null],
+          "description": "Score band classification"
+        },
+        "trend": {
+          "type": ["string", "null"],
+          "enum": ["improving", "stable", "degrading", null],
+          "description": "Score trend direction"
+        },
+        "components": {
+          "$ref": "#/$defs/scoreComponents"
+        }
+      }
+    },
+    "scoreComponents": {
+      "type": "object",
+      "description": "Breakdown of score components",
+      "properties": {
+        "sloCompliance": {
+          "type": ["number", "null"],
+          "description": "SLO compliance score (0-100, 40% weight)"
+        },
+        "incidentScore": {
+          "type": ["number", "null"],
+          "description": "Incident score (0-100, 30% weight)"
+        },
+        "deploySuccessRate": {
+          "type": ["number", "null"],
+          "description": "Deployment success rate (0-100, 20% weight)"
+        },
+        "errorBudgetRemaining": {
+          "type": ["number", "null"],
+          "description": "Error budget remaining score (0-100, 10% weight)"
+        }
+      }
+    },
+    "deploymentGate": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["APPROVED", "WARNING", "BLOCKED"],
+          "description": "Current deployment gate status"
+        },
+        "message": {
+          "type": ["string", "null"],
+          "description": "Human-readable status message"
+        },
+        "budgetRemainingPercent": {
+          "type": ["number", "null"],
+          "description": "Current error budget remaining percentage"
+        },
+        "warningThreshold": {
+          "type": ["number", "null"],
+          "description": "Warning threshold percentage"
+        },
+        "blockingThreshold": {
+          "type": ["number", "null"],
+          "description": "Blocking threshold percentage"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of recommendations based on gate status"
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "description": "Related links for the service",
+      "properties": {
+        "grafanaDashboard": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "description": "URL to Grafana dashboard"
+        },
+        "runbook": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "description": "URL to runbook documentation"
+        },
+        "serviceManifest": {
+          "type": ["string", "null"],
+          "description": "Path to source NthLayer manifest"
+        },
+        "slothSpec": {
+          "type": ["string", "null"],
+          "description": "Path to generated Sloth specification"
+        },
+        "alertsYaml": {
+          "type": ["string", "null"],
+          "description": "Path to generated alerts YAML"
+        }
+      }
+    }
+  }
+}

@@ -104,6 +104,8 @@ class ResourceDetector:
             resources.append("slos")
             # Auto-add recording rules if SLOs exist
             resources.append("recording-rules")
+            # Auto-add Backstage entity if SLOs exist
+            resources.append("backstage")
 
         # Auto-generate alerts if dependencies defined
         if self._has_dependencies(index):
@@ -145,6 +147,7 @@ class ServiceOrchestrator:
         "dashboard": ("_generate_dashboard", "dashboard"),
         "recording-rules": ("_generate_recording_rules", "recording rules"),
         "pagerduty": ("_generate_pagerduty", "PagerDuty"),
+        "backstage": ("_generate_backstage", "Backstage entity"),
     }
 
     def __init__(
@@ -233,6 +236,9 @@ class ServiceOrchestrator:
 
             if "pagerduty" in resource_types:
                 result.resources["pagerduty"] = self._plan_pagerduty()
+
+            if "backstage" in resource_types:
+                result.resources["backstage"] = self._plan_backstage()
         except Exception as e:
             result.errors.append(f"Planning failed: {e}")
 
@@ -438,6 +444,27 @@ class ServiceOrchestrator:
                 "tier": tier,
                 "support_model": support_model,
             },
+        ]
+
+    def _plan_backstage(self) -> List[Dict[str, Any]]:
+        """Plan Backstage entity generation."""
+        service_def = self.service_def or {}
+        service_name = self.service_name or "unknown"
+        slo_resources = self._get_detector().get_resources_by_kind("SLO")
+
+        service = service_def.get("service", {})
+        team = service.get("team", "unknown")
+        tier = service.get("tier", "standard")
+
+        return [
+            {
+                "type": "backstage_entity",
+                "service": service_name,
+                "team": team,
+                "tier": tier,
+                "slo_count": len(slo_resources),
+                "output": "backstage.json",
+            }
         ]
 
     # Generation methods (actually create files)
@@ -776,3 +803,26 @@ class ServiceOrchestrator:
         output_file = output_dir / "alertmanager.yaml"
         config.write(output_file)
         print(f"✅ Alertmanager config: {output_file}")
+
+    def _generate_backstage(self) -> int:
+        """Generate Backstage entity JSON file.
+
+        Returns:
+            Number of Backstage entities created (always 1)
+        """
+        from nthlayer.generators.backstage import generate_backstage_entity
+
+        output_dir = self.output_dir or Path("generated")
+
+        # Generate Backstage entity
+        result = generate_backstage_entity(
+            service_file=self.service_yaml,
+            output_dir=output_dir,
+            environment=self.env,
+        )
+
+        if not result.success:
+            print(f"   ⚠️  Backstage generation warning: {result.error}")
+            return 0
+
+        return 1
