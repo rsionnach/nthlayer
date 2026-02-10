@@ -1,0 +1,58 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-5-20250929
+          direct_prompt: |
+            Review this pull request for bugs and security issues only.
+
+            Focus on:
+            - Logic errors that will produce wrong results
+            - Unhandled errors or swallowed exceptions
+            - Security issues (injection, auth bypass, secrets in code)
+            - CLAUDE.md violations — read CLAUDE.md first and quote the rule being broken
+            - Dashboard generation correctness (BaseIntentTemplate usage, metric resolver, Grafana SDK)
+            - PromQL patterns: service label selector, histogram_quantile with sum by (le), rate aggregation
+            - Status label conventions (API: status!~"5..", Worker: status!="failed", Stream: status!="error")
+            - Error handling (NthLayerError subclasses, @main_with_error_handling, exit codes)
+            - CLI architecture (thin commands delegate to modules, ux.py for output)
+            - External SDK usage (grafana-foundation-sdk, pagerduty, boto3 — not bespoke HTTP clients)
+
+            Do NOT comment on:
+            - Style preferences, naming opinions, or formatting
+            - "Consider using X" suggestions
+            - Test coverage suggestions unless a critical path is untested
+            - Things that are obviously intentional design choices
+            - Demo missing metrics (intentional for guidance panels)
+            - Legacy template patterns that are tracked as known tech debt
+
+            Be concise. Only flag issues where you have HIGH confidence.
+            For each issue, state the file, line range, what the bug is, and why it matters.
