@@ -297,14 +297,4 @@ class EventOrchestrationManager:
                 )
             )
 
-        # Could also create rules for specific alert names if needed
-        # for alert in alerts:
-        #     if alert.get("routing") == "sre":
-        #         rules.append(RoutingRule(
-        #             label=f"Route {alert['name']} to SRE",
-        #             condition_field="event.custom_details.alert_name",
-        #             condition_value=alert["name"],
-        #             escalation_policy_id=sre_escalation_policy_id,
-        #         ))
-
         return rules
