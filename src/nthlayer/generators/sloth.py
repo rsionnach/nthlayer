@@ -13,6 +13,8 @@ from typing import Any
 
 import yaml
 
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
+
 from nthlayer.specs.manifest import ReliabilityManifest, SLODefinition
 from nthlayer.specs.models import ServiceContext
 from nthlayer.specs.parser import parse_service_file, render_resource_spec
@@ -295,7 +297,7 @@ def convert_to_sloth_slo(
     Returns:
         Sloth SLO dict
     """
-    objective = spec.get("objective", 99.9)
+    objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
     indicator = spec.get("indicator", {})
 
     # Build SLI based on indicator type

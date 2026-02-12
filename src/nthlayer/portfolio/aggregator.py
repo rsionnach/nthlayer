@@ -22,6 +22,7 @@ from nthlayer.portfolio.models import (
     TierHealth,
     get_tier_name,
 )
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -183,7 +184,7 @@ class PortfolioAggregator:
             slos.append(
                 SLOHealth(
                     name=slo.name or "unnamed",
-                    objective=spec.get("objective", 99.9),
+                    objective=spec.get("objective", DEFAULT_SLO_OBJECTIVE),
                     window=spec.get("window", "30d"),
                     status=HealthStatus.UNKNOWN,  # No live data in basic mode
                 )

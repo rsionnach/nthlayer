@@ -26,7 +26,14 @@ from nthlayer.slos.collector import SLOCollector, collect_and_store_budget, coll
 from nthlayer.slos.correlator import CorrelationResult, CorrelationWindow, DeploymentCorrelator
 from nthlayer.slos.deployment import Deployment, DeploymentRecorder
 from nthlayer.slos.explanations import BudgetExplanation, ExplanationEngine
-from nthlayer.slos.models import SLO, ErrorBudget, SLOStatus, TimeWindow, TimeWindowType
+from nthlayer.slos.models import (
+    DEFAULT_SLO_OBJECTIVE,
+    SLO,
+    ErrorBudget,
+    SLOStatus,
+    TimeWindow,
+    TimeWindowType,
+)
 from nthlayer.slos.notifiers import AlertNotifier, SlackNotifier
 from nthlayer.slos.parser import OpenSLOParserError, parse_slo_dict, parse_slo_file
 from nthlayer.slos.pipeline import AlertPipeline, PipelineResult
@@ -41,6 +48,7 @@ __all__ = [
     "AlertSeverity",
     "AlertType",
     "BudgetExplanation",
+    "DEFAULT_SLO_OBJECTIVE",
     "CeilingValidationResult",
     "CorrelationResult",
     "CorrelationWindow",

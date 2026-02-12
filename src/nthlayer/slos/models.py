@@ -12,35 +12,40 @@ from enum import Enum
 from typing import Any
 
 
+# Default SLO objective when none is specified in the service YAML.
+# Used across recording rules, portfolio aggregation, collectors, etc.
+DEFAULT_SLO_OBJECTIVE = 99.9
+
+
 class SLOStatus(str, Enum):
     """SLO compliance status."""
-    
-    HEALTHY = "healthy"      # < 50% budget burned
-    WARNING = "warning"      # 50-80% budget burned
-    CRITICAL = "critical"    # 80-95% budget burned
+
+    HEALTHY = "healthy"  # < 50% budget burned
+    WARNING = "warning"  # 50-80% budget burned
+    CRITICAL = "critical"  # 80-95% budget burned
     EXHAUSTED = "exhausted"  # > 95% budget burned
 
 
 class TimeWindowType(str, Enum):
     """Type of time window for SLO evaluation."""
-    
-    ROLLING = "rolling"      # Rolling window (e.g., last 30 days)
-    CALENDAR = "calendar"    # Calendar window (e.g., current month)
+
+    ROLLING = "rolling"  # Rolling window (e.g., last 30 days)
+    CALENDAR = "calendar"  # Calendar window (e.g., current month)
 
 
 @dataclass
 class TimeWindow:
     """Time window for SLO evaluation."""
-    
+
     duration: str  # Duration string (e.g., "30d", "7d", "1h")
     type: TimeWindowType = TimeWindowType.ROLLING
-    
+
     def to_timedelta(self) -> timedelta:
         """Convert duration string to timedelta."""
         # Parse duration string (e.g., "30d" -> 30 days)
         unit = self.duration[-1]
         value = int(self.duration[:-1])
-        
+
         if unit == "d":
             return timedelta(days=value)
         elif unit == "h":
@@ -51,12 +56,12 @@ class TimeWindow:
             return timedelta(weeks=value)
         else:
             raise ValueError(f"Unsupported duration unit: {unit}")
-    
+
     def get_start_time(self, now: datetime | None = None) -> datetime:
         """Get the start time for this window."""
         if now is None:
             now = datetime.utcnow()
-        
+
         if self.type == TimeWindowType.ROLLING:
             return now - self.to_timedelta()
         else:
@@ -68,27 +73,27 @@ class TimeWindow:
 class SLO:
     """
     Service Level Objective.
-    
+
     Represents a target reliability goal for a service.
     Based on OpenSLO specification.
     """
-    
+
     id: str
     service: str
     name: str
     description: str
     target: float  # Target percentage (e.g., 0.9995 for 99.95%)
     time_window: TimeWindow
-    
+
     # Prometheus query for the SLI (Service Level Indicator)
     query: str
-    
+
     # Metadata
     owner: str | None = None
     labels: dict[str, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SLO:
         """Create SLO from dictionary (OpenSLO YAML)."""
@@ -96,13 +101,13 @@ class SLO:
         window_data = data.get("timeWindow", [{}])[0]
         time_window = TimeWindow(
             duration=window_data.get("duration", "30d"),
-            type=TimeWindowType(window_data.get("type", "rolling"))
+            type=TimeWindowType(window_data.get("type", "rolling")),
         )
-        
+
         # Get target value
         objectives = data.get("objectives", [{}])
         target = objectives[0].get("target", 0.999) if objectives else 0.999
-        
+
         return cls(
             id=data.get("metadata", {}).get("name", ""),
             service=data.get("service", ""),
@@ -110,11 +115,13 @@ class SLO:
             description=data.get("description", ""),
             target=target,
             time_window=time_window,
-            query=objectives[0].get("indicator", {}).get("spec", {}).get("query", "") if objectives else "",
+            query=objectives[0].get("indicator", {}).get("spec", {}).get("query", "")
+            if objectives
+            else "",
             owner=data.get("metadata", {}).get("labels", {}).get("owner"),
             labels=data.get("metadata", {}).get("labels", {}),
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to OpenSLO format."""
         return {
@@ -135,7 +142,7 @@ class SLO:
                             "spec": {
                                 "query": self.query,
                             }
-                        }
+                        },
                     }
                 ],
                 "timeWindow": [
@@ -143,14 +150,14 @@ class SLO:
                         "duration": self.time_window.duration,
                         "type": self.time_window.type.value,
                     }
-                ]
-            }
+                ],
+            },
         }
-    
+
     def error_budget_percent(self) -> float:
         """Calculate allowed error budget percentage."""
         return 1.0 - self.target
-    
+
     def error_budget_minutes(self) -> float:
         """Calculate total error budget in minutes for the time window."""
         total_minutes = self.time_window.to_timedelta().total_seconds() / 60
@@ -161,50 +168,50 @@ class SLO:
 class ErrorBudget:
     """
     Error budget tracking for an SLO.
-    
+
     Tracks how much error budget has been consumed and what caused it.
     """
-    
+
     slo_id: str
     service: str
-    
+
     # Time period
     period_start: datetime
     period_end: datetime
-    
+
     # Budget amounts (in minutes)
     total_budget_minutes: float
     burned_minutes: float
     remaining_minutes: float
-    
+
     # Burn sources
     incident_burn_minutes: float = 0.0
     deployment_burn_minutes: float = 0.0
     slo_breach_burn_minutes: float = 0.0
-    
+
     # Status
     status: SLOStatus = SLOStatus.HEALTHY
     burn_rate: float = 0.0  # Current burn rate (multiplier of baseline)
-    
+
     # Metadata
     updated_at: datetime = field(default_factory=datetime.utcnow)
-    
+
     @property
     def percent_consumed(self) -> float:
         """Percentage of error budget consumed."""
         if self.total_budget_minutes == 0:
             return 0.0
         return (self.burned_minutes / self.total_budget_minutes) * 100
-    
+
     @property
     def percent_remaining(self) -> float:
         """Percentage of error budget remaining."""
         return 100 - self.percent_consumed
-    
+
     def calculate_status(self) -> SLOStatus:
         """Determine status based on budget consumption."""
         consumed = self.percent_consumed
-        
+
         if consumed >= 95:
             return SLOStatus.EXHAUSTED
         elif consumed >= 80:
@@ -213,7 +220,7 @@ class ErrorBudget:
             return SLOStatus.WARNING
         else:
             return SLOStatus.HEALTHY
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API/CLI output."""
         return {

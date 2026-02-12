@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from nthlayer.cli.ux import console, header
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -71,7 +72,7 @@ def slo_show_command(
     # Display each SLO
     for slo in slo_resources:
         spec = slo.spec or {}
-        objective = spec.get("objective", 99.9)
+        objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
         window = spec.get("window", "30d")
 
         # Calculate error budget
@@ -138,7 +139,7 @@ def slo_list_command() -> int:
                         {
                             "service": context.name,
                             "name": slo.name,
-                            "objective": spec.get("objective", 99.9),
+                            "objective": spec.get("objective", DEFAULT_SLO_OBJECTIVE),
                             "window": spec.get("window", "30d"),
                             "file": str(service_file),
                         }
@@ -265,7 +266,7 @@ async def _collect_slo_metrics(
 
     for slo in slo_resources:
         spec = slo.spec or {}
-        objective = spec.get("objective", 99.9)
+        objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
         window = spec.get("window", "30d")
         indicator = spec.get("indicator", {})
 

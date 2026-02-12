@@ -16,6 +16,7 @@ from nthlayer.cli.ux import console, error, header, info, success, warning
 from nthlayer.drift import DriftAnalyzer, DriftResult, DriftSeverity, get_drift_defaults
 from nthlayer.slos.collector import BudgetSummary, SLOMetricCollector, SLOResult
 from nthlayer.slos.gates import DeploymentGate, GateResult
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -385,7 +386,7 @@ def _show_example_scenarios(
     if slo_resources:
         spec = slo_resources[0].spec or {}
         window = spec.get("window", "30d")
-        objective = spec.get("objective", 99.9)
+        objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
         window_minutes = collector._parse_window_minutes(window)
         total_budget = window_minutes * ((100 - objective) / 100)
     else:

@@ -15,7 +15,7 @@ import structlog
 
 from nthlayer.providers.prometheus import PrometheusProvider, PrometheusProviderError
 from nthlayer.slos.calculator import ErrorBudgetCalculator
-from nthlayer.slos.models import SLO, ErrorBudget
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE, SLO, ErrorBudget
 from nthlayer.slos.storage import SLORepository
 
 logger = structlog.get_logger()
@@ -313,7 +313,7 @@ class SLOMetricCollector:
     ) -> SLOResult:
         """Collect metrics for a single SLO."""
         spec = slo.spec or {}
-        objective = spec.get("objective", 99.9)
+        objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
         window = spec.get("window", "30d")
         indicator = spec.get("indicator", {})
 

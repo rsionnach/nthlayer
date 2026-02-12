@@ -19,6 +19,7 @@ from grafana_foundation_sdk.cog.encoder import JSONEncoder
 from nthlayer.dashboards.resolver import MetricResolver, create_resolver
 from nthlayer.dashboards.sdk_adapter import SDKAdapter
 from nthlayer.dashboards.templates import get_template, get_template_or_none
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
 from nthlayer.specs.models import Resource, ServiceContext
 
 logger = logging.getLogger(__name__)
@@ -267,7 +268,7 @@ class DashboardBuilderSDK:
             # Extract SLO details
             if isinstance(slo_spec, dict):
                 slo_name = slo_spec.get("name", slo_resource.name or "Unknown SLO")
-                objective = slo_spec.get("objective", 99.9)
+                objective = slo_spec.get("objective", DEFAULT_SLO_OBJECTIVE)
                 # Check for query in multiple places (spec.query or spec.indicator.query)
                 slo_query = slo_spec.get("query", "")
                 if not slo_query:

@@ -3,6 +3,7 @@
 from typing import List
 
 from nthlayer.recording_rules.models import RecordingRule, RecordingRuleGroup
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
 from nthlayer.specs.models import Resource, ServiceContext
 
 
@@ -87,7 +88,7 @@ class RecordingRuleBuilder:
         - Availability percentage
         - Error budget
         """
-        objective = spec.get("objective", 99.9)
+        objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
         window = spec.get("window", "30d")
 
         rules = []
@@ -238,7 +239,7 @@ class RecordingRuleBuilder:
         - Error requests
         - Error rate percentage
         """
-        objective = spec.get("objective", 99.9)
+        objective = spec.get("objective", DEFAULT_SLO_OBJECTIVE)
         window = spec.get("window", "30d")
 
         rules = []

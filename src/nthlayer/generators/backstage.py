@@ -17,6 +17,7 @@ from typing import Any
 
 from nthlayer.scorecard.models import ScoreBand
 from nthlayer.slos.gates import DeploymentGate, GateResult
+from nthlayer.slos.models import DEFAULT_SLO_OBJECTIVE
 from nthlayer.specs.loader import load_manifest
 from nthlayer.specs.manifest import ReliabilityManifest
 
@@ -182,7 +183,7 @@ def _build_backstage_entity(
         spec = slo_resource.spec
         slo_entry = {
             "name": slo_resource.name,
-            "target": spec.get("objective", 99.9),
+            "target": spec.get("objective", DEFAULT_SLO_OBJECTIVE),
             "window": spec.get("window", "30d"),
             "sloType": spec.get("indicator", {}).get("type"),
             "description": spec.get("description"),
