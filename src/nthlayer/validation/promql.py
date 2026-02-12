@@ -324,19 +324,3 @@ def lint_alerts_file(
     """
     linter = PintLinter(config_path=Path(config_path) if config_path else None)
     return linter.lint_file(Path(file_path))
-
-
-def print_lint_result(result: LintResult, verbose: bool = False) -> None:
-    """Pretty-print lint result to console."""
-    print(result.summary())
-
-    if result.issues:
-        for issue in result.issues:
-            icon = "✗" if issue.is_error else "⚠" if issue.is_warning else "ℹ"
-            line_info = f":{issue.line}" if issue.line else ""
-            print(f"  {icon} [{issue.check}]{line_info} {issue.message}")
-
-        if verbose and result.raw_output:
-            print()
-            print("Raw output:")
-            print(result.raw_output)
