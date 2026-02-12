@@ -47,3 +47,11 @@ if [ -n "$DIRTY" ]; then
     echo "$DIRTY"
     echo ""
 fi
+
+echo "## Available Commands"
+echo ""
+echo "/spec-to-beads <spec>  — Decompose spec into Beads tasks + plan"
+echo "/audit-codebase        — Find bugs, file as Beads + GH Issues"
+echo "/gc-sweep              — Entropy cleanup sweep"
+echo "/doc-garden            — Documentation freshness check"
+echo ""

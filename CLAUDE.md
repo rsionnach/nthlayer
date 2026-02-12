@@ -1,15 +1,72 @@
-# CLAUDE.md
-This repo's agent instructions live in AGENTS.md.
+# NthLayer
 
-## Mission
-NthLayer: Reliability at build time, not incident time. Validate production readiness in CI/CD (Generate → Validate → Gate).
+Reliability at build time, not incident time. Validate production readiness in CI/CD (Generate → Validate → Gate).
 
-## How to work in this repo
-- Keep changes small and testable (PR-sized chunks).
-- Prefer refactors that reduce touch points for adding templates/backends.
-- Keep CLI thin; move business logic into modules/classes.
-- Always update/extend tests when changing behavior.
-- Never commit secrets (use env vars).
+## Quick Reference
+
+- **Language:** Python
+- **Build:** `pip install -e .`
+- **Test:** `make test`
+- **Lint:** `make lint` / `./scripts/lint/run-all.sh`
+- **Typecheck:** `make typecheck`
+- **Format:** `make format`
+
+## Documentation Map
+
+| What | Where |
+|------|-------|
+| Architecture & package layout | `docs/architecture.md` |
+| Coding conventions | `docs/conventions.md` |
+| Golden principles (mechanical rules) | `docs/golden-principles.md` |
+| Testing patterns | `docs/testing.md` |
+| Quality grades by package | `docs/quality.md` |
+| Active specs | `specs/` |
+| Execution plans | `plans/active/` |
+| Completed plans | `plans/completed/` |
+| Technical debt backlog | `plans/tech-debt.md` |
+
+Read the specific doc relevant to your task. Do NOT try to load all docs at once.
+
+## Key Architectural Rules
+
+These are enforced by linters and structural tests. See `docs/golden-principles.md` for the full list with rationale.
+
+1. Validate inputs at the boundary, not inline
+2. Use shared utilities — do not hand-roll helpers that already exist
+3. Structured logging only — no bare `print()` outside CLI entrypoints
+4. Handle exceptions with context at module boundaries
+5. Use template system for all generated output — no raw string construction
+6. Every `TODO` must reference a Beads issue ID
+
+## Task Tracking (Beads)
+
+```bash
+bd ready              # Show tasks ready to work on
+bd update <id> --status in_progress
+bd close <id> --reason "What was done"
+bd create --title "..." --description "..." --priority 1 --type feature
+```
+
+See `docs/conventions.md` for full Beads workflow.
+
+## Workflow
+
+- **Task tracking:** Beads (`bd ready`, `bd list`, `bd close`)
+- **Issue creation:** `./scripts/create-audit-issue.sh` for dual Beads + GitHub Issues
+- **Code review:** Automated on every PR via GitHub Action
+- **Codebase audit:** `/audit-codebase`
+- **GC sweep:** `/gc-sweep` (entropy cleanup)
+- **Doc gardening:** `/doc-garden`
+- **Spec to tasks:** `/spec-to-beads <spec-file>`
+- **Release:** Update CHANGELOG.md, create GitHub release → auto-publishes to PyPI
+
+## Commit Messages
+
+Format: `<type>: <description> (<bead-id>)`
+
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `lint`
+
+When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 
 <!-- AUTO-MANAGED: architecture -->
 ## Architecture
@@ -48,104 +105,6 @@ NthLayer: Reliability at build time, not incident time. Validate production read
 5. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
 6. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
 <!-- /AUTO-MANAGED: architecture -->
-
-## Task Tracking with Beads (bd)
-
-This project uses [beads](https://github.com/steveyegge/beads) for issue tracking. **Always use the `bd` CLI** - never create individual JSON files in `.beads/`.
-
-### Essential Commands
-```bash
-bd ready              # Show tasks ready to work on (no blockers)
-bd list               # List all issues
-bd list --status open # List open issues only
-bd show <id>          # Show issue details
-bd create --title "..." --description "..." --priority 1 --type feature
-bd update <id> --status in_progress
-bd close <id> --reason "What was done"
-bd comment <id> "Comment text"
-bd stats              # Project statistics
-bd blocked            # Show blocked issues
-bd dep tree <id>      # Show dependency tree
-```
-
-### Workflow
-1. Check what's ready: `bd ready`
-2. Start work: `bd update <id> --status in_progress`
-3. Do the work
-4. Close when done: `bd close <id> --reason "Description"`
-5. Check next task: `bd ready`
-
-### Linking to Specifications
-For detailed feature specs, add a comment to the bd issue:
-```bash
-bd comment <id> "Specification: FEATURE_SPEC.md - Full implementation details."
-```
-
-### File Structure (DO NOT MODIFY MANUALLY)
-```
-.beads/
-├── issues.jsonl    # Source of truth (managed by bd)
-├── config.yaml     # Configuration
-├── metadata.json   # Metadata
-└── beads.db       # SQLite cache (gitignored)
-```
-
-## Commands
-- Tests: `make test`
-- Lint: `make lint` / `make lint-fix`
-- Typecheck: `make typecheck`
-- Format: `make format`
-- Lock deps: `make lock` / `make lock-upgrade`
-
-## Releases
-- PyPI uses trusted publisher (no token needed)
-- Create a GitHub release → triggers `.github/workflows/release.yml` → auto-publishes to PyPI
-- Version is defined **only** in `pyproject.toml` (single source of truth via importlib.metadata)
-- **CHANGELOG.md must be updated** before every release with all changes since the last release
-
-## Workflow Tooling
-
-### Beads
-This project uses [Beads](https://github.com/steveyegge/beads) for task tracking. Always use `bd` commands for work management. See `AGENTS.md` for the full Beads workflow.
-
-### Session Lifecycle
-- **SessionStart hook** automatically loads Beads state and recent spec changes
-- **Stop hook** enforces "land the plane" discipline — you cannot end a session with uncommitted changes, unpushed commits, or stale in-progress beads
-
-### Slash Commands
-- `/spec-to-beads <spec-file>` — Decompose a spec into Beads issues with dependency tracking. Do NOT implement — only create the task graph.
-
-### Autonomous Execution
-- Ralph loop prompt: `.claude/ralph-prompt.md`
-- Ralph loop runner: `.claude/ralph-loop.sh [max-iterations]`
-- Completion promise: `RALPH_COMPLETE`
-
-### Specs
-Specification files live in `specs/` (or wherever the project currently stores them). When implementing from a spec, always reference the spec file path in Beads task notes for traceability. If you make architectural decisions that diverge from the spec, document them in the task's notes field.
-
-## Code Review & Audit Rules
-
-### Architectural invariants
-- Dashboard generation must use `IntentBasedTemplate` subclasses and `grafana-foundation-sdk` — no raw JSON dashboard construction
-- Metric resolution must go through the resolver (`dashboards/resolver.py`) — do not hardcode metric names in templates
-- All PromQL must use `service="$service"` label selector (not `cluster` or other labels)
-- `histogram_quantile` must include `sum by (le)` — bare `rate()` inside `histogram_quantile` is always a bug
-- Rate queries must aggregate: `sum(rate(metric{service="$service"}[5m]))`
-- Status label conventions must match service type: API (`status!~"5.."`), Worker (`status!="failed"`), Stream (`status!="error"`)
-- Error handling must use `NthLayerError` subclasses — bare `Exception` or `RuntimeError` raises are not allowed
-- CLI commands must be thin — business logic lives in modules/classes, not in click command functions
-- CLI output must go through `ux.py` helpers — no raw `print()` or `click.echo()` in command handlers
-- External service integrations must use official SDKs (`grafana-foundation-sdk`, `pagerduty`, `boto3`) — no bespoke HTTP clients
-- Exit codes must follow convention: 0=success, 1=warning/error, 2=critical/blocked
-
-### Known intentional patterns (do not flag)
-- Demo app intentionally missing metrics (`redis_db_keys` from notification-worker, `elasticsearch_jvm_memory_*` from search-api) to demonstrate guidance panels
-- Legacy template patterns that are tracked as known tech debt in Beads
-- Empty catch blocks in migration code are intentional (best-effort migration)
-- Lenient validation in `nthlayer validate-metadata` is by design (warns, doesn't fail)
-
-### Slash Commands
-- `/audit-codebase` — Run a systematic codebase audit using the code-auditor subagent. Files findings as dual Beads + GitHub Issues.
 
 <!-- AUTO-MANAGED: learned-patterns -->
 ## Learned Patterns

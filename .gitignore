@@ -5,9 +5,7 @@ archive/
 site/
 
 # Large MkDocs assets (generated, not needed in git)
-docs/assets/javascripts/*.map
-docs/assets/stylesheets/*.map
-docs/assets/javascripts/lunr/wordcut.js
+site/
 **/nthlayer_dark_logo.png
 
 # Python

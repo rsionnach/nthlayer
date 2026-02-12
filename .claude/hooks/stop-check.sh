@@ -28,6 +28,11 @@ if [ "$UNPUSHED" -gt 0 ]; then
     ISSUES="${ISSUES}• You have $UNPUSHED unpushed commit(s). Run git push before ending.\n"
 fi
 
+# Optional: uncomment when lint rules are stable
+# if ! ./scripts/lint/run-all.sh >/dev/null 2>&1; then
+#   ISSUES="${ISSUES}• Lint violations detected. Run ./scripts/lint/run-all.sh to see details.\n"
+# fi
+
 if [ -n "$ISSUES" ]; then
     echo "## Land the Plane 🛬" >&2
     echo "" >&2

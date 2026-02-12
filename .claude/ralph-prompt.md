@@ -25,6 +25,10 @@ You are working on the NthLayer project. Your task execution follows this exact 
 - Run `bd update <task-id> --status closed`
 - Commit with a descriptive message referencing the bead ID: `git commit -m "feat: <description> [<bead-id>]"`
 - If you discovered new work during implementation, file it: `bd create "<new-task>" --type task --priority 2`
+- Update the corresponding plan in `plans/active/` — check off the requirement
+- If you made a decision that clarifies or deviates from the spec, add an entry
+  to the Decision Log or Deviation Log in the plan file
+- Commit plan updates alongside code changes
 
 ## Step 6: Continue or finish
 - Run `bd ready --json` again

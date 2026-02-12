@@ -53,3 +53,48 @@ bd update <task-id> --parent <epic-id>
 - Include the spec file path in the `--notes` field of every task for traceability
 - If the spec references other specs or ADRs, note those in the task description
 - Do NOT begin implementation — this command only creates the task graph
+
+## Plan Creation
+
+After creating the Beads epic and all tasks, also create an execution plan:
+
+1. Create a plan file at `plans/active/YYYY-MM-DD-<slug>.md` where:
+   - YYYY-MM-DD is today's date
+   - <slug> is a short kebab-case name derived from the spec title
+
+2. The plan file must contain:
+
+   ```markdown
+   # Plan: <spec title>
+
+   **Source spec:** <path to spec file>
+   **Beads epic:** <epic bead ID>
+   **Created:** <date>
+   **Status:** active
+
+   ## Requirements
+
+   Extracted from the spec. Each requirement maps to one or more Beads issues.
+
+   - [ ] <requirement 1> → `<bead-id>`
+   - [ ] <requirement 2> → `<bead-id>`
+   - [ ] <requirement 3> → `<bead-id>`, `<bead-id>`
+
+   ## Decision Log
+
+   | Date | Decision | Rationale |
+   |------|----------|-----------|
+   | | | |
+
+   ## Deviation Log
+
+   | Date | Specified | Implemented | Reason |
+   |------|-----------|-------------|--------|
+   | | | | |
+
+   ## Completion Summary
+
+   _To be filled when plan is completed._
+   ```
+
+3. Commit the plan file alongside the Beads epic creation.
