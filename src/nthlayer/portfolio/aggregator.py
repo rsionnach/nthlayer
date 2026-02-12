@@ -116,7 +116,9 @@ class PortfolioAggregator:
         for service_health, service_file in slo_specs:
             try:
                 context, resources = parse_service_file(str(service_file))
-            except Exception:
+            except (
+                Exception
+            ):  # intentionally ignored: skip unparseable service files during aggregation
                 continue
 
             slo_resources = [r for r in resources if r.kind == "SLO"]
@@ -159,8 +161,7 @@ class PortfolioAggregator:
                             if error_budget > 0:
                                 budget_consumed = (error_rate / error_budget) * 100
                                 slo_health.budget_consumed_percent = min(budget_consumed, 100)
-                except Exception:
-                    # Keep UNKNOWN status on query failure
+                except Exception:  # intentionally ignored: keep UNKNOWN status on query failure
                     pass
 
             # Recalculate overall status after enrichment
@@ -170,7 +171,7 @@ class PortfolioAggregator:
         """Parse a service file and extract health information."""
         try:
             context, resources = parse_service_file(str(file_path))
-        except Exception:
+        except Exception:  # intentionally ignored: return None for unparseable service files
             return None
 
         # Extract SLOs

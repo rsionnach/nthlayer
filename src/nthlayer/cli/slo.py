@@ -143,7 +143,7 @@ def slo_list_command() -> int:
                             "file": str(service_file),
                         }
                     )
-            except Exception:
+            except Exception:  # intentionally ignored: skip unparseable service files during scan
                 continue
 
     if not all_slos:

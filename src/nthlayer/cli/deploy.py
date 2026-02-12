@@ -439,7 +439,7 @@ def _run_demo_mode(service_file: str, environment: str | None = None, blocked: b
         service_name = service_context.name
         tier = service_context.tier
         team = service_context.team
-    except Exception:
+    except Exception:  # intentionally ignored: fall back to demo defaults for demo output
         service_name = "payment-api"
         tier = "critical"
         team = "payments"

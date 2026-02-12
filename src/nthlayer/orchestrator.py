@@ -372,8 +372,7 @@ class ServiceOrchestrator:
             return [
                 {"severity": sev, "count": count} for sev, count in sorted(severity_counts.items())
             ]
-        except Exception:
-            # Fall back to empty list on error
+        except Exception:  # intentionally ignored: fall back to empty list on planning error
             return []
 
     def _plan_dashboard(self) -> List[Dict[str, Any]]:

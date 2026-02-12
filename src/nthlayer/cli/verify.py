@@ -205,7 +205,7 @@ def _demo_verify_output(service_file: str, environment: Optional[str] = None) ->
                 service_name = data["service"].get("name", service_name)
             elif data and "name" in data:
                 service_name = data.get("name", service_name)
-    except Exception:
+    except Exception:  # intentionally ignored: best-effort name extraction for demo output
         pass
 
     # Print header

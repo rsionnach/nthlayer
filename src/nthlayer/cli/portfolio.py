@@ -131,8 +131,7 @@ def _collect_drift_data(
                 )
             )
             results[svc.service] = result
-        except Exception:
-            # Skip services where drift analysis fails
+        except Exception:  # intentionally ignored: skip services where drift analysis fails
             continue
 
     return results

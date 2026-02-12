@@ -168,8 +168,7 @@ class ConditionEvaluator:
 
         try:
             return self._evaluate_expression(condition)
-        except Exception:
-            # On parse error, fail safe (condition not met)
+        except Exception:  # intentionally ignored: fail safe on parse error (condition not met)
             return False
 
     def _evaluate_expression(self, expr: str) -> bool:

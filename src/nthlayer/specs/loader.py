@@ -505,7 +505,7 @@ def is_manifest_file(file_path: str | Path) -> bool:
             service = data["service"]
             return all(k in service for k in ("name", "team", "tier", "type"))
 
-    except Exception:
+    except Exception:  # intentionally ignored: best-effort manifest detection
         logger.debug("Could not read %s for manifest detection", path)
         return False
 

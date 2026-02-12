@@ -196,5 +196,7 @@ class MetricVerifier:
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(url, auth=self.auth)
                 return response.status_code == 200
-        except Exception:
+        except (
+            Exception
+        ):  # intentionally ignored: health check returns False on any connection error
             return False
