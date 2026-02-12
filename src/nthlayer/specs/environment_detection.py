@@ -181,16 +181,3 @@ def get_environment(explicit_env: Optional[str] = None, auto_detect: bool = True
         return detect_environment()
 
     return None
-
-
-def print_environment_detection_info(environment: Optional[str], source: str = "unknown"):
-    """Print information about detected environment.
-
-    Args:
-        environment: Detected environment name
-        source: Source of detection (flag, auto, etc.)
-    """
-    if environment:
-        print(f"🌍 Environment: {environment} (source: {source})")
-    else:
-        print("📋 Environment: none (using base configuration)")
