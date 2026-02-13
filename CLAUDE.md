@@ -21,11 +21,16 @@ Reliability at build time, not incident time. Validate production readiness in C
 | Testing patterns | `docs/testing.md` |
 | Quality grades by package | `docs/quality.md` |
 | Active specs | `specs/` |
-| Execution plans | `plans/active/` |
-| Completed plans | `plans/completed/` |
+| Execution plans (spec implementations) | `plans/` |
 | Technical debt backlog | `plans/tech-debt.md` |
 
 Read the specific doc relevant to your task. Do NOT try to load all docs at once.
+
+**MkDocs Documentation Site:**
+- Configuration: `mkdocs.yml`
+- Source docs: `docs-site/`
+- Build output: `site/` (gitignored)
+- Deploy: GitHub Pages at rsionnach.github.io/nthlayer/
 
 ## Key Architectural Rules
 
@@ -103,16 +108,16 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `check-no-orphan-todos.sh` - Enforce TODO tracking via Beads
   - `check-no-unstructured-logging.sh` - Enforce structured logging
   - `run-all.sh` - Orchestrator for all lint rules
-- `docs/` - Standalone documentation files
-  - `architecture.md` - Architecture details and invariants
-  - `conventions.md` - Coding conventions and Beads workflow
-  - `golden-principles.md` - Mechanical enforcement rules
-  - `testing.md` - Test patterns and commands
-  - `quality.md` - Package quality grades
-- `plans/` - Execution plan tracking
-  - `active/` - In-progress spec implementations
-  - `completed/` - Finished plans
-  - `tech-debt.md` - Technical debt inventory
+- `docs/` - Standalone documentation files (reference material for agents)
+  - `architecture.md` - Architecture details, invariants, release process
+  - `conventions.md` - Coding conventions, Beads workflow, exit codes
+  - `golden-principles.md` - Mechanical enforcement rules with promotion ladder
+  - `testing.md` - Test patterns, commands, coverage by area
+  - `quality.md` - Package quality grades (A-F scale), improvement priorities
+- `docs-site/` - MkDocs documentation site source
+- `plans/` - Execution plan tracking for spec implementations
+  - `README.md` - Plan lifecycle and format documentation
+  - `tech-debt.md` - Technical debt inventory with AUTO-MANAGED section
 
 ### Data Flow
 1. Service YAML → ServiceOrchestrator → ResourceDetector (indexes by kind)
@@ -184,19 +189,31 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Called from CI and Claude Code hooks
 - Failures block commits with remediation instructions
 
-### Documentation Site
-- MkDocs Material theme with navigation sections and search
+### Documentation Site (MkDocs)
+- Material theme with dark/light mode toggle, Nord color scheme
+- Navigation: Getting Started → Generate → Validate → Protect → Dependencies → Integrations → Concepts → Reference
 - Mermaid diagram support for architecture visualization
+- Markdown extensions: syntax highlighting, tabbed content, admonitions, emoji
+- Plugins: search, minify
 - Deployed to GitHub Pages at rsionnach.github.io/nthlayer/
-- Source docs in `docs-site/`, built output in `site/`
-- Nav structure: Getting Started → Generate → Validate → Protect → Reference
+- Source docs in `docs-site/`, built output in `site/` (gitignored)
+- Assets: Custom CSS (stylesheets/nord.css), Mermaid config (javascripts/mermaid-config.js)
 
 ### Execution Plan Tracking
-- Plans live in `plans/active/` during implementation, move to `plans/completed/` when done
+- Plans in `plans/` track spec implementation lifecycle
 - Format: `YYYY-MM-DD-<slug>.md` with metadata, requirements checklist, decision log, deviation log
 - Created by `/spec-to-beads`, updated during implementation
+- Plan status: active → completed → moved to archive
 - Decision log tracks architectural choices that diverge from or clarify specs
 - Deviation log defends against spec drift
+- Technical debt tracked in `plans/tech-debt.md` with AUTO-MANAGED section for audit agents
+
+### Quality Grading System
+- Package quality grades (A-F) based on test coverage, docs, error handling, API stability
+- Grade criteria: A (>80% coverage), B (>60%), C (>40%), D (<40%), F (untested)
+- Tracked in `docs/quality.md` with AUTO-MANAGED sections for grades and history
+- Packages with D/F grades should have active Beads issues for improvement
+- Run `/audit-codebase` to identify specific gaps
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
