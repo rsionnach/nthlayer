@@ -265,11 +265,12 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 
 ### Policy Audit API
 - Policy evaluation, violation, and override tracking via REST API
-- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit`, `GET /policies/{service}/violations`
+- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit`
 - Domain models in `policies/audit.py`: PolicyEvaluation, PolicyViolation, PolicyOverride
 - `PolicyAuditRecorder` (policies/recorder.py) records audit events
 - `PolicyAuditRepository` (policies/repository.py) queries audit history
 - Integrated with deployment gates for manual override workflows
+- Audit trail endpoint returns evaluations, violations, and overrides in single response
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
