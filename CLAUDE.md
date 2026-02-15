@@ -54,6 +54,13 @@ bd create --title "..." --description "..." --priority 1 --type feature
 
 See `docs/conventions.md` for full Beads workflow.
 
+## Branching Strategy
+
+- **`develop`** is the integration branch — all work goes here via feature branches and PRs
+- **`main`** is the release branch — only updated by merging `develop` at release time
+- **Never commit directly to `main`**
+- Feature branches: `feat/<slug>`, merged to `develop` via PR
+
 ## Workflow
 
 - **Task tracking:** Beads (`bd ready`, `bd list`, `bd close`)
@@ -63,7 +70,7 @@ See `docs/conventions.md` for full Beads workflow.
 - **GC sweep:** `/gc-sweep` (entropy cleanup)
 - **Doc gardening:** `/doc-garden`
 - **Spec to tasks:** `/spec-to-beads <spec-file>`
-- **Release:** Update CHANGELOG.md, create GitHub release → auto-publishes to PyPI
+- **Release:** Update CHANGELOG.md, merge `develop` → `main`, create GitHub release → auto-publishes to PyPI
 
 ## Commit Messages
 
