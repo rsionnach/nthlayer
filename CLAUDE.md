@@ -254,6 +254,8 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Never use bare `Exception` or `RuntimeError` in application code
 - Provider modules define their own error subclasses: `GrafanaProviderError(ProviderError)`
 - Import errors from `nthlayer.core.errors`
+- Silently swallowed exceptions (bare `except` or `except Exception: pass`) must have explicit `# intentionally ignored: <reason>` comment
+- Golden Principle #4: Re-raise exceptions with context using `raise XError("doing X") from err` at layer boundaries
 
 ### Dashboard Template Architecture
 - Templates live in `src/nthlayer/dashboards/templates/`
