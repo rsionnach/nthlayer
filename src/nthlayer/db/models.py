@@ -197,3 +197,65 @@ class IncidentModel(Base):
     )
 
     __table_args__ = (Index("idx_incidents_service_started", "service", "started_at"),)
+
+
+# Policy Audit Models (insert-only — no update/delete methods)
+
+
+class PolicyEvaluationModel(Base):
+    """Immutable record of a policy evaluation."""
+
+    __tablename__ = "policy_evaluations"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    service: Mapped[str] = mapped_column(String(255), nullable=False)
+    policy_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor: Mapped[str | None] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    result: Mapped[str] = mapped_column(String(50), nullable=False)
+    context_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    matched_condition: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    gate_check: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    __table_args__ = (Index("idx_policy_eval_service_ts", "service", "timestamp"),)
+
+
+class PolicyViolationModel(Base):
+    """Immutable record of a policy violation."""
+
+    __tablename__ = "policy_violations"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    service: Mapped[str] = mapped_column(String(255), nullable=False)
+    policy_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    deployment_id: Mapped[str | None] = mapped_column(String(255))
+    violation_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    budget_remaining_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    downstream_services: Mapped[list[str] | None] = mapped_column(JSON)
+    extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    __table_args__ = (Index("idx_policy_violation_service_ts", "service", "timestamp"),)
+
+
+class PolicyOverrideModel(Base):
+    """Immutable record of a policy override."""
+
+    __tablename__ = "policy_overrides"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    service: Mapped[str] = mapped_column(String(255), nullable=False)
+    policy_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    deployment_id: Mapped[str | None] = mapped_column(String(255))
+    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    override_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    __table_args__ = (Index("idx_policy_override_service_ts", "service", "timestamp"),)

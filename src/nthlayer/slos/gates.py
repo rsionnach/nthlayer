@@ -10,9 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import IntEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nthlayer.core.tiers import TIER_CONFIGS
+
+if TYPE_CHECKING:
+    from nthlayer.policies.recorder import PolicyAuditRecorder
 
 
 class GateResult(IntEnum):
@@ -126,14 +129,20 @@ class DeploymentGate:
         for tier, config in TIER_CONFIGS.items()
     }
 
-    def __init__(self, policy: GatePolicy | None = None):
+    def __init__(
+        self,
+        policy: GatePolicy | None = None,
+        audit_recorder: PolicyAuditRecorder | None = None,
+    ):
         """
-        Initialize gate with optional custom policy.
+        Initialize gate with optional custom policy and audit recorder.
 
         Args:
             policy: Custom GatePolicy to override defaults
+            audit_recorder: Optional recorder for policy audit logging
         """
         self.policy = policy
+        self.audit_recorder = audit_recorder
 
     def check_deployment(
         self,

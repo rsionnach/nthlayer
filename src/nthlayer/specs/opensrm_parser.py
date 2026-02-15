@@ -30,6 +30,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 from nthlayer.specs.manifest import (
+    AuditConfig,
     Contract,
     Dependency,
     DependencyCriticality,
@@ -351,10 +352,20 @@ def _parse_deployment(deploy_data: dict[str, Any] | None) -> DeploymentConfig | 
             latency_increase=rb_data.get("criteria", {}).get("latency_increase"),
         )
 
+    # Parse audit
+    audit = None
+    if "audit" in deploy_data:
+        audit_data = deploy_data["audit"]
+        audit = AuditConfig(
+            enabled=audit_data.get("enabled", True),
+            retention_days=audit_data.get("retention_days", 90),
+        )
+
     return DeploymentConfig(
         environments=deploy_data.get("environments", []),
         gates=gates,
         rollback=rollback,
+        audit=audit,
     )
 
 

@@ -75,6 +75,12 @@ class BlockedError(NthLayerError):
     exit_code = ExitCode.BLOCKED
 
 
+class PolicyAuditError(NthLayerError):
+    """Raised for policy audit failures."""
+
+    exit_code = ExitCode.VALIDATION_ERROR
+
+
 class WarningResult(NthLayerError):
     """Raised to indicate success with warnings."""
 

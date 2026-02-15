@@ -6,7 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from nthlayer.api.routes import health, teams, webhooks
+from nthlayer.api.routes import health, policies, teams, webhooks
 from nthlayer.config import get_settings
 from nthlayer.db.session import init_engine
 from nthlayer.logging import configure_logging
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
 
     app.include_router(teams.router, prefix=settings.api_prefix, tags=["teams"])
     app.include_router(webhooks.router, prefix=settings.api_prefix, tags=["webhooks"])
+    app.include_router(policies.router, prefix=settings.api_prefix, tags=["policies"])
     app.include_router(health.router, tags=["health"])
     return app
 

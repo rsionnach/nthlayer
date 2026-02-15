@@ -262,12 +262,21 @@ class DeploymentGates:
 
 
 @dataclass
+class AuditConfig:
+    """Audit logging configuration (OpenSRM spec.deployment.audit)."""
+
+    enabled: bool = True
+    retention_days: int = 90
+
+
+@dataclass
 class DeploymentConfig:
     """Deployment configuration (OpenSRM spec.deployment)."""
 
     environments: list[str] = field(default_factory=list)
     gates: DeploymentGates | None = None
     rollback: RollbackConfig | None = None
+    audit: AuditConfig | None = None
 
 
 # =============================================================================

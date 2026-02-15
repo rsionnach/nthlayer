@@ -15,7 +15,7 @@ from typing import Any
 from nthlayer.cli.ux import console, error, header, info, success, warning
 from nthlayer.drift import DriftAnalyzer, DriftResult, DriftSeverity, get_drift_defaults
 from nthlayer.slos.collector import BudgetSummary, SLOMetricCollector, SLOResult
-from nthlayer.slos.gates import DeploymentGate, GateResult
+from nthlayer.slos.gates import DeploymentGate, GatePolicy, GateResult
 from nthlayer.specs.parser import parse_service_file
 
 
@@ -89,7 +89,10 @@ def check_deploy_command(
 
     _display_budget_summary(budget)
 
-    gate = DeploymentGate()
+    # Extract gate policy from service resources
+    gate_resources = [r for r in resources if r.kind == "DeploymentGate"]
+    policy = GatePolicy.from_spec(gate_resources[0].spec) if gate_resources else None
+    gate = DeploymentGate(policy=policy)
     result = gate.check_deployment(
         service=service_context.name,
         tier=service_context.tier,
@@ -378,7 +381,7 @@ def _show_example_scenarios(
     console.print(f"[bold]Example scenarios for {service_context.tier} tier:[/bold]")
     console.print()
 
-    gate = DeploymentGate()
+    gate = DeploymentGate()  # Demo mode uses default thresholds
 
     # Calculate example budget from first SLO
     collector = SLOMetricCollector()

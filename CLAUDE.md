@@ -101,8 +101,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `deployment.py` - DeploymentRecorder for storing deployment events
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `validation/` - Metadata and resource validation
+- `policies/` - Policy DSL and deployment gate enforcement
+  - `evaluator.py` - Policy evaluation engine
+  - `audit.py` - Audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
+  - `recorder.py` - PolicyAuditRecorder for audit events
+  - `repository.py` - PolicyAuditRepository for audit queries
 - `api/` - FastAPI webhook endpoints
   - `routes/webhooks.py` - Deployment webhook receiver
+  - `routes/policies.py` - Policy audit and override API
 - `scripts/lint/` - Custom linters for golden principles
   - `check-exception-handling.sh` - Enforce exception handling with context
   - `check-no-orphan-todos.sh` - Enforce TODO tracking via Beads
@@ -127,6 +133,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 5. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
 6. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
 7. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
+8. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -214,6 +221,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Tracked in `docs/quality.md` with AUTO-MANAGED sections for grades and history
 - Packages with D/F grades should have active Beads issues for improvement
 - Run `/audit-codebase` to identify specific gaps
+
+### Policy Audit Trail Pattern
+- Immutable audit records for all policy evaluations, violations, and overrides
+- Domain models: `PolicyEvaluation` (gate checks), `PolicyViolation` (blocked/warning), `PolicyOverride` (manual approvals)
+- Repository pattern: `PolicyAuditRepository` for queries, `PolicyAuditRecorder` for writes
+- REST API exposes audit history at `GET /policies/{service}/audit`
+- Override creation at `POST /policies/{service}/override` with approval metadata (who, why, when expires)
+- Enables compliance tracking and post-mortem analysis of deployment gate decisions
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
@@ -247,6 +262,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Webhook signature verification via HMAC SHA256 (X-Hub-Signature-256, X-Argo-Signature headers)
 - FastAPI webhook endpoint: `POST /webhooks/deployments/{provider_name}`
 - Response codes: 201 (recorded), 204 (skipped), 401 (invalid signature), 404 (unknown provider)
+
+### Policy Audit API
+- Policy evaluation, violation, and override tracking via REST API
+- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit`, `GET /policies/{service}/violations`
+- Domain models in `policies/audit.py`: PolicyEvaluation, PolicyViolation, PolicyOverride
+- `PolicyAuditRecorder` (policies/recorder.py) records audit events
+- `PolicyAuditRepository` (policies/repository.py) queries audit history
+- Integrated with deployment gates for manual override workflows
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
