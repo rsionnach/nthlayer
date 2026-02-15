@@ -229,6 +229,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - REST API exposes audit history at `GET /policies/{service}/audit`
 - Override creation at `POST /policies/{service}/override` with approval metadata (who, why, when expires)
 - Enables compliance tracking and post-mortem analysis of deployment gate decisions
+
+### Fail-Open Error Handling for Audit Systems
+- All DB operations in audit recorders wrapped in try/except blocks
+- Audit errors logged via structlog with `exc_info=True` but never block deployments
+- Methods return `None` on DB error to signal failure gracefully
+- Critical principle: "audit failures are logged, not fatal" — deployments continue even if audit trail breaks
+- Prevents cascading failures where observability systems block deployment gates
+- Applied in `PolicyAuditRecorder` for gate evaluations and overrides
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
