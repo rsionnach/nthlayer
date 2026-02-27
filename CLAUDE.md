@@ -365,6 +365,12 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Lazy import pattern: Optional imports use `__getattr__` in `__init__.py` (e.g., `queue/__init__.py` for SQS JobEnqueuer) to delay import until used, avoiding hard dependency on missing extras
 - TYPE_CHECKING guard prevents circular imports while allowing type hints for optional classes
 
+### Test Organization
+- Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`)
+- Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
+- Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
+- Apply `importorskip` to any test module that imports from `[aws]`, `[workflows]`, or other optional extras
+
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
 - Use `asyncio.to_thread()` for sync HTTP operations to avoid blocking event loop
