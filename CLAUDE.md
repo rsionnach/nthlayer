@@ -361,6 +361,8 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `[etcd]`: etcd3 — required for etcd discovery provider
 - `[service-discovery]`: kazoo + etcd3 bundled — for all service discovery providers at once
 - Core `structlog`, `httpx`, `pagerduty`, `grafana-foundation-sdk` are always installed
+- Lazy import pattern: Optional imports use `__getattr__` in `__init__.py` (e.g., `queue/__init__.py` for SQS JobEnqueuer) to delay import until used, avoiding hard dependency on missing extras
+- TYPE_CHECKING guard prevents circular imports while allowing type hints for optional classes
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
