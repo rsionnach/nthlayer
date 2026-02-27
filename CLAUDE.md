@@ -133,6 +133,13 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `routes/webhooks.py` - Deployment webhook receiver
   - `routes/policies.py` - Policy audit and override API
   - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
+- `cli/formatters/` - Multi-format CLI output system
+  - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
+  - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-008 rule taxonomy
+  - `json_fmt.py`, `junit.py`, `markdown.py` - Additional output formatters
+  - `__init__.py` - `format_report(report, output_format, output_file)` unified entry point
+- `verification/` - Prometheus metric contract verification
+  - `verifier.py` - `MetricVerifier`: checks declared metrics exist in Prometheus
 - `scripts/lint/` - Custom linters for golden principles
   - `check-exception-handling.sh` - Enforce exception handling with context
   - `check-no-orphan-todos.sh` - Enforce TODO tracking via Beads
@@ -271,6 +278,17 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Repeated magic values extracted into module-level constants in `__init__.py` (not scattered across callers)
 - Example: default SLO objective `0.999` defined once in `slos/__init__.py`, imported by `collector.py`, `cli/slo.py`, `cli/deploy.py`, `cli/portfolio.py`, `portfolio/aggregator.py`, `recording_rules/builder.py`
 - Pattern: if a default value appears in 3+ call sites, promote it to a named constant in the owning module's `__init__.py`
+
+### CLI Formatter System
+- All CLI command output flows through `cli/formatters/` — never construct ad-hoc output strings
+- `ReliabilityReport(service, command, checks, summary, metadata)` is the canonical report model; all formatters consume it
+- `CheckResult(name, status, message, details, rule_id, location, line)` represents individual check outcomes
+- `format_report(report, output_format, output_file)` dispatches to the correct formatter; supports TABLE, JSON, SARIF, JUNIT, MARKDOWN
+- SARIF output (GitHub Code Scanning) maps check failures to rule IDs NTHLAYER001–NTHLAYER008:
+  - NTHLAYER001: SLOInfeasible, NTHLAYER002: DriftCritical, NTHLAYER003: MetricMissing
+  - NTHLAYER004: BudgetExhausted, NTHLAYER005: HighBlastRadius, NTHLAYER006: TierMismatch
+  - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
+- Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
