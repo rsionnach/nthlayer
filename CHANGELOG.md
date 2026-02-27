@@ -1,5 +1,64 @@
 # Changelog
 
+## v0.1.0a17 (February 27, 2026)
+
+### Orchestrator Refactor
+
+- **Phased orchestration package** (`orchestration/`) — split monolithic `ServiceOrchestrator` into modular components
+  - `ResourceHandler` protocol and `ResourceRegistry` for pluggable resource types
+  - `ExecutionEngine` for running generation loops with `ResultCollector` aggregation
+  - `PlanBuilder` for previewing generation plans before execution
+  - `ServiceOrchestrator` retained as backward-compatible facade
+
+### Desloppify Code Quality Sweep
+
+- **29 findings resolved** — structured logging enforcement, dead code removal, test coverage gaps
+- Migrated `mock_server.py` to `tests/fixtures/`, added `conftest.py` for shared test config
+- New `test_critical_models.py` and `test_verification.py` test suites
+- Cleaned up demo files, renamed ad-hoc scripts to `try_` prefix
+- Removed duplicate `cli/formatters/models.py`, consolidated SARIF formatter
+
+### Deployment Detection
+
+- **Provider-agnostic webhook handling** via `BaseDeploymentProvider` ABC
+- ArgoCD, GitHub Actions, and GitLab CI/CD webhook parsers
+- `DeploymentProviderRegistry` for self-registering providers
+- HMAC SHA256 signature verification per provider
+- FastAPI webhook endpoint: `POST /webhooks/deployments/{provider_name}`
+
+### Policy Audit Logging
+
+- **Immutable audit trail** for deployment gate decisions
+- Domain models: `PolicyEvaluation`, `PolicyViolation`, `PolicyOverride`
+- `PolicyAuditRecorder` and `PolicyAuditRepository` with fail-open error handling
+- REST API: `POST /policies/{service}/override`, `GET /policies/{service}/audit`
+
+### Harness Engineering Infrastructure
+
+- Test harness and engineering tooling for reliability validation workflows
+
+### Backstage Plugin
+
+- Backstage plugin for NthLayer reliability data integration
+
+### Alert Enhancements
+
+- Grafana dashboard links added to alert rule annotations
+
+### Bug Fixes
+
+- Resolve 10 audit findings across error handling, validation, HTTP client, and metric resolution
+- Lazy AWS imports (`aioboto3`, `boto3`) for CI environments without `[aws]` extras
+- Skip `test_workers_handler.py` and `test_secrets.py` when `aioboto3` is not installed
+- Defer SQS `JobEnqueuer` import to runtime in `api/deps.py`
+
+### CI/CD
+
+- MkDocs GitHub Pages workflow (`.github/workflows/docs.yml`)
+- Lazy optional dependency imports via `__getattr__` pattern
+
+---
+
 ## v0.1.0a16 (February 4, 2026)
 
 ### Intelligent Alerts Pipeline
