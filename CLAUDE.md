@@ -110,8 +110,10 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `analyzer.py` - DriftAnalyzer for SLO trend analysis with configurable windows
 - `providers/` - External service integrations (grafana, prometheus, pagerduty, mimir)
 - `identity/` - Service identity resolution across naming conventions
+- `specs/` - Service specification models and parsing
+  - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
 - `slos/` - SLO definition, validation, and recording rule generation
-  - `models.py` - SLO, ErrorBudget, SLOStatus dataclasses; default target: 0.999
+  - `models.py` - SLO, ErrorBudget, SLOStatus, Incident dataclasses; default target: 0.999
   - `parser.py` - OpenSLO YAML parsing
   - `collector.py` - SLOCollector: Prometheus queries for live budget data
   - `calculator.py` - ErrorBudgetCalculator
@@ -221,6 +223,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `run-all.sh` orchestrator executes all check-*.sh scripts
 - Called from CI and Claude Code hooks
 - Failures block commits with remediation instructions
+- `check-exception-handling.sh` detects bare `except` blocks without `# intentionally ignored: <reason>` comment
 
 ### Documentation Site (MkDocs)
 - Material theme with dark/light mode toggle, Nord color scheme
@@ -289,8 +292,10 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Use `structlog` for all logging - no bare `print()` outside CLI entrypoints
 - Import logger: `logger = structlog.get_logger()`
 - Field naming: `err` or `error` (not `e`, `exc`), `component` (not `module`), `duration_ms` (not `elapsed`)
+- Stdlib `logging` module is forbidden in application modules — use structlog exclusively
 - Lint enforcement: `check-no-unstructured-logging.sh` detects print() in non-CLI modules
 - CLI entrypoints (orchestration/engine.py) may use print() for user-facing output
+- Tests use `tests/conftest.py` structlog test config to suppress log noise during test runs
 
 ### Dashboard Template Architecture
 - Templates live in `src/nthlayer/dashboards/templates/`
