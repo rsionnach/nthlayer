@@ -263,6 +263,11 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Critical principle: "audit failures are logged, not fatal" — deployments continue even if audit trail breaks
 - Prevents cascading failures where observability systems block deployment gates
 - Applied in `PolicyAuditRecorder` for gate evaluations and overrides
+
+### Shared Constants for Module Defaults
+- Repeated magic values extracted into module-level constants in `__init__.py` (not scattered across callers)
+- Example: default SLO objective `0.999` defined once in `slos/__init__.py`, imported by `collector.py`, `cli/slo.py`, `cli/deploy.py`, `cli/portfolio.py`, `portfolio/aggregator.py`, `recording_rules/builder.py`
+- Pattern: if a default value appears in 3+ call sites, promote it to a named constant in the owning module's `__init__.py`
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
@@ -273,6 +278,9 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Never use bare `Exception` or `RuntimeError` in application code
 - Provider modules define their own error subclasses: `GrafanaProviderError(ProviderError)`
 - Import errors from `nthlayer.core.errors`
+- Full error taxonomy in `core/errors.py`: `ConfigurationError` (exit 10), `ProviderError` (exit 11), `ValidationError` (exit 12), `BlockedError` (exit 2), `PolicyAuditError` (exit 12), `WarningResult` (exit 1)
+- Use `ExitCode` enum for exit codes: `ExitCode.SUCCESS=0`, `WARNING=1`, `BLOCKED=2`, `CONFIG_ERROR=10`, `PROVIDER_ERROR=11`, `VALIDATION_ERROR=12`, `UNKNOWN_ERROR=127`
+- CLI command main functions: wrap with `@main_with_error_handling()` decorator from `nthlayer.core.errors` for unified exit code conversion
 - Silently swallowed exceptions (bare `except` or `except Exception: pass`) must have explicit `# intentionally ignored: <reason>` comment
 - Golden Principle #4: Re-raise exceptions with context using `raise XError("doing X") from err` at layer boundaries
 - Lint enforcement: `check-exception-handling.sh` detects bare except blocks without intentional-ignore comments
@@ -317,6 +325,16 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Integrated with deployment gates for manual override workflows
 - Audit trail endpoint returns evaluations, violations, and overrides in single response
 - policies router registered in `api/main.py` under `settings.api_prefix` with tag "policies"
+
+### Optional Dependency Groups
+- Install with extras for optional integrations: `pip install -e ".[aws]"`, `pip install -e ".[workflows]"`
+- `[aws]`: boto3, aioboto3 — required for CloudWatch and SQS modules
+- `[workflows]`: langgraph, langchain — required for `workflows/` LangGraph orchestration
+- `[kubernetes]`: kubernetes client — required for K8s dependency discovery provider
+- `[zookeeper]`: kazoo — required for Zookeeper discovery provider
+- `[etcd]`: etcd3 — required for etcd discovery provider
+- `[service-discovery]`: kazoo + etcd3 bundled — for all service discovery providers at once
+- Core `structlog`, `httpx`, `pagerduty`, `grafana-foundation-sdk` are always installed
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
