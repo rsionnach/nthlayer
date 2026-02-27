@@ -23,7 +23,7 @@ dependencies = [
     "pagerduty>=6.0.0,<7.0.0",
     # boto3/aioboto3 moved to [aws] optional group
     # langgraph/langchain moved to [workflows] optional group
-    "structlog>=24.1.0,<25.0.0",
+    "structlog>=24.1.0,<26.0.0",
     "orjson>=3.10.0,<4.0.0",
     "python-json-logger>=2.0.7,<5.0.0",
     "tenacity>=8.2.3,<10.0.0",
