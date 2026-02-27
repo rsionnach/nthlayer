@@ -5,7 +5,7 @@ These tests demonstrate how to test against the mock server
 without requiring real external services.
 
 To run:
-    1. Start mock server: python -m tests.mock_server
+    1. Start mock server: python -m tests.fixtures.mock_server
     2. Run tests: pytest tests/integration/ -v
 """
 
@@ -31,7 +31,7 @@ def mock_server_available():
 def test_mock_pagerduty_team(mock_server_available):
     """Test PagerDuty team endpoint via mock server"""
     response = httpx.get(f"{MOCK_SERVER_URL}/pagerduty/teams/team-123")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["team"]["id"] == "team-123"
@@ -46,13 +46,13 @@ def test_mock_pagerduty_set_members(mock_server_available):
             {"user": {"id": "user-2"}, "role": "responder"},
         ]
     }
-    
+
     response = httpx.post(
         f"{MOCK_SERVER_URL}/pagerduty/teams/team-123/users",
         json=payload,
         headers={"Idempotency-Key": "test-key-123"},
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -69,12 +69,12 @@ def test_mock_grafana_create_dashboard(mock_server_available):
             "panels": [],
         }
     }
-    
+
     response = httpx.post(
         f"{MOCK_SERVER_URL}/grafana/api/dashboards/db",
         json=payload,
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -91,12 +91,12 @@ def test_mock_datadog_create_monitor(mock_server_available):
         "message": "Latency is too high!",
         "tags": ["service:search", "tier:1"],
     }
-    
+
     response = httpx.post(
         f"{MOCK_SERVER_URL}/datadog/api/v1/monitor",
         json=payload,
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "High latency alert"
@@ -107,7 +107,7 @@ def test_mock_datadog_create_monitor(mock_server_available):
 def test_mock_cortex_get_team(mock_server_available):
     """Test getting Cortex team via mock server"""
     response = httpx.get(f"{MOCK_SERVER_URL}/cortex/api/teams/team-platform")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == "team-platform"
@@ -121,12 +121,12 @@ def test_mock_slack_post_message(mock_server_available):
         "channel": "#team-platform",
         "text": "Reconciliation completed: 2 changes applied",
     }
-    
+
     response = httpx.post(
         f"{MOCK_SERVER_URL}/slack/chat.postMessage",
         json=payload,
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
@@ -137,7 +137,7 @@ def test_mock_slack_post_message(mock_server_available):
 def test_mock_server_state(mock_server_available):
     """Test viewing mock server state"""
     response = httpx.get(f"{MOCK_SERVER_URL}/state")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert "pagerduty_teams" in data
@@ -155,11 +155,11 @@ def test_mock_server_reset(mock_server_available):
         f"{MOCK_SERVER_URL}/pagerduty/teams/test-team/users",
         json={"members": []},
     )
-    
+
     # Reset
     response = httpx.post(f"{MOCK_SERVER_URL}/reset")
     assert response.status_code == 200
-    
+
     # Verify state is empty
     state = httpx.get(f"{MOCK_SERVER_URL}/state").json()
     assert state["pagerduty_teams"] == 0

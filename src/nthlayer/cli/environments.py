@@ -60,7 +60,7 @@ def list_environments_command(service_file: str | None = None, directory: str | 
     env_files = list(env_dir.glob("*.yaml")) + list(env_dir.glob("*.yml"))
 
     if not env_files:
-        print("✗ No environment files found")
+        error("No environment files found")
         console.print()
         console.print(f"[muted]Directory exists but is empty: {env_dir}[/muted]")
         console.print()
@@ -193,7 +193,7 @@ def diff_envs_command(service_file: str, env1: str, env2: str, show_all: bool = 
             console.print(f"  [muted]{field}: {val1} (same)[/muted]")
 
     if not has_differences and not show_all:
-        print("  ✓ All fields are identical")
+        console.print("  [success]✓[/success] All fields are identical")
         console.print()
 
     # Compare resources

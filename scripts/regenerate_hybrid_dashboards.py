@@ -339,9 +339,6 @@ for svc in SERVICES:
 
     except Exception as e:
         print(f"   ❌ ERROR: {e}")
-        import traceback
-
-        traceback.print_exc()
         results.append({"service": svc["name"], "success": False, "error": str(e)})
 
     print()
@@ -453,3 +450,10 @@ print(f"Total alerts generated: {total_alerts}")
 print(
     f"Services with alerts: {sum(1 for r in alert_results if r.get('count', 0) > 0)}/{len(alert_results)}"
 )
+
+# Exit with non-zero if any failures
+all_failures = [r for r in results if not r.get("success")] + [
+    r for r in alert_results if not r.get("success")
+]
+if all_failures:
+    sys.exit(1)

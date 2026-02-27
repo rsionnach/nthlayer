@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
+import structlog
+
 from nthlayer.cli.ux import console, error, header, success
+
+logger = structlog.get_logger()
 
 
 def generate_loki_command(
@@ -100,9 +104,7 @@ def generate_loki_command(
 
     except Exception as e:
         error(f"Error generating Loki alerts: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("loki_generation_failed", err=str(e), exc_info=True)
         return 1
 
 

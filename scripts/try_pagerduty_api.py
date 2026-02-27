@@ -27,6 +27,8 @@ client = RestApiV2Client(api_key, default_from=default_from)
 print("Testing API endpoints...")
 print()
 
+failures = 0
+
 # Test 1: List abilities (basic API test)
 print("1. Testing /abilities (basic auth test)...")
 try:
@@ -38,6 +40,7 @@ try:
         print(f"   Sample: {abilities[:5]}")
 except Exception as e:
     print(f"   Error: {e}")
+    failures += 1
 
 print()
 
@@ -53,6 +56,7 @@ try:
             print(f"   - {user['name']} ({user['email']})")
 except Exception as e:
     print(f"   Error: {e}")
+    failures += 1
 
 print()
 
@@ -68,6 +72,7 @@ try:
             print(f"   - {team['name']} (id: {team['id']})")
 except Exception as e:
     print(f"   Error: {e}")
+    failures += 1
 
 print()
 
@@ -85,6 +90,7 @@ try:
         print(f"   Response body: {response.text[:500]}")
 except Exception as e:
     print(f"   Error: {e}")
+    failures += 1
 
 print()
 
@@ -100,6 +106,7 @@ try:
             print(f"   - {policy['name']} (id: {policy['id']})")
 except Exception as e:
     print(f"   Error: {e}")
+    failures += 1
 
 print()
 
@@ -115,6 +122,10 @@ try:
             print(f"   - {service['name']} (id: {service['id']})")
 except Exception as e:
     print(f"   Error: {e}")
+    failures += 1
 
 print()
+if failures:
+    print(f"Done with {failures} failure(s).")
+    sys.exit(1)
 print("Done!")

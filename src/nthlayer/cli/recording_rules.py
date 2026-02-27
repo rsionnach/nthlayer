@@ -3,7 +3,11 @@
 from pathlib import Path
 from typing import Optional
 
+import structlog
+
 from nthlayer.cli.ux import console, error, header, success
+
+logger = structlog.get_logger()
 from nthlayer.recording_rules.builder import build_recording_rules
 from nthlayer.recording_rules.models import create_rule_groups
 from nthlayer.specs.parser import parse_service_file
@@ -118,7 +122,5 @@ def generate_recording_rules_command(
         return 1
     except Exception as e:
         error(f"Error generating recording rules: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("recording_rules_generation_failed", err=str(e), exc_info=True)
         return 1

@@ -20,7 +20,6 @@ from .models import (
     CheckStatus,
     OutputFormat,
     ReliabilityReport,
-    SARIF_RULES,
 )
 
 # Now import formatters (they import from .models, not from here)
@@ -115,5 +114,4 @@ __all__ = [
     "format_sarif",
     "format_junit",
     "format_markdown",
-    "SARIF_RULES",
 ]
