@@ -73,6 +73,7 @@ See `docs/conventions.md` for full Beads workflow.
 - **GC sweep:** `/gc-sweep` (entropy cleanup)
 - **Doc gardening:** `/doc-garden`
 - **Spec to tasks:** `/spec-to-beads <spec-file>`
+- **Code quality sweep:** `/desloppify` (scan → fix → resolve loop for technical debt, dead code, code smells)
 - **Release:** Update CHANGELOG.md, merge `develop` → `main`, create GitHub release → auto-publishes to PyPI
 
 ## Commit Messages
