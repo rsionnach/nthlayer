@@ -30,7 +30,10 @@ Read the specific doc relevant to your task. Do NOT try to load all docs at once
 - Configuration: `mkdocs.yml`
 - Source docs: `docs-site/`
 - Build output: `site/` (gitignored)
-- Deploy: GitHub Pages at rsionnach.github.io/nthlayer/
+- Deploy: GitHub Actions workflow (`.github/workflows/docs.yml`) builds and deploys to GitHub Pages at rsionnach.github.io/nthlayer/
+  - Triggers: push to `main` with changes to `docs-site/`, `mkdocs.yml`, or workflow file itself
+  - Build step: `mkdocs build --strict` with MkDocs Material theme and minify plugin
+  - Deploy step: `actions/deploy-pages` to GitHub Pages environment
 
 ## Key Architectural Rules
 
