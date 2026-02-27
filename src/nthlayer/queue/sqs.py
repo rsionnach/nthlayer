@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-import aioboto3
+try:
+    import aioboto3
+except ImportError as err:
+    raise ImportError(
+        "aioboto3 is required for SQS. Install with: pip install nthlayer[aws]"
+    ) from err
 
 from nthlayer.config import Settings
 from nthlayer.queue.models import JobMessage

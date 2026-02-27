@@ -7,7 +7,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nthlayer.secrets import (
+
+aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for secrets tests")
+
+from nthlayer.secrets import (  # noqa: E402
     SecretsManager,
     _sanitize_secret_id,
     get_secrets_manager,

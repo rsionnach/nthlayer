@@ -6,7 +6,7 @@ Generates Sloth specification YAML from NthLayer service definitions.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,7 +17,7 @@ from nthlayer.specs.manifest import ReliabilityManifest, SLODefinition
 from nthlayer.specs.models import ServiceContext
 from nthlayer.specs.parser import parse_service_file, render_resource_spec
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 @dataclass

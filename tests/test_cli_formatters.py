@@ -14,9 +14,9 @@ from nthlayer.cli.formatters import (
     CheckStatus,
     OutputFormat,
     ReliabilityReport,
-    SARIF_RULES,
     format_report,
 )
+from nthlayer.cli.formatters.sarif import SARIF_RULES
 from nthlayer.cli.formatters.json_fmt import format_json
 from nthlayer.cli.formatters.junit import format_junit
 from nthlayer.cli.formatters.markdown import format_markdown
@@ -606,3 +606,41 @@ class TestSarifRules:
         for rule_id, rule in SARIF_RULES.items():
             level = rule["defaultConfiguration"]["level"]
             assert level in valid_levels, f"Rule {rule_id} has invalid level {level}"
+
+
+class TestSkipOnlyReport:
+    """Tests for reports where all checks are SKIP."""
+
+    def test_skip_only_report_status_is_pass(self):
+        """Test that a report with all SKIP checks returns PASS status.
+
+        SKIP checks indicate checks that were not applicable, not failures.
+        The status property only escalates on FAIL or WARN, so all-SKIP
+        should resolve to PASS.
+        """
+        report = ReliabilityReport(
+            service="skip-service",
+            command="validate",
+            checks=[
+                CheckResult(
+                    name="Ownership",
+                    status=CheckStatus.SKIP,
+                    message="Skipped - no ownership data",
+                ),
+                CheckResult(
+                    name="Drift Detection",
+                    status=CheckStatus.SKIP,
+                    message="Skipped - no SLO history",
+                ),
+                CheckResult(
+                    name="Blast Radius",
+                    status=CheckStatus.SKIP,
+                    message="Skipped - no dependency graph",
+                ),
+            ],
+        )
+
+        assert report.status == CheckStatus.PASS
+        assert report.errors == 0
+        assert report.warnings == 0
+        assert report.passed == 0

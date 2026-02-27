@@ -239,7 +239,7 @@ make migrate                 # Run database migrations
 
 # Demo commands
 python -m nthlayer.demo --help           # CLI help
-python regenerate_hybrid_dashboards.py   # Regenerate all dashboards
+python scripts/regenerate_hybrid_dashboards.py   # Regenerate all dashboards
 python scripts/validate_dashboard_metrics.py  # Validate metric coverage
 ```
 

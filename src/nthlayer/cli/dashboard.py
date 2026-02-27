@@ -4,9 +4,12 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import structlog
 import yaml
 
 from nthlayer.cli.ux import console, error, header
+
+logger = structlog.get_logger()
 from nthlayer.dashboards.builder_sdk import build_dashboard
 from nthlayer.specs.parser import parse_service_file
 
@@ -141,7 +144,5 @@ def generate_dashboard_command(
         return 1
     except (yaml.YAMLError, ValueError, KeyError, TypeError, OSError) as e:
         error(f"Error generating dashboard: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("dashboard_generation_failed", err=str(e), exc_info=True)
         return 1

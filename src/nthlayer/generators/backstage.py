@@ -8,7 +8,7 @@ reliability data (SLOs, error budgets, scorecard, deployment gate) in service pa
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,7 +20,7 @@ from nthlayer.slos.gates import DeploymentGate, GateResult
 from nthlayer.specs.loader import load_manifest
 from nthlayer.specs.manifest import ReliabilityManifest
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Score band to letter grade mapping
 BAND_TO_GRADE: dict[ScoreBand | str, str] = {

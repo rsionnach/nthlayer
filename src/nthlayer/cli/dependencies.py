@@ -126,7 +126,7 @@ def validate_dependencies_command(
         console.print()
 
     # Summary
-    print("=" * 70)
+    console.print("[muted]" + "=" * 70 + "[/muted]")
 
     if all_errors:
         error(f"Validation failed with {len(all_errors)} error(s)")

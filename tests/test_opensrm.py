@@ -3,19 +3,18 @@
 import warnings
 
 import pytest
-from nthlayer.specs import (
+from nthlayer.specs import ManifestLoadError, ReliabilityManifest, SLODefinition, load_manifest
+from nthlayer.specs.loader import LegacyFormatWarning
+from nthlayer.specs.manifest import (
     SERVICE_TYPE_ALIASES,
     VALID_SERVICE_TYPES,
     VALID_TIERS,
     Dependency,
-    LegacyFormatWarning,
-    ManifestLoadError,
-    OpenSRMParseError,
-    ReliabilityManifest,
-    SLODefinition,
     SourceFormat,
+)
+from nthlayer.specs.opensrm_parser import (
+    OpenSRMParseError,
     is_opensrm_format,
-    load_manifest,
     parse_opensrm,
     parse_opensrm_file,
 )

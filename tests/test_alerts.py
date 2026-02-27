@@ -618,3 +618,46 @@ resources:
         # All alerts should have safe duration (not 0m)
         for alert in alerts:
             assert alert.duration != "0m", f"Alert {alert.name} has unsafe duration"
+
+
+class TestAlertRuleFromDictMalformed:
+    """Negative-contract tests for malformed alert template dicts."""
+
+    def test_missing_alert_key_raises_key_error(self):
+        """Test that missing 'alert' key raises KeyError."""
+        data = {"expr": "up == 0", "for": "5m"}
+        with pytest.raises(KeyError):
+            AlertRule.from_dict(data)
+
+    def test_missing_expr_key_raises_key_error(self):
+        """Test that missing 'expr' key raises KeyError."""
+        data = {"alert": "TestAlert", "for": "5m"}
+        with pytest.raises(KeyError):
+            AlertRule.from_dict(data)
+
+    def test_empty_dict_raises_key_error(self):
+        """Test that empty dict raises KeyError."""
+        with pytest.raises(KeyError):
+            AlertRule.from_dict({})
+
+    def test_none_input_raises_type_error(self):
+        """Test that None input raises TypeError."""
+        with pytest.raises(TypeError):
+            AlertRule.from_dict(None)
+
+    def test_non_dict_input_raises_attribute_error(self):
+        """Test that non-dict input raises AttributeError."""
+        with pytest.raises((AttributeError, TypeError)):
+            AlertRule.from_dict("not a dict")
+
+    def test_none_alert_name_accepted(self):
+        """Test that None as alert name is accepted (no type validation)."""
+        data = {"alert": None, "expr": "up == 0"}
+        alert = AlertRule.from_dict(data)
+        assert alert.name is None
+
+    def test_labels_wrong_type_raises(self):
+        """Test that non-dict labels causes error on .get() access."""
+        data = {"alert": "Test", "expr": "up == 0", "labels": "not-a-dict"}
+        with pytest.raises(AttributeError):
+            AlertRule.from_dict(data)

@@ -11,13 +11,13 @@ All validation produces warnings (not errors) per spec.
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 from pathlib import Path
 
 from nthlayer.specs.manifest import Contract, ReliabilityManifest
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ContractRegistry:

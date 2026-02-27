@@ -12,7 +12,7 @@ Resolution Waterfall:
 5. Guidance (return instrumentation instructions)
 """
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
@@ -21,7 +21,7 @@ from nthlayer.dashboards.intents import MetricIntent, get_intent
 from nthlayer.discovery.client import MetricDiscoveryClient
 from nthlayer.discovery.models import DiscoveryResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ResolutionStatus(Enum):

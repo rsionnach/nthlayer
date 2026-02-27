@@ -122,17 +122,4 @@ class KubernetesOwnershipProvider(BaseOwnershipProvider):
 
     async def health_check(self) -> OwnershipProviderHealth:
         """Check Kubernetes API connectivity."""
-        provider = self._get_provider()
-
-        try:
-            health = await provider.health_check()
-            return OwnershipProviderHealth(
-                healthy=health.healthy,
-                message=health.message,
-                latency_ms=health.latency_ms,
-            )
-        except Exception as e:
-            return OwnershipProviderHealth(
-                healthy=False,
-                message=f"Health check failed: {e}",
-            )
+        return await self._delegate_health_check(self._get_provider())

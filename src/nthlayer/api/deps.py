@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nthlayer.config import Settings, get_settings
 from nthlayer.db.session import get_session
-from nthlayer.queue import InMemoryJobEnqueuer, JobEnqueuer, JobQueue
+from nthlayer.queue import InMemoryJobEnqueuer, JobQueue
 
 
 async def session_dependency() -> AsyncIterator[AsyncSession]:
@@ -27,6 +27,8 @@ def get_job_enqueuer(settings: Settings = Depends(get_settings)) -> JobQueue:
         return _memory_enqueuer
 
     if settings.job_queue_backend == "sqs":
+        from nthlayer.queue.sqs import JobEnqueuer
+
         return JobEnqueuer(settings)
 
     raise ValueError(f"Unsupported job queue backend: {settings.job_queue_backend}")

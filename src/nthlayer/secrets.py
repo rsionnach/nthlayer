@@ -4,7 +4,13 @@ import json
 from functools import lru_cache
 from typing import Any
 
-import aioboto3
+try:
+    import aioboto3
+except ImportError as err:
+    raise ImportError(
+        "aioboto3 is required for AWS Secrets Manager. Install with: pip install nthlayer[aws]"
+    ) from err
+
 import structlog
 
 logger = structlog.get_logger()

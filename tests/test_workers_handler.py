@@ -8,7 +8,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nthlayer.workers.handler import (
+
+aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")
+
+from nthlayer.workers.handler import (  # noqa: E402
     handle_event,
     lambda_handler,
     process_job,

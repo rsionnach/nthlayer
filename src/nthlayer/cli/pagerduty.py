@@ -6,7 +6,11 @@ from __future__ import annotations
 
 import os
 
+import structlog
+
 from nthlayer.cli.ux import console, error, header, info, success, warning
+
+logger = structlog.get_logger()
 from nthlayer.integrations.pagerduty import PagerDutyClient
 from nthlayer.specs.parser import parse_service_file
 
@@ -174,8 +178,6 @@ def setup_pagerduty_command(
 
     except Exception as e:
         error(f"Unexpected error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("pagerduty_setup_failed", err=str(e), exc_info=True)
         console.print()
         return 1

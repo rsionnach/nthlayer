@@ -1638,18 +1638,14 @@ name = "nthlayer"
 version = "0.1.0a16"
 source = { editable = "." }
 dependencies = [
-    { name = "aioboto3" },
     { name = "alembic" },
     { name = "aws-xray-sdk" },
-    { name = "boto3" },
     { name = "cachetools" },
     { name = "circuitbreaker" },
     { name = "fastapi" },
     { name = "grafana-foundation-sdk" },
     { name = "httpx" },
     { name = "jwcrypto" },
-    { name = "langchain" },
-    { name = "langgraph" },
     { name = "mangum" },
     { name = "numpy" },
     { name = "opentelemetry-semantic-conventions" },
@@ -1673,6 +1669,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+aws = [
+    { name = "aioboto3" },
+    { name = "boto3" },
+]
 dev = [
     { name = "aiosqlite" },
     { name = "anyio" },
@@ -1706,18 +1706,22 @@ service-discovery = [
     { name = "etcd3" },
     { name = "kazoo" },
 ]
+workflows = [
+    { name = "langchain" },
+    { name = "langgraph" },
+]
 zookeeper = [
     { name = "kazoo" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "aioboto3", specifier = ">=12.3.0,<16.0.0" },
+    { name = "aioboto3", marker = "extra == 'aws'", specifier = ">=12.3.0,<16.0.0" },
     { name = "aiosqlite", marker = "extra == 'dev'", specifier = ">=0.20.0,<1.0.0" },
     { name = "alembic", specifier = ">=1.13.1,<2.0.0" },
     { name = "anyio", marker = "extra == 'dev'", specifier = ">=4.3.0,<5.0.0" },
     { name = "aws-xray-sdk", specifier = ">=2.12.0,<3.0.0" },
-    { name = "boto3", specifier = ">=1.34.0,<2.0.0" },
+    { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.34.0,<2.0.0" },
     { name = "cachetools", specifier = ">=5.3.0,<7.0.0" },
     { name = "circuitbreaker", specifier = ">=2.0.0,<3.0.0" },
     { name = "etcd3", marker = "extra == 'etcd'", specifier = ">=0.12.0,<1.0.0" },
@@ -1731,8 +1735,8 @@ requires-dist = [
     { name = "kazoo", marker = "extra == 'zookeeper'", specifier = ">=2.9.0,<3.0.0" },
     { name = "kubernetes", marker = "extra == 'dev'", specifier = ">=28.0.0,<36.0.0" },
     { name = "kubernetes", marker = "extra == 'kubernetes'", specifier = ">=28.0.0,<36.0.0" },
-    { name = "langchain", specifier = ">=0.3.0,<1.3.0" },
-    { name = "langgraph", specifier = ">=1.0.0,<2.0.0" },
+    { name = "langchain", marker = "extra == 'workflows'", specifier = ">=0.3.0,<1.3.0" },
+    { name = "langgraph", marker = "extra == 'workflows'", specifier = ">=1.0.0,<2.0.0" },
     { name = "mangum", specifier = ">=0.17.0,<0.21.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "mkdocs-minify-plugin", marker = "extra == 'docs'", specifier = ">=0.8.0" },
@@ -1767,7 +1771,7 @@ requires-dist = [
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.31.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0,<0.41" },
 ]
-provides-extras = ["dev", "docs", "drift-ml", "kubernetes", "zookeeper", "etcd", "service-discovery"]
+provides-extras = ["dev", "docs", "drift-ml", "kubernetes", "zookeeper", "etcd", "service-discovery", "aws", "workflows"]
 
 [[package]]
 name = "numpy"

@@ -1,7 +1,7 @@
-"""Tests for orchestrator.py.
+"""Tests for orchestrator.py and orchestration package.
 
 Tests for service orchestration including ApplyResult, PlanResult,
-ResourceDetector, and ServiceOrchestrator.
+ResourceDetector, ServiceOrchestrator (facade), and handler-level tests.
 """
 
 import json
@@ -10,6 +10,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from nthlayer.core.errors import ProviderError
+from nthlayer.orchestration.handlers import (
+    AlertHandler,
+    DashboardHandler,
+    PagerDutyHandler,
+    RecordingRulesHandler,
+    SloHandler,
+    _push_dashboard_to_grafana,
+    _setup_event_orchestration,
+)
+from nthlayer.orchestration.registry import OrchestratorContext, ResourceRegistry
 from nthlayer.orchestrator import (
     ApplyResult,
     PlanResult,
@@ -84,6 +94,63 @@ resources:
       window: 30d
 """)
     return service_file
+
+
+@pytest.fixture
+def sample_context(sample_service_yaml, tmp_path):
+    """Build an OrchestratorContext from sample YAML."""
+    import yaml
+
+    with open(sample_service_yaml) as f:
+        service_def = yaml.safe_load(f)
+
+    detector = ResourceDetector(service_def)
+    return OrchestratorContext(
+        service_yaml=sample_service_yaml,
+        service_def=service_def,
+        service_name="test-service",
+        output_dir=tmp_path,
+        env=None,
+        detector=detector,
+    )
+
+
+@pytest.fixture
+def minimal_context(minimal_service_yaml, tmp_path):
+    """Build an OrchestratorContext from minimal YAML."""
+    import yaml
+
+    with open(minimal_service_yaml) as f:
+        service_def = yaml.safe_load(f)
+
+    detector = ResourceDetector(service_def)
+    return OrchestratorContext(
+        service_yaml=minimal_service_yaml,
+        service_def=service_def,
+        service_name="minimal-service",
+        output_dir=tmp_path,
+        env=None,
+        detector=detector,
+    )
+
+
+@pytest.fixture
+def slo_only_context(slo_only_service_yaml, tmp_path):
+    """Build an OrchestratorContext from SLO-only YAML."""
+    import yaml
+
+    with open(slo_only_service_yaml) as f:
+        service_def = yaml.safe_load(f)
+
+    detector = ResourceDetector(service_def)
+    return OrchestratorContext(
+        service_yaml=slo_only_service_yaml,
+        service_def=service_def,
+        service_name="slo-service",
+        output_dir=tmp_path,
+        env=None,
+        detector=detector,
+    )
 
 
 class TestApplyResult:
@@ -326,7 +393,7 @@ class TestResourceDetector:
 
 
 class TestServiceOrchestrator:
-    """Tests for ServiceOrchestrator class."""
+    """Tests for ServiceOrchestrator class (facade)."""
 
     def test_init(self, sample_service_yaml):
         """Test orchestrator initialization."""
@@ -457,96 +524,80 @@ class TestServiceOrchestrator:
         assert output_dir.exists()
 
 
-class TestOrchestratorPlanMethods:
-    """Tests for orchestrator planning methods."""
+class TestHandlerPlanMethods:
+    """Tests for handler plan() methods."""
 
-    def test_plan_slos(self, sample_service_yaml):
-        """Test _plan_slos method."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator._load_service()
-
-        slos = orchestrator._plan_slos()
+    def test_plan_slos(self, sample_context):
+        """Test SloHandler.plan()."""
+        handler = SloHandler()
+        slos = handler.plan(sample_context)
 
         assert len(slos) == 1
         assert slos[0]["name"] == "availability"
         assert slos[0]["objective"] == 99.9
         assert slos[0]["window"] == "30d"
 
-    def test_plan_dashboard(self, sample_service_yaml):
-        """Test _plan_dashboard method."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator._load_service()
-
-        dashboards = orchestrator._plan_dashboard()
+    def test_plan_dashboard(self, sample_context):
+        """Test DashboardHandler.plan()."""
+        handler = DashboardHandler()
+        dashboards = handler.plan(sample_context)
 
         assert len(dashboards) == 1
         assert "test-service" in dashboards[0]["name"]
 
-    def test_plan_pagerduty(self, sample_service_yaml):
-        """Test _plan_pagerduty method."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator._load_service()
-
-        resources = orchestrator._plan_pagerduty()
+    def test_plan_pagerduty(self, sample_context):
+        """Test PagerDutyHandler.plan()."""
+        handler = PagerDutyHandler()
+        resources = handler.plan(sample_context)
 
         assert len(resources) == 4  # team, schedules, escalation_policy, service
         resource_types = [r["type"] for r in resources]
         assert "team" in resource_types
         assert "service" in resource_types
 
-    def test_plan_pagerduty_no_resources(self, minimal_service_yaml):
-        """Test _plan_pagerduty with no PagerDuty resources."""
-        orchestrator = ServiceOrchestrator(minimal_service_yaml)
-        orchestrator._load_service()
-
-        resources = orchestrator._plan_pagerduty()
+    def test_plan_pagerduty_no_resources(self, minimal_context):
+        """Test PagerDutyHandler.plan() with no PagerDuty resources."""
+        handler = PagerDutyHandler()
+        resources = handler.plan(minimal_context)
 
         assert resources == []
 
     @patch("nthlayer.generators.alerts.generate_alerts_for_service")
-    def test_plan_alerts(self, mock_generate, sample_service_yaml):
-        """Test _plan_alerts method."""
+    def test_plan_alerts(self, mock_generate, sample_context):
+        """Test AlertHandler.plan()."""
         mock_alert = MagicMock()
         mock_alert.severity = "critical"
         mock_generate.return_value = [mock_alert, mock_alert, mock_alert]
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator._load_service()
-
-        alerts = orchestrator._plan_alerts()
+        handler = AlertHandler()
+        alerts = handler.plan(sample_context)
 
         assert len(alerts) == 1
         assert alerts[0]["severity"] == "critical"
         assert alerts[0]["count"] == 3
 
     @patch("nthlayer.generators.alerts.generate_alerts_for_service")
-    def test_plan_alerts_exception(self, mock_generate, sample_service_yaml):
-        """Test _plan_alerts handles exceptions."""
+    def test_plan_alerts_exception(self, mock_generate, sample_context):
+        """Test AlertHandler.plan() handles exceptions."""
         mock_generate.side_effect = Exception("Alert generation failed")
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator._load_service()
-
-        alerts = orchestrator._plan_alerts()
+        handler = AlertHandler()
+        alerts = handler.plan(sample_context)
 
         assert alerts == []
 
-    def test_plan_recording_rules(self, slo_only_service_yaml):
-        """Test _plan_recording_rules method."""
-        orchestrator = ServiceOrchestrator(slo_only_service_yaml)
-        orchestrator._load_service()
-
-        rules = orchestrator._plan_recording_rules()
+    def test_plan_recording_rules(self, slo_only_context):
+        """Test RecordingRulesHandler.plan()."""
+        handler = RecordingRulesHandler()
+        rules = handler.plan(slo_only_context)
 
         # Should return groups with rules
         assert isinstance(rules, list)
 
-    def test_plan_recording_rules_no_slos(self, minimal_service_yaml):
-        """Test _plan_recording_rules with no SLOs still generates health metrics."""
-        orchestrator = ServiceOrchestrator(minimal_service_yaml)
-        orchestrator._load_service()
-
-        rules = orchestrator._plan_recording_rules()
+    def test_plan_recording_rules_no_slos(self, minimal_context):
+        """Test RecordingRulesHandler.plan() with no SLOs still generates health metrics."""
+        handler = RecordingRulesHandler()
+        rules = handler.plan(minimal_context)
 
         # Health metrics are generated even without SLOs
         assert isinstance(rules, list)
@@ -555,111 +606,86 @@ class TestOrchestratorPlanMethods:
             assert any("health" in r.get("type", "").lower() for r in rules)
 
 
-class TestOrchestratorGenerateMethods:
-    """Tests for orchestrator generation methods."""
+class TestHandlerGenerateMethods:
+    """Tests for handler generate() methods."""
 
-    def test_generate_slos(self, slo_only_service_yaml, tmp_path):
-        """Test _generate_slos method."""
-        orchestrator = ServiceOrchestrator(slo_only_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_slos()
+    def test_generate_slos(self, slo_only_context):
+        """Test SloHandler.generate()."""
+        handler = SloHandler()
+        count = handler.generate(slo_only_context)
 
         # Should generate SLOs
         assert count >= 0
 
-    def test_generate_slos_no_slos(self, minimal_service_yaml, tmp_path):
-        """Test _generate_slos with no SLO resources."""
-        orchestrator = ServiceOrchestrator(minimal_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_slos()
+    def test_generate_slos_no_slos(self, minimal_context):
+        """Test SloHandler.generate() with no SLO resources."""
+        handler = SloHandler()
+        count = handler.generate(minimal_context)
 
         assert count == 0
 
-    def test_generate_alerts(self, sample_service_yaml, tmp_path):
-        """Test _generate_alerts method."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_alerts()
+    def test_generate_alerts(self, sample_context):
+        """Test AlertHandler.generate()."""
+        handler = AlertHandler()
+        count = handler.generate(sample_context)
 
         assert count >= 0
-        assert (tmp_path / "alerts.yaml").exists()
+        assert (sample_context.output_dir / "alerts.yaml").exists()
 
-    def test_generate_dashboard(self, sample_service_yaml, tmp_path):
-        """Test _generate_dashboard method."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_dashboard()
+    def test_generate_dashboard(self, sample_context):
+        """Test DashboardHandler.generate()."""
+        handler = DashboardHandler()
+        count = handler.generate(sample_context)
 
         assert count == 1
-        assert (tmp_path / "dashboard.json").exists()
+        assert (sample_context.output_dir / "dashboard.json").exists()
 
-    @patch("nthlayer.orchestrator.ServiceOrchestrator._push_dashboard_to_grafana")
-    def test_generate_dashboard_with_push(self, mock_push, sample_service_yaml, tmp_path):
-        """Test _generate_dashboard with push_to_grafana."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_dashboard(push_to_grafana=True)
+    @patch("nthlayer.orchestration.handlers._push_dashboard_to_grafana")
+    def test_generate_dashboard_with_push(self, mock_push, sample_context):
+        """Test DashboardHandler.generate() with push_to_grafana."""
+        sample_context.push_to_grafana = True
+        handler = DashboardHandler()
+        count = handler.generate(sample_context)
 
         assert count == 1
         mock_push.assert_called_once()
 
-    def test_generate_recording_rules(self, slo_only_service_yaml, tmp_path):
-        """Test _generate_recording_rules method."""
-        orchestrator = ServiceOrchestrator(slo_only_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_recording_rules()
+    def test_generate_recording_rules(self, slo_only_context):
+        """Test RecordingRulesHandler.generate()."""
+        handler = RecordingRulesHandler()
+        handler.generate(slo_only_context)
 
         # Should create file
-        assert (tmp_path / "recording-rules.yaml").exists()
+        assert (slo_only_context.output_dir / "recording-rules.yaml").exists()
 
-    def test_generate_recording_rules_no_slos(self, minimal_service_yaml, tmp_path):
-        """Test _generate_recording_rules with no SLOs still generates health metrics."""
-        orchestrator = ServiceOrchestrator(minimal_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_recording_rules()
+    def test_generate_recording_rules_no_slos(self, minimal_context):
+        """Test RecordingRulesHandler.generate() with no SLOs still generates health metrics."""
+        handler = RecordingRulesHandler()
+        count = handler.generate(minimal_context)
 
         # Health metrics are generated even without SLOs
         assert count >= 0
-        assert (tmp_path / "recording-rules.yaml").exists()
-        content = (tmp_path / "recording-rules.yaml").read_text()
+        assert (minimal_context.output_dir / "recording-rules.yaml").exists()
+        content = (minimal_context.output_dir / "recording-rules.yaml").read_text()
         # Should have generated something (health metrics)
         assert "generated by NthLayer" in content or "No recording rules" in content
 
-    def test_generate_pagerduty_no_api_key(self, sample_service_yaml, tmp_path, monkeypatch):
-        """Test _generate_pagerduty without API key."""
+    def test_generate_pagerduty_no_api_key(self, sample_context, monkeypatch):
+        """Test PagerDutyHandler.generate() without API key."""
         monkeypatch.delenv("PAGERDUTY_API_KEY", raising=False)
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_pagerduty()
+        handler = PagerDutyHandler()
+        count = handler.generate(sample_context)
 
         assert count == 1
         # Should create config file
-        assert (tmp_path / "pagerduty-config.json").exists()
-        config = json.loads((tmp_path / "pagerduty-config.json").read_text())
+        assert (sample_context.output_dir / "pagerduty-config.json").exists()
+        config = json.loads((sample_context.output_dir / "pagerduty-config.json").read_text())
         assert "note" in config
 
-    @patch("nthlayer.orchestrator.PagerDutyResourceManager")
-    def test_generate_pagerduty_with_api_key(
-        self, mock_manager_class, sample_service_yaml, tmp_path, monkeypatch
-    ):
-        """Test _generate_pagerduty with API key."""
+    @patch("nthlayer.orchestration.handlers.PagerDutyResourceManager")
+    def test_generate_pagerduty_with_api_key(self, mock_manager_class, sample_context, monkeypatch):
+        """Test PagerDutyHandler.generate() with API key."""
         monkeypatch.setenv("PAGERDUTY_API_KEY", "test-api-key")
 
         mock_result = MagicMock()
@@ -678,20 +704,15 @@ class TestOrchestratorGenerateMethods:
         mock_manager.__exit__ = MagicMock(return_value=False)
         mock_manager_class.return_value = mock_manager
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
-
-        count = orchestrator._generate_pagerduty()
+        handler = PagerDutyHandler()
+        count = handler.generate(sample_context)
 
         assert count == 2  # len(created_resources)
-        assert (tmp_path / "pagerduty-result.json").exists()
+        assert (sample_context.output_dir / "pagerduty-result.json").exists()
 
-    @patch("nthlayer.orchestrator.PagerDutyResourceManager")
-    def test_generate_pagerduty_failure(
-        self, mock_manager_class, sample_service_yaml, tmp_path, monkeypatch
-    ):
-        """Test _generate_pagerduty when PagerDuty fails."""
+    @patch("nthlayer.orchestration.handlers.PagerDutyResourceManager")
+    def test_generate_pagerduty_failure(self, mock_manager_class, sample_context, monkeypatch):
+        """Test PagerDutyHandler.generate() when PagerDuty fails."""
         monkeypatch.setenv("PAGERDUTY_API_KEY", "test-api-key")
 
         mock_result = MagicMock()
@@ -704,60 +725,58 @@ class TestOrchestratorGenerateMethods:
         mock_manager.__exit__ = MagicMock(return_value=False)
         mock_manager_class.return_value = mock_manager
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator._load_service()
+        handler = PagerDutyHandler()
 
         with pytest.raises(ProviderError) as exc:
-            orchestrator._generate_pagerduty()
+            handler.generate(sample_context)
 
         assert "PagerDuty setup failed" in str(exc.value)
 
 
-class TestOrchestratorLogSuccess:
-    """Tests for _log_success method."""
+class TestLogSuccess:
+    """Tests for execution engine _log_success."""
 
-    def test_log_success_dashboard(self, sample_service_yaml, capsys):
+    def test_log_success_dashboard(self, capsys):
         """Test log success for dashboard."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
+        from nthlayer.orchestration.engine import _log_success
 
-        orchestrator._log_success("dashboard", 1, "dashboard")
+        _log_success("dashboard", 1, "dashboard", False)
 
         captured = capsys.readouterr()
         assert "Dashboard created" in captured.out
 
-    def test_log_success_dashboard_pushed(self, sample_service_yaml, capsys):
+    def test_log_success_dashboard_pushed(self, capsys):
         """Test log success for dashboard when pushed to Grafana."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml, push_to_grafana=True)
+        from nthlayer.orchestration.engine import _log_success
 
-        orchestrator._log_success("dashboard", 1, "dashboard")
+        _log_success("dashboard", 1, "dashboard", True)
 
         captured = capsys.readouterr()
         assert "pushed to Grafana" in captured.out
 
-    def test_log_success_pagerduty(self, sample_service_yaml, capsys):
+    def test_log_success_pagerduty(self, capsys):
         """Test log success for PagerDuty."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
+        from nthlayer.orchestration.engine import _log_success
 
-        orchestrator._log_success("pagerduty", 1, "PagerDuty")
+        _log_success("pagerduty", 1, "PagerDuty", False)
 
         captured = capsys.readouterr()
         assert "PagerDuty service created" in captured.out
 
-    def test_log_success_generic(self, sample_service_yaml, capsys):
+    def test_log_success_generic(self, capsys):
         """Test log success for generic resource type."""
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
+        from nthlayer.orchestration.engine import _log_success
 
-        orchestrator._log_success("alerts", 10, "alerts")
+        _log_success("alerts", 10, "alerts", False)
 
         captured = capsys.readouterr()
         assert "10 alerts created" in captured.out
 
 
 class TestPushDashboardToGrafana:
-    """Tests for _push_dashboard_to_grafana method."""
+    """Tests for _push_dashboard_to_grafana module function."""
 
-    def test_push_no_grafana_config(self, sample_service_yaml, tmp_path, monkeypatch, capsys):
+    def test_push_no_grafana_config(self, tmp_path, monkeypatch, capsys):
         """Test push when Grafana not configured."""
         monkeypatch.delenv("NTHLAYER_GRAFANA_URL", raising=False)
         monkeypatch.delenv("NTHLAYER_GRAFANA_API_KEY", raising=False)
@@ -766,15 +785,12 @@ class TestPushDashboardToGrafana:
         dashboard_file = tmp_path / "dashboard.json"
         dashboard_file.write_text(json.dumps({"dashboard": {"uid": "test"}}))
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.service_name = "test-service"
-
-        orchestrator._push_dashboard_to_grafana(dashboard_file)
+        _push_dashboard_to_grafana(dashboard_file, "test-service")
 
         captured = capsys.readouterr()
         assert "Grafana not configured" in captured.out
 
-    def test_push_empty_dashboard(self, sample_service_yaml, tmp_path, monkeypatch, capsys):
+    def test_push_empty_dashboard(self, tmp_path, monkeypatch, capsys):
         """Test push with empty dashboard JSON."""
         monkeypatch.setenv("NTHLAYER_GRAFANA_URL", "http://grafana:3000")
         monkeypatch.setenv("NTHLAYER_GRAFANA_API_KEY", "test-key")
@@ -783,10 +799,7 @@ class TestPushDashboardToGrafana:
         dashboard_file = tmp_path / "dashboard.json"
         dashboard_file.write_text(json.dumps({}))
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.service_name = "test-service"
-
-        orchestrator._push_dashboard_to_grafana(dashboard_file)
+        _push_dashboard_to_grafana(dashboard_file, "test-service")
 
         captured = capsys.readouterr()
         assert "empty" in captured.out.lower()
@@ -797,7 +810,6 @@ class TestPushDashboardToGrafana:
         self,
         mock_asyncio_run,
         mock_provider_class,
-        sample_service_yaml,
         tmp_path,
         monkeypatch,
         capsys,
@@ -817,10 +829,7 @@ class TestPushDashboardToGrafana:
         mock_provider.dashboard.return_value = mock_dashboard
         mock_provider_class.return_value = mock_provider
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.service_name = "test-service"
-
-        orchestrator._push_dashboard_to_grafana(dashboard_file)
+        _push_dashboard_to_grafana(dashboard_file, "test-service")
 
         captured = capsys.readouterr()
         assert "pushed" in captured.out.lower() or "Pushing" in captured.out
@@ -831,7 +840,6 @@ class TestPushDashboardToGrafana:
         self,
         mock_asyncio_run,
         mock_provider_class,
-        sample_service_yaml,
         tmp_path,
         monkeypatch,
         capsys,
@@ -846,20 +854,17 @@ class TestPushDashboardToGrafana:
 
         mock_asyncio_run.side_effect = Exception("Connection refused")
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.service_name = "test-service"
-
-        orchestrator._push_dashboard_to_grafana(dashboard_file)
+        _push_dashboard_to_grafana(dashboard_file, "test-service")
 
         captured = capsys.readouterr()
         assert "Failed" in captured.out or "saved locally" in captured.out
 
 
 class TestEventOrchestration:
-    """Tests for _setup_event_orchestration method."""
+    """Tests for _setup_event_orchestration module function."""
 
-    @patch("nthlayer.orchestrator.EventOrchestrationManager")
-    def test_setup_success(self, mock_manager_class, sample_service_yaml, capsys):
+    @patch("nthlayer.orchestration.handlers.EventOrchestrationManager")
+    def test_setup_success(self, mock_manager_class, capsys):
         """Test successful event orchestration setup."""
         mock_result = MagicMock()
         mock_result.success = True
@@ -872,9 +877,7 @@ class TestEventOrchestration:
         mock_manager.__exit__ = MagicMock(return_value=False)
         mock_manager_class.return_value = mock_manager
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-
-        orchestrator._setup_event_orchestration(
+        _setup_event_orchestration(
             api_key="test-key",
             default_from="test@example.com",
             service_id="svc-123",
@@ -884,8 +887,8 @@ class TestEventOrchestration:
         captured = capsys.readouterr()
         assert "Event Orchestration" in captured.out
 
-    @patch("nthlayer.orchestrator.EventOrchestrationManager")
-    def test_setup_failure(self, mock_manager_class, sample_service_yaml, capsys):
+    @patch("nthlayer.orchestration.handlers.EventOrchestrationManager")
+    def test_setup_failure(self, mock_manager_class, capsys):
         """Test event orchestration setup failure."""
         mock_result = MagicMock()
         mock_result.success = False
@@ -898,9 +901,7 @@ class TestEventOrchestration:
         mock_manager.__exit__ = MagicMock(return_value=False)
         mock_manager_class.return_value = mock_manager
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-
-        orchestrator._setup_event_orchestration(
+        _setup_event_orchestration(
             api_key="test-key",
             default_from="test@example.com",
             service_id="svc-123",
@@ -912,45 +913,99 @@ class TestEventOrchestration:
 
 
 class TestGenerateAlertmanagerConfig:
-    """Tests for _generate_alertmanager_config method."""
+    """Tests for alertmanager config generation via PagerDutyHandler."""
 
-    @patch("nthlayer.orchestrator.generate_alertmanager_config")
-    def test_generate_config(self, mock_generate, sample_service_yaml, tmp_path):
-        """Test generating Alertmanager config."""
+    @patch("nthlayer.orchestration.handlers.generate_alertmanager_config")
+    @patch("nthlayer.orchestration.handlers.PagerDutyResourceManager")
+    def test_generate_config(self, mock_manager_class, mock_generate, sample_context, monkeypatch):
+        """Test generating Alertmanager config via PagerDutyHandler."""
+        monkeypatch.setenv("PAGERDUTY_API_KEY", "test-api-key")
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.team_id = "team-123"
+        mock_result.schedule_ids = []
+        mock_result.escalation_policy_id = "ep-123"
+        mock_result.service_id = "svc-123"
+        mock_result.service_url = "https://pagerduty.com/services/svc-123"
+        mock_result.created_resources = ["service"]
+        mock_result.warnings = []
+
+        mock_manager = MagicMock()
+        mock_manager.setup_service.return_value = mock_result
+        mock_manager.__enter__ = MagicMock(return_value=mock_manager)
+        mock_manager.__exit__ = MagicMock(return_value=False)
+        mock_manager_class.return_value = mock_manager
+
         mock_config = MagicMock()
         mock_generate.return_value = mock_config
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator.service_name = "test-service"
-
-        orchestrator._generate_alertmanager_config(
-            team="platform",
-            tier="standard",
-            support_model="self",
-            integration_key="test-key",
-        )
+        handler = PagerDutyHandler()
+        handler.generate(sample_context)
 
         mock_generate.assert_called_once()
         mock_config.write.assert_called_once()
 
-    @patch("nthlayer.orchestrator.generate_alertmanager_config")
-    def test_generate_config_with_sre_key(self, mock_generate, sample_service_yaml, tmp_path):
+    @patch("nthlayer.orchestration.handlers.generate_alertmanager_config")
+    @patch("nthlayer.orchestration.handlers.PagerDutyResourceManager")
+    def test_generate_config_with_sre_key(
+        self, mock_manager_class, mock_generate, sample_context, tmp_path, monkeypatch
+    ):
         """Test generating Alertmanager config with SRE integration key."""
+        monkeypatch.setenv("PAGERDUTY_API_KEY", "test-api-key")
+
+        # Add sre_integration_key to context
+        import yaml
+
+        service_file = tmp_path / "sre-service.yaml"
+        service_file.write_text("""
+service:
+  name: test-service
+  team: platform
+  tier: standard
+  type: api
+
+resources:
+  - kind: PagerDuty
+    name: main
+    spec:
+      integration_key: test-key
+      sre_integration_key: sre-key
+""")
+        with open(service_file) as f:
+            service_def = yaml.safe_load(f)
+
+        ctx = OrchestratorContext(
+            service_yaml=service_file,
+            service_def=service_def,
+            service_name="test-service",
+            output_dir=tmp_path / "output",
+            env=None,
+            detector=ResourceDetector(service_def),
+        )
+        (tmp_path / "output").mkdir()
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.team_id = "team-123"
+        mock_result.schedule_ids = []
+        mock_result.escalation_policy_id = "ep-123"
+        mock_result.service_id = "svc-123"
+        mock_result.service_url = "https://pagerduty.com/services/svc-123"
+        mock_result.created_resources = ["service"]
+        mock_result.warnings = []
+
+        mock_manager = MagicMock()
+        mock_manager.setup_service.return_value = mock_result
+        mock_manager.__enter__ = MagicMock(return_value=mock_manager)
+        mock_manager.__exit__ = MagicMock(return_value=False)
+        mock_manager_class.return_value = mock_manager
+
         mock_config = MagicMock()
         mock_generate.return_value = mock_config
 
-        orchestrator = ServiceOrchestrator(sample_service_yaml)
-        orchestrator.output_dir = tmp_path
-        orchestrator.service_name = "test-service"
-
-        orchestrator._generate_alertmanager_config(
-            team="platform",
-            tier="standard",
-            support_model="shared",
-            integration_key="test-key",
-            sre_integration_key="sre-key",
-        )
+        handler = PagerDutyHandler()
+        handler.generate(ctx)
 
         call_kwargs = mock_generate.call_args[1]
         assert call_kwargs["sre_integration_key"] == "sre-key"
@@ -959,15 +1014,14 @@ class TestGenerateAlertmanagerConfig:
 class TestOrchestratorApplyErrors:
     """Tests for error handling in apply method."""
 
-    @patch.object(ServiceOrchestrator, "_generate_slos")
-    def test_apply_handles_generator_exception(self, mock_generate, sample_service_yaml, tmp_path):
+    def test_apply_handles_generator_exception(self, sample_service_yaml, tmp_path):
         """Test that apply catches and records generator exceptions."""
-        mock_generate.side_effect = Exception("SLO generation failed")
-
         orchestrator = ServiceOrchestrator(sample_service_yaml)
         orchestrator.output_dir = tmp_path
 
-        result = orchestrator.apply(only=["slos"], skip=["recording-rules"])
+        # Patch the SloHandler.generate to raise
+        with patch.object(SloHandler, "generate", side_effect=Exception("SLO generation failed")):
+            result = orchestrator.apply(only=["slos"], skip=["recording-rules"])
 
         assert result.success is False
         assert any("SLO" in err or "slo" in err.lower() for err in result.errors)
@@ -976,13 +1030,47 @@ class TestOrchestratorApplyErrors:
 class TestPlanExceptionHandling:
     """Tests for plan exception handling."""
 
-    @patch.object(ServiceOrchestrator, "_plan_slos")
-    def test_plan_handles_exception(self, mock_plan, sample_service_yaml):
+    def test_plan_handles_exception(self, sample_service_yaml):
         """Test that plan catches exceptions."""
-        mock_plan.side_effect = Exception("Planning error")
-
         orchestrator = ServiceOrchestrator(sample_service_yaml)
-        result = orchestrator.plan()
+
+        # Patch SloHandler.plan to raise
+        with patch.object(SloHandler, "plan", side_effect=Exception("Planning error")):
+            result = orchestrator.plan()
 
         assert result.success is False
         assert any("Planning failed" in err for err in result.errors)
+
+
+class TestResourceRegistry:
+    """Tests for ResourceRegistry."""
+
+    def test_register_and_get(self):
+        """Test registering and retrieving handlers."""
+        registry = ResourceRegistry()
+        handler = SloHandler()
+        registry.register(handler)
+
+        assert registry.get("slos") is handler
+        assert registry.get("nonexistent") is None
+
+    def test_list(self):
+        """Test listing registered handlers."""
+        registry = ResourceRegistry()
+        registry.register(SloHandler())
+        registry.register(AlertHandler())
+
+        names = registry.list()
+        assert "slos" in names
+        assert "alerts" in names
+
+    def test_register_default_handlers(self):
+        """Test that register_default_handlers populates all 6 handlers."""
+        from nthlayer.orchestration.handlers import register_default_handlers
+
+        registry = ResourceRegistry()
+        register_default_handlers(registry)
+
+        expected = ["slos", "alerts", "dashboard", "recording-rules", "pagerduty", "backstage"]
+        for name in expected:
+            assert registry.get(name) is not None, f"Handler '{name}' not registered"

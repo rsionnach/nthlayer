@@ -5,7 +5,7 @@ Simulates external APIs (PagerDuty, Grafana, Datadog, Cortex, Slack)
 without requiring real accounts or services.
 
 Usage:
-    python -m tests.mock_server
+    python -m tests.fixtures.mock_server
 
 Then point NthLayer at http://localhost:8001 for all integrations.
 """
@@ -43,7 +43,7 @@ STATE: dict[str, dict[str, Any]] = {
 async def pd_get_team(team_id: str, authorization: str = Header(None)):
     """Get PagerDuty team details"""
     logger.info(f"[PagerDuty] GET /teams/{team_id}")
-    
+
     if team_id not in STATE["pagerduty_teams"]:
         # Return a default team
         team = {
@@ -52,7 +52,7 @@ async def pd_get_team(team_id: str, authorization: str = Header(None)):
             "description": "Mock team from NthLayer dev server",
         }
         STATE["pagerduty_teams"][team_id] = team
-    
+
     return {"team": STATE["pagerduty_teams"][team_id]}
 
 
@@ -60,7 +60,7 @@ async def pd_get_team(team_id: str, authorization: str = Header(None)):
 async def pd_get_team_members(team_id: str, authorization: str = Header(None)):
     """Get PagerDuty team members"""
     logger.info(f"[PagerDuty] GET /teams/{team_id}/members")
-    
+
     members = STATE["pagerduty_teams"].get(team_id, {}).get("members", [])
     return {"members": members}
 
@@ -76,12 +76,12 @@ async def pd_set_team_members(
     body = await request.json()
     logger.info(f"[PagerDuty] POST /teams/{team_id}/users (idempotency_key={idempotency_key})")
     logger.info(f"  Body: {json.dumps(body, indent=2)}")
-    
+
     if team_id not in STATE["pagerduty_teams"]:
         STATE["pagerduty_teams"][team_id] = {"id": team_id, "members": []}
-    
+
     STATE["pagerduty_teams"][team_id]["members"] = body.get("members", [])
-    
+
     return {"status": "success", "team_id": team_id}
 
 
@@ -89,7 +89,7 @@ async def pd_set_team_members(
 async def pd_list_escalation_policies(authorization: str = Header(None)):
     """List PagerDuty escalation policies"""
     logger.info("[PagerDuty] GET /escalation_policies")
-    
+
     return {
         "escalation_policies": [
             {
@@ -112,10 +112,10 @@ async def pd_list_escalation_policies(authorization: str = Header(None)):
 async def grafana_get_dashboard(uid: str, authorization: str = Header(None)):
     """Get Grafana dashboard by UID"""
     logger.info(f"[Grafana] GET /api/dashboards/uid/{uid}")
-    
+
     if uid not in STATE["grafana_dashboards"]:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    
+
     return {"dashboard": STATE["grafana_dashboards"][uid]}
 
 
@@ -125,10 +125,10 @@ async def grafana_create_dashboard(request: Request, authorization: str = Header
     body = await request.json()
     logger.info("[Grafana] POST /api/dashboards/db")
     logger.info(f"  Title: {body.get('dashboard', {}).get('title')}")
-    
+
     uid = body.get("dashboard", {}).get("uid", str(uuid4())[:8])
     STATE["grafana_dashboards"][uid] = body.get("dashboard", {})
-    
+
     return {
         "status": "success",
         "uid": uid,
@@ -141,7 +141,7 @@ async def grafana_create_dashboard(request: Request, authorization: str = Header
 async def grafana_list_folders(authorization: str = Header(None)):
     """List Grafana folders"""
     logger.info("[Grafana] GET /api/folders")
-    
+
     return [
         {"id": 1, "uid": "general", "title": "General"},
         {"id": 2, "uid": "nthlayer", "title": "NthLayer Dashboards"},
@@ -157,7 +157,7 @@ async def grafana_list_folders(authorization: str = Header(None)):
 async def datadog_list_monitors(authorization: str = Header(None)):
     """List Datadog monitors"""
     logger.info("[Datadog] GET /api/v1/monitor")
-    
+
     monitors = list(STATE["datadog_monitors"].values())
     return {"monitors": monitors}
 
@@ -169,7 +169,7 @@ async def datadog_create_monitor(request: Request, authorization: str = Header(N
     logger.info("[Datadog] POST /api/v1/monitor")
     logger.info(f"  Name: {body.get('name')}")
     logger.info(f"  Query: {body.get('query')}")
-    
+
     monitor_id = len(STATE["datadog_monitors"]) + 1
     monitor = {
         "id": monitor_id,
@@ -181,7 +181,7 @@ async def datadog_create_monitor(request: Request, authorization: str = Header(N
         "created": datetime.utcnow().isoformat(),
     }
     STATE["datadog_monitors"][monitor_id] = monitor
-    
+
     return monitor
 
 
@@ -192,10 +192,10 @@ async def datadog_update_monitor(
     """Update Datadog monitor"""
     body = await request.json()
     logger.info(f"[Datadog] PUT /api/v1/monitor/{monitor_id}")
-    
+
     if monitor_id not in STATE["datadog_monitors"]:
         raise HTTPException(status_code=404, detail="Monitor not found")
-    
+
     STATE["datadog_monitors"][monitor_id].update(body)
     return STATE["datadog_monitors"][monitor_id]
 
@@ -209,7 +209,7 @@ async def datadog_update_monitor(
 async def cortex_get_team(team_id: str, authorization: str = Header(None)):
     """Get Cortex team"""
     logger.info(f"[Cortex] GET /api/teams/{team_id}")
-    
+
     if team_id not in STATE["cortex_teams"]:
         # Return default team
         team = {
@@ -221,7 +221,7 @@ async def cortex_get_team(team_id: str, authorization: str = Header(None)):
             ],
         }
         STATE["cortex_teams"][team_id] = team
-    
+
     return STATE["cortex_teams"][team_id]
 
 
@@ -229,7 +229,7 @@ async def cortex_get_team(team_id: str, authorization: str = Header(None)):
 async def cortex_list_services(authorization: str = Header(None)):
     """List Cortex services"""
     logger.info("[Cortex] GET /api/catalog")
-    
+
     return {
         "services": [
             {
@@ -262,7 +262,7 @@ async def slack_post_message(request: Request, authorization: str = Header(None)
     logger.info("[Slack] POST /chat.postMessage")
     logger.info(f"  Channel: {body.get('channel')}")
     logger.info(f"  Text: {body.get('text', '')[:100]}...")
-    
+
     message = {
         "ts": str(datetime.utcnow().timestamp()),
         "channel": body.get("channel"),
@@ -270,7 +270,7 @@ async def slack_post_message(request: Request, authorization: str = Header(None)
         "created_at": datetime.utcnow().isoformat(),
     }
     STATE["slack_messages"].append(message)
-    
+
     return {"ok": True, "ts": message["ts"], "channel": message["channel"]}
 
 
@@ -334,7 +334,7 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     print("=" * 70)
     print("🚀 NthLayer Mock API Server")
     print("=" * 70)
@@ -360,5 +360,5 @@ if __name__ == "__main__":
     print()
     print("=" * 70)
     print()
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")

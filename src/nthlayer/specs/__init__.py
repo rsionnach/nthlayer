@@ -15,86 +15,27 @@ Legacy usage (still supported):
     context, resources = parse_service_file("service.yaml")
 """
 
-# New unified API (recommended)
-from nthlayer.specs.contracts import (
-    ContractRegistry,
-    validate_dependency_expectations,
-    validate_transitive_feasibility,
-)
-from nthlayer.specs.helpers import extract_dependency_technologies
+# Core public API
 from nthlayer.specs.loader import (
-    LegacyFormatWarning,
     ManifestLoadError,
-    is_manifest_file,
     load_manifest,
 )
 from nthlayer.specs.manifest import (
-    JUDGMENT_SLO_TYPES,
-    SERVICE_TYPE_ALIASES,
-    STANDARD_SLO_TYPES,
-    VALID_SERVICE_TYPES,
-    VALID_TIERS,
-    Contract,
-    Dependency,
-    DependencyCriticality,
-    DependencySLO,
-    DeploymentConfig,
-    Instrumentation,
-    Observability,
-    Ownership,
     ReliabilityManifest,
     SLODefinition,
-    SourceFormat,
-)
-from nthlayer.specs.opensrm_parser import (
-    OpenSRMParseError,
-    is_opensrm_format,
-    parse_opensrm,
-    parse_opensrm_file,
 )
 
-# Legacy API (deprecated, for backward compatibility)
+# Legacy API (backward compatibility)
 from nthlayer.specs.parser import Resource, ServiceContext, parse_service_file
-from nthlayer.specs.validator import ValidationResult, validate_service_file
 
 __all__ = [
-    # New unified API
+    # Core API
     "load_manifest",
     "ReliabilityManifest",
     "SLODefinition",
-    "Dependency",
-    "DependencySLO",
-    "DependencyCriticality",
-    "Ownership",
-    "Observability",
-    "DeploymentConfig",
-    "Contract",
-    "Instrumentation",
-    "SourceFormat",
     "ManifestLoadError",
-    "LegacyFormatWarning",
-    "is_manifest_file",
-    # Contract validation
-    "ContractRegistry",
-    "validate_dependency_expectations",
-    "validate_transitive_feasibility",
-    # OpenSRM parser
-    "parse_opensrm",
-    "parse_opensrm_file",
-    "is_opensrm_format",
-    "OpenSRMParseError",
-    # Helpers
-    "extract_dependency_technologies",
-    # Constants
-    "VALID_TIERS",
-    "VALID_SERVICE_TYPES",
-    "SERVICE_TYPE_ALIASES",
-    "STANDARD_SLO_TYPES",
-    "JUDGMENT_SLO_TYPES",
-    # Legacy API (deprecated)
+    # Legacy API (backward compatibility)
     "parse_service_file",
     "ServiceContext",
     "Resource",
-    "validate_service_file",
-    "ValidationResult",
 ]

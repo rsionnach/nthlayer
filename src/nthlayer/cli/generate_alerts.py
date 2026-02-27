@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
+import structlog
+
 from nthlayer.cli.ux import console, error, header
+
+logger = structlog.get_logger()
 from nthlayer.generators.alerts import generate_alerts_for_service
 from nthlayer.specs.environment_alerts import explain_alert_filtering
 
@@ -120,7 +124,5 @@ def generate_alerts_command(
 
     except (FileNotFoundError, ValueError, KeyError, TypeError, OSError) as e:
         error(f"Error generating alerts: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("alert_generation_failed", err=str(e), exc_info=True)
         return 1

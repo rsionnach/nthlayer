@@ -16,7 +16,91 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .models import CheckResult, ReliabilityReport
 
-from .models import SARIF_RULES, CheckStatus
+from .models import CheckStatus
+
+# SARIF Rule definitions — canonical taxonomy for NthLayer reliability checks
+SARIF_RULES: dict[str, dict[str, Any]] = {
+    "NTHLAYER001": {
+        "id": "NTHLAYER001",
+        "name": "SLOInfeasible",
+        "shortDescription": {"text": "SLO target exceeds dependency ceiling"},
+        "fullDescription": {
+            "text": "The declared SLO target cannot be achieved given the availability of upstream dependencies."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/slo-infeasible/",
+        "defaultConfiguration": {"level": "error"},
+    },
+    "NTHLAYER002": {
+        "id": "NTHLAYER002",
+        "name": "DriftCritical",
+        "shortDescription": {"text": "Error budget projected to exhaust soon"},
+        "fullDescription": {
+            "text": "Current error budget burn rate will exhaust the budget within the warning threshold."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/drift-critical/",
+        "defaultConfiguration": {"level": "warning"},
+    },
+    "NTHLAYER003": {
+        "id": "NTHLAYER003",
+        "name": "MetricMissing",
+        "shortDescription": {"text": "Required metric not found"},
+        "fullDescription": {
+            "text": "A metric required for SLO calculation is not being emitted by the service."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/metric-missing/",
+        "defaultConfiguration": {"level": "error"},
+    },
+    "NTHLAYER004": {
+        "id": "NTHLAYER004",
+        "name": "BudgetExhausted",
+        "shortDescription": {"text": "Error budget exhausted"},
+        "fullDescription": {
+            "text": "The service has consumed 100% or more of its error budget for the current window."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/budget-exhausted/",
+        "defaultConfiguration": {"level": "error"},
+    },
+    "NTHLAYER005": {
+        "id": "NTHLAYER005",
+        "name": "HighBlastRadius",
+        "shortDescription": {"text": "Change affects critical downstream services"},
+        "fullDescription": {
+            "text": "This service has critical-tier dependents that may be impacted by changes."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/high-blast-radius/",
+        "defaultConfiguration": {"level": "warning"},
+    },
+    "NTHLAYER006": {
+        "id": "NTHLAYER006",
+        "name": "TierMismatch",
+        "shortDescription": {"text": "Service tier lower than dependent's tier"},
+        "fullDescription": {
+            "text": "A lower-tier service is depended on by a higher-tier service, creating reliability risk."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/tier-mismatch/",
+        "defaultConfiguration": {"level": "warning"},
+    },
+    "NTHLAYER007": {
+        "id": "NTHLAYER007",
+        "name": "OwnershipMissing",
+        "shortDescription": {"text": "No team or owner defined"},
+        "fullDescription": {
+            "text": "The service does not have a team or owner defined in its configuration."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/ownership-missing/",
+        "defaultConfiguration": {"level": "note"},
+    },
+    "NTHLAYER008": {
+        "id": "NTHLAYER008",
+        "name": "RunbookMissing",
+        "shortDescription": {"text": "Critical service without runbook link"},
+        "fullDescription": {
+            "text": "A critical-tier service does not have a runbook URL configured."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/runbook-missing/",
+        "defaultConfiguration": {"level": "note"},
+    },
+}
 
 
 def format_sarif(report: ReliabilityReport) -> str:

@@ -19,7 +19,11 @@ from typing import Any
 
 from nthlayer.core.errors import ProviderError
 from nthlayer.dependencies.models import DependencyType, DiscoveredDependency
-from nthlayer.dependencies.providers.base import BaseDepProvider, ProviderHealth
+from nthlayer.dependencies.providers.base import (
+    BaseDepProvider,
+    ProviderHealth,
+    deduplicate_dependencies,
+)
 
 # Lazy import kubernetes to allow optional installation
 _kubernetes_available: bool | None = None
@@ -128,7 +132,7 @@ class KubernetesDepProvider(BaseDepProvider):
         deps.extend(await self._discover_from_network_policies(service))
         deps.extend(await self._discover_from_service_env(service))
 
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     async def discover_downstream(self, service: str) -> list[DiscoveredDependency]:
         """Discover services that call this service (downstream dependents)."""
@@ -143,7 +147,7 @@ class KubernetesDepProvider(BaseDepProvider):
         # Find network policies that allow traffic to this service
         deps.extend(await self._discover_downstream_from_network_policies(service))
 
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     async def _discover_from_ingress(self, service: str) -> list[DiscoveredDependency]:
         """Find services referenced in Ingress backends for this service."""
@@ -575,18 +579,6 @@ class KubernetesDepProvider(BaseDepProvider):
             return DependencyType.EXTERNAL
 
         return DependencyType.SERVICE
-
-    def _deduplicate(self, deps: list[DiscoveredDependency]) -> list[DiscoveredDependency]:
-        """Remove duplicate dependencies, keeping highest confidence."""
-        seen: dict[str, DiscoveredDependency] = {}
-
-        for dep in deps:
-            key = f"{dep.source_service}:{dep.target_service}:{dep.dep_type.value}"
-
-            if key not in seen or dep.confidence > seen[key].confidence:
-                seen[key] = dep
-
-        return list(seen.values())
 
     async def list_services(self) -> list[str]:
         """List all Kubernetes services."""

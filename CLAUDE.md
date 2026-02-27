@@ -30,7 +30,10 @@ Read the specific doc relevant to your task. Do NOT try to load all docs at once
 - Configuration: `mkdocs.yml`
 - Source docs: `docs-site/`
 - Build output: `site/` (gitignored)
-- Deploy: GitHub Pages at rsionnach.github.io/nthlayer/
+- Deploy: GitHub Actions workflow (`.github/workflows/docs.yml`) builds and deploys to GitHub Pages at rsionnach.github.io/nthlayer/
+  - Triggers: push to `main` with changes to `docs-site/`, `mkdocs.yml`, or workflow file itself
+  - Build step: `mkdocs build --strict` with MkDocs Material theme and minify plugin
+  - Deploy step: `actions/deploy-pages` to GitHub Pages environment
 
 ## Key Architectural Rules
 
@@ -70,6 +73,7 @@ See `docs/conventions.md` for full Beads workflow.
 - **GC sweep:** `/gc-sweep` (entropy cleanup)
 - **Doc gardening:** `/doc-garden`
 - **Spec to tasks:** `/spec-to-beads <spec-file>`
+- **Code quality sweep:** `/desloppify` (scan → fix → resolve loop for technical debt, dead code, code smells)
 - **Release:** Update CHANGELOG.md, merge `develop` → `main`, create GitHub release → auto-publishes to PyPI
 
 ## Commit Messages
@@ -84,7 +88,13 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 ## Architecture
 
 ### Core Modules
-- `orchestrator.py` - Service orchestration: coordinates SLO, alert, dashboard generation from service YAML
+- `orchestrator.py` - Facade for backward compatibility (delegates to orchestration/)
+- `orchestration/` - Phased resource generation orchestration
+  - `registry.py` - ResourceHandler protocol and ResourceRegistry
+  - `handlers.py` - Concrete handlers (SLO, Alert, Dashboard, PagerDuty, etc.)
+  - `engine.py` - ExecutionEngine for running generation loops
+  - `plan_builder.py` - Preview generation plans before execution
+  - `results.py` - ResultCollector for aggregating generation outcomes
 - `dashboards/` - Intent-based dashboard generation with metric resolution
   - `resolver.py` - MetricResolver: translates intents to Prometheus metrics with fallback chains
   - `templates/` - Technology-specific intent templates (postgresql, redis, kafka, etc.)
@@ -104,8 +114,17 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `analyzer.py` - DriftAnalyzer for SLO trend analysis with configurable windows
 - `providers/` - External service integrations (grafana, prometheus, pagerduty, mimir)
 - `identity/` - Service identity resolution across naming conventions
+- `specs/` - Service specification models and parsing
+  - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
 - `slos/` - SLO definition, validation, and recording rule generation
+  - `models.py` - SLO, ErrorBudget, SLOStatus, Incident dataclasses; default target: 0.999
+  - `parser.py` - OpenSLO YAML parsing
+  - `collector.py` - SLOCollector: Prometheus queries for live budget data
+  - `calculator.py` - ErrorBudgetCalculator
+  - `gates.py` - Deployment gate enforcement (error budget thresholds)
   - `deployment.py` - DeploymentRecorder for storing deployment events
+  - `correlator.py` - DeploymentCorrelator for error budget correlation
+  - `ceiling.py` - SLO ceiling validation against upstream SLAs
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `validation/` - Metadata and resource validation
 - `policies/` - Policy DSL and deployment gate enforcement
@@ -113,9 +132,18 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `audit.py` - Audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
   - `recorder.py` - PolicyAuditRecorder for audit events
   - `repository.py` - PolicyAuditRepository for audit queries
-- `api/` - FastAPI webhook endpoints
+- `api/` - FastAPI API (webhooks, policies, health, teams)
+  - `main.py` - App factory; registers teams, webhooks, policies, health routers; optional Mangum/Lambda handler
   - `routes/webhooks.py` - Deployment webhook receiver
   - `routes/policies.py` - Policy audit and override API
+  - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
+- `cli/formatters/` - Multi-format CLI output system
+  - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
+  - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-008 rule taxonomy
+  - `json_fmt.py`, `junit.py`, `markdown.py` - Additional output formatters
+  - `__init__.py` - `format_report(report, output_format, output_file)` unified entry point
+- `verification/` - Prometheus metric contract verification
+  - `verifier.py` - `MetricVerifier`: checks declared metrics exist in Prometheus
 - `scripts/lint/` - Custom linters for golden principles
   - `check-exception-handling.sh` - Enforce exception handling with context
   - `check-no-orphan-todos.sh` - Enforce TODO tracking via Beads
@@ -133,14 +161,15 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `tech-debt.md` - Technical debt inventory with AUTO-MANAGED section
 
 ### Data Flow
-1. Service YAML → ServiceOrchestrator → ResourceDetector (indexes by kind)
-2. ResourceDetector determines what to generate (SLOs, alerts, dashboards, etc.)
-3. Dashboard generation: IntentTemplate.get_panel_specs() → MetricResolver.resolve() → Panel objects
-4. Metric resolution: Custom overrides → Discovery → Fallback chain → Guidance
-5. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
-6. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
-7. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
-8. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
+1. Service YAML → ServiceOrchestrator (facade) → ResourceDetector (indexes by kind) → OrchestratorContext
+2. ExecutionEngine iterates over registered ResourceHandlers (SLO, Alert, Dashboard, etc.)
+3. Each handler's generate() method creates resources, returns count
+4. Dashboard generation: IntentTemplate.get_panel_specs() → MetricResolver.resolve() → Panel objects
+5. Metric resolution: Custom overrides → Discovery → Fallback chain → Guidance
+6. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
+7. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
+8. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
+9. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -169,12 +198,15 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - DependencyDiscovery orchestrator runs providers in parallel with `asyncio.gather()`
 - Provider errors raise `ProviderError` subclasses, never bare `Exception` or `RuntimeError`
 
-### Service Orchestration
-- `ServiceOrchestrator` (orchestrator.py) coordinates resource generation from service YAML
-- `ResourceDetector` builds single-pass index of resources by kind (SLO, Dependencies, etc.)
-- Auto-generates recording rules and Backstage entities when SLOs exist
-- Auto-generates alerts and dashboards when dependencies exist
-- `plan()` returns preview, `apply()` executes generation
+### Phased Resource Orchestration
+- `ResourceHandler` protocol defines `plan()` and `generate()` interface
+- `ResourceRegistry` maintains handlers for each resource type (slos, alerts, dashboards, etc.)
+- `OrchestratorContext` carries shared state (service YAML, output dir, env, ResourceDetector)
+- `ExecutionEngine` iterates over handlers, calls generate(), collects results
+- Each handler returns count of resources created
+- `ResultCollector` aggregates outcomes and errors across all handlers
+- Handlers are modular - new resource types register without changing orchestration core
+- `ServiceOrchestrator` (orchestrator.py) is now a facade for backward compatibility
 
 ### Deployment Detection Provider Pattern
 - Provider-agnostic webhook handling via `BaseDeploymentProvider` ABC
@@ -202,6 +234,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `run-all.sh` orchestrator executes all check-*.sh scripts
 - Called from CI and Claude Code hooks
 - Failures block commits with remediation instructions
+- `check-exception-handling.sh` detects bare `except` blocks without `# intentionally ignored: <reason>` comment
 
 ### Documentation Site (MkDocs)
 - Material theme with dark/light mode toggle, Nord color scheme
@@ -244,6 +277,22 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Critical principle: "audit failures are logged, not fatal" — deployments continue even if audit trail breaks
 - Prevents cascading failures where observability systems block deployment gates
 - Applied in `PolicyAuditRecorder` for gate evaluations and overrides
+
+### Shared Constants for Module Defaults
+- Repeated magic values extracted into module-level constants in `__init__.py` (not scattered across callers)
+- Example: default SLO objective `0.999` defined once in `slos/__init__.py`, imported by `collector.py`, `cli/slo.py`, `cli/deploy.py`, `cli/portfolio.py`, `portfolio/aggregator.py`, `recording_rules/builder.py`
+- Pattern: if a default value appears in 3+ call sites, promote it to a named constant in the owning module's `__init__.py`
+
+### CLI Formatter System
+- All CLI command output flows through `cli/formatters/` — never construct ad-hoc output strings
+- `ReliabilityReport(service, command, checks, summary, metadata)` is the canonical report model; all formatters consume it
+- `CheckResult(name, status, message, details, rule_id, location, line)` represents individual check outcomes
+- `format_report(report, output_format, output_file)` dispatches to the correct formatter; supports TABLE, JSON, SARIF, JUNIT, MARKDOWN
+- SARIF output (GitHub Code Scanning) maps check failures to rule IDs NTHLAYER001–NTHLAYER008:
+  - NTHLAYER001: SLOInfeasible, NTHLAYER002: DriftCritical, NTHLAYER003: MetricMissing
+  - NTHLAYER004: BudgetExhausted, NTHLAYER005: HighBlastRadius, NTHLAYER006: TierMismatch
+  - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
+- Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
@@ -254,8 +303,21 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Never use bare `Exception` or `RuntimeError` in application code
 - Provider modules define their own error subclasses: `GrafanaProviderError(ProviderError)`
 - Import errors from `nthlayer.core.errors`
+- Full error taxonomy in `core/errors.py`: `ConfigurationError` (exit 10), `ProviderError` (exit 11), `ValidationError` (exit 12), `BlockedError` (exit 2), `PolicyAuditError` (exit 12), `WarningResult` (exit 1)
+- Use `ExitCode` enum for exit codes: `ExitCode.SUCCESS=0`, `WARNING=1`, `BLOCKED=2`, `CONFIG_ERROR=10`, `PROVIDER_ERROR=11`, `VALIDATION_ERROR=12`, `UNKNOWN_ERROR=127`
+- CLI command main functions: wrap with `@main_with_error_handling()` decorator from `nthlayer.core.errors` for unified exit code conversion
 - Silently swallowed exceptions (bare `except` or `except Exception: pass`) must have explicit `# intentionally ignored: <reason>` comment
 - Golden Principle #4: Re-raise exceptions with context using `raise XError("doing X") from err` at layer boundaries
+- Lint enforcement: `check-exception-handling.sh` detects bare except blocks without intentional-ignore comments
+
+### Logging
+- Use `structlog` for all logging - no bare `print()` outside CLI entrypoints
+- Import logger: `logger = structlog.get_logger()`
+- Field naming: `err` or `error` (not `e`, `exc`), `component` (not `module`), `duration_ms` (not `elapsed`)
+- Stdlib `logging` module is forbidden in application modules — use structlog exclusively
+- Lint enforcement: `check-no-unstructured-logging.sh` detects print() in non-CLI modules
+- CLI entrypoints (orchestration/engine.py) may use print() for user-facing output
+- Tests use `tests/conftest.py` structlog test config to suppress log noise during test runs
 
 ### Dashboard Template Architecture
 - Templates live in `src/nthlayer/dashboards/templates/`
@@ -282,12 +344,26 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 
 ### Policy Audit API
 - Policy evaluation, violation, and override tracking via REST API
-- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit`
+- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit?hours=24`
+- Audit trail `hours` query param controls time window (default=24, range 1-720)
 - Domain models in `policies/audit.py`: PolicyEvaluation, PolicyViolation, PolicyOverride
 - `PolicyAuditRecorder` (policies/recorder.py) records audit events
 - `PolicyAuditRepository` (policies/repository.py) queries audit history
 - Integrated with deployment gates for manual override workflows
 - Audit trail endpoint returns evaluations, violations, and overrides in single response
+- policies router registered in `api/main.py` under `settings.api_prefix` with tag "policies"
+
+### Optional Dependency Groups
+- Install with extras for optional integrations: `pip install -e ".[aws]"`, `pip install -e ".[workflows]"`
+- `[aws]`: boto3, aioboto3 — required for CloudWatch and SQS modules
+- `[workflows]`: langgraph, langchain — required for `workflows/` LangGraph orchestration
+- `[kubernetes]`: kubernetes client — required for K8s dependency discovery provider
+- `[zookeeper]`: kazoo — required for Zookeeper discovery provider
+- `[etcd]`: etcd3 — required for etcd discovery provider
+- `[service-discovery]`: kazoo + etcd3 bundled — for all service discovery providers at once
+- Core `structlog`, `httpx`, `pagerduty`, `grafana-foundation-sdk` are always installed
+- Lazy import pattern: Optional imports use `__getattr__` in `__init__.py` (e.g., `queue/__init__.py` for SQS JobEnqueuer) to delay import until used, avoiding hard dependency on missing extras
+- TYPE_CHECKING guard prevents circular imports while allowing type hints for optional classes
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)

@@ -9,32 +9,14 @@ from typing import Any, List
 import yaml
 
 from nthlayer.alerts import AlertRule, AlertTemplateLoader
-from nthlayer.specs.helpers import extract_dependency_technologies
+from nthlayer.specs.helpers import extract_dependency_technologies, infer_technology_from_name
 from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import Resource
 from nthlayer.specs.parser import parse_service_file
 
 
 def extract_dependencies(resources: List[Resource]) -> List[str]:
-    """Extract dependency technologies from service resources.
-
-    Parses Dependencies resources to find databases, services, etc.
-
-    Args:
-        resources: List of Resource objects from service definition
-
-    Returns:
-        List of technology names (e.g., ["postgres", "redis", "nginx"])
-
-    Example:
-        >>> resources = [
-        ...     Resource(kind="Dependencies", spec={
-        ...         "databases": [{"type": "postgres"}, {"type": "redis"}]
-        ...     })
-        ... ]
-        >>> extract_dependencies(resources)
-        ['postgres', 'redis']
-    """
+    """Extract dependency technology names from Dependencies resources."""
     dependencies = []
 
     for resource in resources:
@@ -65,24 +47,10 @@ def extract_dependencies(resources: List[Resource]) -> List[str]:
                 continue
 
             # Try to infer tech from name
-            name = svc.get("name", "").lower()
-            tech_keywords = {
-                "redis": "redis",
-                "postgres": "postgres",
-                "mysql": "mysql",
-                "mongo": "mongodb",
-                "kafka": "kafka",
-                "rabbit": "rabbitmq",
-                "nginx": "nginx",
-                "haproxy": "haproxy",
-                "elasticsearch": "elasticsearch",
-                "elastic": "elasticsearch",
-            }
-
-            for keyword, tech in tech_keywords.items():
-                if keyword in name:
-                    dependencies.append(tech)
-                    break
+            name = svc.get("name", "")
+            tech = infer_technology_from_name(name)
+            if tech:
+                dependencies.append(tech)
 
         # Extract external APIs (might have tech info)
         for api in spec.get("external_apis", []):
@@ -95,29 +63,7 @@ def extract_dependencies(resources: List[Resource]) -> List[str]:
 
 
 def filter_by_tier(alerts: List[AlertRule], tier: str) -> List[AlertRule]:
-    """Filter alerts based on service tier.
-
-    Different tiers get different alert coverage:
-    - critical: All alerts (comprehensive monitoring)
-    - standard: Critical + warning alerts
-    - low: Only critical alerts (minimal noise)
-
-    Args:
-        alerts: List of AlertRule objects
-        tier: Service tier (critical, standard, low)
-
-    Returns:
-        Filtered list of alerts
-
-    Example:
-        >>> alerts = [
-        ...     AlertRule(name="Critical", severity="critical"),
-        ...     AlertRule(name="Warning", severity="warning"),
-        ...     AlertRule(name="Info", severity="info"),
-        ... ]
-        >>> filter_by_tier(alerts, "low")
-        [AlertRule(name="Critical", severity="critical")]
-    """
+    """Filter alerts by tier: critical=all, standard=critical+warning, low=critical only."""
     tier_lower = tier.lower()
 
     if tier_lower == "critical":
@@ -160,7 +106,7 @@ def generate_alerts_from_manifest(
     deps = extract_dependency_technologies(manifest)
     alert_routing = routing or manifest.support_model
 
-    return _generate_alerts_impl(
+    return _load_and_customize_alerts(
         service_name=manifest.name,
         team=manifest.team,
         tier=manifest.tier,
@@ -184,39 +130,7 @@ def generate_alerts_for_service(
     grafana_url: str = "",
     quiet: bool = False,
 ) -> List[AlertRule]:
-    """Generate alerts for a service based on its dependencies.
-
-    Main function that:
-    1. Parses service definition
-    2. Extracts dependencies
-    3. Loads appropriate alerts
-    4. Filters by tier
-    5. Customizes for service
-    6. Optionally writes output
-
-    Args:
-        service_file: Path to service YAML
-        output_file: Optional output path for generated alerts
-        environment: Optional environment name (dev, staging, prod)
-        runbook_url: Base URL for runbooks
-        notification_channel: Notification channel (pagerduty, slack, etc.)
-        routing: PagerDuty routing label (sre, team, shared). If None, uses
-                 service's support_model.
-        grafana_url: Base URL for Grafana dashboards
-        quiet: If True, suppress progress output to stdout. Use when calling
-               programmatically or when output format is machine-readable.
-
-    Returns:
-        List of generated AlertRule objects
-
-    Example:
-        >>> alerts = generate_alerts_for_service(
-        ...     Path("payment-api.yaml"),
-        ...     Path("generated/alerts/payment-api.yaml")
-        ... )
-        >>> len(alerts) > 0
-        True
-    """
+    """Generate alerts for a service by parsing its YAML and extracting dependencies."""
     # Parse service definition with optional environment overrides
     context, resources = parse_service_file(service_file, environment=environment)
 
@@ -226,7 +140,7 @@ def generate_alerts_for_service(
     # Extract dependencies
     deps = extract_dependencies(resources)
 
-    return _generate_alerts_impl(
+    return _load_and_customize_alerts(
         service_name=context.name,
         team=context.team,
         tier=context.tier,
@@ -240,7 +154,7 @@ def generate_alerts_for_service(
     )
 
 
-def _generate_alerts_impl(
+def _load_and_customize_alerts(
     service_name: str,
     team: str,
     tier: str,

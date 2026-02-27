@@ -552,3 +552,49 @@ class TestMetricVerifier:
 
         assert exists is True
         assert labels == {"instance": "localhost:9090"}
+
+
+class TestEmptyContractVerificationResult:
+    """Tests for ContractVerificationResult with zero checks."""
+
+    def test_empty_results_all_verified(self):
+        """Test that zero results means all_verified is True (vacuous truth)."""
+        result = ContractVerificationResult(
+            service_name="empty-service",
+            target_url="http://prometheus:9090",
+            results=[],
+        )
+
+        assert result.all_verified is True
+
+    def test_empty_results_critical_verified(self):
+        """Test that zero results means critical_verified is True."""
+        result = ContractVerificationResult(
+            service_name="empty-service",
+            target_url="http://prometheus:9090",
+            results=[],
+        )
+
+        assert result.critical_verified is True
+
+    def test_empty_results_exit_code_zero(self):
+        """Test that zero results yields exit code 0 (success)."""
+        result = ContractVerificationResult(
+            service_name="empty-service",
+            target_url="http://prometheus:9090",
+            results=[],
+        )
+
+        assert result.exit_code == 0
+
+    def test_empty_results_counts(self):
+        """Test that zero results has zero counts for missing/verified."""
+        result = ContractVerificationResult(
+            service_name="empty-service",
+            target_url="http://prometheus:9090",
+            results=[],
+        )
+
+        assert result.verified_count == 0
+        assert result.missing_critical == []
+        assert result.missing_optional == []

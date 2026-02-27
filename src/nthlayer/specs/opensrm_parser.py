@@ -21,13 +21,13 @@ Produces a ReliabilityManifest for downstream generators.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 from nthlayer.specs.manifest import (
     AuditConfig,

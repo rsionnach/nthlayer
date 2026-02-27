@@ -8,14 +8,14 @@ Supports both OpenSRM and legacy formats through the unified manifest model.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any, Dict, List, Optional
 
 from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
 from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import Resource, ServiceContext
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ManifestDashboardBuilder:

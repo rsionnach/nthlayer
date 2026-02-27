@@ -2,9 +2,12 @@
 
 from typing import Optional
 
+import structlog
 import yaml
 
 from nthlayer.cli.ux import console, error, header, info, success, warning
+
+logger = structlog.get_logger()
 from nthlayer.dashboards.intents import ALL_INTENTS, get_intents_for_technology, list_technologies
 from nthlayer.dashboards.resolver import ResolutionStatus
 from nthlayer.dashboards.validator import (
@@ -70,9 +73,7 @@ def validate_dashboard_command(
         return 1
     except (yaml.YAMLError, ValueError, KeyError, TypeError, OSError) as e:
         error(f"{e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("dashboard_validation_failed", err=str(e), exc_info=True)
         return 1
 
 
@@ -209,11 +210,9 @@ def list_intents_command(technology: Optional[str] = None) -> int:
 
         console.print(f"    [bold]{name}[/bold]")
         console.print(f"      [muted]Type:[/muted] {intent.metric_type.value}")
-        print(f"      Candidates: {', '.join(intent.candidates[:3])}", end="")
-        if len(intent.candidates) > 3:
-            print(f" (+{len(intent.candidates) - 3} more)")
-        else:
-            console.print()
+        candidates = ", ".join(intent.candidates[:3])
+        extra = f" (+{len(intent.candidates) - 3} more)" if len(intent.candidates) > 3 else ""
+        console.print(f"      [muted]Candidates:[/muted] {candidates}{extra}")
         console.print()
 
     console.print(f"[muted]Supported technologies: {', '.join(list_technologies())}")

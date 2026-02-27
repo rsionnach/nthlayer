@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
+import structlog
+
 from nthlayer.cli.ux import console, error, header, success
+
+logger = structlog.get_logger()
 from nthlayer.generators.backstage import generate_backstage_entity
 
 
@@ -113,7 +117,5 @@ def generate_backstage_command(
 
     except (FileNotFoundError, ValueError, KeyError, TypeError, OSError) as e:
         error(f"Error generating Backstage entity: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("backstage_generation_failed", err=str(e), exc_info=True)
         return 1

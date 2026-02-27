@@ -1,6 +1,6 @@
 """Template loader for NthLayer service templates."""
 
-import logging
+import structlog
 from pathlib import Path
 from typing import Dict
 
@@ -11,7 +11,7 @@ from nthlayer.core.errors import ConfigurationError
 from .models import Resource
 from .templates import ServiceTemplate, TemplateRegistry
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class TemplateLoader:

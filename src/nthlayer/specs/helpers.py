@@ -5,11 +5,40 @@ Provides utility functions used across multiple generators.
 
 from __future__ import annotations
 
-import logging
+import structlog
 
 from nthlayer.specs.manifest import ReliabilityManifest
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
+
+# Shared technology keywords for name-based inference
+TECH_KEYWORDS: dict[str, str] = {
+    "redis": "redis",
+    "postgres": "postgres",
+    "postgresql": "postgres",
+    "mysql": "mysql",
+    "mongo": "mongodb",
+    "mongodb": "mongodb",
+    "kafka": "kafka",
+    "rabbit": "rabbitmq",
+    "rabbitmq": "rabbitmq",
+    "nginx": "nginx",
+    "haproxy": "haproxy",
+    "elasticsearch": "elasticsearch",
+    "elastic": "elasticsearch",
+    "memcache": "memcached",
+    "memcached": "memcached",
+    "sqs": "sqs",
+}
+
+
+def infer_technology_from_name(name: str) -> str | None:
+    """Infer technology from a service/dependency name using keyword matching."""
+    name_lower = name.lower()
+    for keyword, tech in TECH_KEYWORDS.items():
+        if keyword in name_lower:
+            return tech
+    return None
 
 
 def extract_dependency_technologies(manifest: ReliabilityManifest) -> list[str]:

@@ -6,7 +6,7 @@ Verifies that declared metrics exist in a target Prometheus instance.
 
 from __future__ import annotations
 
-import logging
+import structlog
 import os
 from typing import Optional
 
@@ -19,7 +19,7 @@ from .models import (
     VerificationResult,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class MetricVerifier:

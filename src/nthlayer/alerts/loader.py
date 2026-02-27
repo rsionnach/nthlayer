@@ -4,7 +4,7 @@ Alert Template Loader
 Loads alerting rules from awesome-prometheus-alerts templates.
 """
 
-import logging
+import structlog
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -12,7 +12,7 @@ import yaml
 
 from .models import AlertRule
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class AlertTemplateLoader:
@@ -45,7 +45,7 @@ class AlertTemplateLoader:
         self.templates_dir = Path(templates_dir)
         self.cache: Dict[str, List[AlertRule]] = {}
 
-        logger.info(f"Initialized AlertTemplateLoader with templates_dir={self.templates_dir}")
+        logger.debug("alert_template_loader_init", templates_dir=str(self.templates_dir))
 
     def load_technology(self, technology: str) -> List[AlertRule]:
         """
@@ -77,7 +77,9 @@ class AlertTemplateLoader:
         # Cache results
         self.cache[technology] = alerts
 
-        logger.info(f"Loaded {len(alerts)} alerts for {technology} from {template_file}")
+        logger.debug(
+            "alerts_loaded", technology=technology, count=len(alerts), template=str(template_file)
+        )
         return alerts
 
     def _find_template(self, technology: str) -> Optional[Path]:

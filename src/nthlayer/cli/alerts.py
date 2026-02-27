@@ -77,7 +77,7 @@ def alerts_show_command(
     slo_names = [s.name for s in manifest.slos]
     effective = resolve_effective_rules(alerting, manifest.tier, slo_names)
 
-    if output_format == "json":
+    if output_format in ("json", "yaml"):
         data = [
             {
                 "name": r.name,
@@ -89,22 +89,12 @@ def alerts_show_command(
             }
             for r in effective
         ]
-        print(json.dumps(data, indent=2))
-    elif output_format == "yaml":
-        import yaml
+        if output_format == "json":
+            print(json.dumps(data, indent=2))
+        else:
+            import yaml
 
-        data = [
-            {
-                "name": r.name,
-                "type": r.type,
-                "slo": r.slo,
-                "threshold": r.threshold,
-                "severity": r.severity,
-                "enabled": r.enabled,
-            }
-            for r in effective
-        ]
-        print(yaml.dump(data, default_flow_style=False))
+            print(yaml.dump(data, default_flow_style=False))
     else:
         _print_rules_table(manifest.name, manifest.tier, effective)
 

@@ -4,7 +4,13 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-import aioboto3
+try:
+    import aioboto3
+except ImportError as err:
+    raise ImportError(
+        "aioboto3 is required for AWS CloudWatch. Install with: pip install nthlayer[aws]"
+    ) from err
+
 import structlog
 
 logger = structlog.get_logger()

@@ -7,13 +7,13 @@ for the recommendation engine.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nthlayer.discovery.models import DiscoveryResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def discover_service_metrics(

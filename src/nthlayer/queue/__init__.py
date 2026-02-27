@@ -1,10 +1,20 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from nthlayer.queue.memory import InMemoryJobEnqueuer
 from nthlayer.queue.models import JobMessage
-from nthlayer.queue.sqs import JobEnqueuer
+
+if TYPE_CHECKING:
+    from nthlayer.queue.sqs import JobEnqueuer
+
+
+def __getattr__(name: str):
+    if name == "JobEnqueuer":
+        from nthlayer.queue.sqs import JobEnqueuer
+
+        return JobEnqueuer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")  # pragma: no cover
 
 
 class JobQueue(Protocol):

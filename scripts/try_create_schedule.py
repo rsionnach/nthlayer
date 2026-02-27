@@ -70,8 +70,6 @@ try:
         print(f"   Delete status: {del_response.status_code}")
 except Exception as e:
     print(f"   Error: {e}")
-    import traceback
-
-    traceback.print_exc()
+    sys.exit(1)
 
 print("\nDone!")

@@ -74,6 +74,15 @@ htmlcov/
 .nthlayer/
 *.nthlayer.yaml
 
+# Desloppify state
+.desloppify/
+
+# ChunkHound index
+.chunkhound/
+
+# Scorecard badge
+scorecard.png
+
 # Development/Archive files (not for users)
 archive/*
 docs/archive/*
