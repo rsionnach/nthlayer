@@ -14,7 +14,7 @@ def __getattr__(name: str):
         from nthlayer.queue.sqs import JobEnqueuer
 
         return JobEnqueuer
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")  # pragma: no cover
 
 
 class JobQueue(Protocol):
