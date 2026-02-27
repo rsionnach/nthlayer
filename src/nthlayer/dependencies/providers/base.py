@@ -11,7 +11,37 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from nthlayer.dependencies.models import DiscoveredDependency
+from nthlayer.dependencies.models import DependencyType, DiscoveredDependency
+
+
+def deduplicate_dependencies(deps: list[DiscoveredDependency]) -> list[DiscoveredDependency]:
+    """Remove duplicate dependencies, keeping highest confidence."""
+    seen: dict[str, DiscoveredDependency] = {}
+
+    for dep in deps:
+        key = f"{dep.source_service}:{dep.target_service}:{dep.dep_type.value}"
+
+        if key not in seen or dep.confidence > seen[key].confidence:
+            seen[key] = dep
+
+    return list(seen.values())
+
+
+def infer_dependency_type(service_name: str) -> DependencyType:
+    """Infer dependency type from service name patterns."""
+    name_lower = service_name.lower()
+
+    # Database patterns
+    if any(
+        db in name_lower for db in ("postgres", "mysql", "mongo", "redis", "elastic", "cassandra")
+    ):
+        return DependencyType.DATASTORE
+
+    # Queue patterns
+    if any(q in name_lower for q in ("kafka", "rabbitmq", "sqs", "nats", "pulsar")):
+        return DependencyType.QUEUE
+
+    return DependencyType.SERVICE
 
 
 @dataclass

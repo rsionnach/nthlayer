@@ -8,6 +8,7 @@ from nthlayer.dependencies.providers.backstage import (
     BackstageDepProvider,
     BackstageDepProviderError,
 )
+from nthlayer.dependencies.providers.base import deduplicate_dependencies
 
 # Sample catalog entities for testing
 SAMPLE_ENTITIES = [
@@ -446,7 +447,7 @@ class TestBackstageDepProviderDeduplicate:
             ),
         ]
 
-        result = provider._deduplicate(deps)
+        result = deduplicate_dependencies(deps)
 
         assert len(result) == 1
         assert result[0].confidence == 0.95

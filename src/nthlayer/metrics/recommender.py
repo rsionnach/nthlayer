@@ -7,7 +7,7 @@ and validates coverage against discovered metrics from Prometheus.
 
 from __future__ import annotations
 
-import logging
+import structlog
 
 from nthlayer.metrics.models import (
     MetricDefinition,
@@ -20,7 +20,7 @@ from nthlayer.metrics.templates.registry import get_template, resolve_template_m
 from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import ServiceContext  # Used by recommend_metrics
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def recommend_metrics_from_manifest(

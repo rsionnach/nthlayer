@@ -9,14 +9,14 @@ Uses the official PagerDuty Python SDK (pagerduty>=6.0.0).
 
 from __future__ import annotations
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from typing import Any
 
 import pagerduty
 from pagerduty import RestApiV2Client
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 @dataclass

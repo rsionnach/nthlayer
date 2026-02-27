@@ -21,10 +21,8 @@ dependencies = [
     "redis>=5.0.4,<8.0.0",
     "httpx>=0.27.0,<0.29.0",
     "pagerduty>=6.0.0,<7.0.0",
-    "aioboto3>=12.3.0,<16.0.0",
-    "boto3>=1.34.0,<2.0.0",
-    "langgraph>=1.0.0,<2.0.0",
-    "langchain>=0.3.0,<1.3.0",
+    # boto3/aioboto3 moved to [aws] optional group
+    # langgraph/langchain moved to [workflows] optional group
     "structlog>=24.1.0,<25.0.0",
     "orjson>=3.10.0,<4.0.0",
     "python-json-logger>=2.0.7,<5.0.0",
@@ -89,6 +87,16 @@ service-discovery = [
     # All service discovery providers (Consul uses httpx, already included)
     "kazoo>=2.9.0,<3.0.0",
     "etcd3>=0.12.0,<1.0.0",
+]
+aws = [
+    # AWS integrations (CloudWatch, SQS)
+    "aioboto3>=12.3.0,<16.0.0",
+    "boto3>=1.34.0,<2.0.0",
+]
+workflows = [
+    # LangGraph workflow orchestration
+    "langgraph>=1.0.0,<2.0.0",
+    "langchain>=0.3.0,<1.3.0",
 ]
 
 [tool.setuptools.packages.find]

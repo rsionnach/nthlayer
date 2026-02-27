@@ -11,7 +11,7 @@ Enhanced with the Hybrid Model:
 - Custom metric overrides from service YAML
 """
 
-import logging
+import structlog
 from typing import Any, Dict, List, Optional
 
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
@@ -21,7 +21,7 @@ from nthlayer.dashboards.sdk_adapter import SDKAdapter
 from nthlayer.dashboards.templates import get_template, get_template_or_none
 from nthlayer.specs.models import Resource, ServiceContext
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class DashboardBuilderSDK:

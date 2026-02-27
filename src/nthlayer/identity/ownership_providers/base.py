@@ -65,3 +65,18 @@ class BaseOwnershipProvider(ABC):
         Returns:
             OwnershipProviderHealth status
         """
+
+    async def _delegate_health_check(self, provider: object) -> OwnershipProviderHealth:
+        """Delegate health check to an underlying provider with ProviderHealth."""
+        try:
+            health = await provider.health_check()  # type: ignore[attr-defined]
+            return OwnershipProviderHealth(
+                healthy=health.healthy,
+                message=health.message,
+                latency_ms=health.latency_ms,
+            )
+        except Exception as e:
+            return OwnershipProviderHealth(
+                healthy=False,
+                message=f"Health check failed: {e}",
+            )

@@ -366,25 +366,6 @@ class TestDeployment:
     """Tests for deployment operations."""
 
     @pytest.mark.asyncio
-    async def test_record_deployment(self, mock_session):
-        """Test recording a deployment."""
-        repo = SLORepository(mock_session)
-
-        await repo.record_deployment(
-            deployment_id="deploy-001",
-            service="test-service",
-            deployed_at=datetime.utcnow(),
-            commit_sha="abc123",
-            author="developer@example.com",
-            pr_number="PR-42",
-            source="github-actions",
-            extra_data={"branch": "main"},
-        )
-
-        mock_session.add.assert_called_once()
-        mock_session.flush.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_create_deployment(self, mock_session):
         """Test creating a deployment record."""
         from nthlayer.slos.deployment import Deployment
@@ -516,10 +497,11 @@ class TestIncident:
     @pytest.mark.asyncio
     async def test_record_incident(self, mock_session):
         """Test recording an incident."""
-        repo = SLORepository(mock_session)
+        from nthlayer.slos.models import Incident
 
-        await repo.record_incident(
-            incident_id="inc-001",
+        repo = SLORepository(mock_session)
+        incident = Incident(
+            id="inc-001",
             service="test-service",
             started_at=datetime.utcnow(),
             title="High Error Rate",
@@ -530,6 +512,8 @@ class TestIncident:
             source="pagerduty",
             extra_data={"urgency": "high"},
         )
+
+        await repo.record_incident(incident)
 
         mock_session.add.assert_called_once()
         mock_session.flush.assert_called_once()

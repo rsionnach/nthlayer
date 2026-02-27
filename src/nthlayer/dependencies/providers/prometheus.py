@@ -18,7 +18,11 @@ import httpx
 
 from nthlayer.core.errors import ProviderError
 from nthlayer.dependencies.models import DependencyType, DiscoveredDependency
-from nthlayer.dependencies.providers.base import BaseDepProvider, ProviderHealth
+from nthlayer.dependencies.providers.base import (
+    BaseDepProvider,
+    ProviderHealth,
+    deduplicate_dependencies,
+)
 
 
 class PrometheusDepProviderError(ProviderError):
@@ -200,7 +204,7 @@ class PrometheusDepProvider(BaseDepProvider):
                     continue
 
         # Deduplicate dependencies
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     async def discover_downstream(self, service: str) -> list[DiscoveredDependency]:
         """Discover services that call this service (downstream dependents)."""
@@ -241,7 +245,7 @@ class PrometheusDepProvider(BaseDepProvider):
                 except Exception:
                     continue
 
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     def _add_service_filter(self, query: str, service: str, source_labels: list[str]) -> str:
         """Add service filter to query."""
@@ -289,18 +293,6 @@ class PrometheusDepProvider(BaseDepProvider):
             if label in metric and metric[label]:
                 return metric[label]
         return None
-
-    def _deduplicate(self, deps: list[DiscoveredDependency]) -> list[DiscoveredDependency]:
-        """Remove duplicate dependencies, keeping highest confidence."""
-        seen: dict[str, DiscoveredDependency] = {}
-
-        for dep in deps:
-            key = f"{dep.source_service}:{dep.target_service}:{dep.dep_type.value}"
-
-            if key not in seen or dep.confidence > seen[key].confidence:
-                seen[key] = dep
-
-        return list(seen.values())
 
     async def list_services(self) -> list[str]:
         """List all services with metrics in Prometheus."""

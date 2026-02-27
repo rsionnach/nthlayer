@@ -5,8 +5,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
+import structlog
+
 from nthlayer.alertmanager import generate_alertmanager_config
 from nthlayer.core.errors import ProviderError
+
+logger = structlog.get_logger()
 from nthlayer.orchestration.registry import OrchestratorContext, ResourceRegistry
 from nthlayer.pagerduty import EventOrchestrationManager, PagerDutyResourceManager
 
@@ -81,7 +85,8 @@ class AlertHandler:
             return [
                 {"severity": sev, "count": count} for sev, count in sorted(severity_counts.items())
             ]
-        except Exception:
+        except Exception as e:
+            logger.warning("alert_plan_failed", err=str(e), exc_info=True)
             return []
 
     def generate(self, ctx: OrchestratorContext) -> int:
@@ -400,7 +405,7 @@ def _push_dashboard_to_grafana(dashboard_file: Path, service_name: str) -> None:
     print("📤 Pushing dashboard to Grafana...")
 
     async def do_push():
-        """Async function to push dashboard."""
+        """Push dashboard via async GrafanaProvider."""
         dashboard_resource = provider.dashboard(dashboard_uid)
         await dashboard_resource.apply(
             {
@@ -411,23 +416,11 @@ def _push_dashboard_to_grafana(dashboard_file: Path, service_name: str) -> None:
         )
 
     try:
-        try:
-            _ = asyncio.get_running_loop()
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, do_push())
-                future.result()
-        except RuntimeError:
-            asyncio.run(do_push())
-
+        asyncio.run(do_push())
         print(f"✅ Dashboard pushed to Grafana: {grafana_url}/d/{dashboard_uid}")
     except Exception as e:
+        logger.warning("grafana_push_failed", err=str(e), exc_info=True)
         print(f"⚠️  Failed to push dashboard to Grafana: {e}")
-        print(f"   Error type: {type(e).__name__}")
-        import traceback
-
-        traceback.print_exc()
         print("   Dashboard file saved locally, you can import manually.")
 
 

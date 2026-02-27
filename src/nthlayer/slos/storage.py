@@ -25,6 +25,7 @@ from nthlayer.slos.models import SLO, ErrorBudget, TimeWindowType
 
 if TYPE_CHECKING:
     from nthlayer.slos.deployment import Deployment
+    from nthlayer.slos.models import Incident
 
 
 class SLORepository:
@@ -52,35 +53,29 @@ class SLORepository:
 
     async def get_slo(self, slo_id: str) -> SLO | None:
         """Get an SLO by ID."""
-        result = await self.session.execute(
-            select(SLOModel).where(SLOModel.id == slo_id)
-        )
+        result = await self.session.execute(select(SLOModel).where(SLOModel.id == slo_id))
         model = result.scalar_one_or_none()
-        
+
         if model is None:
             return None
-        
+
         return self._model_to_slo(model)
 
     async def get_slos_by_service(self, service: str) -> list[SLO]:
         """Get all SLOs for a service."""
-        result = await self.session.execute(
-            select(SLOModel).where(SLOModel.service == service)
-        )
+        result = await self.session.execute(select(SLOModel).where(SLOModel.service == service))
         models = result.scalars().all()
-        
+
         return [self._model_to_slo(model) for model in models]
 
     async def update_slo(self, slo: SLO) -> None:
         """Update an existing SLO."""
-        result = await self.session.execute(
-            select(SLOModel).where(SLOModel.id == slo.id)
-        )
+        result = await self.session.execute(select(SLOModel).where(SLOModel.id == slo.id))
         model = result.scalar_one_or_none()
-        
+
         if model is None:
             raise ValueError(f"SLO not found: {slo.id}")
-        
+
         model.service = slo.service
         model.name = slo.name
         model.description = slo.description
@@ -91,16 +86,14 @@ class SLORepository:
         model.owner = slo.owner
         model.labels = slo.labels
         model.updated_at = datetime.utcnow()
-        
+
         await self.session.flush()
 
     async def delete_slo(self, slo_id: str) -> None:
         """Delete an SLO and all related data."""
-        result = await self.session.execute(
-            select(SLOModel).where(SLOModel.id == slo_id)
-        )
+        result = await self.session.execute(select(SLOModel).where(SLOModel.id == slo_id))
         model = result.scalar_one_or_none()
-        
+
         if model is not None:
             await self.session.delete(model)
             await self.session.flush()
@@ -116,7 +109,7 @@ class SLORepository:
             )
         )
         model = result.scalar_one_or_none()
-        
+
         if model is None:
             # Create new
             model = ErrorBudgetModel(
@@ -144,7 +137,7 @@ class SLORepository:
             model.status = budget.status.value
             model.burn_rate = budget.burn_rate
             model.updated_at = datetime.utcnow()
-        
+
         await self.session.flush()
 
     async def get_current_error_budget(self, slo_id: str) -> ErrorBudget | None:
@@ -157,10 +150,10 @@ class SLORepository:
             .limit(1)
         )
         model = result.scalar_one_or_none()
-        
+
         if model is None:
             return None
-        
+
         return self._model_to_error_budget(model)
 
     async def record_slo_measurement(
@@ -205,7 +198,7 @@ class SLORepository:
             .order_by(SLOHistoryModel.timestamp)
         )
         models = result.scalars().all()
-        
+
         return [
             {
                 "timestamp": model.timestamp.isoformat(),
@@ -218,56 +211,19 @@ class SLORepository:
             for model in models
         ]
 
-    async def record_deployment(
-        self,
-        deployment_id: str,
-        service: str,
-        deployed_at: datetime,
-        commit_sha: str | None = None,
-        author: str | None = None,
-        pr_number: str | None = None,
-        source: str = "argocd",
-        extra_data: dict[str, Any] | None = None,
-    ) -> None:
-        """Record a deployment event."""
-        model = DeploymentModel(
-            id=deployment_id,
-            service=service,
-            deployed_at=deployed_at,
-            commit_sha=commit_sha,
-            author=author,
-            pr_number=pr_number,
-            source=source,
-            extra_data=extra_data,
-        )
-        self.session.add(model)
-        await self.session.flush()
-
-    async def record_incident(
-        self,
-        incident_id: str,
-        service: str,
-        started_at: datetime,
-        title: str | None = None,
-        severity: str | None = None,
-        resolved_at: datetime | None = None,
-        duration_minutes: float | None = None,
-        budget_burn_minutes: float | None = None,
-        source: str = "pagerduty",
-        extra_data: dict[str, Any] | None = None,
-    ) -> None:
-        """Record an incident."""
+    async def record_incident(self, incident: "Incident") -> None:
+        """Record an incident affecting error budget."""
         model = IncidentModel(
-            id=incident_id,
-            service=service,
-            title=title,
-            severity=severity,
-            started_at=started_at,
-            resolved_at=resolved_at,
-            duration_minutes=duration_minutes,
-            budget_burn_minutes=budget_burn_minutes,
-            source=source,
-            extra_data=extra_data,
+            id=incident.id,
+            service=incident.service,
+            title=incident.title,
+            severity=incident.severity,
+            started_at=incident.started_at,
+            resolved_at=incident.resolved_at,
+            duration_minutes=incident.duration_minutes,
+            budget_burn_minutes=incident.budget_burn_minutes,
+            source=incident.source,
+            extra_data=incident.extra_data,
         )
         self.session.add(model)
         await self.session.flush()
@@ -275,12 +231,12 @@ class SLORepository:
     def _model_to_slo(self, model: SLOModel) -> SLO:
         """Convert SQLAlchemy model to SLO object."""
         from nthlayer.slos.models import TimeWindow
-        
+
         time_window = TimeWindow(
             duration=model.time_window_duration,
             type=TimeWindowType(model.time_window_type),
         )
-        
+
         return SLO(
             id=model.id,
             service=model.service,
@@ -298,7 +254,7 @@ class SLORepository:
     def _model_to_error_budget(self, model: ErrorBudgetModel) -> ErrorBudget:
         """Convert SQLAlchemy model to ErrorBudget object."""
         from nthlayer.slos.models import SLOStatus
-        
+
         return ErrorBudget(
             slo_id=model.slo_id,
             service=model.service,
@@ -314,9 +270,9 @@ class SLORepository:
             burn_rate=model.burn_rate,
             updated_at=model.updated_at,
         )
-    
+
     # Deployment methods
-    
+
     async def create_deployment(self, deployment: "Deployment") -> None:
         """Create a deployment record."""
         model = DeploymentModel(
@@ -334,19 +290,19 @@ class SLORepository:
         )
         self.session.add(model)
         await self.session.flush()
-    
+
     async def get_deployment(self, deployment_id: str) -> "Deployment | None":
         """Get a deployment by ID."""
         from nthlayer.slos.deployment import Deployment
-        
+
         result = await self.session.execute(
             select(DeploymentModel).where(DeploymentModel.id == deployment_id)
         )
         model = result.scalar_one_or_none()
-        
+
         if model is None:
             return None
-        
+
         return Deployment(
             id=model.id,
             service=model.service,
@@ -360,7 +316,7 @@ class SLORepository:
             correlated_burn_minutes=model.correlated_burn_minutes,
             correlation_confidence=model.correlation_confidence,
         )
-    
+
     async def get_recent_deployments(
         self,
         service: str,
@@ -369,9 +325,9 @@ class SLORepository:
     ) -> list["Deployment"]:
         """Get recent deployments for a service."""
         from nthlayer.slos.deployment import Deployment
-        
+
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-        
+
         result = await self.session.execute(
             select(DeploymentModel)
             .where(
@@ -382,7 +338,7 @@ class SLORepository:
             .order_by(DeploymentModel.deployed_at.desc())
         )
         models = result.scalars().all()
-        
+
         return [
             Deployment(
                 id=model.id,
@@ -399,7 +355,7 @@ class SLORepository:
             )
             for model in models
         ]
-    
+
     async def update_deployment_correlation(
         self,
         deployment_id: str,
@@ -411,12 +367,12 @@ class SLORepository:
             select(DeploymentModel).where(DeploymentModel.id == deployment_id)
         )
         model = result.scalar_one_or_none()
-        
+
         if model is not None:
             model.correlated_burn_minutes = burn_minutes
             model.correlation_confidence = confidence
             await self.session.flush()
-    
+
     async def get_burn_rate_window(
         self,
         slo_id: str,
@@ -425,43 +381,42 @@ class SLORepository:
     ) -> float:
         """
         Calculate burn rate (minutes per minute) in a time window.
-        
+
         Args:
             slo_id: SLO identifier
             start_time: Window start
             end_time: Window end
-            
+
         Returns:
             Burn rate in minutes per minute
         """
         # Query error budgets in window
         result = await self.session.execute(
-            select(ErrorBudgetModel)
-            .where(
+            select(ErrorBudgetModel).where(
                 ErrorBudgetModel.slo_id == slo_id,
                 ErrorBudgetModel.updated_at >= start_time,
                 ErrorBudgetModel.updated_at <= end_time,
             )
         )
         budgets = result.scalars().all()
-        
+
         if not budgets:
             return 0.0
-        
+
         # Get most recent budget (has cumulative burn)
         latest_budget = max(budgets, key=lambda b: b.updated_at)
-        
+
         # Get oldest budget in window
         oldest_budget = min(budgets, key=lambda b: b.updated_at)
-        
+
         # Calculate burn in window
         burn_in_window = latest_budget.burned_minutes - oldest_budget.burned_minutes
-        
+
         # Calculate window duration in minutes
         window_duration = (end_time - start_time).total_seconds() / 60
-        
+
         if window_duration == 0:
             return 0.0
-        
+
         # Return burn rate (minutes per minute)
         return burn_in_window / window_duration

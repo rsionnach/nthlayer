@@ -4,7 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
 import structlog
-from langgraph.graph import END, StateGraph
+
+try:
+    from langgraph.graph import END, StateGraph
+except ImportError as err:
+    raise ImportError(
+        "langgraph is required for workflows. Install with: pip install nthlayer[workflows]"
+    ) from err
 
 from nthlayer.clients import CortexClient, SlackNotifier
 from nthlayer.db.repositories import RunRepository
@@ -47,7 +53,7 @@ class TeamReconcileWorkflow:
         graph.set_entry_point("fetch_cortex")
         graph.add_edge("fetch_cortex", "fetch_pagerduty")
         graph.add_edge("fetch_pagerduty", "compute_diff")
-        
+
         graph.add_conditional_edges(
             "compute_diff",
             self._should_apply,
@@ -56,7 +62,7 @@ class TeamReconcileWorkflow:
                 "skip": "notify",
             },
         )
-        
+
         graph.add_edge("apply_diff", "notify")
         graph.add_edge("notify", END)
 
@@ -90,7 +96,9 @@ class TeamReconcileWorkflow:
         pagerduty_team = await self.pagerduty.get_team(team_id)
         members = await self.pagerduty.get_team_members(team_id)
         pagerduty_team["members"] = members
-        logger.info("pagerduty_team_fetched", job_id=job_id, team_id=team_id, member_count=len(members))
+        logger.info(
+            "pagerduty_team_fetched", job_id=job_id, team_id=team_id, member_count=len(members)
+        )
         return state | {"pagerduty_team": pagerduty_team}
 
     async def _compute_diff(self, state: TeamReconcileState) -> TeamReconcileState:
@@ -109,7 +117,7 @@ class TeamReconcileWorkflow:
             {"user": {"id": identifier}, "role": "manager"}
             for identifier in sorted(desired_manager_ids)
         ]
-        
+
         logger.info(
             "diff_computed",
             job_id=job_id,
@@ -123,18 +131,18 @@ class TeamReconcileWorkflow:
         team_id = state["team_id"]
         job_id = state["job_id"]
         memberships = state.get("target_memberships", [])
-        
+
         logger.info("applying_diff", job_id=job_id, team_id=team_id)
-        
+
         if diff.get("add") or diff.get("remove"):
             idempotency_key = f"{job_id}:{team_id}:members"
-            
+
             await self.pagerduty.set_team_members(
                 team_id,
                 memberships,
                 idempotency_key=idempotency_key,
             )
-            
+
             await self.repository.record_finding(
                 Finding(
                     run_id=job_id,

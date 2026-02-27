@@ -22,10 +22,12 @@ if command -v bd &>/dev/null; then
     fi
 fi
 
-# Check for unpushed commits
-UNPUSHED=$(git log @{u}.. --oneline 2>/dev/null | wc -l | tr -d ' ')
-if [ "$UNPUSHED" -gt 0 ]; then
-    ISSUES="${ISSUES}• You have $UNPUSHED unpushed commit(s). Run git push before ending.\n"
+# Check for unpushed commits (only if upstream is configured)
+if git rev-parse --abbrev-ref --symbolic-full-name @{u} &>/dev/null; then
+    UNPUSHED=$(git log @{u}.. --oneline 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$UNPUSHED" -gt 0 ]; then
+        ISSUES="${ISSUES}• You have $UNPUSHED unpushed commit(s). Run git push before ending.\n"
+    fi
 fi
 
 # Optional: uncomment when lint rules are stable

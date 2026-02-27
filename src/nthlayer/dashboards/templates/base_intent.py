@@ -5,7 +5,7 @@ This module provides the base class for intent-based templates that use
 the metric resolution system instead of hardcoded metric names.
 """
 
-import logging
+import structlog
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -14,7 +14,7 @@ from nthlayer.dashboards.panel_spec import PanelSpec, PanelType
 from nthlayer.dashboards.resolver import MetricResolver, ResolutionResult, ResolutionStatus
 from nthlayer.dashboards.templates.base import TechnologyTemplate
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class IntentBasedTemplate(TechnologyTemplate):

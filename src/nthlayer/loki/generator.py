@@ -6,7 +6,7 @@ Generates LogQL alert rules from service definitions.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from pathlib import Path
 
 import yaml
@@ -18,7 +18,7 @@ from nthlayer.specs.models import Resource
 from .models import LogQLAlert
 from .templates import LogPattern, get_patterns_for_technology
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class LokiAlertGenerator:

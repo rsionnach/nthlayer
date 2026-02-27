@@ -9,7 +9,7 @@ Uses the official PagerDuty Python SDK (pagerduty>=6.0.0).
 
 from __future__ import annotations
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone as timezone_module
@@ -23,6 +23,7 @@ from nthlayer.pagerduty.defaults import (
     get_schedule_config,
     get_schedules_for_tier,
 )
+from nthlayer.core.errors import ProviderError
 from nthlayer.pagerduty.naming import (
     get_escalation_policy_name,
     get_schedule_name,
@@ -30,10 +31,10 @@ from nthlayer.pagerduty.naming import (
     get_team_name,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
-class PagerDutyAPIError(Exception):
+class PagerDutyAPIError(ProviderError):
     """Raised when PagerDuty API returns an error."""
 
     pass

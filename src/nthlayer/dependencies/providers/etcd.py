@@ -26,7 +26,12 @@ from nthlayer.dependencies.models import (
     DependencyType,
     DiscoveredDependency,
 )
-from nthlayer.dependencies.providers.base import BaseDepProvider, ProviderHealth
+from nthlayer.dependencies.providers.base import (
+    BaseDepProvider,
+    ProviderHealth,
+    deduplicate_dependencies,
+    infer_dependency_type,
+)
 
 # Optional etcd3 import
 try:
@@ -145,31 +150,6 @@ class EtcdDepProvider(BaseDepProvider):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
 
-    def _infer_dependency_type(self, service_name: str) -> DependencyType:
-        """
-        Infer dependency type from service name.
-
-        Args:
-            service_name: Service name
-
-        Returns:
-            Inferred DependencyType
-        """
-        name_lower = service_name.lower()
-
-        # Database patterns
-        if any(
-            db in name_lower
-            for db in ("postgres", "mysql", "mongo", "redis", "elastic", "cassandra")
-        ):
-            return DependencyType.DATASTORE
-
-        # Queue patterns
-        if any(q in name_lower for q in ("kafka", "rabbitmq", "sqs", "nats", "pulsar")):
-            return DependencyType.QUEUE
-
-        return DependencyType.SERVICE
-
     def _parse_dependencies(self, service_data: dict[str, Any]) -> list[tuple[str, DependencyType]]:
         """
         Parse dependencies from service data.
@@ -189,7 +169,7 @@ class EtcdDepProvider(BaseDepProvider):
 
         for dep in dependencies:
             if dep:
-                deps.append((dep, self._infer_dependency_type(dep)))
+                deps.append((dep, infer_dependency_type(dep)))
 
         # Check for typed dependencies
         for dep_type, key in [
@@ -267,7 +247,7 @@ class EtcdDepProvider(BaseDepProvider):
             # Key not found or other non-fatal errors
             pass
 
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     async def list_services(self) -> list[str]:
         """
@@ -377,23 +357,3 @@ class EtcdDepProvider(BaseDepProvider):
 
         except Exception:
             return {}
-
-    def _deduplicate(self, deps: list[DiscoveredDependency]) -> list[DiscoveredDependency]:
-        """
-        Deduplicate dependencies, keeping highest confidence.
-
-        Args:
-            deps: List of dependencies
-
-        Returns:
-            Deduplicated list
-        """
-        seen: dict[str, DiscoveredDependency] = {}
-
-        for dep in deps:
-            key = f"{dep.source_service}:{dep.target_service}:{dep.dep_type.value}"
-
-            if key not in seen or dep.confidence > seen[key].confidence:
-                seen[key] = dep
-
-        return list(seen.values())

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from nthlayer.core.errors import ConfigurationError
 from nthlayer.orchestration.engine import ExecutionEngine
 from nthlayer.orchestration.handlers import register_default_handlers
 from nthlayer.orchestration.plan_builder import PlanBuilder
@@ -148,9 +149,8 @@ class ServiceOrchestrator:
 
     def _build_context(self) -> OrchestratorContext:
         """Build the shared context for handlers."""
-        assert self.service_name is not None
-        assert self.service_def is not None
-        assert self.output_dir is not None
+        if self.service_name is None or self.service_def is None or self.output_dir is None:
+            raise ConfigurationError("service must be loaded before building context")
         return OrchestratorContext(
             service_yaml=self.service_yaml,
             service_def=self.service_def,
@@ -173,8 +173,8 @@ class ServiceOrchestrator:
                 errors=[f"Failed to load service: {e}"],
             )
 
-        assert self.service_name is not None
-        assert self.service_def is not None
+        if self.service_name is None or self.service_def is None:
+            raise ConfigurationError("service must be loaded before planning")
 
         # Ensure output_dir is set for context building
         if self.output_dir is None:

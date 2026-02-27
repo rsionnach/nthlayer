@@ -26,7 +26,11 @@ from nthlayer.dependencies.models import (
     DependencyType,
     DiscoveredDependency,
 )
-from nthlayer.dependencies.providers.base import BaseDepProvider, ProviderHealth
+from nthlayer.dependencies.providers.base import (
+    BaseDepProvider,
+    ProviderHealth,
+    deduplicate_dependencies,
+)
 
 
 class BackstageDepProviderError(Exception):
@@ -306,7 +310,7 @@ class BackstageDepProvider(BaseDepProvider):
                 )
             )
 
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     async def discover_downstream(self, service: str) -> list[DiscoveredDependency]:
         """
@@ -379,7 +383,7 @@ class BackstageDepProvider(BaseDepProvider):
                         )
                     )
 
-        return self._deduplicate(deps)
+        return deduplicate_dependencies(deps)
 
     async def list_services(self) -> list[str]:
         """
@@ -460,23 +464,3 @@ class BackstageDepProvider(BaseDepProvider):
             "tags": metadata.get("tags", []),
             "annotations": metadata.get("annotations", {}),
         }
-
-    def _deduplicate(self, deps: list[DiscoveredDependency]) -> list[DiscoveredDependency]:
-        """
-        Deduplicate dependencies, keeping highest confidence.
-
-        Args:
-            deps: List of dependencies
-
-        Returns:
-            Deduplicated list
-        """
-        seen: dict[str, DiscoveredDependency] = {}
-
-        for dep in deps:
-            key = f"{dep.source_service}:{dep.target_service}:{dep.dep_type.value}"
-
-            if key not in seen or dep.confidence > seen[key].confidence:
-                seen[key] = dep
-
-        return list(seen.values())

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nthlayer.dependencies.models import DependencyType
+from nthlayer.dependencies.providers.base import deduplicate_dependencies
 
 
 class TestKubernetesDepProviderAvailability:
@@ -466,7 +467,7 @@ class TestKubernetesDepProviderHelpers:
             ),
         ]
 
-        deduped = provider._deduplicate(deps)
+        deduped = deduplicate_dependencies(deps)
 
         assert len(deduped) == 2
 

@@ -84,7 +84,13 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 ## Architecture
 
 ### Core Modules
-- `orchestrator.py` - Service orchestration: coordinates SLO, alert, dashboard generation from service YAML
+- `orchestrator.py` - Facade for backward compatibility (delegates to orchestration/)
+- `orchestration/` - Phased resource generation orchestration
+  - `registry.py` - ResourceHandler protocol and ResourceRegistry
+  - `handlers.py` - Concrete handlers (SLO, Alert, Dashboard, PagerDuty, etc.)
+  - `engine.py` - ExecutionEngine for running generation loops
+  - `plan_builder.py` - Preview generation plans before execution
+  - `results.py` - ResultCollector for aggregating generation outcomes
 - `dashboards/` - Intent-based dashboard generation with metric resolution
   - `resolver.py` - MetricResolver: translates intents to Prometheus metrics with fallback chains
   - `templates/` - Technology-specific intent templates (postgresql, redis, kafka, etc.)
@@ -105,7 +111,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `providers/` - External service integrations (grafana, prometheus, pagerduty, mimir)
 - `identity/` - Service identity resolution across naming conventions
 - `slos/` - SLO definition, validation, and recording rule generation
+  - `models.py` - SLO, ErrorBudget, SLOStatus dataclasses; default target: 0.999
+  - `parser.py` - OpenSLO YAML parsing
+  - `collector.py` - SLOCollector: Prometheus queries for live budget data
+  - `calculator.py` - ErrorBudgetCalculator
+  - `gates.py` - Deployment gate enforcement (error budget thresholds)
   - `deployment.py` - DeploymentRecorder for storing deployment events
+  - `correlator.py` - DeploymentCorrelator for error budget correlation
+  - `ceiling.py` - SLO ceiling validation against upstream SLAs
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `validation/` - Metadata and resource validation
 - `policies/` - Policy DSL and deployment gate enforcement
@@ -113,9 +126,11 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `audit.py` - Audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
   - `recorder.py` - PolicyAuditRecorder for audit events
   - `repository.py` - PolicyAuditRepository for audit queries
-- `api/` - FastAPI webhook endpoints
+- `api/` - FastAPI API (webhooks, policies, health, teams)
+  - `main.py` - App factory; registers teams, webhooks, policies, health routers; optional Mangum/Lambda handler
   - `routes/webhooks.py` - Deployment webhook receiver
   - `routes/policies.py` - Policy audit and override API
+  - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
 - `scripts/lint/` - Custom linters for golden principles
   - `check-exception-handling.sh` - Enforce exception handling with context
   - `check-no-orphan-todos.sh` - Enforce TODO tracking via Beads
@@ -133,14 +148,15 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `tech-debt.md` - Technical debt inventory with AUTO-MANAGED section
 
 ### Data Flow
-1. Service YAML → ServiceOrchestrator → ResourceDetector (indexes by kind)
-2. ResourceDetector determines what to generate (SLOs, alerts, dashboards, etc.)
-3. Dashboard generation: IntentTemplate.get_panel_specs() → MetricResolver.resolve() → Panel objects
-4. Metric resolution: Custom overrides → Discovery → Fallback chain → Guidance
-5. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
-6. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
-7. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
-8. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
+1. Service YAML → ServiceOrchestrator (facade) → ResourceDetector (indexes by kind) → OrchestratorContext
+2. ExecutionEngine iterates over registered ResourceHandlers (SLO, Alert, Dashboard, etc.)
+3. Each handler's generate() method creates resources, returns count
+4. Dashboard generation: IntentTemplate.get_panel_specs() → MetricResolver.resolve() → Panel objects
+5. Metric resolution: Custom overrides → Discovery → Fallback chain → Guidance
+6. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
+7. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
+8. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
+9. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -169,12 +185,15 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - DependencyDiscovery orchestrator runs providers in parallel with `asyncio.gather()`
 - Provider errors raise `ProviderError` subclasses, never bare `Exception` or `RuntimeError`
 
-### Service Orchestration
-- `ServiceOrchestrator` (orchestrator.py) coordinates resource generation from service YAML
-- `ResourceDetector` builds single-pass index of resources by kind (SLO, Dependencies, etc.)
-- Auto-generates recording rules and Backstage entities when SLOs exist
-- Auto-generates alerts and dashboards when dependencies exist
-- `plan()` returns preview, `apply()` executes generation
+### Phased Resource Orchestration
+- `ResourceHandler` protocol defines `plan()` and `generate()` interface
+- `ResourceRegistry` maintains handlers for each resource type (slos, alerts, dashboards, etc.)
+- `OrchestratorContext` carries shared state (service YAML, output dir, env, ResourceDetector)
+- `ExecutionEngine` iterates over handlers, calls generate(), collects results
+- Each handler returns count of resources created
+- `ResultCollector` aggregates outcomes and errors across all handlers
+- Handlers are modular - new resource types register without changing orchestration core
+- `ServiceOrchestrator` (orchestrator.py) is now a facade for backward compatibility
 
 ### Deployment Detection Provider Pattern
 - Provider-agnostic webhook handling via `BaseDeploymentProvider` ABC
@@ -256,6 +275,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Import errors from `nthlayer.core.errors`
 - Silently swallowed exceptions (bare `except` or `except Exception: pass`) must have explicit `# intentionally ignored: <reason>` comment
 - Golden Principle #4: Re-raise exceptions with context using `raise XError("doing X") from err` at layer boundaries
+- Lint enforcement: `check-exception-handling.sh` detects bare except blocks without intentional-ignore comments
+
+### Logging
+- Use `structlog` for all logging - no bare `print()` outside CLI entrypoints
+- Import logger: `logger = structlog.get_logger()`
+- Field naming: `err` or `error` (not `e`, `exc`), `component` (not `module`), `duration_ms` (not `elapsed`)
+- Lint enforcement: `check-no-unstructured-logging.sh` detects print() in non-CLI modules
+- CLI entrypoints (orchestration/engine.py) may use print() for user-facing output
 
 ### Dashboard Template Architecture
 - Templates live in `src/nthlayer/dashboards/templates/`
@@ -282,12 +309,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 
 ### Policy Audit API
 - Policy evaluation, violation, and override tracking via REST API
-- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit`
+- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit?hours=24`
+- Audit trail `hours` query param controls time window (default=24, range 1-720)
 - Domain models in `policies/audit.py`: PolicyEvaluation, PolicyViolation, PolicyOverride
 - `PolicyAuditRecorder` (policies/recorder.py) records audit events
 - `PolicyAuditRepository` (policies/repository.py) queries audit history
 - Integrated with deployment gates for manual override workflows
 - Audit trail endpoint returns evaluations, violations, and overrides in single response
+- policies router registered in `api/main.py` under `settings.api_prefix` with tag "policies"
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
