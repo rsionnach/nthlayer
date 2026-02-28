@@ -1,6 +1,6 @@
 # Package Quality Grades
 
-Last updated: 2026-02-12
+Last updated: 2026-02-28
 
 ## Grading Criteria
 
@@ -24,7 +24,7 @@ Last updated: 2026-02-12
 | core | 1 file | Minimal | Good (error base) | Stable | C | Error hierarchy well-defined |
 | dashboards | 4 files | Partial | Good | Stable | B | Intent system well-tested |
 | dependencies | 2 files | Minimal | Good (ProviderError) | Stable | C | Provider pattern solid |
-| deployments | 0 files | Minimal | Good (DeploymentProviderError) | New | D | No tests yet, recently added |
+| deployments | 1 file | Minimal | Good (DeploymentProviderError) | Evolving | C | test_deployment_providers.py added |
 | discovery | 3 files | Partial | Good | Stable | B | MetricDiscovery well-covered |
 | identity | 2 files | Minimal | Good | Stable | C | Resolver tested |
 | loki | 2 files | Minimal | Good | Stable | C | Alert generation tested |
@@ -40,6 +40,7 @@ Last updated: 2026-02-12
 | domain | 0 files | Absent | Unknown | New | F | No tests, no docs |
 | generators | 0 files | Absent | Unknown | Evolving | F | No tests, no docs |
 | integrations | 0 files | Absent | Unknown | New | F | No tests, no docs |
+| topology | 1 file | Partial | Good | Evolving | C | test_topology.py added with dc1648b; API new |
 <!-- /AUTO-MANAGED: quality-grades -->
 
 ## Grade History
@@ -50,6 +51,8 @@ Track grade changes to see trajectory over time.
 | Date | Package | Change | Reason |
 |------|---------|--------|--------|
 | 2026-02-12 | all | — | Initial assessment |
+| 2026-02-28 | deployments | D → C | test_deployment_providers.py added (dc1648b desloppify sweep) |
+| 2026-02-28 | topology | (new) C | New module with test coverage; API evolving |
 <!-- /AUTO-MANAGED: grade-history -->
 
 ## Improvement Priorities

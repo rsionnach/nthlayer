@@ -298,6 +298,13 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - NTHLAYER004: BudgetExhausted, NTHLAYER005: HighBlastRadius, NTHLAYER006: TierMismatch
   - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
 - Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
+
+### Topology Export CLI Pattern
+- CLI command: `nthlayer topology export <manifest> [--format json|mermaid|dot] [--output FILE] [--depth N] [--demo]`
+- `--demo` flag runs export with built-in sample data (no manifest required)
+- JSON format produces Sitrep-compatible output; Mermaid uses `graph LR` with Nord-themed classDef tier styles and SLO labels on edges; DOT uses Graphviz digraph with Nord palette tier colors and type-based node shapes (cylinder=database, hexagon=worker/batch, parallelogram=queue), critical edges highlighted in red
+- Env vars: `NTHLAYER_PROMETHEUS_URL`, `NTHLAYER_METRICS_USER`, `NTHLAYER_METRICS_PASSWORD`
+- `build_topology()` (topology/enrichment.py) accepts optional `max_depth` + `root_service` for BFS-limited subgraph export
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
@@ -368,10 +375,12 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `[service-discovery]`: kazoo + etcd3 bundled — for all service discovery providers at once
 - Core `structlog`, `httpx`, `pagerduty`, `grafana-foundation-sdk` are always installed
 - Lazy import pattern: Optional imports use `__getattr__` in `__init__.py` (e.g., `queue/__init__.py` for SQS JobEnqueuer) to delay import until used, avoiding hard dependency on missing extras
+- Runtime import deferral: `api/deps.py` imports `SQS JobEnqueuer` inside the function body at call time (not at module load) — use this pattern in FastAPI dependency functions to avoid failing on startup when optional extras are absent
 - TYPE_CHECKING guard prevents circular imports while allowing type hints for optional classes
 
 ### Test Organization
-- Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`)
+- Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`) — this is the canonical location; `tests/mock_server.py` is a legacy duplicate, do not add new files there
+- Integration tests using mock servers live in `tests/integration/` (e.g., `tests/integration/test_mock_server_integration.py`)
 - Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
 - Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
 - Apply `importorskip` to any test module that imports from `[aws]`, `[workflows]`, or other optional extras
