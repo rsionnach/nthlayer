@@ -74,6 +74,7 @@ See `docs/conventions.md` for full Beads workflow.
 - **Doc gardening:** `/doc-garden`
 - **Spec to tasks:** `/spec-to-beads <spec-file>`
 - **Code quality sweep:** `/desloppify` (scan → fix → resolve loop for technical debt, dead code, code smells)
+- **Autonomous loop:** `.claude/ralph-loop.sh [max-iterations]` runs Ralph loop; prompt at `.claude/ralph-prompt.md`; signal completion with `RALPH_COMPLETE`
 - **Release:** Update CHANGELOG.md, merge `develop` → `main`, create GitHub release → auto-publishes to PyPI
 
 ## Commit Messages
@@ -255,7 +256,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Plans in `plans/` track spec implementation lifecycle
 - Format: `YYYY-MM-DD-<slug>.md` with metadata, requirements checklist, decision log, deviation log
 - Created by `/spec-to-beads`, updated during implementation
-- Plan status: active → completed → moved to archive
+- Plan lifecycle: active plans in `plans/active/`, completed plans move to `plans/completed/`
 - Decision log tracks architectural choices that diverge from or clarify specs
 - Deviation log defends against spec drift
 - Technical debt tracked in `plans/tech-debt.md` with AUTO-MANAGED section for audit agents
