@@ -112,6 +112,10 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `errors.py` - DeploymentProviderError exception
 - `drift/` - Reliability drift detection and trend analysis
   - `analyzer.py` - DriftAnalyzer for SLO trend analysis with configurable windows
+- `topology/` - Dependency graph topology export for visualization
+  - `models.py` - TopologyNode, TopologyEdge, TopologyGraph, SLOContract dataclasses
+  - `enrichment.py` - build_topology(): converts DependencyGraph → TopologyGraph with SLO contract enrichment
+  - `serializers.py` - Pure serializers: serialize_json(), serialize_mermaid(), serialize_dot()
 - `providers/` - External service integrations (grafana, prometheus, pagerduty, mimir)
 - `identity/` - Service identity resolution across naming conventions
 - `specs/` - Service specification models and parsing
@@ -170,6 +174,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 7. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
 8. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
 9. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
+10. Topology export: DependencyGraph → build_topology() → TopologyGraph → serialize_json/mermaid/dot()
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
