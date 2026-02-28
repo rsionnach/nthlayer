@@ -2,8 +2,12 @@
 Tests for deployment gates.
 """
 
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from nthlayer.policies.audit import PolicyOverride
 from nthlayer.slos.gates import DeploymentGate, GatePolicy, GateResult
 
 
@@ -436,3 +440,183 @@ class TestDeploymentGateEdgeCases:
         )
 
         assert result.result == GateResult.BLOCKED
+
+
+class TestCheckDeploymentWithAudit:
+    """Tests for check_deployment_with_audit() async method."""
+
+    @pytest.fixture
+    def mock_recorder(self):
+        """Create a mock PolicyAuditRecorder."""
+        recorder = MagicMock()
+        recorder.record_gate_check = AsyncMock(return_value=None)
+        return recorder
+
+    @pytest.fixture
+    def mock_override_repo(self):
+        """Create a mock PolicyAuditRepository."""
+        repo = MagicMock()
+        repo.get_active_override = AsyncMock(return_value=None)
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_calls_audit_recorder(self, mock_recorder):
+        """check_deployment_with_audit() calls record_gate_check on recorder."""
+        gate = DeploymentGate(audit_recorder=mock_recorder)
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            environment="prod",
+            team="payments",
+            actor="deploy-bot",
+            deployment_id="deploy-abc",
+        )
+
+        assert result.result == GateResult.APPROVED
+        mock_recorder.record_gate_check.assert_awaited_once()
+
+        call_kwargs = mock_recorder.record_gate_check.call_args[1]
+        assert call_kwargs["gate_check"].service == "payment-api"
+        assert call_kwargs["actor"] == "deploy-bot"
+        assert call_kwargs["deployment_id"] == "deploy-abc"
+
+    @pytest.mark.asyncio
+    async def test_override_downgrades_blocked(self, mock_recorder, mock_override_repo):
+        """Active override downgrades BLOCKED → APPROVED."""
+        active_override = PolicyOverride(
+            id="over-001",
+            timestamp=datetime.utcnow(),
+            service="payment-api",
+            policy_name="deployment-gate",
+            deployment_id=None,
+            approved_by="oncall@example.com",
+            reason="Emergency hotfix",
+            override_type="emergency_bypass",
+            expires_at=datetime.utcnow() + timedelta(hours=4),
+        )
+        mock_override_repo.get_active_override = AsyncMock(return_value=active_override)
+
+        gate = DeploymentGate(
+            audit_recorder=mock_recorder,
+            override_repository=mock_override_repo,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,  # Would normally be BLOCKED
+        )
+
+        assert result.result == GateResult.APPROVED
+        assert result.is_approved
+        assert "override" in result.message.lower()
+        assert "oncall@example.com" in result.message
+        mock_override_repo.get_active_override.assert_awaited_once_with(
+            "payment-api", "deployment-gate"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_override_stays_blocked(self, mock_recorder, mock_override_repo):
+        """Without active override, BLOCKED stays BLOCKED."""
+        mock_override_repo.get_active_override = AsyncMock(return_value=None)
+
+        gate = DeploymentGate(
+            audit_recorder=mock_recorder,
+            override_repository=mock_override_repo,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_override_not_checked_when_approved(self, mock_override_repo):
+        """Override is not checked when gate result is APPROVED."""
+        gate = DeploymentGate(override_repository=mock_override_repo)
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+        )
+
+        assert result.result == GateResult.APPROVED
+        mock_override_repo.get_active_override.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fail_open_audit_error(self):
+        """Audit recording failure doesn't affect gate result."""
+        mock_recorder = MagicMock()
+        mock_recorder.record_gate_check = AsyncMock(side_effect=Exception("DB connection lost"))
+
+        gate = DeploymentGate(audit_recorder=mock_recorder)
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        # Gate result is correct despite audit failure
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_fail_open_override_error(self, mock_recorder):
+        """Override check failure doesn't affect gate result."""
+        mock_override_repo = MagicMock()
+        mock_override_repo.get_active_override = AsyncMock(side_effect=Exception("DB timeout"))
+
+        gate = DeploymentGate(
+            audit_recorder=mock_recorder,
+            override_repository=mock_override_repo,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        # Gate result is correct despite override check failure
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_works_without_recorder_or_repo(self):
+        """Works identically to sync method when no recorder/repo provided."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+        )
+
+        assert result.result == GateResult.APPROVED
+
+    @pytest.mark.asyncio
+    async def test_sync_check_deployment_unchanged(self):
+        """Sync check_deployment() still works exactly as before (backward compat)."""
+        gate = DeploymentGate()
+
+        result = gate.check_deployment(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        assert result.result == GateResult.BLOCKED
+        assert result.is_blocked

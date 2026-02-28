@@ -92,14 +92,34 @@ def check_deploy_command(
     # Extract gate policy from service resources
     gate_resources = [r for r in resources if r.kind == "DeploymentGate"]
     policy = GatePolicy.from_spec(gate_resources[0].spec) if gate_resources else None
-    gate = DeploymentGate(policy=policy)
-    result = gate.check_deployment(
-        service=service_context.name,
-        tier=service_context.tier,
-        budget_total_minutes=int(budget.total_budget_minutes),
-        budget_consumed_minutes=int(budget.burned_budget_minutes),
-        downstream_services=downstream_services,
-    )
+
+    env = environment or "prod"
+
+    # Wire audit recorder when database is configured
+    db_url = os.environ.get("NTHLAYER_DATABASE_URL")
+    if db_url:
+        result = _run_gate_with_audit(
+            policy=policy,
+            db_url=db_url,
+            service=service_context.name,
+            tier=service_context.tier,
+            budget_total_minutes=int(budget.total_budget_minutes),
+            budget_consumed_minutes=int(budget.burned_budget_minutes),
+            downstream_services=downstream_services,
+            environment=env,
+            team=service_context.team,
+        )
+    else:
+        gate = DeploymentGate(policy=policy)
+        result = gate.check_deployment(
+            service=service_context.name,
+            tier=service_context.tier,
+            budget_total_minutes=int(budget.total_budget_minutes),
+            budget_consumed_minutes=int(budget.burned_budget_minutes),
+            downstream_services=downstream_services,
+            environment=env,
+            team=service_context.team,
+        )
 
     # Check drift if requested and not already blocked
     drift_result = None
@@ -132,6 +152,71 @@ def _extract_downstream_services(resources: list[Any]) -> list[dict[str, Any]]:
             )
 
     return downstream_services
+
+
+def _run_gate_with_audit(
+    policy: GatePolicy | None,
+    db_url: str,
+    service: str,
+    tier: str,
+    budget_total_minutes: int,
+    budget_consumed_minutes: int,
+    downstream_services: list[dict[str, Any]],
+    environment: str,
+    team: str | None,
+) -> Any:
+    """Run gate check with audit recording and override checking.
+
+    Creates async DB session, audit recorder, and calls
+    check_deployment_with_audit(). Fail-open: falls back to sync
+    check_deployment() if DB setup fails.
+    """
+    import structlog
+
+    logger = structlog.get_logger()
+
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+        from nthlayer.policies.recorder import PolicyAuditRecorder
+        from nthlayer.policies.repository import PolicyAuditRepository
+
+        async def _run() -> Any:
+            engine = create_async_engine(db_url)
+            async with AsyncSession(engine) as session:
+                repo = PolicyAuditRepository(session)
+                recorder = PolicyAuditRecorder(repo)
+                gate = DeploymentGate(
+                    policy=policy,
+                    audit_recorder=recorder,
+                    override_repository=repo,
+                )
+                result = await gate.check_deployment_with_audit(
+                    service=service,
+                    tier=tier,
+                    budget_total_minutes=budget_total_minutes,
+                    budget_consumed_minutes=budget_consumed_minutes,
+                    downstream_services=downstream_services,
+                    environment=environment,
+                    team=team,
+                )
+                await session.commit()
+                return result
+
+        return asyncio.run(_run())
+    except Exception:
+        logger.warning("audit_setup_failed", exc_info=True)
+        # Fail open: fall back to sync gate without audit
+        gate = DeploymentGate(policy=policy)
+        return gate.check_deployment(
+            service=service,
+            tier=tier,
+            budget_total_minutes=budget_total_minutes,
+            budget_consumed_minutes=budget_consumed_minutes,
+            downstream_services=downstream_services,
+            environment=environment,
+            team=team,
+        )
 
 
 def _display_header(service_context: Any, prom_url: str | None, environment: str | None) -> None:
