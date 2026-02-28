@@ -43,6 +43,7 @@ from nthlayer.cli.scorecard import (
 )
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
+from nthlayer.cli.topology import handle_topology_command, register_topology_parser
 from nthlayer.cli.ux import print_banner
 from nthlayer.cli.validate_metadata import (
     handle_validate_metadata_command,
@@ -843,6 +844,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Dependency discovery commands
     register_deps_parser(subparsers)
     register_blast_radius_parser(subparsers)
+    register_topology_parser(subparsers)
 
     # Ownership command
     register_ownership_parser(subparsers)
@@ -1273,6 +1275,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "blast-radius":
         sys.exit(handle_blast_radius_command(args))
+
+    if args.command == "topology":
+        sys.exit(handle_topology_command(args))
 
     if args.command == "ownership":
         sys.exit(handle_ownership_command(args))
