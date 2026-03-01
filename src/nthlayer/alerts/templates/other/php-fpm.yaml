@@ -1,0 +1,17 @@
+# Php-Fpm Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: php-fpm
+  rules:
+  - alert: PhpFpmMaxChildrenReached
+    expr: sum(phpfpm_max_children_reached_total) by (instance) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: PHP-FPM max-children reached (instance {{ $labels.instance }})
+      description: "PHP-FPM reached max children - {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

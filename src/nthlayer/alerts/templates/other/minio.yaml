@@ -1,0 +1,33 @@
+# Minio Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: minio
+  rules:
+  - alert: MinioClusterDiskOffline
+    expr: minio_cluster_drive_offline_total > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Minio cluster disk offline (instance {{ $labels.instance }})
+      description: "Minio cluster disk is offline\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: MinioNodeDiskOffline
+    expr: minio_cluster_nodes_offline_total > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Minio node disk offline (instance {{ $labels.instance }})
+      description: "Minio cluster node disk is offline\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: MinioDiskSpaceUsage
+    expr: disk_storage_available / disk_storage_total * 100 < 10
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Minio disk space usage (instance {{ $labels.instance }})
+      description: "Minio available free space is low (< 10%)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

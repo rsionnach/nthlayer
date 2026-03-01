@@ -1,0 +1,17 @@
+# Coredns Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: coredns
+  rules:
+  - alert: CorednsPanicCount
+    expr: increase(coredns_panics_total[1m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: CoreDNS Panic Count (instance {{ $labels.instance }})
+      description: "Number of CoreDNS panics encountered\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

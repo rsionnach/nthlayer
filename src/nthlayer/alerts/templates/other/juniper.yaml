@@ -1,0 +1,33 @@
+# Juniper Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: juniper
+  rules:
+  - alert: JuniperSwitchDown
+    expr: junos_up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Juniper switch down (instance {{ $labels.instance }})
+      description: "The switch appears to be down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: JuniperHighBandwidthUsage1gib
+    expr: rate(junos_interface_transmit_bytes[1m]) * 8 > 1e+9 * 0.90
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Juniper high Bandwidth Usage 1GiB (instance {{ $labels.instance }})
+      description: "Interface is highly saturated. (> 0.90GiB/s)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: JuniperHighBandwidthUsage1gib
+    expr: rate(junos_interface_transmit_bytes[1m]) * 8 > 1e+9 * 0.80
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Juniper high Bandwidth Usage 1GiB (instance {{ $labels.instance }})
+      description: "Interface is getting saturated. (> 0.80GiB/s)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
