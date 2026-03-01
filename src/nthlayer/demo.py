@@ -655,6 +655,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--drift-window",
         help="Drift analysis window (e.g., 30d, 14d). Uses tier default if not specified",
     )
+    deploy_parser.add_argument(
+        "--include-correlation",
+        action="store_true",
+        help="Include deployment correlation analysis in gate check",
+    )
 
     init_parser = subparsers.add_parser("init", help="Initialize new NthLayer service")
     init_parser.add_argument(
@@ -1080,6 +1085,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 demo=getattr(args, "demo", False),
                 demo_blocked=getattr(args, "demo_blocked", False),
                 include_drift=getattr(args, "include_drift", False),
+                include_correlation=getattr(args, "include_correlation", False),
                 drift_window=getattr(args, "drift_window", None),
             )
         )

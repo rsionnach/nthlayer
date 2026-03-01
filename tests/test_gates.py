@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from nthlayer.policies.audit import PolicyOverride
+from nthlayer.slos.correlator import CorrelationResult
 from nthlayer.slos.gates import DeploymentGate, GatePolicy, GateResult
 
 
@@ -620,3 +621,99 @@ class TestCheckDeploymentWithAudit:
 
         assert result.result == GateResult.BLOCKED
         assert result.is_blocked
+
+
+class TestCorrelationBlocking:
+    """Tests for correlation-based deployment blocking."""
+
+    def _make_correlation(
+        self, confidence: float, deployment_id: str = "d-001"
+    ) -> CorrelationResult:
+        return CorrelationResult(
+            deployment_id=deployment_id,
+            service="payment-api",
+            burn_minutes=8.5,
+            confidence=confidence,
+            method="time_window_analysis",
+            details={},
+        )
+
+    @pytest.mark.asyncio
+    async def test_high_correlation_blocks(self):
+        """Correlation >= BLOCKING_CONFIDENCE upgrades APPROVED to BLOCKED."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,  # Healthy budget → APPROVED
+            correlation_results=[self._make_correlation(0.85)],
+        )
+
+        assert result.result == GateResult.BLOCKED
+        assert "correlation" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_low_correlation_does_not_block(self):
+        """Correlation below threshold does not affect result."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            correlation_results=[self._make_correlation(0.6)],
+        )
+
+        assert result.result == GateResult.APPROVED
+
+    @pytest.mark.asyncio
+    async def test_correlation_does_not_affect_already_blocked(self):
+        """Already-blocked result stays blocked (doesn't double-block)."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,  # BLOCKED by budget
+            correlation_results=[self._make_correlation(0.9)],
+        )
+
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_empty_correlation_results(self):
+        """Empty correlation results don't affect the gate."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            correlation_results=[],
+        )
+
+        assert result.result == GateResult.APPROVED
+
+    @pytest.mark.asyncio
+    async def test_picks_highest_confidence(self):
+        """When multiple blocking correlations, picks highest confidence."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            correlation_results=[
+                self._make_correlation(0.82, "d-001"),
+                self._make_correlation(0.95, "d-002"),
+            ],
+        )
+
+        assert result.result == GateResult.BLOCKED
+        assert "d-002" in result.message
