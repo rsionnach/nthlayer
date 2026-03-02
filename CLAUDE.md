@@ -6,7 +6,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 
 - **Language:** Python
 - **Build:** `pip install -e .`
-- **Test:** `make test`
+- **Test:** `make test` | `make smoke` (CLI smoke, ~40s offline) | `make smoke-full` (includes Synology)
 - **Lint:** `make lint` and `./scripts/lint/run-all.sh` (custom golden-principle linters)
 - **Typecheck:** `make typecheck`
 - **Format:** `make format`
@@ -300,6 +300,20 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
 - Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
 
+### CLI Smoke Test Suite
+- Location: `tests/smoke/` — end-to-end subprocess tests that invoke the real `nthlayer` CLI
+- Runner: `tests/smoke/_helpers.run_nthlayer(*args)` executes `uv run nthlayer <args>` and returns `CLIResult(exit_code, stdout, stderr, command)`
+- Manifest fixtures: `CHECKOUT_SERVICE` (`examples/services/checkout-service.yaml`), `PAYMENT_API_OPENSRM` (`examples/uat/payment-api.reliability.yaml`)
+- All tests tagged `pytest.mark.smoke`; `conftest.py` provides `output_dir` fixture (tmp_path)
+- Test categories:
+  - `test_validate_commands.py` — `validate-spec`, `validate`, `validate-metadata`, `validate-slo --demo`
+  - `test_generate_commands.py` — all `generate-*` commands with `--dry-run`
+  - `test_apply_plan.py` — `plan` and `apply --output-dir`; validates dashboard JSON structure and alerts YAML (must have `groups` key)
+  - `test_analysis_commands.py` — `check-deploy --demo` (exit 0/1), `check-deploy --demo-blocked` (exit 2), `topology export --demo`, `recommend-metrics`
+  - `test_synology.py` (Tier 2) — `verify` and `drift`; skipped unless `NTHLAYER_PROMETHEUS_URL` is set; marked `pytest.mark.synology`
+- Makefile targets: `make smoke` (offline, `-x` fail-fast), `make smoke-full` (sets `NTHLAYER_PROMETHEUS_URL`/`NTHLAYER_GRAFANA_URL` for Synology)
+- Pre-push hook: `smoke-test` in `.pre-commit-config.yaml` runs `uv run pytest tests/smoke/ -x -q --tb=short` automatically before every `git push`
+
 ### Topology Export CLI Pattern
 - CLI command: `nthlayer topology export <manifest> [--format json|mermaid|dot] [--output FILE] [--depth N] [--demo]`
 - `--demo` flag runs export with built-in sample data (no manifest required)
@@ -382,6 +396,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 ### Test Organization
 - Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`) — this is the canonical location; `tests/mock_server.py` is a legacy duplicate, do not add new files there
 - Integration tests using mock servers live in `tests/integration/` (e.g., `tests/integration/test_mock_server_integration.py`)
+- CLI end-to-end smoke tests live in `tests/smoke/` — invoke the real CLI via subprocess; see "CLI Smoke Test Suite" pattern for details
 - Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
 - Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
 - Apply `importorskip` to any test module that imports from `[aws]`, `[workflows]`, or other optional extras
