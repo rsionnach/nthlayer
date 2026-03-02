@@ -128,7 +128,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `calculator.py` - ErrorBudgetCalculator
   - `gates.py` - Deployment gate enforcement (error budget thresholds)
   - `deployment.py` - DeploymentRecorder for storing deployment events
-  - `correlator.py` - DeploymentCorrelator for error budget correlation
+  - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `validation/` - Metadata and resource validation
