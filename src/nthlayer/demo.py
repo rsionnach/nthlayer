@@ -581,6 +581,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prometheus URL for live data (optional, not used in static mode)",
     )
 
+    # Documentation generation
+    generate_docs_parser = subparsers.add_parser(
+        "generate-docs", help="Generate service documentation from reliability manifest"
+    )
+    generate_docs_parser.add_argument("service_file", help="Path to service YAML file")
+    generate_docs_parser.add_argument(
+        "--output", "-o", help="Output directory (default: generated/{service}/)"
+    )
+    generate_docs_parser.add_argument(
+        "--env", "--environment", dest="environment", help="Environment name (dev, staging, prod)"
+    )
+    generate_docs_parser.add_argument(
+        "--include-adr", action="store_true", help="Generate ADR scaffold"
+    )
+    generate_docs_parser.add_argument(
+        "--include-api", action="store_true", help="Generate API documentation stub"
+    )
+    generate_docs_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without writing files"
+    )
+
     validate_parser = subparsers.add_parser("validate", help="Validate service definition")
     validate_parser.add_argument("service_file", help="Path to service YAML file")
     validate_parser.add_argument(
@@ -1018,6 +1039,20 @@ def main(argv: Sequence[str] | None = None) -> None:
                 environment=env,
                 dry_run=args.dry_run,
                 prometheus_url=prom_url,
+            )
+        )
+
+    if args.command == "generate-docs":
+        from nthlayer.cli.docs import generate_docs_command
+
+        sys.exit(
+            generate_docs_command(
+                args.service_file,
+                output=args.output,
+                environment=getattr(args, "environment", None),
+                include_adr=args.include_adr,
+                include_api=args.include_api,
+                dry_run=args.dry_run,
             )
         )
 
