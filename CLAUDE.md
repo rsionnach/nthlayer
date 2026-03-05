@@ -131,6 +131,11 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
 - `alerts/` - Alert rule generation from dependencies and SLOs
+- `generators/` - Resource generation from manifests
+  - `alerts.py` - Alert rule generation from service dependencies (awesome-prometheus-alerts)
+  - `sloth.py` - Sloth SLO specification YAML generation
+  - `docs.py` - Service README, ADR scaffold, and API documentation generation; `DocsGenerationResult` dataclass
+  - `backstage.py` - Backstage entity JSON generation for service catalog
 - `validation/` - Metadata and resource validation
 - `policies/` - Policy DSL and deployment gate enforcement
   - `evaluator.py` - Policy evaluation engine
@@ -142,6 +147,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `routes/webhooks.py` - Deployment webhook receiver
   - `routes/policies.py` - Policy audit and override API
   - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
+- `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
   - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
   - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-008 rule taxonomy
@@ -313,6 +319,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `test_synology.py` (Tier 2) — `verify` and `drift`; skipped unless `NTHLAYER_PROMETHEUS_URL` is set; marked `pytest.mark.synology`
 - Makefile targets: `make smoke` (offline, `-x` fail-fast), `make smoke-full` (sets `NTHLAYER_PROMETHEUS_URL`/`NTHLAYER_GRAFANA_URL` for Synology)
 - Pre-push hook: `smoke-test` in `.pre-commit-config.yaml` runs `uv run pytest tests/smoke/ -x -q --tb=short` automatically before every `git push`
+
+### Service Documentation Generation
+- `generators/docs.py`: `generate_service_docs(service_file, output_dir, environment, include_adr, include_api)` produces Markdown docs from a `ReliabilityManifest`
+- Generated artifacts: `README.md` (ownership, architecture, SLOs, dependencies, deployment sections), ADR scaffold (`adr/` subdirectory), API documentation stub
+- `DocsGenerationResult` dataclass: `success`, `service`, `files_generated`, `output_dir`, `error`
+- CLI: `nthlayer generate-docs <manifest> [--output DIR] [--env ENV] [--include-adr] [--include-api] [--dry-run]`
+- Default output dir: `generated/{service_name}/` (derived from manifest filename stem)
+- Input format auto-detected via `specs/loader.py` (supports OpenSRM and legacy formats)
 
 ### Topology Export CLI Pattern
 - CLI command: `nthlayer topology export <manifest> [--format json|mermaid|dot] [--output FILE] [--depth N] [--demo]`
