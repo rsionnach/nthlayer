@@ -1,6 +1,6 @@
 # Package Quality Grades
 
-Last updated: 2026-02-28
+Last updated: 2026-03-05
 
 ## Grading Criteria
 
@@ -33,13 +33,13 @@ Last updated: 2026-02-28
 | pagerduty | 6 files | Partial | Good | Stable | B | Good coverage |
 | portfolio | 3 files | Minimal | Good | Stable | C | Basic coverage |
 | providers | 2 files | Minimal | Good (ProviderError) | Stable | C | Async pattern consistent |
-| slos | 0 files | Minimal | Good | Stable | D | Needs test coverage |
-| validation | 0 files | Minimal | Good | Stable | D | Needs test coverage |
-| cloudwatch | 0 files | Absent | Unknown | New | F | No tests, no docs |
-| db | 0 files | Absent | Unknown | New | F | No tests, no docs |
-| domain | 0 files | Absent | Unknown | New | F | No tests, no docs |
-| generators | 0 files | Absent | Unknown | Evolving | F | No tests, no docs |
-| integrations | 0 files | Absent | Unknown | New | F | No tests, no docs |
+| slos | 9 files | Partial | Good | Stable | B | Solid coverage: ceiling, correlator, deployment, notifiers, storage, CLI |
+| validation | 2 files | Minimal | Good | Stable | C | test_validation.py + test_validation_promruval.py |
+| cloudwatch | 1 file | Minimal | Good (fail-open flush) | Stable | C | MetricsCollector: emit, timer, flush, singleton tested |
+| db | 2 files | Minimal | Good | Stable | C | SQLite in-memory model tests + mock-based repository tests |
+| domain | 1 file | Minimal | Good | Stable | C | All Pydantic models tested: construction, roundtrip, defaults |
+| generators | 4 files | Minimal | Good | Evolving | C | alerts, sloth, docs, backstage generators tested |
+| integrations | 1 file | Minimal | Good | Stable | C | PagerDutyClient: setup, find, create, error paths tested |
 | topology | 1 file | Partial | Good | Evolving | C | test_topology.py added with dc1648b; API new |
 <!-- /AUTO-MANAGED: quality-grades -->
 
@@ -53,6 +53,13 @@ Track grade changes to see trajectory over time.
 | 2026-02-12 | all | — | Initial assessment |
 | 2026-02-28 | deployments | D → C | test_deployment_providers.py added (dc1648b desloppify sweep) |
 | 2026-02-28 | topology | (new) C | New module with test coverage; API evolving |
+| 2026-03-05 | slos | D → B | 9 test files discovered (were miscounted as 0) |
+| 2026-03-05 | validation | D → C | 2 test files discovered (were miscounted as 0) |
+| 2026-03-05 | cloudwatch | F → C | test_cloudwatch.py added (12 tests) |
+| 2026-03-05 | db | F → C | test_db_models.py + test_db_repositories.py added (24 tests) |
+| 2026-03-05 | domain | F → C | test_domain_models.py added (21 tests) |
+| 2026-03-05 | generators | F → C | 4 test files added: alerts, sloth, docs, backstage (60 tests) |
+| 2026-03-05 | integrations | F → C | test_integrations_pagerduty.py added (12 tests) |
 <!-- /AUTO-MANAGED: grade-history -->
 
 ## Improvement Priorities

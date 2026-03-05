@@ -69,7 +69,7 @@ explicitly documented with a `# intentionally ignored: <reason>` comment.
 handlers that discard error context. Uncontextualized exceptions produce
 tracebacks with no indication of what the code was trying to do.
 
-**Enforcement:** [DOCUMENTATION] — promote to lint when pattern recurs.
+**Enforcement:** [LINT] — see `scripts/lint/check-exception-handling.sh`
 
 ### 5. Template functions for all generated output
 
