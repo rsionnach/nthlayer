@@ -446,6 +446,49 @@ def _setup_event_orchestration(
             print(f"✅ Event Orchestration: {result.rules_created} routing rule(s) created")
 
 
+class PolicyHandler:
+    """Evaluate policy rules against service spec."""
+
+    @property
+    def name(self) -> str:
+        return "policy"
+
+    @property
+    def display_name(self) -> str:
+        return "Policy Rules"
+
+    def plan(self, ctx: OrchestratorContext) -> List[Dict[str, Any]]:
+        policy_resources = ctx.detector.get_resources_by_kind("PolicyRules")
+        if not policy_resources:
+            return []
+        return [{"type": "policy", "action": "evaluate", "count": len(policy_resources)}]
+
+    def generate(self, ctx: OrchestratorContext) -> int:
+        from nthlayer.policies.engine import PolicyEngine
+        from nthlayer.specs.loader import load_manifest
+
+        policy_resources = ctx.detector.get_resources_by_kind("PolicyRules")
+        if not policy_resources:
+            return 0
+
+        manifest = load_manifest(ctx.service_yaml, suppress_deprecation_warning=True)
+        engine = PolicyEngine()
+
+        for resource in policy_resources:
+            engine.add_rules(PolicyEngine.from_dict(resource.get("spec", {}))._rules)
+
+        report = engine.evaluate(manifest)
+
+        for v in report.violations:
+            icon = "\u274c" if v.severity.value == "error" else "\u26a0\ufe0f"
+            print(f"  {icon}  [{v.rule_name}] {v.message}")
+
+        if report.passed:
+            print(f"\u2705 Policy evaluation: {report.rules_evaluated} rules passed")
+
+        return report.rules_evaluated
+
+
 def register_default_handlers(registry: ResourceRegistry) -> None:
     """Register all built-in resource handlers."""
     registry.register(SloHandler())
@@ -454,3 +497,4 @@ def register_default_handlers(registry: ResourceRegistry) -> None:
     registry.register(RecordingRulesHandler())
     registry.register(PagerDutyHandler())
     registry.register(BackstageHandler())
+    registry.register(PolicyHandler())
