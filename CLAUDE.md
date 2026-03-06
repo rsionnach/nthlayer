@@ -150,9 +150,12 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `docs.py` - Service README, ADR scaffold, and API documentation generation; `DocsGenerationResult` dataclass
   - `backstage.py` - Backstage entity JSON generation for service catalog
 - `validation/` - Metadata and resource validation
-- `policies/` - Policy DSL and deployment gate enforcement
-  - `evaluator.py` - Policy evaluation engine
-  - `audit.py` - Audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
+- `policies/` - Policy DSL, build-time spec validation, and deployment gate enforcement
+  - `engine.py` - PolicyEngine: loads rules from YAML or dict, evaluates against ReliabilityManifest
+  - `models.py` - Build-time models: PolicyRule, PolicyViolation, PolicyReport, RuleType, PolicySeverity
+  - `rules.py` - RULE_EVALUATORS registry: required_fields, tier_constraint, dependency_rule evaluators
+  - `evaluator.py` - Runtime policy evaluation engine (deployment gates)
+  - `audit.py` - Runtime audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
   - `recorder.py` - PolicyAuditRecorder for audit events
   - `repository.py` - PolicyAuditRepository for audit queries
 - `api/` - FastAPI API (webhooks, policies, health, teams)
@@ -351,6 +354,18 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - JSON format produces Sitrep-compatible output; Mermaid uses `graph LR` with Nord-themed classDef tier styles and SLO labels on edges; DOT uses Graphviz digraph with Nord palette tier colors and type-based node shapes (cylinder=database, hexagon=worker/batch, parallelogram=queue), critical edges highlighted in red
 - Env vars: `NTHLAYER_PROMETHEUS_URL`, `NTHLAYER_METRICS_USER`, `NTHLAYER_METRICS_PASSWORD`
 - `build_topology()` (topology/enrichment.py) accepts optional `max_depth` + `root_service` for BFS-limited subgraph export
+
+### Build-Time Policy Engine
+- `PolicyEngine` (policies/engine.py) validates spec correctness at CI/build time — distinct from runtime `PolicyAuditRecorder`/`Repository` (policies/audit.py)
+- Two load paths: `PolicyEngine.from_yaml(path)` for central policy YAML, `PolicyEngine.from_dict(data)` for per-service `PolicyRules` resources
+- `engine.add_rules(rules)` merges central + per-service rules before evaluation
+- `engine.evaluate(manifest)` returns `PolicyReport` with violations, rules_evaluated count, and `passed` property (True if no error-severity violations)
+- Rule types (RuleType enum in policies/models.py): `required_fields`, `tier_constraint`, `dependency_rule`
+- `RULE_EVALUATORS` registry (policies/rules.py) maps `RuleType` → evaluator function; extend by adding new entries
+- `required_fields` evaluator uses dot-path resolution (e.g., `"ownership.runbook"`) against `ReliabilityManifest` attributes
+- `tier_constraint` evaluator checks `min_slos`, `require_deployment_gates`, `require_ownership` for a given tier or "all"
+- `dependency_rule` evaluator checks `require_critical_deps_have_slo` and `max_critical_deps` limits
+- `PolicySeverity`: `error` blocks (`passed=False`), `warning` surfaces but does not block
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
