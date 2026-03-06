@@ -40,6 +40,7 @@ Last updated: 2026-03-06
 | domain | 1 file | Complete | Good | Stable | A | 21 tests, full coverage, all models documented |
 | generators | 4 files | Minimal | Good | Evolving | C | alerts, sloth, docs, backstage generators tested |
 | integrations | 1 file | Minimal | Good | Stable | C | PagerDutyClient: setup, find, create, error paths tested |
+| policies | 3 files | Partial | Good | Evolving | B | 55 tests: models (10), rules (30), engine (15); build-time policy engine |
 | topology | 1 file | Partial | Good | Evolving | C | test_topology.py added with dc1648b; API new |
 <!-- /AUTO-MANAGED: quality-grades -->
 
