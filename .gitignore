@@ -128,3 +128,7 @@ UAT.md
 *PLAN.md
 *_SPEC.md
 *_PLAN.md
+
+# Claude Code internals
+.claude/auto-memory/
+.claude/skills/
