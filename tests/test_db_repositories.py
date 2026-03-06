@@ -109,6 +109,36 @@ class TestRunRepository:
         session.add.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_update_status_sets_outcome(self):
+        db_run = MagicMock()
+        db_run.job_id = "j1"
+
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none.return_value = db_run
+
+        session = AsyncMock()
+        session.execute.return_value = result_mock
+
+        repo = self._make_repo(session)
+        await repo.update_status("j1", RunStatus.failed, outcome="error", failure_reason="timeout")
+
+        assert db_run.outcome == "error"
+        assert db_run.failure_reason == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_record_finding_minimal(self):
+        session = AsyncMock()
+        repo = self._make_repo(session)
+
+        finding = Finding(
+            run_id="r1",
+            entity_ref="svc:checkout",
+            action="create",
+        )
+        await repo.record_finding(finding)
+        session.add.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_register_idempotency_conflict(self):
         """When rowcount=0, raise IdempotencyConflict."""
         result_mock = MagicMock()
@@ -121,3 +151,15 @@ class TestRunRepository:
 
         with pytest.raises(IdempotencyConflict):
             await repo.register_idempotency("team1", "duplicate-key")
+
+    @pytest.mark.asyncio
+    async def test_register_idempotency_success(self):
+        """When rowcount=1, no error should be raised."""
+        result_mock = MagicMock()
+        result_mock.rowcount = 1
+
+        session = AsyncMock()
+        session.execute.return_value = result_mock
+
+        repo = self._make_repo(session)
+        await repo.register_idempotency("team1", "unique-key")
