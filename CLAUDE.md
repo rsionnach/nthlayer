@@ -166,7 +166,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
   - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
-  - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-008 rule taxonomy
+  - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-011 rule taxonomy
   - `json_fmt.py`, `junit.py`, `markdown.py` - Additional output formatters
   - `__init__.py` - `format_report(report, output_format, output_file)` unified entry point
 - `verification/` - Prometheus metric contract verification
@@ -290,7 +290,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Grade criteria: A (>80% coverage), B (>60%), C (>40%), D (<40%), F (untested)
 - Tracked in `docs/quality.md` with AUTO-MANAGED sections for grades and history
 - As of 2026-03-06: no F-grade or D-grade packages remain; domain/ reached A-grade (100% tested, fully documented)
-- Core promotions completed 2026-03-06: domain/ C→A, core/ C→B, db/ C→B, identity/ C→B
+- Core promotions completed 2026-03-06: domain/ C→A, core/ C→B, db/ C→B, identity/ C→B, policies/ reached B-grade (55 tests: models 10, rules 30, engine 15)
 - Packages with D or lower grades should have active Beads issues for improvement
 - Run `/audit-codebase` to identify specific gaps
 
@@ -320,10 +320,11 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `ReliabilityReport(service, command, checks, summary, metadata)` is the canonical report model; all formatters consume it
 - `CheckResult(name, status, message, details, rule_id, location, line)` represents individual check outcomes
 - `format_report(report, output_format, output_file)` dispatches to the correct formatter; supports TABLE, JSON, SARIF, JUNIT, MARKDOWN
-- SARIF output (GitHub Code Scanning) maps check failures to rule IDs NTHLAYER001–NTHLAYER008:
+- SARIF output (GitHub Code Scanning) maps check failures to rule IDs NTHLAYER001–NTHLAYER011:
   - NTHLAYER001: SLOInfeasible, NTHLAYER002: DriftCritical, NTHLAYER003: MetricMissing
   - NTHLAYER004: BudgetExhausted, NTHLAYER005: HighBlastRadius, NTHLAYER006: TierMismatch
   - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
+  - NTHLAYER009: PolicyRequiredField, NTHLAYER010: PolicyTierConstraint, NTHLAYER011: PolicyDependencyRule
 - Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
 
 ### CLI Smoke Test Suite
@@ -366,6 +367,8 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `tier_constraint` evaluator checks `min_slos`, `require_deployment_gates`, `require_ownership` for a given tier or "all"
 - `dependency_rule` evaluator checks `require_critical_deps_have_slo` and `max_critical_deps` limits
 - `PolicySeverity`: `error` blocks (`passed=False`), `warning` surfaces but does not block
+- CLI integration: `nthlayer validate <manifest> --policies <policies.yaml>` runs structural validation then policy evaluation; exit 0 = all pass, exit 1 = errors found
+- `PolicyHandler` registered in `orchestration/handlers.py` handles `PolicyRules` resource kind embedded in service YAMLs; evaluated during `apply`/`plan` runs
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
