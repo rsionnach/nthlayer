@@ -199,6 +199,18 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 8. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
 9. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
 10. Topology export: DependencyGraph → build_topology() → TopologyGraph → serialize_json/mermaid/dot()
+
+### Planned: Agentic Inference (`nthlayer infer`)
+- Model analyses a codebase and proposes an OpenSRM manifest for it
+- Model provides judgment (what SLOs does this service need?), NthLayer provides transport (validate manifest, generate artifacts)
+- ZFC boundary: model=judgment (infer SLO targets), NthLayer=transport (validate + generate)
+- ZFC canonical doc: https://github.com/rsionnach/arbiter/blob/main/ZFC.md
+
+### OpenSRM Ecosystem (README section)
+- NthLayer is positioned as the **Tool** layer in the ecosystem (deterministic, invocable, no reasoning)
+- README "OpenSRM Ecosystem" section shows the full component diagram with NthLayer highlighted
+- Ecosystem links: [OpenSRM](https://github.com/rsionnach/opensrm), [Arbiter](https://github.com/rsionnach/arbiter), [SitRep](https://github.com/rsionnach/sitrep), [Mayday](https://github.com/rsionnach/mayday)
+- Full ecosystem composition documented in opensrm repo: `ECOSYSTEM.md`
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
