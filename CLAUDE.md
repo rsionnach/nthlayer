@@ -23,6 +23,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 | Active specs | `specs/` |
 | Execution plans (spec implementations) | `plans/` |
 | Technical debt backlog | `plans/tech-debt.md` |
+| Design & promotion plans | `docs/plans/` |
 
 Read the specific doc relevant to your task. Do NOT try to load all docs at once.
 
@@ -178,6 +179,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `golden-principles.md` - Mechanical enforcement rules with promotion ladder
   - `testing.md` - Test patterns, commands, coverage by area
   - `quality.md` - Package quality grades (A-F scale), improvement priorities
+  - `plans/` - Design and promotion plans (DAG-based implementation docs)
 - `docs-site/` - MkDocs documentation site source
 - `plans/` - Execution plan tracking for spec implementations
   - `README.md` - Plan lifecycle and format documentation
@@ -278,12 +280,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Decision log tracks architectural choices that diverge from or clarify specs
 - Deviation log defends against spec drift
 - Technical debt tracked in `plans/tech-debt.md` with AUTO-MANAGED section for audit agents
+- Design and promotion plans (DAG-based, multi-package) stored in `docs/plans/` (e.g., `docs/plans/2026-03-06-c-to-b-promotion-design.md`)
 
 ### Quality Grading System
 - Package quality grades (A-F) based on test coverage, docs, error handling, API stability
 - Grade criteria: A (>80% coverage), B (>60%), C (>40%), D (<40%), F (untested)
 - Tracked in `docs/quality.md` with AUTO-MANAGED sections for grades and history
-- As of 2026-03-05 all packages are C or better — no F-grade packages remain
+- As of 2026-03-06: no F-grade or D-grade packages remain; domain/ reached A-grade (100% tested, fully documented)
+- Core promotions completed 2026-03-06: domain/ C→A, core/ C→B, db/ C→B, identity/ C→B
 - Packages with D or lower grades should have active Beads issues for improvement
 - Run `/audit-codebase` to identify specific gaps
 
