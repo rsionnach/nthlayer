@@ -121,6 +121,9 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `identity/` - Service identity resolution across naming conventions
 - `specs/` - Service specification models and parsing
   - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
+  - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy)
+  - `loader.py` - Auto-detect format and load manifests
+  - `parser.py` - Legacy format parser, `render_resource_spec()` for variable substitution
 - `slos/` - SLO definition, validation, and recording rule generation
   - `models.py` - SLO, ErrorBudget, SLOStatus, Incident dataclasses; default target: 0.999
   - `parser.py` - OpenSLO YAML parsing
@@ -131,6 +134,15 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
 - `alerts/` - Alert rule generation from dependencies and SLOs
+- `domain/` - Core domain models
+  - `models.py` - Pydantic models: RunStatus, TeamSource, Team, Service, Run, Finding
+- `db/` - Database persistence layer
+  - `models.py` - SQLAlchemy ORM models (Run, Finding, SLO, ErrorBudget, Deployment, Incident, Policy audit)
+  - `repositories.py` - RunRepository: async CRUD for jobs/findings with idempotency
+  - `session.py` - SQLAlchemy async engine/session factory
+- `integrations/` - Third-party service setup clients
+  - `pagerduty.py` - PagerDutyClient: service/escalation policy/team creation
+- `cloudwatch.py` - AWS CloudWatch MetricsCollector (optional `[aws]` extra)
 - `generators/` - Resource generation from manifests
   - `alerts.py` - Alert rule generation from service dependencies (awesome-prometheus-alerts)
   - `sloth.py` - Sloth SLO specification YAML generation
@@ -271,7 +283,8 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Package quality grades (A-F) based on test coverage, docs, error handling, API stability
 - Grade criteria: A (>80% coverage), B (>60%), C (>40%), D (<40%), F (untested)
 - Tracked in `docs/quality.md` with AUTO-MANAGED sections for grades and history
-- Packages with D/F grades should have active Beads issues for improvement
+- As of 2026-03-05 all packages are C or better — no F-grade packages remain
+- Packages with D or lower grades should have active Beads issues for improvement
 - Run `/audit-codebase` to identify specific gaps
 
 ### Policy Audit Trail Pattern
