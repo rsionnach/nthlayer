@@ -155,6 +155,22 @@ class TestNormalizeServiceName:
         result = normalize_service_name("payment-legacy", rules=custom_rules)
         assert result == "payment"
 
+    def test_empty_string(self):
+        assert normalize_service_name("") == ""
+
+    def test_underscores_become_hyphens(self):
+        assert normalize_service_name("payment_api") == "payment"
+
+    def test_dots_become_hyphens(self):
+        assert normalize_service_name("payment.api") == "payment"
+
+    def test_multiple_suffixes_stripped(self):
+        result = normalize_service_name("payment-api-prod")
+        assert result == "payment"
+
+    def test_uppercase_normalized(self):
+        assert normalize_service_name("PAYMENT-API") == "payment"
+
 
 class TestExtractFromPattern:
     """Tests for pattern-based extraction."""
@@ -185,6 +201,11 @@ class TestExtractFromPattern:
         result = extract_from_pattern("payment-api", pattern, "name")
         assert result is None
 
+    def test_missing_group_returns_none(self):
+        pattern = r"^(?P<name>.+)$"
+        result = extract_from_pattern("test", pattern, "nonexistent")
+        assert result is None
+
 
 class TestExtractServiceName:
     """Tests for service name extraction from various formats."""
@@ -203,6 +224,14 @@ class TestExtractServiceName:
         """Test simple name normalization."""
         result = extract_service_name("payment-api", "unknown")
         assert result == "payment"  # normalized
+
+    def test_kubernetes_extraction(self):
+        result = extract_service_name("production/payment-api", "kubernetes")
+        assert result == "payment"
+
+    def test_eureka_extraction(self):
+        result = extract_service_name("PAYMENT-API", "eureka")
+        assert result == "payment"
 
 
 class TestIdentityResolver:
