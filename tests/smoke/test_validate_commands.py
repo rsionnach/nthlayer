@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from _helpers import CHECKOUT_SERVICE, PAYMENT_API_OPENSRM, run_nthlayer
+from _helpers import CHECKOUT_SERVICE, PAYMENT_API_OPENSRM, PROJECT_ROOT, run_nthlayer
 
 pytestmark = pytest.mark.smoke
 
@@ -31,6 +31,19 @@ class TestValidateMetadata:
     def test_checkout_service(self) -> None:
         result = run_nthlayer("validate-metadata", CHECKOUT_SERVICE)
         assert result.exit_code == 0, result
+
+
+POLICIES_FILE = str(PROJECT_ROOT / "examples" / "policies.yaml")
+
+
+class TestValidateWithPolicies:
+    def test_validate_with_policies(self) -> None:
+        """validate --policies should run policy evaluation after spec validation."""
+        result = run_nthlayer("validate", CHECKOUT_SERVICE, "--policies", POLICIES_FILE)
+        # checkout-service may pass or fail policies depending on its content
+        # but the command should run without crashing
+        assert result.exit_code in (0, 1), result
+        assert "policy" in result.stdout.lower(), result
 
 
 class TestValidateSlo:

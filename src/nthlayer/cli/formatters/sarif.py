@@ -100,6 +100,34 @@ SARIF_RULES: dict[str, dict[str, Any]] = {
         "helpUri": "https://rsionnach.github.io/nthlayer/errors/runbook-missing/",
         "defaultConfiguration": {"level": "note"},
     },
+    "NTHLAYER009": {
+        "id": "NTHLAYER009",
+        "name": "PolicyRequiredField",
+        "shortDescription": {"text": "Required field missing from service spec"},
+        "fullDescription": {
+            "text": "A policy rule requires a field that is missing or empty in the service specification."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/policy-required-field/",
+        "defaultConfiguration": {"level": "error"},
+    },
+    "NTHLAYER010": {
+        "id": "NTHLAYER010",
+        "name": "PolicyTierConstraint",
+        "shortDescription": {"text": "Service violates tier-specific policy"},
+        "fullDescription": {
+            "text": "The service does not meet the requirements defined for its tier."
+        },
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/policy-tier-constraint/",
+        "defaultConfiguration": {"level": "error"},
+    },
+    "NTHLAYER011": {
+        "id": "NTHLAYER011",
+        "name": "PolicyDependencyRule",
+        "shortDescription": {"text": "Service violates dependency policy"},
+        "fullDescription": {"text": "A dependency constraint defined by policy is not met."},
+        "helpUri": "https://rsionnach.github.io/nthlayer/errors/policy-dependency-rule/",
+        "defaultConfiguration": {"level": "warning"},
+    },
 }
 
 
@@ -179,6 +207,12 @@ def _infer_rule_id(check: CheckResult) -> str | None:
         return "NTHLAYER007"
     if "runbook" in name_lower:
         return "NTHLAYER008"
+    if "policy" in name_lower and "required" in name_lower:
+        return "NTHLAYER009"
+    if "policy" in name_lower and "tier" in name_lower:
+        return "NTHLAYER010"
+    if "policy" in name_lower and "dependency" in name_lower:
+        return "NTHLAYER011"
 
     return None
 

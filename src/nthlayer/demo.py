@@ -617,6 +617,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--registry-dir",
         help="Directory to scan for contract registry (enables cross-service validation)",
     )
+    validate_parser.add_argument(
+        "--policies",
+        help="Path to policies YAML file for build-time policy evaluation",
+    )
 
     lint_parser = subparsers.add_parser("lint", help="Lint Prometheus alert rules with pint")
     lint_parser.add_argument("file_path", help="Path to alerts YAML file or directory")
@@ -1071,6 +1075,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 environment=env,
                 strict=args.strict,
                 registry_dir=getattr(args, "registry_dir", None),
+                policies=getattr(args, "policies", None),
             )
         )
 
