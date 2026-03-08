@@ -132,3 +132,6 @@ UAT.md
 # Claude Code internals
 .claude/auto-memory/
 .claude/skills/
+
+# Dolt database files (added by bd init)
+.dolt/
