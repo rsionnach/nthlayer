@@ -137,6 +137,10 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `deployment.py` - DeploymentRecorder for storing deployment events
   - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
+  - `alerts.py` - Budget alert evaluation: AlertSeverity, AlertType, AlertRule (budget-domain rule with alert_type+threshold, distinct from Prometheus AlertRule in alerts/models.py), AlertEvent, AlertEvaluator
+  - `pipeline.py` - AlertPipeline: end-to-end alert orchestration (spec → budget → evaluate → explain → notify); PipelineResult dataclass with worst_severity property
+  - `explanations.py` - ExplanationEngine, BudgetExplanation: human-readable context for triggered alerts
+  - `notifiers.py` - AlertNotifier: Slack/PagerDuty notification dispatch
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `domain/` - Core domain models
   - `models.py` - Pydantic models: RunStatus, TeamSource, Team, Service, Run, Finding
@@ -412,6 +416,18 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - `AlertRule.customize_for_service()` gains optional `for_duration_override: str | None` parameter; applied after rule construction
 - Pipeline wiring: `generate_alerts_from_manifest()` passes `alerting_config=manifest.alerting` to `_load_and_customize_alerts()`; the inner loop calls `alerting_config.for_duration.get_for_severity(alert.severity)` and forwards the result as `for_duration_override`
 - Manifest YAML key: `spec.alerting.for_duration.page` / `spec.alerting.for_duration.ticket`
+- `TIER_DEFAULT_RULES` in specs/alerting.py covers all 4 tiers: `critical`, `high`, `standard`, `low`; "high" sits between critical and standard (budget-warning@0.65, budget-critical@0.85, burn-rate-warning@3.0, budget-exhaustion@6.0)
+
+### Alert Pipeline (slos/pipeline.py)
+- `AlertPipeline(prometheus_url, dry_run, notify)` orchestrates end-to-end SLO alert evaluation
+- `evaluate_service(manifest, sli_measurements, simulate_burn_pct)` → `PipelineResult`
+- Pipeline steps: `resolve_effective_rules()` → build `ErrorBudget` objects → `AlertEvaluator` → `ExplanationEngine` → `AlertNotifier`
+- `dry_run=True`: runs full evaluation (budget calc, rule eval, explanation) but skips all notifications (notifications_sent=0)
+- `simulate_burn_pct`: synthesizes budget consumption at given percentage without requiring Prometheus
+- `PipelineResult` fields: `budgets_evaluated`, `rules_evaluated`, `alerts_triggered`, `notifications_sent`, `explanations`, `events`, `errors`; `worst_severity` property returns "healthy" | "info" | "warning" | "critical"
+- `_build_slo_from_manifest(manifest, slo_def)` converts `SLODefinition` → `SLO`; normalises target: values >1 treated as percentage (99.9 → 0.999)
+- `_convert_spec_rule_to_alert_rule(spec_rule, service, slo_id, channels)` maps `SpecAlertRule` → budget-domain `AlertRule` (slos/alerts.py); distinct from Prometheus `AlertRule` (alerts/models.py)
+- Note: `slos/alerts.py::AlertRule` is a budget alert rule (has `alert_type`, `threshold`); `alerts/models.py::AlertRule` is a Prometheus alerting rule (has `expr`, `duration`)
 
 ### Error Budget Policy DSL
 - `BudgetThresholds(warning=0.20, critical=0.10)` — fraction of remaining budget (e.g. 0.10 = 10% remaining triggers critical)
