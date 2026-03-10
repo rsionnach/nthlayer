@@ -219,12 +219,41 @@ class Observability:
 # =============================================================================
 
 
+# Valid on_exhausted behavior values
+VALID_EXHAUSTION_BEHAVIORS = {"freeze_deploys", "require_approval", "notify"}
+
+
+@dataclass
+class BudgetThresholds:
+    """Warning and critical thresholds for error budget policy.
+
+    Values are fractions of remaining budget (e.g., 0.20 = 20% remaining).
+    """
+
+    warning: float = 0.20
+    critical: float = 0.10
+
+
+@dataclass
+class BudgetPolicy:
+    """Error budget policy configuration.
+
+    Defines thresholds, evaluation window, and behaviors
+    when error budget is exhausted.
+    """
+
+    window: str = "30d"
+    thresholds: BudgetThresholds = field(default_factory=BudgetThresholds)
+    on_exhausted: list[str] = field(default_factory=list)
+
+
 @dataclass
 class ErrorBudgetGate:
     """Error budget gate configuration."""
 
     enabled: bool = True
     threshold: float | None = None  # Minimum remaining budget (e.g., 0.10 = 10%)
+    policy: BudgetPolicy | None = None
 
 
 @dataclass
