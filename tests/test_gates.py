@@ -436,3 +436,74 @@ class TestDeploymentGateEdgeCases:
         )
 
         assert result.result == GateResult.BLOCKED
+
+
+class TestBudgetPolicyIntegration:
+    """Test BudgetPolicy integration with DeploymentGate."""
+
+    def test_policy_thresholds_override_tier_defaults(self):
+        """BudgetPolicy thresholds from manifest override tier defaults."""
+        from nthlayer.specs.manifest import BudgetPolicy, BudgetThresholds
+
+        policy = BudgetPolicy(
+            thresholds=BudgetThresholds(warning=0.30, critical=0.15),
+        )
+        # Convert BudgetPolicy thresholds to GatePolicy (multiply by 100 for percentage points)
+        gate_policy = GatePolicy(
+            warning=policy.thresholds.warning * 100,  # 30%
+            blocking=policy.thresholds.critical * 100,  # 15%
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        # 20% remaining — below 30% warning but above 15% blocking
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="critical",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=800,  # 20% remaining
+        )
+        assert result.result == GateResult.WARNING
+
+    def test_policy_thresholds_block_below_critical(self):
+        """Budget below policy critical threshold blocks deployment."""
+        from nthlayer.specs.manifest import BudgetPolicy, BudgetThresholds
+
+        policy = BudgetPolicy(
+            thresholds=BudgetThresholds(warning=0.30, critical=0.15),
+        )
+        gate_policy = GatePolicy(
+            warning=policy.thresholds.warning * 100,
+            blocking=policy.thresholds.critical * 100,
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        # 10% remaining — below 15% critical
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="critical",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=900,  # 10% remaining
+        )
+        assert result.result == GateResult.BLOCKED
+
+    def test_policy_thresholds_approve_above_warning(self):
+        """Budget above policy warning threshold approves deployment."""
+        from nthlayer.specs.manifest import BudgetPolicy, BudgetThresholds
+
+        policy = BudgetPolicy(
+            thresholds=BudgetThresholds(warning=0.30, critical=0.15),
+        )
+        gate_policy = GatePolicy(
+            warning=policy.thresholds.warning * 100,
+            blocking=policy.thresholds.critical * 100,
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        # 50% remaining — above 30% warning
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="critical",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=500,  # 50% remaining
+        )
+        assert result.result == GateResult.APPROVED
