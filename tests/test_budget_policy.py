@@ -57,3 +57,92 @@ class TestErrorBudgetGateWithPolicy:
         assert gate.policy is not None
         assert gate.policy.window == "7d"
         assert gate.policy.on_exhausted == ["freeze_deploys"]
+
+
+class TestBudgetPolicyParsing:
+    def test_parse_opensrm_with_budget_policy(self) -> None:
+        from nthlayer.specs.opensrm_parser import parse_opensrm
+
+        data = {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {"name": "test-svc", "team": "eng", "tier": "critical"},
+            "spec": {
+                "type": "api",
+                "deployment": {
+                    "gates": {
+                        "error_budget": {
+                            "enabled": True,
+                            "policy": {
+                                "window": "7d",
+                                "thresholds": {
+                                    "warning": 0.25,
+                                    "critical": 0.15,
+                                },
+                                "on_exhausted": ["freeze_deploys", "notify"],
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        manifest = parse_opensrm(data)
+        assert manifest.deployment is not None
+        assert manifest.deployment.gates is not None
+        assert manifest.deployment.gates.error_budget is not None
+        assert manifest.deployment.gates.error_budget.policy is not None
+        policy = manifest.deployment.gates.error_budget.policy
+        assert policy.window == "7d"
+        assert policy.thresholds.warning == 0.25
+        assert policy.thresholds.critical == 0.15
+        assert policy.on_exhausted == ["freeze_deploys", "notify"]
+
+    def test_parse_opensrm_without_budget_policy(self) -> None:
+        from nthlayer.specs.opensrm_parser import parse_opensrm
+
+        data = {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {"name": "test-svc", "team": "eng", "tier": "critical"},
+            "spec": {
+                "type": "api",
+                "deployment": {
+                    "gates": {
+                        "error_budget": {"enabled": True},
+                    },
+                },
+            },
+        }
+        manifest = parse_opensrm(data)
+        assert manifest.deployment is not None
+        assert manifest.deployment.gates is not None
+        assert manifest.deployment.gates.error_budget is not None
+        assert manifest.deployment.gates.error_budget.policy is None
+
+    def test_parse_budget_policy_partial_thresholds(self) -> None:
+        from nthlayer.specs.opensrm_parser import parse_opensrm
+
+        data = {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {"name": "test-svc", "team": "eng", "tier": "critical"},
+            "spec": {
+                "type": "api",
+                "deployment": {
+                    "gates": {
+                        "error_budget": {
+                            "enabled": True,
+                            "policy": {
+                                "thresholds": {"warning": 0.30},
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        manifest = parse_opensrm(data)
+        policy = manifest.deployment.gates.error_budget.policy
+        assert policy is not None
+        assert policy.thresholds.warning == 0.30
+        assert policy.thresholds.critical == 0.10  # default
+        assert policy.window == "30d"  # default

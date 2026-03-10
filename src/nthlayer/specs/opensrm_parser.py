@@ -31,6 +31,8 @@ logger = structlog.get_logger()
 
 from nthlayer.specs.manifest import (
     AuditConfig,
+    BudgetPolicy,
+    BudgetThresholds,
     Contract,
     Dependency,
     DependencyCriticality,
@@ -369,6 +371,31 @@ def _parse_deployment(deploy_data: dict[str, Any] | None) -> DeploymentConfig | 
     )
 
 
+def _parse_budget_policy(data: dict[str, Any]) -> BudgetPolicy | None:
+    """Parse budget policy from error_budget gate config."""
+    policy_data = data.get("policy")
+    if not policy_data or not isinstance(policy_data, dict):
+        return None
+
+    thresholds = BudgetThresholds()
+    thresh_data = policy_data.get("thresholds")
+    if thresh_data and isinstance(thresh_data, dict):
+        thresholds = BudgetThresholds(
+            warning=float(thresh_data.get("warning", 0.20)),
+            critical=float(thresh_data.get("critical", 0.10)),
+        )
+
+    on_exhausted = policy_data.get("on_exhausted", [])
+    if not isinstance(on_exhausted, list):
+        on_exhausted = []
+
+    return BudgetPolicy(
+        window=policy_data.get("window", "30d"),
+        thresholds=thresholds,
+        on_exhausted=on_exhausted,
+    )
+
+
 def _parse_error_budget_gate(gate_data: dict[str, Any] | None) -> ErrorBudgetGate | None:
     """Parse error budget gate configuration."""
     if not gate_data:
@@ -377,6 +404,7 @@ def _parse_error_budget_gate(gate_data: dict[str, Any] | None) -> ErrorBudgetGat
     return ErrorBudgetGate(
         enabled=gate_data.get("enabled", True),
         threshold=gate_data.get("threshold"),
+        policy=_parse_budget_policy(gate_data),
     )
 
 
