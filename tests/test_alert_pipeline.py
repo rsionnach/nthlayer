@@ -495,3 +495,72 @@ class TestPipelineDispatchNotifications:
         result = pipeline.evaluate_service(manifest, simulate_burn_pct=80)
         assert result.alerts_triggered >= 1
         assert result.notifications_sent == 0
+
+
+# -------------------------------------------------------------------------
+# ForDuration wiring through alert generation pipeline
+# -------------------------------------------------------------------------
+
+
+class TestForDurationPipeline:
+    def test_for_duration_applied_through_pipeline(self) -> None:
+        """for_duration from alerting config flows through the pipeline to generated alerts."""
+        from unittest.mock import patch, MagicMock
+        from nthlayer.alerts.models import AlertRule
+        from nthlayer.specs.alerting import AlertingConfig, ForDuration
+        from nthlayer.generators.alerts import _load_and_customize_alerts
+
+        # Create mock alerts that would come from templates
+        mock_alerts = [
+            AlertRule(name="TestCritical", expr="up == 0", duration="5m", severity="critical", technology="test"),
+            AlertRule(name="TestWarning", expr="up == 0", duration="5m", severity="warning", technology="test"),
+        ]
+
+        mock_loader = MagicMock()
+        mock_loader.load_technology.return_value = mock_alerts
+
+        config = AlertingConfig(
+            for_duration=ForDuration(page="1m", ticket="20m"),
+        )
+
+        with patch("nthlayer.generators.alerts.AlertTemplateLoader", return_value=mock_loader):
+            result = _load_and_customize_alerts(
+                service_name="test-svc",
+                team="eng",
+                tier="critical",
+                dependencies=["test"],
+                quiet=True,
+                alerting_config=config,
+            )
+
+        assert len(result) == 2
+        critical_alert = next(a for a in result if a.name == "TestCritical")
+        warning_alert = next(a for a in result if a.name == "TestWarning")
+        assert critical_alert.duration == "1m"
+        assert warning_alert.duration == "20m"
+
+    def test_no_alerting_config_keeps_original_duration(self) -> None:
+        """Without alerting config, original template durations are preserved."""
+        from unittest.mock import patch, MagicMock
+        from nthlayer.alerts.models import AlertRule
+        from nthlayer.generators.alerts import _load_and_customize_alerts
+
+        mock_alerts = [
+            AlertRule(name="TestAlert", expr="up == 0", duration="5m", severity="critical", technology="test"),
+        ]
+
+        mock_loader = MagicMock()
+        mock_loader.load_technology.return_value = mock_alerts
+
+        with patch("nthlayer.generators.alerts.AlertTemplateLoader", return_value=mock_loader):
+            result = _load_and_customize_alerts(
+                service_name="test-svc",
+                team="eng",
+                tier="critical",
+                dependencies=["test"],
+                quiet=True,
+                alerting_config=None,
+            )
+
+        assert len(result) == 1
+        assert result[0].duration == "5m"
