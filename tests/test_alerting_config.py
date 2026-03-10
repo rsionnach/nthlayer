@@ -334,6 +334,26 @@ class TestOpenSRMParsing:
         assert manifest.alerting.channels.slack_webhook == "${SLACK_URL}"
         assert manifest.alerting.auto_rules is False
 
+    def test_parse_opensrm_with_for_duration(self) -> None:
+        from nthlayer.specs.opensrm_parser import parse_opensrm
+
+        data = {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {"name": "test-svc", "team": "eng", "tier": "critical"},
+            "spec": {
+                "type": "api",
+                "alerting": {
+                    "for_duration": {"page": "1m", "ticket": "10m"},
+                    "rules": [],
+                },
+            },
+        }
+        manifest = parse_opensrm(data)
+        assert manifest.alerting is not None
+        assert manifest.alerting.for_duration.page == "1m"
+        assert manifest.alerting.for_duration.ticket == "10m"
+
     def test_parse_opensrm_without_alerting(self) -> None:
         from nthlayer.specs.opensrm_parser import parse_opensrm
 
