@@ -21,10 +21,10 @@ Produces a ReliabilityManifest for downstream generators.
 
 from __future__ import annotations
 
-import structlog
 from pathlib import Path
 from typing import Any
 
+import structlog
 import yaml
 
 logger = structlog.get_logger()

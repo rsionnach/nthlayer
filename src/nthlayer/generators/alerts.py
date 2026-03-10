@@ -217,7 +217,11 @@ def _load_and_customize_alerts(
             for alert in filtered:
                 # Determine for_duration override from alerting config
                 for_override = None
-                if alerting_config and hasattr(alerting_config, 'for_duration') and alerting_config.for_duration:
+                if (
+                    alerting_config
+                    and hasattr(alerting_config, "for_duration")
+                    and alerting_config.for_duration
+                ):
                     for_override = alerting_config.for_duration.get_for_severity(
                         alert.severity
                     )
