@@ -42,12 +42,34 @@ class SpecAlertRule:
 
 
 @dataclass
+class ForDuration:
+    """Severity-based alert 'for' duration overrides.
+
+    Controls how long a condition must be true before firing.
+    Maps to Prometheus 'for' field on generated AlertRules.
+
+    - page: Duration for critical/page alerts (default: 2m)
+    - ticket: Duration for warning/info/ticket alerts (default: 15m)
+    """
+
+    page: str = "2m"
+    ticket: str = "15m"
+
+    def get_for_severity(self, severity: str) -> str:
+        """Return the appropriate 'for' duration based on alert severity."""
+        if severity == "critical":
+            return self.page
+        return self.ticket
+
+
+@dataclass
 class AlertingConfig:
     """Top-level alerting configuration in a service spec."""
 
     channels: AlertChannels = field(default_factory=AlertChannels)
     rules: list[SpecAlertRule] = field(default_factory=list)
     auto_rules: bool = True
+    for_duration: ForDuration = field(default_factory=ForDuration)
 
     def get_rules_for_slo(self, slo_name: str) -> list[SpecAlertRule]:
         """Return rules that apply to a specific SLO (exact match or wildcard)."""

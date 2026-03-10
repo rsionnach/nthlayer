@@ -10,6 +10,7 @@ from nthlayer.specs.alerting import (
     TIER_DEFAULT_RULES,
     AlertChannels,
     AlertingConfig,
+    ForDuration,
     SpecAlertRule,
     parse_alerting_config,
     resolve_effective_rules,
@@ -231,6 +232,39 @@ class TestGetRulesForSlo:
             ],
         )
         assert cfg.get_rules_for_slo("avail") == []
+
+
+# -------------------------------------------------------------------------
+# ForDuration configuration
+# -------------------------------------------------------------------------
+
+
+class TestForDuration:
+    def test_default_for_duration(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration is not None
+        assert cfg.for_duration.page == "2m"
+        assert cfg.for_duration.ticket == "15m"
+
+    def test_custom_for_duration(self) -> None:
+        cfg = AlertingConfig(
+            rules=[],
+            for_duration=ForDuration(page="1m", ticket="10m"),
+        )
+        assert cfg.for_duration.page == "1m"
+        assert cfg.for_duration.ticket == "10m"
+
+    def test_get_for_severity_critical(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration.get_for_severity("critical") == "2m"
+
+    def test_get_for_severity_warning(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration.get_for_severity("warning") == "15m"
+
+    def test_get_for_severity_info(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration.get_for_severity("info") == "15m"
 
 
 # -------------------------------------------------------------------------
