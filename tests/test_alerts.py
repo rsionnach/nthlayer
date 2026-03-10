@@ -661,3 +661,58 @@ class TestAlertRuleFromDictMalformed:
         data = {"alert": "Test", "expr": "up == 0", "labels": "not-a-dict"}
         with pytest.raises(AttributeError):
             AlertRule.from_dict(data)
+
+
+class TestForDurationOverride:
+    def test_customize_applies_for_duration(self) -> None:
+        """for_duration override replaces AlertRule.duration during customization."""
+        from nthlayer.alerts.models import AlertRule
+
+        alert = AlertRule(
+            name="PostgresqlDown",
+            expr="pg_up == 0",
+            duration="5m",
+            severity="critical",
+        )
+        customized = alert.customize_for_service(
+            service_name="payment-api",
+            team="payments",
+            tier="critical",
+            for_duration_override="2m",
+        )
+        assert customized.duration == "2m"
+
+    def test_customize_no_override_keeps_original(self) -> None:
+        """Without for_duration_override, original duration is preserved."""
+        from nthlayer.alerts.models import AlertRule
+
+        alert = AlertRule(
+            name="PostgresqlDown",
+            expr="pg_up == 0",
+            duration="5m",
+            severity="critical",
+        )
+        customized = alert.customize_for_service(
+            service_name="payment-api",
+            team="payments",
+            tier="critical",
+        )
+        assert customized.duration == "5m"
+
+    def test_customize_none_override_keeps_original(self) -> None:
+        """Explicitly passing None keeps original duration."""
+        from nthlayer.alerts.models import AlertRule
+
+        alert = AlertRule(
+            name="PostgresqlDown",
+            expr="pg_up == 0",
+            duration="5m",
+            severity="critical",
+        )
+        customized = alert.customize_for_service(
+            service_name="payment-api",
+            team="payments",
+            tier="critical",
+            for_duration_override=None,
+        )
+        assert customized.duration == "5m"

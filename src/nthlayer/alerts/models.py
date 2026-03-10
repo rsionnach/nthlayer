@@ -90,6 +90,7 @@ class AlertRule:
         runbook_url: str = "",
         routing: str | None = "",
         grafana_url: str = "",
+        for_duration_override: str | None = None,
     ) -> "AlertRule":
         """
         Customize alert for a specific service.
@@ -122,6 +123,10 @@ class AlertRule:
             technology=self.technology,
             category=self.category,
         )
+
+        # Apply for_duration override if provided
+        if for_duration_override:
+            customized.duration = for_duration_override
 
         # Add service context to labels
         customized.labels["service"] = service_name

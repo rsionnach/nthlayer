@@ -5,8 +5,9 @@ Reliability at build time, not incident time. Validate production readiness in C
 ## Quick Reference
 
 - **Language:** Python
+- **License:** MIT (note: other OpenSRM ecosystem components — Arbiter, SitRep, Mayday — are Apache 2.0)
 - **Build:** `pip install -e .`
-- **Test:** `make test`
+- **Test:** `make test` | `make smoke` (CLI smoke, ~40s offline) | `make smoke-full` (includes Synology)
 - **Lint:** `make lint` and `./scripts/lint/run-all.sh` (custom golden-principle linters)
 - **Typecheck:** `make typecheck`
 - **Format:** `make format`
@@ -23,6 +24,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 | Active specs | `specs/` |
 | Execution plans (spec implementations) | `plans/` |
 | Technical debt backlog | `plans/tech-debt.md` |
+| Design & promotion plans | `docs/plans/` |
 
 Read the specific doc relevant to your task. Do NOT try to load all docs at once.
 
@@ -74,6 +76,7 @@ See `docs/conventions.md` for full Beads workflow.
 - **Doc gardening:** `/doc-garden`
 - **Spec to tasks:** `/spec-to-beads <spec-file>`
 - **Code quality sweep:** `/desloppify` (scan → fix → resolve loop for technical debt, dead code, code smells)
+- **Autonomous loop:** `.claude/ralph-loop.sh [max-iterations]` runs Ralph loop; prompt at `.claude/ralph-prompt.md`; signal completion with `RALPH_COMPLETE`
 - **Release:** Update CHANGELOG.md, merge `develop` → `main`, create GitHub release → auto-publishes to PyPI
 
 ## Commit Messages
@@ -112,24 +115,54 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `errors.py` - DeploymentProviderError exception
 - `drift/` - Reliability drift detection and trend analysis
   - `analyzer.py` - DriftAnalyzer for SLO trend analysis with configurable windows
+- `topology/` - Dependency graph topology export for visualization
+  - `models.py` - TopologyNode, TopologyEdge, TopologyGraph, SLOContract dataclasses
+  - `enrichment.py` - build_topology(): converts DependencyGraph → TopologyGraph with SLO contract enrichment
+  - `serializers.py` - Pure serializers: serialize_json(), serialize_mermaid(), serialize_dot()
 - `providers/` - External service integrations (grafana, prometheus, pagerduty, mimir)
 - `identity/` - Service identity resolution across naming conventions
 - `specs/` - Service specification models and parsing
   - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
+  - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy); `BudgetPolicy`, `BudgetThresholds`, `ErrorBudgetGate` dataclasses for error budget policy DSL
+  - `alerting.py` - `AlertingConfig`, `ForDuration` dataclasses; `ForDuration.get_for_severity()` maps severity → `for` duration override
+  - `loader.py` - Auto-detect format and load manifests
+  - `parser.py` - Legacy format parser, `render_resource_spec()` for variable substitution
+  - `opensrm_parser.py` - OpenSRM YAML parser; `_parse_budget_policy()` helper constructs `BudgetPolicy` from gate config
 - `slos/` - SLO definition, validation, and recording rule generation
   - `models.py` - SLO, ErrorBudget, SLOStatus, Incident dataclasses; default target: 0.999
   - `parser.py` - OpenSLO YAML parsing
   - `collector.py` - SLOCollector: Prometheus queries for live budget data
   - `calculator.py` - ErrorBudgetCalculator
-  - `gates.py` - Deployment gate enforcement (error budget thresholds)
+  - `gates.py` - Deployment gate enforcement (error budget thresholds); `GatePolicy.on_exhausted` list drives exhaustion behaviors (freeze_deploys, require_approval, notify) enforced in `DeploymentGate.check_deployment()`
   - `deployment.py` - DeploymentRecorder for storing deployment events
-  - `correlator.py` - DeploymentCorrelator for error budget correlation
+  - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
+  - `alerts.py` - Budget alert evaluation: AlertSeverity, AlertType, AlertRule (budget-domain rule with alert_type+threshold, distinct from Prometheus AlertRule in alerts/models.py), AlertEvent, AlertEvaluator
+  - `pipeline.py` - AlertPipeline: end-to-end alert orchestration (spec → budget → evaluate → explain → notify); PipelineResult dataclass with worst_severity property
+  - `explanations.py` - ExplanationEngine, BudgetExplanation: human-readable context for triggered alerts
+  - `notifiers.py` - AlertNotifier: Slack/PagerDuty notification dispatch
 - `alerts/` - Alert rule generation from dependencies and SLOs
+- `domain/` - Core domain models
+  - `models.py` - Pydantic models: RunStatus, TeamSource, Team, Service, Run, Finding
+- `db/` - Database persistence layer
+  - `models.py` - SQLAlchemy ORM models (Run, Finding, SLO, ErrorBudget, Deployment, Incident, Policy audit)
+  - `repositories.py` - RunRepository: async CRUD for jobs/findings with idempotency
+  - `session.py` - SQLAlchemy async engine/session factory
+- `integrations/` - Third-party service setup clients
+  - `pagerduty.py` - PagerDutyClient: service/escalation policy/team creation
+- `cloudwatch.py` - AWS CloudWatch MetricsCollector (optional `[aws]` extra)
+- `generators/` - Resource generation from manifests
+  - `alerts.py` - Alert rule generation from service dependencies (awesome-prometheus-alerts)
+  - `sloth.py` - Sloth SLO specification YAML generation
+  - `docs.py` - Service README, ADR scaffold, and API documentation generation; `DocsGenerationResult` dataclass
+  - `backstage.py` - Backstage entity JSON generation for service catalog
 - `validation/` - Metadata and resource validation
-- `policies/` - Policy DSL and deployment gate enforcement
-  - `evaluator.py` - Policy evaluation engine
-  - `audit.py` - Audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
+- `policies/` - Policy DSL, build-time spec validation, and deployment gate enforcement
+  - `engine.py` - PolicyEngine: loads rules from YAML or dict, evaluates against ReliabilityManifest
+  - `models.py` - Build-time models: PolicyRule, PolicyViolation, PolicyReport, RuleType, PolicySeverity
+  - `rules.py` - RULE_EVALUATORS registry: required_fields, tier_constraint, dependency_rule evaluators
+  - `evaluator.py` - Runtime policy evaluation engine (deployment gates)
+  - `audit.py` - Runtime audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
   - `recorder.py` - PolicyAuditRecorder for audit events
   - `repository.py` - PolicyAuditRepository for audit queries
 - `api/` - FastAPI API (webhooks, policies, health, teams)
@@ -137,9 +170,11 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `routes/webhooks.py` - Deployment webhook receiver
   - `routes/policies.py` - Policy audit and override API
   - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
+- `cli/deploy.py` - `check-deploy` command; `_extract_gate_policy()` resolves `GatePolicy` from `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
+- `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
   - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
-  - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-008 rule taxonomy
+  - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-011 rule taxonomy
   - `json_fmt.py`, `junit.py`, `markdown.py` - Additional output formatters
   - `__init__.py` - `format_report(report, output_format, output_file)` unified entry point
 - `verification/` - Prometheus metric contract verification
@@ -155,6 +190,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `golden-principles.md` - Mechanical enforcement rules with promotion ladder
   - `testing.md` - Test patterns, commands, coverage by area
   - `quality.md` - Package quality grades (A-F scale), improvement priorities
+  - `plans/` - Design and promotion plans (DAG-based implementation docs)
 - `docs-site/` - MkDocs documentation site source
 - `plans/` - Execution plan tracking for spec implementations
   - `README.md` - Plan lifecycle and format documentation
@@ -170,6 +206,38 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 7. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
 8. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
 9. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
+10. Topology export: DependencyGraph → build_topology() → TopologyGraph → serialize_json/mermaid/dot()
+
+### Planned: Agentic Inference (`nthlayer infer`)
+- Model analyses a codebase and proposes an OpenSRM manifest for it
+- Model provides judgment (what SLOs does this service need?), NthLayer provides transport (validate manifest, generate artifacts)
+- ZFC boundary: model=judgment (infer SLO targets), NthLayer=transport (validate + generate)
+- ZFC canonical doc: https://github.com/rsionnach/arbiter/blob/main/ZFC.md
+
+### Planned: MCP Server and Backstage Plugin
+- MCP server integration: planned (roadmap)
+- Backstage plugin: planned (roadmap)
+
+### Manifest Format Support
+- Supports `opensrm/v1` (OpenSRM format with `apiVersion: opensrm/v1`) and legacy `srm/v1` format
+- Auto-detected via `specs/loader.py`; `ReliabilityManifest` unified model handles both
+
+### Acknowledgments
+Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Inspired by: Sloth, autograf.
+
+### OpenSRM Ecosystem (README section)
+- NthLayer is the **Tool** layer: deterministic, invocable, no reasoning — one of three execution models (Data Sources / Tools / Agents)
+- Execution model test: "Does this component need to reason about ambiguous inputs?" Yes → Agent; same output every time → Tool; queryable state → Data Source
+- Data and tool layers (OpenSRM manifests + NthLayer) work with zero agents; agent layer is additive, not foundational
+- Ecosystem links: [OpenSRM](https://github.com/rsionnach/opensrm), [Arbiter](https://github.com/rsionnach/arbiter), [SitRep](https://github.com/rsionnach/sitrep), [Mayday](https://github.com/rsionnach/mayday)
+- Full ecosystem composition in `opensrm/ECOSYSTEM.md`: component taxonomy, integration diagram, data flows, deployment tiers, post-incident learning loop
+- **Arbiter** (architecture phase, Apache 2.0): quality measurement engine — per-agent quality tracking (rolling windows), degradation detection, self-calibration, cost-per-quality, governance via one-way safety ratchet; proven as Guardian in GasTown
+- **SitRep** (architecture phase, Apache 2.0): pre-correlation agent — continuously groups signals so correlated view is ready before incident; snapshot schema: id, triggered_by, window, severity, summary, signals, correlations, topology, recommended_actions; states: WATCHING → ALERT → INCIDENT → DEGRADED
+- **Mayday** (architecture phase, Apache 2.0): multi-agent incident response — deterministic orchestrator sequences Triage → (Investigation + Communication) → Remediation; PagerDuty/Slack/email are **downstream notification channels**, not upstream incident sources
+- Deployment tiers: Tier 1 (OpenSRM + NthLayer only, zero agents), Tier 2 (+SitRep), Tier 3+ (+Arbiter +Mayday)
+- Streaming layer: NATS (small teams), Kafka (enterprise) — sits between event producers and consumers (SitRep, Arbiter, Mayday)
+- Alert flow (ecosystem): Alert Source → SitRep Snapshot → Mayday Orchestrator → Agent Pipeline → Notification Channels
+- Post-incident learning loop: Mayday findings → manifest updates + NthLayer rule refinements + Arbiter threshold revisions + SitRep correlation improvements
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -250,16 +318,19 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Plans in `plans/` track spec implementation lifecycle
 - Format: `YYYY-MM-DD-<slug>.md` with metadata, requirements checklist, decision log, deviation log
 - Created by `/spec-to-beads`, updated during implementation
-- Plan status: active → completed → moved to archive
+- Plan lifecycle: active plans in `plans/active/`, completed plans move to `plans/completed/`
 - Decision log tracks architectural choices that diverge from or clarify specs
 - Deviation log defends against spec drift
 - Technical debt tracked in `plans/tech-debt.md` with AUTO-MANAGED section for audit agents
+- Design, promotion, and feature implementation plans (DAG-based, task-by-task) stored in `docs/plans/` (e.g., `docs/plans/2026-03-06-c-to-b-promotion-design.md`, `docs/plans/2026-03-10-alert-for-budget-policy.md`)
 
 ### Quality Grading System
 - Package quality grades (A-F) based on test coverage, docs, error handling, API stability
 - Grade criteria: A (>80% coverage), B (>60%), C (>40%), D (<40%), F (untested)
 - Tracked in `docs/quality.md` with AUTO-MANAGED sections for grades and history
-- Packages with D/F grades should have active Beads issues for improvement
+- As of 2026-03-06: no F-grade or D-grade packages remain; domain/ reached A-grade (100% tested, fully documented)
+- Core promotions completed 2026-03-06: domain/ C→A, core/ C→B, db/ C→B, identity/ C→B, policies/ reached B-grade (55 tests: models 10, rules 30, engine 15)
+- Packages with D or lower grades should have active Beads issues for improvement
 - Run `/audit-codebase` to identify specific gaps
 
 ### Policy Audit Trail Pattern
@@ -288,11 +359,101 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `ReliabilityReport(service, command, checks, summary, metadata)` is the canonical report model; all formatters consume it
 - `CheckResult(name, status, message, details, rule_id, location, line)` represents individual check outcomes
 - `format_report(report, output_format, output_file)` dispatches to the correct formatter; supports TABLE, JSON, SARIF, JUNIT, MARKDOWN
-- SARIF output (GitHub Code Scanning) maps check failures to rule IDs NTHLAYER001–NTHLAYER008:
+- SARIF output (GitHub Code Scanning) maps check failures to rule IDs NTHLAYER001–NTHLAYER011:
   - NTHLAYER001: SLOInfeasible, NTHLAYER002: DriftCritical, NTHLAYER003: MetricMissing
   - NTHLAYER004: BudgetExhausted, NTHLAYER005: HighBlastRadius, NTHLAYER006: TierMismatch
   - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
+  - NTHLAYER009: PolicyRequiredField, NTHLAYER010: PolicyTierConstraint, NTHLAYER011: PolicyDependencyRule
 - Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
+
+### CLI Smoke Test Suite
+- Location: `tests/smoke/` — end-to-end subprocess tests that invoke the real `nthlayer` CLI
+- Runner: `tests/smoke/_helpers.run_nthlayer(*args)` executes `uv run nthlayer <args>` and returns `CLIResult(exit_code, stdout, stderr, command)`
+- Manifest fixtures: `CHECKOUT_SERVICE` (`examples/services/checkout-service.yaml`), `PAYMENT_API_OPENSRM` (`examples/uat/payment-api.reliability.yaml`)
+- All tests tagged `pytest.mark.smoke`; `conftest.py` provides `output_dir` fixture (tmp_path)
+- Test categories:
+  - `test_validate_commands.py` — `validate-spec`, `validate`, `validate-metadata`, `validate-slo --demo`
+  - `test_generate_commands.py` — all `generate-*` commands with `--dry-run`
+  - `test_apply_plan.py` — `plan` and `apply --output-dir`; validates dashboard JSON structure and alerts YAML (must have `groups` key)
+  - `test_analysis_commands.py` — `check-deploy --demo` (exit 0/1), `check-deploy --demo-blocked` (exit 2), `topology export --demo`, `recommend-metrics`
+  - `test_synology.py` (Tier 2) — `verify` and `drift`; skipped unless `NTHLAYER_PROMETHEUS_URL` is set; marked `pytest.mark.synology`
+- Makefile targets: `make smoke` (offline, `-x` fail-fast), `make smoke-full` (sets `NTHLAYER_PROMETHEUS_URL`/`NTHLAYER_GRAFANA_URL` for Synology)
+- Pre-push hook: `smoke-test` in `.pre-commit-config.yaml` runs `uv run pytest tests/smoke/ -x -q --tb=short` automatically before every `git push`
+
+### Service Documentation Generation
+- `generators/docs.py`: `generate_service_docs(service_file, output_dir, environment, include_adr, include_api)` produces Markdown docs from a `ReliabilityManifest`
+- Generated artifacts: `README.md` (ownership, architecture, SLOs, dependencies, deployment sections), ADR scaffold (`adr/` subdirectory), API documentation stub
+- `DocsGenerationResult` dataclass: `success`, `service`, `files_generated`, `output_dir`, `error`
+- CLI: `nthlayer generate-docs <manifest> [--output DIR] [--env ENV] [--include-adr] [--include-api] [--dry-run]`
+- Default output dir: `generated/{service_name}/` (derived from manifest filename stem)
+- Input format auto-detected via `specs/loader.py` (supports OpenSRM and legacy formats)
+
+### Topology Export CLI Pattern
+- CLI command: `nthlayer topology export <manifest> [--format json|mermaid|dot] [--output FILE] [--depth N] [--demo]`
+- `--demo` flag runs export with built-in sample data (no manifest required)
+- JSON format produces Sitrep-compatible output; Mermaid uses `graph LR` with Nord-themed classDef tier styles and SLO labels on edges; DOT uses Graphviz digraph with Nord palette tier colors and type-based node shapes (cylinder=database, hexagon=worker/batch, parallelogram=queue), critical edges highlighted in red
+- Env vars: `NTHLAYER_PROMETHEUS_URL`, `NTHLAYER_METRICS_USER`, `NTHLAYER_METRICS_PASSWORD`
+- `build_topology()` (topology/enrichment.py) accepts optional `max_depth` + `root_service` for BFS-limited subgraph export
+
+### Zero Framework Cognition (ZFC) in the Ecosystem
+- Canonical doc: `arbiter/ZFC.md` (applies to entire OpenSRM ecosystem, not just Arbiter)
+- Core tenet: "Transport is code. Judgment is model." Originated by Steve Yegge for GasTown.
+- Two-question test for any function: (1) "Is there exactly one right answer given the inputs?" → transport, write in code. (2) "Does the right answer depend on context, interpretation, or evaluation?" → judgment, send to model.
+- Transport examples: receiving webhook payloads, validating YAML against JSON schema, generating Prometheus rules from declared SLO targets, routing messages, persisting scores
+- Judgment examples: deciding if code is correct, scoring quality dimensions, deciding if declining scores are real degradation vs normal variance, correlating quality drops with changes
+- Config as guidance: a rejection rate threshold of 0.20 means "operator considers 20% concerning", not "trigger WARN at exactly 0.20" — the model decides the outcome using config as context
+- Fail open: if model unavailable, transport continues, judgment pauses ("no quality opinion" not "wrong quality opinion")
+- Model-agnostic by design: swap Claude for Gemini/GPT/local model, transport unchanged; judgment quality changes and is itself measurable
+- ZFC is NOT "put LLM in every code path" — most ecosystem code is and should remain pure transport
+- **NthLayer's ZFC boundary:** code=transport (validate manifest, generate artifacts, enforce gates); model=judgment (infer SLO targets, assess service criticality)
+- **Arbiter governance one-way safety ratchet:** Arbiter can always reduce agent autonomy (safe direction) but can NEVER increase it without human approval — automated constraint is always permitted, automated expansion never is
+- **Arbiter self-calibration:** every judgment emits `gen_ai.decision.*` OTel event; every human correction emits `gen_ai.override.*`; these feed back into Arbiter's own judgment SLO (false accept rate, precision, recall)
+
+### Alert For Duration Override
+- `ForDuration` dataclass (specs/alerting.py) holds severity-based `for` duration overrides: `page` (default "2m") for critical alerts, `ticket` (default "15m") for warning/info
+- Added to `AlertingConfig` as `for_duration: ForDuration = field(default_factory=ForDuration)`
+- `ForDuration.get_for_severity(severity)` returns `page` for "critical", `ticket` otherwise
+- `AlertRule.customize_for_service()` gains optional `for_duration_override: str | None` parameter; applied after rule construction
+- Pipeline wiring: `generate_alerts_from_manifest()` passes `alerting_config=manifest.alerting` to `_load_and_customize_alerts()`; the inner loop calls `alerting_config.for_duration.get_for_severity(alert.severity)` and forwards the result as `for_duration_override`
+- Manifest YAML key: `spec.alerting.for_duration.page` / `spec.alerting.for_duration.ticket`
+- `TIER_DEFAULT_RULES` in specs/alerting.py covers all 4 tiers: `critical`, `high`, `standard`, `low`; "high" sits between critical and standard (budget-warning@0.65, budget-critical@0.85, burn-rate-warning@3.0, budget-exhaustion@6.0)
+
+### Alert Pipeline (slos/pipeline.py)
+- `AlertPipeline(prometheus_url, dry_run, notify)` orchestrates end-to-end SLO alert evaluation
+- `evaluate_service(manifest, sli_measurements, simulate_burn_pct)` → `PipelineResult`
+- Pipeline steps: `resolve_effective_rules()` → build `ErrorBudget` objects → `AlertEvaluator` → `ExplanationEngine` → `AlertNotifier`
+- `dry_run=True`: runs full evaluation (budget calc, rule eval, explanation) but skips all notifications (notifications_sent=0)
+- `simulate_burn_pct`: synthesizes budget consumption at given percentage without requiring Prometheus
+- `PipelineResult` fields: `budgets_evaluated`, `rules_evaluated`, `alerts_triggered`, `notifications_sent`, `explanations`, `events`, `errors`; `worst_severity` property returns "healthy" | "info" | "warning" | "critical"
+- `_build_slo_from_manifest(manifest, slo_def)` converts `SLODefinition` → `SLO`; normalises target: values >1 treated as percentage (99.9 → 0.999)
+- `_convert_spec_rule_to_alert_rule(spec_rule, service, slo_id, channels)` maps `SpecAlertRule` → budget-domain `AlertRule` (slos/alerts.py); distinct from Prometheus `AlertRule` (alerts/models.py)
+- Note: `slos/alerts.py::AlertRule` is a budget alert rule (has `alert_type`, `threshold`); `alerts/models.py::AlertRule` is a Prometheus alerting rule (has `expr`, `duration`)
+
+### Error Budget Policy DSL
+- `BudgetThresholds(warning=0.20, critical=0.10)` — fraction of remaining budget (e.g. 0.10 = 10% remaining triggers critical)
+- `BudgetPolicy(window="30d", thresholds=BudgetThresholds(), on_exhausted=[])` — full policy config in `specs/manifest.py`
+- `on_exhausted` valid values: `freeze_deploys` (blocks deployment), `require_approval` (escalates to WARNING, requires explicit override), `notify` (informational)
+- `BudgetPolicy.validate()` enforces: valid `on_exhausted` values, `warning >= critical` invariant
+- `ErrorBudgetGate.policy: BudgetPolicy | None` — opt-in; absence means existing tier-default behavior
+- YAML path: `spec.deployment.gates.error_budget.policy.{window,thresholds,on_exhausted}`
+- Parser: `_parse_budget_policy(eb_data)` in `specs/opensrm_parser.py` constructs `BudgetPolicy` from gate config dict
+- Conversion to gate layer: `BudgetPolicy → GatePolicy(warning=thresholds.warning*100, blocking=thresholds.critical*100, on_exhausted=...)` — multiply by 100 because `GatePolicy` uses percentage points
+- CLI wiring: `_extract_gate_policy()` (cli/deploy.py) tries `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
+- Exhaustion enforcement in `DeploymentGate.check_deployment()`: when `budget_remaining_pct <= 0` and `on_exhausted` is set, `freeze_deploys` → `BLOCKED`, `require_approval` → `WARNING`
+
+### Build-Time Policy Engine
+- `PolicyEngine` (policies/engine.py) validates spec correctness at CI/build time — distinct from runtime `PolicyAuditRecorder`/`Repository` (policies/audit.py)
+- Two load paths: `PolicyEngine.from_yaml(path)` for central policy YAML, `PolicyEngine.from_dict(data)` for per-service `PolicyRules` resources
+- `engine.add_rules(rules)` merges central + per-service rules before evaluation
+- `engine.evaluate(manifest)` returns `PolicyReport` with violations, rules_evaluated count, and `passed` property (True if no error-severity violations)
+- Rule types (RuleType enum in policies/models.py): `required_fields`, `tier_constraint`, `dependency_rule`
+- `RULE_EVALUATORS` registry (policies/rules.py) maps `RuleType` → evaluator function; extend by adding new entries
+- `required_fields` evaluator uses dot-path resolution (e.g., `"ownership.runbook"`) against `ReliabilityManifest` attributes
+- `tier_constraint` evaluator checks `min_slos`, `require_deployment_gates`, `require_ownership` for a given tier or "all"
+- `dependency_rule` evaluator checks `require_critical_deps_have_slo` and `max_critical_deps` limits
+- `PolicySeverity`: `error` blocks (`passed=False`), `warning` surfaces but does not block
+- CLI integration: `nthlayer validate <manifest> --policies <policies.yaml>` runs structural validation then policy evaluation; exit 0 = all pass, exit 1 = errors found
+- `PolicyHandler` registered in `orchestration/handlers.py` handles `PolicyRules` resource kind embedded in service YAMLs; evaluated during `apply`/`plan` runs
 <!-- /AUTO-MANAGED: learned-patterns -->
 
 <!-- AUTO-MANAGED: discovered-conventions -->
@@ -363,10 +524,13 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `[service-discovery]`: kazoo + etcd3 bundled — for all service discovery providers at once
 - Core `structlog`, `httpx`, `pagerduty`, `grafana-foundation-sdk` are always installed
 - Lazy import pattern: Optional imports use `__getattr__` in `__init__.py` (e.g., `queue/__init__.py` for SQS JobEnqueuer) to delay import until used, avoiding hard dependency on missing extras
+- Runtime import deferral: `api/deps.py` imports `SQS JobEnqueuer` inside the function body at call time (not at module load) — use this pattern in FastAPI dependency functions to avoid failing on startup when optional extras are absent
 - TYPE_CHECKING guard prevents circular imports while allowing type hints for optional classes
 
 ### Test Organization
-- Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`)
+- Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`) — this is the canonical location; `tests/mock_server.py` is a legacy duplicate, do not add new files there
+- Integration tests using mock servers live in `tests/integration/` (e.g., `tests/integration/test_mock_server_integration.py`)
+- CLI end-to-end smoke tests live in `tests/smoke/` — invoke the real CLI via subprocess; see "CLI Smoke Test Suite" pattern for details
 - Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
 - Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
 - Apply `importorskip` to any test module that imports from `[aws]`, `[workflows]`, or other optional extras

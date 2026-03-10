@@ -3,8 +3,10 @@
 Automatically generates production-ready alert rules based on service dependencies.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
 import yaml
 
@@ -13,6 +15,9 @@ from nthlayer.specs.helpers import extract_dependency_technologies, infer_techno
 from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import Resource
 from nthlayer.specs.parser import parse_service_file
+
+if TYPE_CHECKING:
+    from nthlayer.specs.alerting import AlertingConfig
 
 
 def extract_dependencies(resources: List[Resource]) -> List[str]:
@@ -117,6 +122,7 @@ def generate_alerts_from_manifest(
         routing=alert_routing,
         grafana_url=grafana_url,
         quiet=quiet,
+        alerting_config=manifest.alerting,
     )
 
 
@@ -165,6 +171,7 @@ def _load_and_customize_alerts(
     routing: str = "",
     grafana_url: str = "",
     quiet: bool = False,
+    alerting_config: AlertingConfig | None = None,
 ) -> List[AlertRule]:
     """Core alert generation logic shared by both APIs.
 
@@ -179,6 +186,7 @@ def _load_and_customize_alerts(
         routing: PagerDuty routing label
         grafana_url: Base URL for Grafana dashboards
         quiet: If True, suppress progress output
+        alerting_config: Optional AlertingConfig with for_duration overrides
 
     Returns:
         List of generated AlertRule objects
@@ -210,18 +218,27 @@ def _load_and_customize_alerts(
             filtered = filter_by_tier(alerts, tier)
 
             # Customize for service
-            customized = [
-                alert.customize_for_service(
-                    service_name=service_name,
-                    team=team,
-                    tier=tier,
-                    notification_channel=notification_channel,
-                    runbook_url=runbook_url,
-                    routing=routing,
-                    grafana_url=grafana_url,
+            customized = []
+            for alert in filtered:
+                # Determine for_duration override from alerting config
+                for_override = None
+                if alerting_config and alerting_config.for_duration:
+                    for_override = alerting_config.for_duration.get_for_severity(
+                        alert.severity
+                    )
+
+                customized.append(
+                    alert.customize_for_service(
+                        service_name=service_name,
+                        team=team,
+                        tier=tier,
+                        notification_channel=notification_channel,
+                        runbook_url=runbook_url,
+                        routing=routing,
+                        grafana_url=grafana_url,
+                        for_duration_override=for_override,
+                    )
                 )
-                for alert in filtered
-            ]
 
             # Validate and fix common issues (label mismatches, missing 'for' duration)
             validated = []
