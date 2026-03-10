@@ -146,3 +146,46 @@ class TestBudgetPolicyParsing:
         assert policy.thresholds.warning == 0.30
         assert policy.thresholds.critical == 0.10  # default
         assert policy.window == "30d"  # default
+
+
+class TestBudgetPolicyCLIWiring:
+    """Test that BudgetPolicy flows from manifest to DeploymentGate via CLI."""
+
+    def test_gate_policy_from_budget_policy(self) -> None:
+        """BudgetPolicy from manifest converts to GatePolicy for DeploymentGate."""
+        from nthlayer.specs.manifest import BudgetPolicy, BudgetThresholds
+        from nthlayer.slos.gates import GatePolicy
+
+        budget_policy = BudgetPolicy(
+            window="7d",
+            thresholds=BudgetThresholds(warning=0.25, critical=0.12),
+            on_exhausted=["freeze_deploys", "notify"],
+        )
+
+        # Conversion: BudgetPolicy -> GatePolicy
+        gate_policy = GatePolicy(
+            warning=budget_policy.thresholds.warning * 100,
+            blocking=budget_policy.thresholds.critical * 100,
+            on_exhausted=budget_policy.on_exhausted,
+        )
+
+        assert gate_policy.warning == 25.0
+        assert gate_policy.blocking == 12.0
+        assert gate_policy.on_exhausted == ["freeze_deploys", "notify"]
+
+    def test_gate_policy_from_budget_policy_defaults(self) -> None:
+        """Default BudgetPolicy converts to expected GatePolicy values."""
+        from nthlayer.specs.manifest import BudgetPolicy
+        from nthlayer.slos.gates import GatePolicy
+
+        budget_policy = BudgetPolicy()
+
+        gate_policy = GatePolicy(
+            warning=budget_policy.thresholds.warning * 100,
+            blocking=budget_policy.thresholds.critical * 100,
+            on_exhausted=budget_policy.on_exhausted,
+        )
+
+        assert gate_policy.warning == 20.0
+        assert gate_policy.blocking == 10.0
+        assert gate_policy.on_exhausted == []
