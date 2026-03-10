@@ -246,6 +246,24 @@ class BudgetPolicy:
     thresholds: BudgetThresholds = field(default_factory=BudgetThresholds)
     on_exhausted: list[str] = field(default_factory=list)
 
+    def validate(self) -> None:
+        """Validate policy configuration.
+
+        Raises:
+            ValueError: If configuration is invalid
+        """
+        for behavior in self.on_exhausted:
+            if behavior not in VALID_EXHAUSTION_BEHAVIORS:
+                raise ValueError(
+                    f"Invalid on_exhausted behavior: {behavior}. "
+                    f"Valid values: {', '.join(sorted(VALID_EXHAUSTION_BEHAVIORS))}"
+                )
+        if self.thresholds.warning < self.thresholds.critical:
+            raise ValueError(
+                f"warning threshold ({self.thresholds.warning}) must be >= "
+                f"critical threshold ({self.thresholds.critical})"
+            )
+
 
 @dataclass
 class ErrorBudgetGate:

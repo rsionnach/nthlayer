@@ -189,3 +189,34 @@ class TestBudgetPolicyCLIWiring:
         assert gate_policy.warning == 20.0
         assert gate_policy.blocking == 10.0
         assert gate_policy.on_exhausted == []
+
+
+class TestBudgetPolicyValidation:
+    def test_invalid_on_exhausted_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid_behavior"):
+            BudgetPolicy(on_exhausted=["invalid_behavior"]).validate()
+
+    def test_valid_on_exhausted_passes(self) -> None:
+        # Should not raise
+        BudgetPolicy(on_exhausted=["freeze_deploys", "notify"]).validate()
+
+    def test_empty_on_exhausted_passes(self) -> None:
+        # Should not raise
+        BudgetPolicy(on_exhausted=[]).validate()
+
+    def test_warning_above_critical_passes(self) -> None:
+        BudgetPolicy(
+            thresholds=BudgetThresholds(warning=0.30, critical=0.10),
+        ).validate()
+
+    def test_warning_below_critical_raises(self) -> None:
+        with pytest.raises(ValueError, match="warning.*critical"):
+            BudgetPolicy(
+                thresholds=BudgetThresholds(warning=0.05, critical=0.10),
+            ).validate()
+
+    def test_warning_equals_critical_passes(self) -> None:
+        # Equal thresholds are valid (degenerate case but not an error)
+        BudgetPolicy(
+            thresholds=BudgetThresholds(warning=0.10, critical=0.10),
+        ).validate()
