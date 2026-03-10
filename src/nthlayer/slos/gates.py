@@ -51,6 +51,9 @@ class GatePolicy:
     # Exceptions (teams that can bypass)
     exceptions: list[dict[str, Any]] = field(default_factory=list)
 
+    # Behaviors when error budget is exhausted (0% remaining)
+    on_exhausted: list[str] = field(default_factory=list)
+
     @classmethod
     def from_spec(cls, spec: dict[str, Any]) -> "GatePolicy":
         """Create GatePolicy from DeploymentGate resource spec."""
@@ -60,6 +63,7 @@ class GatePolicy:
             blocking=thresholds.get("blocking"),
             conditions=spec.get("conditions", []),
             exceptions=spec.get("exceptions", []),
+            on_exhausted=spec.get("on_exhausted", []),
         )
 
 
@@ -265,6 +269,36 @@ class DeploymentGate:
                     "Continue monitoring post-deployment",
                 ]
             )
+
+        # Apply on_exhausted behaviors if budget is fully consumed
+        if (
+            self.policy
+            and self.policy.on_exhausted
+            and budget_remaining_pct <= 0
+            and result != GateResult.BLOCKED  # Don't downgrade an existing block
+        ):
+            if "freeze_deploys" in self.policy.on_exhausted:
+                result = GateResult.BLOCKED
+                message = (
+                    f"⛔ Deployment BLOCKED: Error budget exhausted "
+                    f"({budget_remaining_pct:.1f}% remaining) — freeze_deploys policy active"
+                )
+                recommendations = [
+                    "Error budget is fully exhausted",
+                    "freeze_deploys policy is blocking all deployments",
+                    "Wait for budget to recover or request an override",
+                ]
+            elif "require_approval" in self.policy.on_exhausted:
+                result = GateResult.WARNING
+                message = (
+                    f"⚠️  Deployment WARNING: Error budget exhausted "
+                    f"({budget_remaining_pct:.1f}% remaining) — approval required"
+                )
+                recommendations = [
+                    "Error budget is fully exhausted",
+                    "require_approval policy — get explicit approval before deploying",
+                    "Use --override to bypass after approval",
+                ]
 
         # Add blast radius to recommendations if significant
         if high_crit_downstream:

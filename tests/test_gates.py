@@ -507,3 +507,94 @@ class TestBudgetPolicyIntegration:
             budget_consumed_minutes=500,  # 50% remaining
         )
         assert result.result == GateResult.APPROVED
+
+
+class TestOnExhaustedBehavior:
+    """Test on_exhausted behavior enforcement."""
+
+    def test_freeze_deploys_blocks_when_exhausted(self):
+        """freeze_deploys in on_exhausted blocks when budget is 0."""
+        gate_policy = GatePolicy(
+            warning=20.0,
+            blocking=None,  # Standard tier — normally no blocking
+            on_exhausted=["freeze_deploys"],
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="standard",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=1000,  # 0% remaining — exhausted
+        )
+        assert result.result == GateResult.BLOCKED
+
+    def test_require_approval_warns_when_exhausted(self):
+        """require_approval in on_exhausted produces WARNING when budget is 0."""
+        gate_policy = GatePolicy(
+            warning=20.0,
+            blocking=None,
+            on_exhausted=["require_approval"],
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="standard",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=1000,  # 0% remaining
+        )
+        # require_approval should at minimum produce WARNING
+        assert result.result in (GateResult.WARNING, GateResult.BLOCKED)
+
+    def test_no_exhaustion_behavior_when_budget_healthy(self):
+        """on_exhausted behaviors don't fire when budget is healthy."""
+        gate_policy = GatePolicy(
+            warning=20.0,
+            blocking=None,
+            on_exhausted=["freeze_deploys"],
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="standard",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=500,  # 50% remaining — healthy
+        )
+        assert result.result == GateResult.APPROVED
+
+    def test_freeze_deploys_does_not_override_existing_block(self):
+        """If already BLOCKED (e.g. by threshold), freeze_deploys doesn't change anything."""
+        gate_policy = GatePolicy(
+            warning=20.0,
+            blocking=10.0,
+            on_exhausted=["freeze_deploys"],
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="critical",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=1000,  # 0% remaining
+        )
+        assert result.result == GateResult.BLOCKED
+
+    def test_notify_only_does_not_block(self):
+        """notify alone in on_exhausted does not block or warn beyond normal thresholds."""
+        gate_policy = GatePolicy(
+            warning=20.0,
+            blocking=None,
+            on_exhausted=["notify"],
+        )
+        gate = DeploymentGate(policy=gate_policy)
+
+        result = gate.check_deployment(
+            service="test-svc",
+            tier="standard",
+            budget_total_minutes=1000,
+            budget_consumed_minutes=1000,  # 0% remaining
+        )
+        # With only "notify", the normal threshold logic applies (WARNING because below 20%)
+        assert result.result == GateResult.WARNING
