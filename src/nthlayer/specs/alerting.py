@@ -200,8 +200,17 @@ def parse_alerting_config(data: dict[str, Any] | None) -> AlertingConfig | None:
             )
         )
 
+    for_duration = ForDuration()
+    fd_data = data.get("for_duration")
+    if fd_data and isinstance(fd_data, dict):
+        for_duration = ForDuration(
+            page=fd_data.get("page", "2m"),
+            ticket=fd_data.get("ticket", "15m"),
+        )
+
     return AlertingConfig(
         channels=channels,
         rules=rules,
         auto_rules=data.get("auto_rules", True),
+        for_duration=for_duration,
     )

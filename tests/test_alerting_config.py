@@ -79,6 +79,36 @@ class TestParseAlertingConfig:
         assert cfg is not None
         assert cfg.auto_rules is False
 
+    def test_parses_for_duration(self) -> None:
+        data = {
+            "rules": [],
+            "for_duration": {
+                "page": "1m",
+                "ticket": "10m",
+            },
+        }
+        cfg = parse_alerting_config(data)
+        assert cfg is not None
+        assert cfg.for_duration.page == "1m"
+        assert cfg.for_duration.ticket == "10m"
+
+    def test_for_duration_defaults_when_absent(self) -> None:
+        data = {"rules": []}
+        cfg = parse_alerting_config(data)
+        assert cfg is not None
+        assert cfg.for_duration.page == "2m"
+        assert cfg.for_duration.ticket == "15m"
+
+    def test_for_duration_partial_override(self) -> None:
+        data = {
+            "rules": [],
+            "for_duration": {"page": "30s"},
+        }
+        cfg = parse_alerting_config(data)
+        assert cfg is not None
+        assert cfg.for_duration.page == "30s"
+        assert cfg.for_duration.ticket == "15m"  # default kept
+
 
 # -------------------------------------------------------------------------
 # AlertChannels env var resolution
