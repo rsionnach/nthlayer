@@ -3,8 +3,10 @@
 Automatically generates production-ready alert rules based on service dependencies.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
 import yaml
 
@@ -13,6 +15,9 @@ from nthlayer.specs.helpers import extract_dependency_technologies, infer_techno
 from nthlayer.specs.manifest import ReliabilityManifest
 from nthlayer.specs.models import Resource
 from nthlayer.specs.parser import parse_service_file
+
+if TYPE_CHECKING:
+    from nthlayer.specs.alerting import AlertingConfig
 
 
 def extract_dependencies(resources: List[Resource]) -> List[str]:
@@ -166,7 +171,7 @@ def _load_and_customize_alerts(
     routing: str = "",
     grafana_url: str = "",
     quiet: bool = False,
-    alerting_config: Any = None,
+    alerting_config: AlertingConfig | None = None,
 ) -> List[AlertRule]:
     """Core alert generation logic shared by both APIs.
 
@@ -217,11 +222,7 @@ def _load_and_customize_alerts(
             for alert in filtered:
                 # Determine for_duration override from alerting config
                 for_override = None
-                if (
-                    alerting_config
-                    and hasattr(alerting_config, "for_duration")
-                    and alerting_config.for_duration
-                ):
+                if alerting_config and alerting_config.for_duration:
                     for_override = alerting_config.for_duration.get_for_severity(
                         alert.severity
                     )

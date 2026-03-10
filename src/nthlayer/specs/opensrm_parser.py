@@ -389,11 +389,13 @@ def _parse_budget_policy(data: dict[str, Any]) -> BudgetPolicy | None:
     if not isinstance(on_exhausted, list):
         on_exhausted = []
 
-    return BudgetPolicy(
+    policy = BudgetPolicy(
         window=policy_data.get("window", "30d"),
         thresholds=thresholds,
         on_exhausted=on_exhausted,
     )
+    policy.validate()
+    return policy
 
 
 def _parse_error_budget_gate(gate_data: dict[str, Any] | None) -> ErrorBudgetGate | None:
