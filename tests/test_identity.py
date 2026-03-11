@@ -155,6 +155,22 @@ class TestNormalizeServiceName:
         result = normalize_service_name("payment-legacy", rules=custom_rules)
         assert result == "payment"
 
+    def test_empty_string(self):
+        assert normalize_service_name("") == ""
+
+    def test_underscores_become_hyphens(self):
+        assert normalize_service_name("payment_api") == "payment"
+
+    def test_dots_become_hyphens(self):
+        assert normalize_service_name("payment.api") == "payment"
+
+    def test_multiple_suffixes_stripped(self):
+        result = normalize_service_name("payment-api-prod")
+        assert result == "payment"
+
+    def test_uppercase_normalized(self):
+        assert normalize_service_name("PAYMENT-API") == "payment"
+
 
 class TestExtractFromPattern:
     """Tests for pattern-based extraction."""
@@ -185,6 +201,11 @@ class TestExtractFromPattern:
         result = extract_from_pattern("payment-api", pattern, "name")
         assert result is None
 
+    def test_missing_group_returns_none(self):
+        pattern = r"^(?P<name>.+)$"
+        result = extract_from_pattern("test", pattern, "nonexistent")
+        assert result is None
+
 
 class TestExtractServiceName:
     """Tests for service name extraction from various formats."""
@@ -203,6 +224,14 @@ class TestExtractServiceName:
         """Test simple name normalization."""
         result = extract_service_name("payment-api", "unknown")
         assert result == "payment"  # normalized
+
+    def test_kubernetes_extraction(self):
+        result = extract_service_name("production/payment-api", "kubernetes")
+        assert result == "payment"
+
+    def test_eureka_extraction(self):
+        result = extract_service_name("PAYMENT-API", "eureka")
+        assert result == "payment"
 
 
 class TestIdentityResolver:
@@ -325,6 +354,49 @@ class TestIdentityResolver:
         # Clear cache
         resolver.clear_cache()
         assert len(resolver._cache) == 0
+
+    def test_explicit_mapping_with_provider(self, resolver):
+        """Test adding explicit mapping scoped to a specific provider."""
+        resolver.add_mapping("custom-pay", "payment", provider="consul")
+        match = resolver.resolve("custom-pay", provider="consul")
+        assert match.identity is not None
+        assert match.match_type == "explicit_mapping"
+
+    def test_register_merge(self, resolver):
+        """Test registering with merge preserves original aliases."""
+        updated = ServiceIdentity(canonical_name="payment", aliases={"new-alias"})
+        resolver.register(updated, merge_existing=True)
+        identity = resolver.get_identity("payment")
+        assert "new-alias" in identity.aliases
+        assert "payments" in identity.aliases  # original preserved
+
+    def test_register_no_merge_replaces(self, resolver):
+        """Test registering without merge replaces the identity."""
+        replacement = ServiceIdentity(canonical_name="payment", aliases={"only-this"})
+        resolver.register(replacement, merge_existing=False)
+        identity = resolver.get_identity("payment")
+        assert "only-this" in identity.aliases
+        assert "payments" not in identity.aliases
+
+    def test_list_identities(self, resolver):
+        """Test listing all registered identities."""
+        identities = resolver.list_identities()
+        names = [i.canonical_name for i in identities]
+        assert "payment" in names
+        assert "user" in names
+
+    def test_get_identity_not_found(self, resolver):
+        """Test get_identity returns None for unknown canonical name."""
+        assert resolver.get_identity("nonexistent") is None
+
+    def test_resolve_with_attribute_correlation(self, resolver):
+        """Test resolve with attributes returns a match object."""
+        match = resolver.resolve(
+            "unknown-name",
+            attributes={"repo": "some-repo"},
+        )
+        # Should return a match (even if no identity found)
+        assert match is not None
 
 
 class TestIdentityMatch:

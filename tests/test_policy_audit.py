@@ -569,6 +569,74 @@ class TestGateWiring:
 # -- TestAuditConfig --
 
 
+class TestEndToEndGateAuditOverride:
+    """Integration test: gate → audit → override → re-evaluation."""
+
+    @pytest.mark.asyncio
+    async def test_gate_audit_override_flow(self, mock_repository):
+        """Full flow: gate blocks → audit recorded → override created → gate approves."""
+        recorder = PolicyAuditRecorder(mock_repository)
+
+        # Step 1: Gate blocks deployment, audit is recorded
+        gate = DeploymentGate(
+            audit_recorder=recorder,
+            override_repository=mock_repository,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+            environment="prod",
+            team="payments",
+            actor="deploy-bot",
+        )
+
+        assert result.result == GateResult.BLOCKED
+        mock_repository.record_evaluation.assert_awaited()
+        mock_repository.record_violation.assert_awaited()
+
+        # Step 2: Override is created
+        override = await recorder.record_override(
+            service="payment-api",
+            policy_name="deployment-gate",
+            approved_by="oncall@example.com",
+            reason="Emergency hotfix for checkout",
+            override_type="emergency_bypass",
+        )
+        assert override is not None
+
+        # Step 3: Re-evaluation respects the override
+        from nthlayer.policies.audit import PolicyOverride as _PolicyOverride
+
+        active_override = _PolicyOverride(
+            id="over-001",
+            timestamp=datetime.utcnow(),
+            service="payment-api",
+            policy_name="deployment-gate",
+            deployment_id=None,
+            approved_by="oncall@example.com",
+            reason="Emergency hotfix for checkout",
+            override_type="emergency_bypass",
+        )
+        mock_repository.get_active_override = AsyncMock(return_value=active_override)
+
+        result2 = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+            environment="prod",
+            team="payments",
+            actor="deploy-bot",
+        )
+
+        assert result2.result == GateResult.APPROVED
+        assert "override" in result2.message.lower()
+        assert "oncall@example.com" in result2.message
+
+
 class TestAuditConfig:
     """Test OpenSRM audit config parsing."""
 

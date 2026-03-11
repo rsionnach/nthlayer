@@ -56,3 +56,11 @@ repos:
         pass_filenames: false
         stages: [pre-push]
         always_run: true
+
+      - id: smoke-test
+        name: CLI smoke tests
+        entry: uv run pytest tests/smoke/ -x -q --tb=short
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true

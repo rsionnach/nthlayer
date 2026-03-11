@@ -6,7 +6,11 @@ corresponding Beads issues. Updated by GC sweep and audit agents.
 <!-- AUTO-MANAGED: tech-debt -->
 | ID | Package | Description | Severity | Beads | Filed |
 |----|---------|-------------|----------|-------|-------|
-<!-- Populated by audit/GC agents -->
+| TD-001 | cloudwatch | Zero test coverage for MetricsCollector | High | trellis-hlig | 2026-03-05 |
+| TD-002 | db | Zero test coverage for models, repositories, session | High | trellis-tfvh | 2026-03-05 |
+| TD-003 | domain | Zero test coverage for Pydantic domain models | High | trellis-fncd | 2026-03-05 |
+| TD-004 | generators | Zero test coverage for alerts, backstage, docs, sloth | High | trellis-zxqw | 2026-03-05 |
+| TD-005 | integrations | Zero test coverage for PagerDutyClient | High | trellis-l1uo | 2026-03-05 |
 <!-- /AUTO-MANAGED: tech-debt -->
 
 ## Debt Reduction Policy

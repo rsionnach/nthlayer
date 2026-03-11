@@ -4,11 +4,13 @@ Tests for correlating deployments with error budget burns,
 confidence calculation, and blame analysis.
 """
 
+import math
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nthlayer.slos.correlator import (
+    BLOCKING_CONFIDENCE,
     HIGH_CONFIDENCE,
     LOW_CONFIDENCE,
     MEDIUM_CONFIDENCE,
@@ -408,3 +410,197 @@ class TestConfidenceThresholds:
         assert HIGH_CONFIDENCE == 0.7
         assert MEDIUM_CONFIDENCE == 0.5
         assert LOW_CONFIDENCE == 0.3
+
+
+class TestBlockingConfidenceConstant:
+    """Tests for BLOCKING_CONFIDENCE constant."""
+
+    def test_blocking_confidence_value(self):
+        """BLOCKING_CONFIDENCE is 0.8."""
+        assert BLOCKING_CONFIDENCE == 0.8
+
+    def test_blocking_above_high(self):
+        """BLOCKING_CONFIDENCE > HIGH_CONFIDENCE."""
+        assert BLOCKING_CONFIDENCE > HIGH_CONFIDENCE
+
+    def test_blocking_below_one(self):
+        """BLOCKING_CONFIDENCE < 1.0."""
+        assert BLOCKING_CONFIDENCE < 1.0
+
+
+class TestProximityScoreCalculation:
+    """Tests for proximity score (exponential decay)."""
+
+    def test_immediate_proximity(self, correlator):
+        """Score is 1.0 when deploy and burn happen simultaneously."""
+        now = datetime.utcnow()
+        score = correlator._calculate_proximity_score(now, now)
+        assert score == pytest.approx(1.0)
+
+    def test_30_min_proximity(self, correlator):
+        """Score is approximately 1/e (~0.37) at 30 minutes."""
+        now = datetime.utcnow()
+        later = now + timedelta(minutes=30)
+        score = correlator._calculate_proximity_score(now, later)
+        assert score == pytest.approx(math.exp(-1), abs=0.01)
+
+    def test_90_min_proximity(self, correlator):
+        """Score is well below 0.3 at 90 minutes."""
+        now = datetime.utcnow()
+        later = now + timedelta(minutes=90)
+        score = correlator._calculate_proximity_score(now, later)
+        assert score < 0.1
+
+    def test_proximity_symmetric(self, correlator):
+        """Score is the same regardless of which event came first."""
+        now = datetime.utcnow()
+        later = now + timedelta(minutes=15)
+        score_forward = correlator._calculate_proximity_score(now, later)
+        score_backward = correlator._calculate_proximity_score(later, now)
+        assert score_forward == pytest.approx(score_backward)
+
+
+class TestDependencyScoreCalculation:
+    """Tests for dependency relationship scoring."""
+
+    def test_same_service(self, correlator):
+        """Same service → 1.0."""
+        score = correlator._calculate_dependency_score(
+            deploying_service="payment-api",
+            affected_service="payment-api",
+        )
+        assert score == 1.0
+
+    def test_direct_upstream_in_graph(self, correlator):
+        """Direct upstream dependency → 1.0."""
+        graph = MagicMock()
+        dep = MagicMock()
+        dep.target.canonical_name = "db-service"
+        graph.get_upstream.return_value = [dep]
+
+        score = correlator._calculate_dependency_score(
+            deploying_service="db-service",
+            affected_service="payment-api",
+            dependency_graph=graph,
+        )
+        assert score == 1.0
+
+    def test_transitive_upstream_in_graph(self, correlator):
+        """Transitive upstream (depth 2+) → 0.4."""
+        graph = MagicMock()
+        graph.get_upstream.return_value = []  # Not direct
+
+        transitive_dep = MagicMock()
+        transitive_dep.target.canonical_name = "auth-service"
+        graph.get_transitive_upstream.return_value = [(transitive_dep, 2)]
+
+        score = correlator._calculate_dependency_score(
+            deploying_service="auth-service",
+            affected_service="payment-api",
+            dependency_graph=graph,
+        )
+        assert score == 0.4
+
+    def test_yaml_downstream_fallback(self, correlator):
+        """YAML downstream list → 0.6."""
+        score = correlator._calculate_dependency_score(
+            deploying_service="payment-api",
+            affected_service="checkout-service",
+            downstream_services=["checkout-service", "analytics-service"],
+        )
+        assert score == 0.6
+
+    def test_no_relationship(self, correlator):
+        """No relationship found → 0.0."""
+        score = correlator._calculate_dependency_score(
+            deploying_service="payment-api",
+            affected_service="unrelated-service",
+        )
+        assert score == 0.0
+
+    def test_graph_takes_priority_over_yaml(self, correlator):
+        """Graph-based score takes priority over YAML fallback."""
+        graph = MagicMock()
+        dep = MagicMock()
+        dep.target.canonical_name = "db-service"
+        graph.get_upstream.return_value = [dep]
+
+        score = correlator._calculate_dependency_score(
+            deploying_service="db-service",
+            affected_service="payment-api",
+            dependency_graph=graph,
+            downstream_services=["payment-api"],  # Would give 0.6
+        )
+        assert score == 1.0  # Graph gives 1.0
+
+
+class TestHistoryScoreCalculation:
+    """Tests for historical correlation scoring."""
+
+    @pytest.mark.asyncio
+    async def test_no_history(self, correlator, mock_repository):
+        """No deployment history → 0.0."""
+        mock_repository.get_recent_deployments.return_value = []
+        score = await correlator._calculate_history_score("payment-api")
+        assert score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_repeat_offender(self, correlator, mock_repository):
+        """All deploys correlated → 1.0."""
+        deploys = [
+            Deployment(
+                id=f"d-{i}",
+                service="payment-api",
+                environment="production",
+                deployed_at=datetime.utcnow() - timedelta(hours=i),
+                correlation_confidence=0.7,
+            )
+            for i in range(5)
+        ]
+        mock_repository.get_recent_deployments.return_value = deploys
+        score = await correlator._calculate_history_score("payment-api")
+        assert score == 1.0
+
+    @pytest.mark.asyncio
+    async def test_partial_history(self, correlator, mock_repository):
+        """Some deploys correlated → proportional score."""
+        deploys = [
+            Deployment(
+                id="d-1",
+                service="payment-api",
+                environment="production",
+                deployed_at=datetime.utcnow(),
+                correlation_confidence=0.7,
+            ),
+            Deployment(
+                id="d-2",
+                service="payment-api",
+                environment="production",
+                deployed_at=datetime.utcnow(),
+                correlation_confidence=0.1,  # Below MEDIUM
+            ),
+        ]
+        mock_repository.get_recent_deployments.return_value = deploys
+        score = await correlator._calculate_history_score("payment-api")
+        assert score == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_db_failure_returns_zero(self, correlator, mock_repository):
+        """DB failure → 0.0 (fail-open)."""
+        mock_repository.get_recent_deployments.side_effect = Exception("DB error")
+        score = await correlator._calculate_history_score("payment-api")
+        assert score == 0.0
+
+
+class TestCorrelationWindowHistoryLookback:
+    """Tests for history_lookback_hours on CorrelationWindow."""
+
+    def test_default_lookback(self):
+        """Default history lookback is 168 hours (7 days)."""
+        window = CorrelationWindow()
+        assert window.history_lookback_hours == 168
+
+    def test_custom_lookback(self):
+        """Custom history lookback can be set."""
+        window = CorrelationWindow(history_lookback_hours=72)
+        assert window.history_lookback_hours == 72

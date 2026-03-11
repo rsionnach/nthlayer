@@ -441,6 +441,7 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - CLI wiring: `_extract_gate_policy()` (cli/deploy.py) tries `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
 - Exhaustion enforcement in `DeploymentGate.check_deployment()`: when `budget_remaining_pct <= 0` and `on_exhausted` is set, `freeze_deploys` → `BLOCKED`, `require_approval` → `WARNING`
 
+
 ### Build-Time Policy Engine
 - `PolicyEngine` (policies/engine.py) validates spec correctness at CI/build time — distinct from runtime `PolicyAuditRecorder`/`Repository` (policies/audit.py)
 - Two load paths: `PolicyEngine.from_yaml(path)` for central policy YAML, `PolicyEngine.from_dict(data)` for per-service `PolicyRules` resources

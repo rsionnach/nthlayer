@@ -128,6 +128,7 @@ VALID_RESOURCE_KINDS = {
     "Dependencies",
     "Observability",
     "DeploymentGate",
+    "PolicyRules",
 }
 
 # Valid service tiers (OpenSRM adds 'high' between critical and standard)

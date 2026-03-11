@@ -12,10 +12,16 @@ from datetime import datetime
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any
 
+import structlog
+
 from nthlayer.core.tiers import TIER_CONFIGS
 
 if TYPE_CHECKING:
     from nthlayer.policies.recorder import PolicyAuditRecorder
+    from nthlayer.policies.repository import PolicyAuditRepository
+    from nthlayer.slos.correlator import CorrelationResult
+
+logger = structlog.get_logger()
 
 
 class GateResult(IntEnum):
@@ -137,6 +143,7 @@ class DeploymentGate:
         self,
         policy: GatePolicy | None = None,
         audit_recorder: PolicyAuditRecorder | None = None,
+        override_repository: PolicyAuditRepository | None = None,
     ):
         """
         Initialize gate with optional custom policy and audit recorder.
@@ -144,9 +151,11 @@ class DeploymentGate:
         Args:
             policy: Custom GatePolicy to override defaults
             audit_recorder: Optional recorder for policy audit logging
+            override_repository: Optional repository for checking active overrides
         """
         self.policy = policy
         self.audit_recorder = audit_recorder
+        self.override_repository = override_repository
 
     def check_deployment(
         self,
@@ -397,6 +406,217 @@ class DeploymentGate:
                 return True
 
         return False
+
+    async def check_deployment_with_audit(
+        self,
+        service: str,
+        tier: str,
+        budget_total_minutes: int,
+        budget_consumed_minutes: int,
+        downstream_services: list[dict[str, Any]] | None = None,
+        environment: str = "prod",
+        team: str | None = None,
+        now: datetime | None = None,
+        actor: str | None = None,
+        deployment_id: str | None = None,
+        correlation_results: list[CorrelationResult] | None = None,
+    ) -> DeploymentGateCheck:
+        """
+        Check deployment with audit recording and override checking.
+
+        Wraps check_deployment() with:
+        1. Override checking — downgrades BLOCKED → APPROVED if active override exists
+        2. Correlation blocking — upgrades to BLOCKED if correlation confidence >= threshold
+        3. Audit recording — logs evaluation to PolicyAuditRecorder
+
+        Both operations are fail-open: errors are logged but never block deployments.
+
+        Args:
+            service: Service name
+            tier: Service tier (critical, standard, low)
+            budget_total_minutes: Total error budget
+            budget_consumed_minutes: Consumed error budget
+            downstream_services: List of downstream dependencies with criticality
+            environment: Deployment environment
+            team: Deploying team
+            now: Current datetime
+            actor: Actor performing the deployment (for audit trail)
+            deployment_id: Deployment identifier (for audit trail)
+            correlation_results: Optional correlation results for confidence-based blocking
+
+        Returns:
+            DeploymentGateCheck with result and details
+        """
+        # Run the core gate check (sync)
+        result = self.check_deployment(
+            service=service,
+            tier=tier,
+            budget_total_minutes=budget_total_minutes,
+            budget_consumed_minutes=budget_consumed_minutes,
+            downstream_services=downstream_services,
+            environment=environment,
+            team=team,
+            now=now,
+        )
+
+        # Check for active override before blocking
+        if result.is_blocked and self.override_repository:
+            result = await self._check_override(result, service)
+
+        # Apply correlation-based blocking
+        if correlation_results and not result.is_blocked:
+            result = self._apply_correlation_block(result, correlation_results)
+
+        # Record audit trail
+        if self.audit_recorder:
+            await self._record_audit(result, environment, team, actor, deployment_id, now)
+
+        return result
+
+    def _apply_correlation_block(
+        self,
+        result: DeploymentGateCheck,
+        correlation_results: list[CorrelationResult],
+    ) -> DeploymentGateCheck:
+        """Apply correlation-based blocking if confidence >= BLOCKING_CONFIDENCE.
+
+        Only upgrades APPROVED or WARNING to BLOCKED. Already-blocked results
+        are unaffected.
+
+        Args:
+            result: Current gate check result
+            correlation_results: Correlation analysis results
+
+        Returns:
+            Updated DeploymentGateCheck, possibly upgraded to BLOCKED
+        """
+        from nthlayer.slos.correlator import BLOCKING_CONFIDENCE
+
+        blocking_correlations = [
+            cr for cr in correlation_results if cr.confidence >= BLOCKING_CONFIDENCE
+        ]
+
+        if not blocking_correlations:
+            return result
+
+        top = max(blocking_correlations, key=lambda cr: cr.confidence)
+
+        logger.info(
+            "correlation_block_applied",
+            service=result.service,
+            deployment_id=top.deployment_id,
+            confidence=top.confidence,
+        )
+
+        return DeploymentGateCheck(
+            service=result.service,
+            tier=result.tier,
+            result=GateResult.BLOCKED,
+            budget_total_minutes=result.budget_total_minutes,
+            budget_consumed_minutes=result.budget_consumed_minutes,
+            budget_remaining_minutes=result.budget_remaining_minutes,
+            budget_remaining_percentage=result.budget_remaining_percentage,
+            warning_threshold=result.warning_threshold,
+            blocking_threshold=result.blocking_threshold,
+            downstream_services=result.downstream_services,
+            high_criticality_downstream=result.high_criticality_downstream,
+            message=(
+                f"⛔ Deployment BLOCKED: High correlation confidence "
+                f"({top.confidence:.0%}) — deploy {top.deployment_id} "
+                f"likely caused error budget burn"
+            ),
+            recommendations=[
+                f"Deploy {top.deployment_id} has {top.confidence:.0%} correlation confidence",
+                f"Burned {top.burn_minutes:.1f} minutes of error budget",
+                "Investigate the correlated deployment before proceeding",
+                "Use --override to bypass if this is a known false positive",
+            ],
+        )
+
+    async def _check_override(
+        self, result: DeploymentGateCheck, service: str
+    ) -> DeploymentGateCheck:
+        """Check for active override and downgrade BLOCKED if found.
+
+        Fail-open: override check errors are logged, original result returned.
+        """
+        try:
+            override = await self.override_repository.get_active_override(  # type: ignore[union-attr]
+                service, "deployment-gate"
+            )
+            if override:
+                logger.info(
+                    "override_applied",
+                    service=service,
+                    override_id=override.id,
+                    approved_by=override.approved_by,
+                )
+                return DeploymentGateCheck(
+                    service=result.service,
+                    tier=result.tier,
+                    result=GateResult.APPROVED,
+                    budget_total_minutes=result.budget_total_minutes,
+                    budget_consumed_minutes=result.budget_consumed_minutes,
+                    budget_remaining_minutes=result.budget_remaining_minutes,
+                    budget_remaining_percentage=result.budget_remaining_percentage,
+                    warning_threshold=result.warning_threshold,
+                    blocking_threshold=result.blocking_threshold,
+                    downstream_services=result.downstream_services,
+                    high_criticality_downstream=result.high_criticality_downstream,
+                    message=(
+                        f"✅ Deployment APPROVED: Active override by {override.approved_by}"
+                        f" (reason: {override.reason})"
+                    ),
+                    recommendations=[
+                        f"Override approved by: {override.approved_by}",
+                        f"Reason: {override.reason}",
+                        "Original result was BLOCKED — proceed with caution",
+                    ],
+                )
+        except Exception:
+            logger.warning(
+                "override_check_failed",
+                service=service,
+                exc_info=True,
+            )
+        return result
+
+    async def _record_audit(
+        self,
+        result: DeploymentGateCheck,
+        environment: str,
+        team: str | None,
+        actor: str | None,
+        deployment_id: str | None,
+        now: datetime | None,
+    ) -> None:
+        """Record gate check to audit trail. Fail-open."""
+        try:
+            from nthlayer.policies.evaluator import PolicyContext as _PolicyContext
+
+            context = _PolicyContext(
+                budget_remaining=result.budget_remaining_percentage,
+                budget_consumed=100 - result.budget_remaining_percentage,
+                tier=result.tier,
+                environment=environment,
+                service=result.service,
+                team=team or "",
+                downstream_count=len(result.downstream_services),
+                high_criticality_downstream=len(result.high_criticality_downstream),
+                now=now,
+            )
+            await self.audit_recorder.record_gate_check(  # type: ignore[union-attr]
+                gate_check=result,
+                context=context,
+                actor=actor,
+                deployment_id=deployment_id,
+            )
+        except Exception:
+            logger.warning(
+                "audit_record_failed",
+                service=result.service,
+                exc_info=True,
+            )
 
     def get_threshold_for_tier(self, tier: str) -> dict[str, float | None]:
         """Get default thresholds for a service tier."""

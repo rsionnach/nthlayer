@@ -43,6 +43,7 @@ from nthlayer.cli.scorecard import (
 )
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
+from nthlayer.cli.topology import handle_topology_command, register_topology_parser
 from nthlayer.cli.ux import print_banner
 from nthlayer.cli.validate_metadata import (
     handle_validate_metadata_command,
@@ -580,6 +581,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prometheus URL for live data (optional, not used in static mode)",
     )
 
+    # Documentation generation
+    generate_docs_parser = subparsers.add_parser(
+        "generate-docs", help="Generate service documentation from reliability manifest"
+    )
+    generate_docs_parser.add_argument("service_file", help="Path to service YAML file")
+    generate_docs_parser.add_argument(
+        "--output", "-o", help="Output directory (default: generated/{service}/)"
+    )
+    generate_docs_parser.add_argument(
+        "--env", "--environment", dest="environment", help="Environment name (dev, staging, prod)"
+    )
+    generate_docs_parser.add_argument(
+        "--include-adr", action="store_true", help="Generate ADR scaffold"
+    )
+    generate_docs_parser.add_argument(
+        "--include-api", action="store_true", help="Generate API documentation stub"
+    )
+    generate_docs_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without writing files"
+    )
+
     validate_parser = subparsers.add_parser("validate", help="Validate service definition")
     validate_parser.add_argument("service_file", help="Path to service YAML file")
     validate_parser.add_argument(
@@ -594,6 +616,10 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "--registry-dir",
         help="Directory to scan for contract registry (enables cross-service validation)",
+    )
+    validate_parser.add_argument(
+        "--policies",
+        help="Path to policies YAML file for build-time policy evaluation",
     )
 
     lint_parser = subparsers.add_parser("lint", help="Lint Prometheus alert rules with pint")
@@ -653,6 +679,11 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument(
         "--drift-window",
         help="Drift analysis window (e.g., 30d, 14d). Uses tier default if not specified",
+    )
+    deploy_parser.add_argument(
+        "--include-correlation",
+        action="store_true",
+        help="Include deployment correlation analysis in gate check",
     )
 
     init_parser = subparsers.add_parser("init", help="Initialize new NthLayer service")
@@ -843,6 +874,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Dependency discovery commands
     register_deps_parser(subparsers)
     register_blast_radius_parser(subparsers)
+    register_topology_parser(subparsers)
 
     # Ownership command
     register_ownership_parser(subparsers)
@@ -1014,6 +1046,20 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         )
 
+    if args.command == "generate-docs":
+        from nthlayer.cli.docs import generate_docs_command
+
+        sys.exit(
+            generate_docs_command(
+                args.service_file,
+                output=args.output,
+                environment=getattr(args, "environment", None),
+                include_adr=args.include_adr,
+                include_api=args.include_api,
+                dry_run=args.dry_run,
+            )
+        )
+
     if args.command == "validate":
         from nthlayer.cli.validate import validate_command
         from nthlayer.specs.environment_detection import get_environment
@@ -1029,6 +1075,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 environment=env,
                 strict=args.strict,
                 registry_dir=getattr(args, "registry_dir", None),
+                policies=getattr(args, "policies", None),
             )
         )
 
@@ -1078,6 +1125,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 demo=getattr(args, "demo", False),
                 demo_blocked=getattr(args, "demo_blocked", False),
                 include_drift=getattr(args, "include_drift", False),
+                include_correlation=getattr(args, "include_correlation", False),
                 drift_window=getattr(args, "drift_window", None),
             )
         )
@@ -1273,6 +1321,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "blast-radius":
         sys.exit(handle_blast_radius_command(args))
+
+    if args.command == "topology":
+        sys.exit(handle_topology_command(args))
 
     if args.command == "ownership":
         sys.exit(handle_ownership_command(args))

@@ -1,4 +1,4 @@
-.PHONY: help dev-up dev-down dev-logs test test-cov lint typecheck format clean demo-reconcile mock-server docs docs-serve demo-gifs lock lock-upgrade
+.PHONY: help dev-up dev-down dev-logs test test-cov lint typecheck format clean demo-reconcile mock-server docs docs-serve demo-gifs lock lock-upgrade smoke smoke-full
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -50,6 +50,14 @@ test-integration: ## Run integration tests (requires mock server)
 
 test-watch: ## Run tests in watch mode (requires pytest-watch)
 	uv run ptw tests/ -- -v
+
+smoke: ## Run CLI smoke tests (offline, ~40s)
+	uv run pytest tests/smoke/ -v --tb=short -x
+
+smoke-full: ## Run CLI smoke tests including Synology integration
+	NTHLAYER_PROMETHEUS_URL=http://192.168.1.10:9090 \
+	NTHLAYER_GRAFANA_URL=http://192.168.1.10:3000 \
+	uv run pytest tests/smoke/ -v --tb=short
 
 # Code quality
 lint: ## Run linting

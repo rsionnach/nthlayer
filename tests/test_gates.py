@@ -2,8 +2,13 @@
 Tests for deployment gates.
 """
 
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from nthlayer.policies.audit import PolicyOverride
+from nthlayer.slos.correlator import CorrelationResult
 from nthlayer.slos.gates import DeploymentGate, GatePolicy, GateResult
 
 
@@ -598,3 +603,279 @@ class TestOnExhaustedBehavior:
         )
         # With only "notify", the normal threshold logic applies (WARNING because below 20%)
         assert result.result == GateResult.WARNING
+
+
+class TestCheckDeploymentWithAudit:
+    """Tests for check_deployment_with_audit() async method."""
+
+    @pytest.fixture
+    def mock_recorder(self):
+        """Create a mock PolicyAuditRecorder."""
+        recorder = MagicMock()
+        recorder.record_gate_check = AsyncMock(return_value=None)
+        return recorder
+
+    @pytest.fixture
+    def mock_override_repo(self):
+        """Create a mock PolicyAuditRepository."""
+        repo = MagicMock()
+        repo.get_active_override = AsyncMock(return_value=None)
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_calls_audit_recorder(self, mock_recorder):
+        """check_deployment_with_audit() calls record_gate_check on recorder."""
+        gate = DeploymentGate(audit_recorder=mock_recorder)
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            environment="prod",
+            team="payments",
+            actor="deploy-bot",
+            deployment_id="deploy-abc",
+        )
+
+        assert result.result == GateResult.APPROVED
+        mock_recorder.record_gate_check.assert_awaited_once()
+
+        call_kwargs = mock_recorder.record_gate_check.call_args[1]
+        assert call_kwargs["gate_check"].service == "payment-api"
+        assert call_kwargs["actor"] == "deploy-bot"
+        assert call_kwargs["deployment_id"] == "deploy-abc"
+
+    @pytest.mark.asyncio
+    async def test_override_downgrades_blocked(self, mock_recorder, mock_override_repo):
+        """Active override downgrades BLOCKED → APPROVED."""
+        active_override = PolicyOverride(
+            id="over-001",
+            timestamp=datetime.utcnow(),
+            service="payment-api",
+            policy_name="deployment-gate",
+            deployment_id=None,
+            approved_by="oncall@example.com",
+            reason="Emergency hotfix",
+            override_type="emergency_bypass",
+            expires_at=datetime.utcnow() + timedelta(hours=4),
+        )
+        mock_override_repo.get_active_override = AsyncMock(return_value=active_override)
+
+        gate = DeploymentGate(
+            audit_recorder=mock_recorder,
+            override_repository=mock_override_repo,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,  # Would normally be BLOCKED
+        )
+
+        assert result.result == GateResult.APPROVED
+        assert result.is_approved
+        assert "override" in result.message.lower()
+        assert "oncall@example.com" in result.message
+        mock_override_repo.get_active_override.assert_awaited_once_with(
+            "payment-api", "deployment-gate"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_override_stays_blocked(self, mock_recorder, mock_override_repo):
+        """Without active override, BLOCKED stays BLOCKED."""
+        mock_override_repo.get_active_override = AsyncMock(return_value=None)
+
+        gate = DeploymentGate(
+            audit_recorder=mock_recorder,
+            override_repository=mock_override_repo,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_override_not_checked_when_approved(self, mock_override_repo):
+        """Override is not checked when gate result is APPROVED."""
+        gate = DeploymentGate(override_repository=mock_override_repo)
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+        )
+
+        assert result.result == GateResult.APPROVED
+        mock_override_repo.get_active_override.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fail_open_audit_error(self):
+        """Audit recording failure doesn't affect gate result."""
+        mock_recorder = MagicMock()
+        mock_recorder.record_gate_check = AsyncMock(side_effect=Exception("DB connection lost"))
+
+        gate = DeploymentGate(audit_recorder=mock_recorder)
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        # Gate result is correct despite audit failure
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_fail_open_override_error(self, mock_recorder):
+        """Override check failure doesn't affect gate result."""
+        mock_override_repo = MagicMock()
+        mock_override_repo.get_active_override = AsyncMock(side_effect=Exception("DB timeout"))
+
+        gate = DeploymentGate(
+            audit_recorder=mock_recorder,
+            override_repository=mock_override_repo,
+        )
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        # Gate result is correct despite override check failure
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_works_without_recorder_or_repo(self):
+        """Works identically to sync method when no recorder/repo provided."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+        )
+
+        assert result.result == GateResult.APPROVED
+
+    @pytest.mark.asyncio
+    async def test_sync_check_deployment_unchanged(self):
+        """Sync check_deployment() still works exactly as before (backward compat)."""
+        gate = DeploymentGate()
+
+        result = gate.check_deployment(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,
+        )
+
+        assert result.result == GateResult.BLOCKED
+        assert result.is_blocked
+
+
+class TestCorrelationBlocking:
+    """Tests for correlation-based deployment blocking."""
+
+    def _make_correlation(
+        self, confidence: float, deployment_id: str = "d-001"
+    ) -> CorrelationResult:
+        return CorrelationResult(
+            deployment_id=deployment_id,
+            service="payment-api",
+            burn_minutes=8.5,
+            confidence=confidence,
+            method="time_window_analysis",
+            details={},
+        )
+
+    @pytest.mark.asyncio
+    async def test_high_correlation_blocks(self):
+        """Correlation >= BLOCKING_CONFIDENCE upgrades APPROVED to BLOCKED."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,  # Healthy budget → APPROVED
+            correlation_results=[self._make_correlation(0.85)],
+        )
+
+        assert result.result == GateResult.BLOCKED
+        assert "correlation" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_low_correlation_does_not_block(self):
+        """Correlation below threshold does not affect result."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            correlation_results=[self._make_correlation(0.6)],
+        )
+
+        assert result.result == GateResult.APPROVED
+
+    @pytest.mark.asyncio
+    async def test_correlation_does_not_affect_already_blocked(self):
+        """Already-blocked result stays blocked (doesn't double-block)."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=100,
+            budget_consumed_minutes=95,  # BLOCKED by budget
+            correlation_results=[self._make_correlation(0.9)],
+        )
+
+        assert result.result == GateResult.BLOCKED
+
+    @pytest.mark.asyncio
+    async def test_empty_correlation_results(self):
+        """Empty correlation results don't affect the gate."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            correlation_results=[],
+        )
+
+        assert result.result == GateResult.APPROVED
+
+    @pytest.mark.asyncio
+    async def test_picks_highest_confidence(self):
+        """When multiple blocking correlations, picks highest confidence."""
+        gate = DeploymentGate()
+
+        result = await gate.check_deployment_with_audit(
+            service="payment-api",
+            tier="critical",
+            budget_total_minutes=1440,
+            budget_consumed_minutes=50,
+            correlation_results=[
+                self._make_correlation(0.82, "d-001"),
+                self._make_correlation(0.95, "d-002"),
+            ],
+        )
+
+        assert result.result == GateResult.BLOCKED
+        assert "d-002" in result.message

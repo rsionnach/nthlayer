@@ -1,75 +1,81 @@
-# Beads Setup for NthLayer
+# Beads - AI-Native Issue Tracking
 
-This directory contains beads issue tracking for the NthLayer project.
+Welcome to Beads! This repository uses **Beads** for issue tracking - a modern, AI-native tool designed to live directly in your codebase alongside your code.
+
+## What is Beads?
+
+Beads is issue tracking that lives in your repo, making it perfect for AI coding agents and developers who want their issues close to their code. No web UI required - everything works through the CLI and integrates seamlessly with git.
+
+**Learn more:** [github.com/steveyegge/beads](https://github.com/steveyegge/beads)
 
 ## Quick Start
 
-Since `bd` command isn't in your PATH yet, use the full path:
+### Essential Commands
 
 ```bash
-# Add to ~/.zshrc or ~/.bashrc for convenience:
-alias bd="~/go/bin/bd"
-```
+# Create new issues
+bd create "Add user authentication"
 
-Then reload your shell or run: `source ~/.zshrc`
-
-## Common Commands
-
-```bash
-# See what's ready to work on
-bd ready
-
-# See all issues
+# View all issues
 bd list
 
-# Show issue details
-bd show trellis-948
+# View issue details
+bd show <issue-id>
 
 # Update issue status
-bd update trellis-948 --status in_progress
+bd update <issue-id> --claim
+bd update <issue-id> --status done
 
-# Close issue
-bd close trellis-948 --reason "Grafana Cloud configured"
-
-# See project stats
-bd stats
-
-# See blocked issues
-bd blocked
-
-# Show dependency tree
-bd dep tree trellis-rpv
+# Sync with Dolt remote
+bd dolt push
 ```
 
-## Completed Milestones
+### Working with Issues
 
-**Epic: Metric Discovery Integration (metric-discovery-epic)** ✅ Completed Jan 2026
+Issues in Beads are:
+- **Git-native**: Stored in Dolt database with version control and branching
+- **AI-friendly**: CLI-first design works perfectly with AI coding agents
+- **Branch-aware**: Issues can follow your branch workflow
+- **Always in sync**: Auto-syncs with your commits
 
-- ✅ Prometheus metric discovery prototype
-- ✅ Metric classification by technology
-- ✅ Dashboard validation infrastructure (Week 1)
-- ✅ Grafana Foundation SDK integration (Week 2)
-- ✅ SDK adapter for type-safe dashboard generation
+## Why Beads?
 
-**Current Release: v0.1.0a12** (Phase 2 - Dependency Intelligence)
+✨ **AI-Native Design**
+- Built specifically for AI-assisted development workflows
+- CLI-first interface works seamlessly with AI coding agents
+- No context switching to web UIs
 
-## Files
+🚀 **Developer Focused**
+- Issues live in your repo, right next to your code
+- Works offline, syncs when you push
+- Fast, lightweight, and stays out of your way
 
-- `issues.jsonl` - All issues (tracked in git)
-- `metadata.json` - Repository metadata (tracked in git)
-- `config.yaml` - Configuration (tracked in git)
-- `beads.db` - SQLite database (gitignored, auto-generated from JSONL)
+🔧 **Git Integration**
+- Automatic sync with git commits
+- Branch-aware issue tracking
+- Dolt-native three-way merge resolution
 
-## Integration with Development
+## Get Started with Beads
 
-Beads is now the single source of truth for task tracking. When completing work:
+Try Beads in your own projects:
 
-1. Update issue status: `bd update <id> --status in_progress`
-2. Do the work
-3. Close issue: `bd close <id> --reason "Description of what was done"`
-4. Check what's ready next: `bd ready`
+```bash
+# Install Beads
+curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
 
-## References
+# Initialize in your repo
+bd init
 
-- [Beads GitHub](https://github.com/steveyegge/beads)
-- [Adoption Proposal](../BEADS_ADOPTION_PROPOSAL.md)
+# Create your first issue
+bd create "Try out Beads"
+```
+
+## Learn More
+
+- **Documentation**: [github.com/steveyegge/beads/docs](https://github.com/steveyegge/beads/tree/main/docs)
+- **Quick Start Guide**: Run `bd quickstart`
+- **Examples**: [github.com/steveyegge/beads/examples](https://github.com/steveyegge/beads/tree/main/examples)
+
+---
+
+*Beads: Issue tracking that moves at the speed of thought* ⚡

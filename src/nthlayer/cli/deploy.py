@@ -64,6 +64,7 @@ def check_deploy_command(
     demo_blocked: bool = False,
     include_drift: bool = False,
     drift_window: str | None = None,
+    include_correlation: bool = False,
 ) -> int:
     """
     Check if deployment should be allowed based on error budget.
@@ -128,14 +129,43 @@ def check_deploy_command(
 
     # Extract gate policy from service resources
     policy = _extract_gate_policy(resources, service_file, environment)
-    gate = DeploymentGate(policy=policy)
-    result = gate.check_deployment(
-        service=service_context.name,
-        tier=service_context.tier,
-        budget_total_minutes=int(budget.total_budget_minutes),
-        budget_consumed_minutes=int(budget.burned_budget_minutes),
-        downstream_services=downstream_services,
-    )
+
+    env = environment or "prod"
+
+    # Run correlation check if requested
+    correlation_results = None
+    db_url = os.environ.get("NTHLAYER_DATABASE_URL")
+    if include_correlation and db_url:
+        correlation_results = _run_correlation_check(
+            db_url=db_url,
+            service_name=service_context.name,
+        )
+
+    # Wire audit recorder when database is configured
+    if db_url:
+        result = _run_gate_with_audit(
+            policy=policy,
+            db_url=db_url,
+            service=service_context.name,
+            tier=service_context.tier,
+            budget_total_minutes=int(budget.total_budget_minutes),
+            budget_consumed_minutes=int(budget.burned_budget_minutes),
+            downstream_services=downstream_services,
+            environment=env,
+            team=service_context.team,
+            correlation_results=correlation_results,
+        )
+    else:
+        gate = DeploymentGate(policy=policy)
+        result = gate.check_deployment(
+            service=service_context.name,
+            tier=service_context.tier,
+            budget_total_minutes=int(budget.total_budget_minutes),
+            budget_consumed_minutes=int(budget.burned_budget_minutes),
+            downstream_services=downstream_services,
+            environment=env,
+            team=service_context.team,
+        )
 
     # Check drift if requested and not already blocked
     drift_result = None
@@ -148,7 +178,11 @@ def check_deploy_command(
         )
 
     return _display_gate_result(
-        result, service_context.tier, budget.remaining_percent, drift_result
+        result,
+        service_context.tier,
+        budget.remaining_percent,
+        drift_result,
+        correlation_results=correlation_results,
     )
 
 
@@ -168,6 +202,111 @@ def _extract_downstream_services(resources: list[Any]) -> list[dict[str, Any]]:
             )
 
     return downstream_services
+
+
+def _run_gate_with_audit(
+    policy: GatePolicy | None,
+    db_url: str,
+    service: str,
+    tier: str,
+    budget_total_minutes: int,
+    budget_consumed_minutes: int,
+    downstream_services: list[dict[str, Any]],
+    environment: str,
+    team: str | None,
+    correlation_results: list[Any] | None = None,
+) -> Any:
+    """Run gate check with audit recording and override checking.
+
+    Creates async DB session, audit recorder, and calls
+    check_deployment_with_audit(). Fail-open: falls back to sync
+    check_deployment() if DB setup fails.
+    """
+    import structlog
+
+    logger = structlog.get_logger()
+
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+        from nthlayer.policies.recorder import PolicyAuditRecorder
+        from nthlayer.policies.repository import PolicyAuditRepository
+
+        async def _run() -> Any:
+            engine = create_async_engine(db_url)
+            async with AsyncSession(engine) as session:
+                repo = PolicyAuditRepository(session)
+                recorder = PolicyAuditRecorder(repo)
+                gate = DeploymentGate(
+                    policy=policy,
+                    audit_recorder=recorder,
+                    override_repository=repo,
+                )
+                result = await gate.check_deployment_with_audit(
+                    service=service,
+                    tier=tier,
+                    budget_total_minutes=budget_total_minutes,
+                    budget_consumed_minutes=budget_consumed_minutes,
+                    downstream_services=downstream_services,
+                    environment=environment,
+                    team=team,
+                    correlation_results=correlation_results,
+                )
+                await session.commit()
+                return result
+
+        return asyncio.run(_run())
+    except Exception:
+        logger.warning("audit_setup_failed", exc_info=True)
+        # Fail open: fall back to sync gate without audit
+        gate = DeploymentGate(policy=policy)
+        return gate.check_deployment(
+            service=service,
+            tier=tier,
+            budget_total_minutes=budget_total_minutes,
+            budget_consumed_minutes=budget_consumed_minutes,
+            downstream_services=downstream_services,
+            environment=environment,
+            team=team,
+        )
+
+
+def _run_correlation_check(
+    db_url: str,
+    service_name: str,
+) -> list[Any]:
+    """Run correlation check against recent deployments.
+
+    Fail-open: returns empty list on any failure.
+
+    Args:
+        db_url: Database URL for SLO repository
+        service_name: Service to check
+
+    Returns:
+        List of CorrelationResult, or empty on failure
+    """
+    import structlog as _structlog
+
+    _logger = _structlog.get_logger()
+
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+        from nthlayer.slos.correlator import DeploymentCorrelator
+        from nthlayer.slos.storage import SLORepository
+
+        async def _run() -> list[Any]:
+            engine = create_async_engine(db_url)
+            async with AsyncSession(engine) as session:
+                repo = SLORepository(session)
+                correlator = DeploymentCorrelator(repo)
+                return await correlator.correlate_service(service_name)
+
+        return asyncio.run(_run())
+    except Exception:
+        _logger.warning("correlation_check_failed", service=service_name, exc_info=True)
+        return []
 
 
 def _display_header(service_context: Any, prom_url: str | None, environment: str | None) -> None:
@@ -301,7 +440,11 @@ def _check_drift(
 
 
 def _display_gate_result(
-    result: Any, tier: str, remaining_pct: float, drift_result: DriftResult | None = None
+    result: Any,
+    tier: str,
+    remaining_pct: float,
+    drift_result: DriftResult | None = None,
+    correlation_results: list[Any] | None = None,
 ) -> int:
     """Display gate result and return exit code."""
     # Display thresholds
@@ -323,6 +466,21 @@ def _display_gate_result(
         for svc in result.high_criticality_downstream:
             console.print(f"    [muted]•[/muted] {svc}")
         console.print()
+
+    # Display correlation analysis if available
+    if correlation_results:
+        from nthlayer.slos.correlator import HIGH_CONFIDENCE
+
+        top_results = [r for r in correlation_results if r.confidence >= HIGH_CONFIDENCE]
+        if top_results:
+            top = max(top_results, key=lambda r: r.confidence)
+            console.print("[bold]Correlation Analysis:[/bold]")
+            console.print(
+                f"  {top.confidence_emoji} Deploy {top.deployment_id}: "
+                f"{top.confidence:.0%} confidence "
+                f"[muted]({top.burn_minutes:.1f} min burned)[/muted]"
+            )
+            console.print()
 
     # Display drift analysis if available
     if drift_result is not None:

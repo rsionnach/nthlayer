@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nthlayer"
-version = "0.1.0a17"
+version = "0.1.0a18"
 description = "NthLayer - The Missing Layer of Reliability"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -109,6 +109,10 @@ where = ["src"]
 addopts = "-ra -q"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "smoke: CLI smoke tests (run with make smoke)",
+    "synology: Tests requiring Synology Prometheus/Grafana",
+]
 
 [tool.ruff]
 target-version = "py311"

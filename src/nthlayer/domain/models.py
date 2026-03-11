@@ -16,11 +16,15 @@ class RunStatus(StrEnum):
 
 
 class TeamSource(BaseModel):
+    """External system identifiers for a team."""
+
     cortex_id: str | None = None
     pagerduty_id: str | None = None
 
 
 class Team(BaseModel):
+    """Team identity with external source mappings."""
+
     id: str
     name: str
     managers: Sequence[str] = Field(default_factory=list)
@@ -29,6 +33,8 @@ class Team(BaseModel):
 
 
 class Service(BaseModel):
+    """Service identity within the reliability platform."""
+
     id: str
     name: str
     owner_team_id: str
@@ -37,6 +43,8 @@ class Service(BaseModel):
 
 
 class Run(BaseModel):
+    """A single execution of a validation or generation job."""
+
     job_id: str
     type: str
     requested_by: str | None = None
@@ -47,6 +55,8 @@ class Run(BaseModel):
 
 
 class Finding(BaseModel):
+    """A single finding produced by a validation run."""
+
     run_id: str
     entity_ref: str
     before: Mapping[str, Any] | None = None

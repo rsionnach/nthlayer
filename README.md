@@ -237,8 +237,77 @@ Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins
 - [x] Intelligent alerts pipeline
 - [x] Identity resolution & ownership
 - [x] CI/CD GitHub Action
+- [ ] Agentic inference (`nthlayer infer`)
 - [ ] MCP server integration
 - [ ] Backstage plugin
+
+---
+
+## Agentic Inference (Planned)
+
+`nthlayer infer` will use a model to analyse a codebase and propose an OpenSRM manifest for it. The model examines the code, identifies services, infers appropriate SLO targets, and generates a draft `service.reliability.yaml` that NthLayer then validates and generates artifacts from.
+
+This follows [Zero Framework Cognition](https://github.com/rsionnach/arbiter/blob/main/ZFC.md): the model provides judgment (what SLOs does this service need?), and NthLayer provides transport (validate the manifest, generate the monitoring artifacts). Clean boundary between reasoning and deterministic transformation.
+
+---
+
+## OpenSRM Ecosystem
+
+NthLayer is one component in the OpenSRM ecosystem. Each component solves a complete problem independently, and they compose when used together through shared OpenSRM manifests and OTel telemetry conventions.
+
+```
+                        ┌─────────────────────────┐
+                        │     OpenSRM Manifest     │
+                        │  (the shared contract)   │
+                        └────────────┬────────────┘
+                                     │
+                    reads            │           reads
+               ┌─────────────┬──────┴──────┬─────────────┐
+               ▼             ▼             ▼             ▼
+         ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+         │ Arbiter  │ │>NTHLAYER<│ │  SitRep  │ │  Mayday  │
+         │          │ │          │ │          │ │          │
+         │ quality  │ │ generate │ │correlate │ │ incident │
+         │+govern   │ │ monitoring│ │ signals  │ │ response │
+         │+cost     │ │          │ │          │ │          │
+         └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘
+              │             │             │             │
+              └──────┬──────┴──────┬──────┘             │
+                     ▼             ▼                    ▼
+              ┌────────────────────────────┐  ┌──────────────┐
+              │  Streaming / Queue Layer   │  │  Consumes    │
+              │  (Kafka / NATS / etc)      │  │  all three   │
+              └──────────┬─────────────────┘  └──────┬───────┘
+                         ▼                           │
+              ┌────────────────────────┐             │
+              │   OTel Collector /     │             │
+              │   Prometheus / etc     │             │
+              └────────────────────────┘             │
+                                                     │
+              ┌──────────────────────────────────────┘
+              │  Learning loop (post-incident):
+              │  Mayday findings → manifest updates
+              │  → NthLayer regenerates → Arbiter
+              │  refines → SitRep improves
+              └──────────────────────────────────────▶ OpenSRM
+```
+
+**How NthLayer fits in:**
+
+- NthLayer reads OpenSRM manifests and generates the monitoring infrastructure (Prometheus rules, Grafana dashboards, PagerDuty config) that the rest of the ecosystem relies on
+- The [Arbiter's](https://github.com/rsionnach/arbiter) quality scores flow as OTel metrics, and NthLayer generates dashboards for those scores alongside service dashboards
+- NthLayer exports service topology that [SitRep](https://github.com/rsionnach/sitrep) uses for topology-aware signal correlation
+- [Mayday's](https://github.com/rsionnach/mayday) post-incident findings feed back into NthLayer as rule refinements (alerts that should have fired earlier or didn't fire at all)
+
+Each component works alone. Someone who just needs reliability-as-code adopts NthLayer without needing the Arbiter, SitRep, or Mayday.
+
+| Component | What it does | Link |
+|-----------|-------------|------|
+| **OpenSRM** | Specification for declaring service reliability requirements | [opensrm](https://github.com/rsionnach/opensrm) |
+| **Arbiter** | Quality measurement and governance for AI agents | [arbiter](https://github.com/rsionnach/arbiter) |
+| **NthLayer** | Generate monitoring infrastructure from manifests (this repo) | [nthlayer](https://github.com/rsionnach/nthlayer) |
+| **SitRep** | Situational awareness through signal correlation | [sitrep](https://github.com/rsionnach/sitrep) |
+| **Mayday** | Multi-agent incident response | [mayday](https://github.com/rsionnach/mayday) |
 
 ---
 
