@@ -42,12 +42,34 @@ class SpecAlertRule:
 
 
 @dataclass
+class ForDuration:
+    """Severity-based alert 'for' duration overrides.
+
+    Controls how long a condition must be true before firing.
+    Maps to Prometheus 'for' field on generated AlertRules.
+
+    - page: Duration for critical/page alerts (default: 2m)
+    - ticket: Duration for warning/info/ticket alerts (default: 15m)
+    """
+
+    page: str = "2m"
+    ticket: str = "15m"
+
+    def get_for_severity(self, severity: str) -> str:
+        """Return the appropriate 'for' duration based on alert severity."""
+        if severity == "critical":
+            return self.page
+        return self.ticket
+
+
+@dataclass
 class AlertingConfig:
     """Top-level alerting configuration in a service spec."""
 
     channels: AlertChannels = field(default_factory=AlertChannels)
     rules: list[SpecAlertRule] = field(default_factory=list)
     auto_rules: bool = True
+    for_duration: ForDuration = field(default_factory=ForDuration)
 
     def get_rules_for_slo(self, slo_name: str) -> list[SpecAlertRule]:
         """Return rules that apply to a specific SLO (exact match or wildcard)."""
@@ -178,8 +200,17 @@ def parse_alerting_config(data: dict[str, Any] | None) -> AlertingConfig | None:
             )
         )
 
+    for_duration = ForDuration()
+    fd_data = data.get("for_duration")
+    if fd_data and isinstance(fd_data, dict):
+        for_duration = ForDuration(
+            page=fd_data.get("page", "2m"),
+            ticket=fd_data.get("ticket", "15m"),
+        )
+
     return AlertingConfig(
         channels=channels,
         rules=rules,
         auto_rules=data.get("auto_rules", True),
+        for_duration=for_duration,
     )

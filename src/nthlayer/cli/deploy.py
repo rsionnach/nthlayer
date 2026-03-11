@@ -19,6 +19,43 @@ from nthlayer.slos.gates import DeploymentGate, GatePolicy, GateResult
 from nthlayer.specs.parser import parse_service_file
 
 
+def _extract_gate_policy(
+    resources: list[Any],
+    service_file: str,
+    environment: str | None = None,
+) -> GatePolicy | None:
+    """Extract GatePolicy from DeploymentGate resource or manifest BudgetPolicy.
+
+    Priority: DeploymentGate resource > manifest BudgetPolicy > None
+    """
+    # First: check for explicit DeploymentGate resource
+    gate_resources = [r for r in resources if r.kind == "DeploymentGate"]
+    if gate_resources:
+        return GatePolicy.from_spec(gate_resources[0].spec)
+
+    # Second: check for BudgetPolicy in manifest
+    try:
+        from nthlayer.specs.loader import load_manifest
+
+        manifest = load_manifest(service_file, environment=environment)
+        if (
+            manifest.deployment
+            and manifest.deployment.gates
+            and manifest.deployment.gates.error_budget
+            and manifest.deployment.gates.error_budget.policy
+        ):
+            bp = manifest.deployment.gates.error_budget.policy
+            return GatePolicy(
+                warning=bp.thresholds.warning * 100,
+                blocking=bp.thresholds.critical * 100,
+                on_exhausted=bp.on_exhausted,
+            )
+    except Exception:
+        pass  # intentionally ignored: manifest loading is best-effort fallback
+
+    return None
+
+
 def check_deploy_command(
     service_file: str,
     prometheus_url: str | None = None,
@@ -91,8 +128,7 @@ def check_deploy_command(
     _display_budget_summary(budget)
 
     # Extract gate policy from service resources
-    gate_resources = [r for r in resources if r.kind == "DeploymentGate"]
-    policy = GatePolicy.from_spec(gate_resources[0].spec) if gate_resources else None
+    policy = _extract_gate_policy(resources, service_file, environment)
 
     env = environment or "prod"
 

@@ -10,6 +10,7 @@ from nthlayer.specs.alerting import (
     TIER_DEFAULT_RULES,
     AlertChannels,
     AlertingConfig,
+    ForDuration,
     SpecAlertRule,
     parse_alerting_config,
     resolve_effective_rules,
@@ -77,6 +78,36 @@ class TestParseAlertingConfig:
         cfg = parse_alerting_config({"auto_rules": False, "rules": []})
         assert cfg is not None
         assert cfg.auto_rules is False
+
+    def test_parses_for_duration(self) -> None:
+        data = {
+            "rules": [],
+            "for_duration": {
+                "page": "1m",
+                "ticket": "10m",
+            },
+        }
+        cfg = parse_alerting_config(data)
+        assert cfg is not None
+        assert cfg.for_duration.page == "1m"
+        assert cfg.for_duration.ticket == "10m"
+
+    def test_for_duration_defaults_when_absent(self) -> None:
+        data = {"rules": []}
+        cfg = parse_alerting_config(data)
+        assert cfg is not None
+        assert cfg.for_duration.page == "2m"
+        assert cfg.for_duration.ticket == "15m"
+
+    def test_for_duration_partial_override(self) -> None:
+        data = {
+            "rules": [],
+            "for_duration": {"page": "30s"},
+        }
+        cfg = parse_alerting_config(data)
+        assert cfg is not None
+        assert cfg.for_duration.page == "30s"
+        assert cfg.for_duration.ticket == "15m"  # default kept
 
 
 # -------------------------------------------------------------------------
@@ -234,6 +265,39 @@ class TestGetRulesForSlo:
 
 
 # -------------------------------------------------------------------------
+# ForDuration configuration
+# -------------------------------------------------------------------------
+
+
+class TestForDuration:
+    def test_default_for_duration(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration is not None
+        assert cfg.for_duration.page == "2m"
+        assert cfg.for_duration.ticket == "15m"
+
+    def test_custom_for_duration(self) -> None:
+        cfg = AlertingConfig(
+            rules=[],
+            for_duration=ForDuration(page="1m", ticket="10m"),
+        )
+        assert cfg.for_duration.page == "1m"
+        assert cfg.for_duration.ticket == "10m"
+
+    def test_get_for_severity_critical(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration.get_for_severity("critical") == "2m"
+
+    def test_get_for_severity_warning(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration.get_for_severity("warning") == "15m"
+
+    def test_get_for_severity_info(self) -> None:
+        cfg = AlertingConfig(rules=[])
+        assert cfg.for_duration.get_for_severity("info") == "15m"
+
+
+# -------------------------------------------------------------------------
 # OpenSRM integration
 # -------------------------------------------------------------------------
 
@@ -269,6 +333,26 @@ class TestOpenSRMParsing:
         assert len(manifest.alerting.rules) == 1
         assert manifest.alerting.channels.slack_webhook == "${SLACK_URL}"
         assert manifest.alerting.auto_rules is False
+
+    def test_parse_opensrm_with_for_duration(self) -> None:
+        from nthlayer.specs.opensrm_parser import parse_opensrm
+
+        data = {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {"name": "test-svc", "team": "eng", "tier": "critical"},
+            "spec": {
+                "type": "api",
+                "alerting": {
+                    "for_duration": {"page": "1m", "ticket": "10m"},
+                    "rules": [],
+                },
+            },
+        }
+        manifest = parse_opensrm(data)
+        assert manifest.alerting is not None
+        assert manifest.alerting.for_duration.page == "1m"
+        assert manifest.alerting.for_duration.ticket == "10m"
 
     def test_parse_opensrm_without_alerting(self) -> None:
         from nthlayer.specs.opensrm_parser import parse_opensrm

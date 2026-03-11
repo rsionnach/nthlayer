@@ -5,6 +5,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 ## Quick Reference
 
 - **Language:** Python
+- **License:** MIT (note: other OpenSRM ecosystem components — Arbiter, SitRep, Mayday — are Apache 2.0)
 - **Build:** `pip install -e .`
 - **Test:** `make test` | `make smoke` (CLI smoke, ~40s offline) | `make smoke-full` (includes Synology)
 - **Lint:** `make lint` and `./scripts/lint/run-all.sh` (custom golden-principle linters)
@@ -122,18 +123,24 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `identity/` - Service identity resolution across naming conventions
 - `specs/` - Service specification models and parsing
   - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
-  - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy)
+  - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy); `BudgetPolicy`, `BudgetThresholds`, `ErrorBudgetGate` dataclasses for error budget policy DSL
+  - `alerting.py` - `AlertingConfig`, `ForDuration` dataclasses; `ForDuration.get_for_severity()` maps severity → `for` duration override
   - `loader.py` - Auto-detect format and load manifests
   - `parser.py` - Legacy format parser, `render_resource_spec()` for variable substitution
+  - `opensrm_parser.py` - OpenSRM YAML parser; `_parse_budget_policy()` helper constructs `BudgetPolicy` from gate config
 - `slos/` - SLO definition, validation, and recording rule generation
   - `models.py` - SLO, ErrorBudget, SLOStatus, Incident dataclasses; default target: 0.999
   - `parser.py` - OpenSLO YAML parsing
   - `collector.py` - SLOCollector: Prometheus queries for live budget data
   - `calculator.py` - ErrorBudgetCalculator
-  - `gates.py` - Deployment gate enforcement (error budget thresholds)
+  - `gates.py` - Deployment gate enforcement (error budget thresholds); `GatePolicy.on_exhausted` list drives exhaustion behaviors (freeze_deploys, require_approval, notify) enforced in `DeploymentGate.check_deployment()`
   - `deployment.py` - DeploymentRecorder for storing deployment events
   - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
+  - `alerts.py` - Budget alert evaluation: AlertSeverity, AlertType, AlertRule (budget-domain rule with alert_type+threshold, distinct from Prometheus AlertRule in alerts/models.py), AlertEvent, AlertEvaluator
+  - `pipeline.py` - AlertPipeline: end-to-end alert orchestration (spec → budget → evaluate → explain → notify); PipelineResult dataclass with worst_severity property
+  - `explanations.py` - ExplanationEngine, BudgetExplanation: human-readable context for triggered alerts
+  - `notifiers.py` - AlertNotifier: Slack/PagerDuty notification dispatch
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `domain/` - Core domain models
   - `models.py` - Pydantic models: RunStatus, TeamSource, Team, Service, Run, Finding
@@ -163,6 +170,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `routes/webhooks.py` - Deployment webhook receiver
   - `routes/policies.py` - Policy audit and override API
   - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
+- `cli/deploy.py` - `check-deploy` command; `_extract_gate_policy()` resolves `GatePolicy` from `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
 - `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
   - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
@@ -206,11 +214,30 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - ZFC boundary: model=judgment (infer SLO targets), NthLayer=transport (validate + generate)
 - ZFC canonical doc: https://github.com/rsionnach/arbiter/blob/main/ZFC.md
 
+### Planned: MCP Server and Backstage Plugin
+- MCP server integration: planned (roadmap)
+- Backstage plugin: planned (roadmap)
+
+### Manifest Format Support
+- Supports `opensrm/v1` (OpenSRM format with `apiVersion: opensrm/v1`) and legacy `srm/v1` format
+- Auto-detected via `specs/loader.py`; `ReliabilityManifest` unified model handles both
+
+### Acknowledgments
+Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Inspired by: Sloth, autograf.
+
 ### OpenSRM Ecosystem (README section)
-- NthLayer is positioned as the **Tool** layer in the ecosystem (deterministic, invocable, no reasoning)
-- README "OpenSRM Ecosystem" section shows the full component diagram with NthLayer highlighted
+- NthLayer is the **Tool** layer: deterministic, invocable, no reasoning — one of three execution models (Data Sources / Tools / Agents)
+- Execution model test: "Does this component need to reason about ambiguous inputs?" Yes → Agent; same output every time → Tool; queryable state → Data Source
+- Data and tool layers (OpenSRM manifests + NthLayer) work with zero agents; agent layer is additive, not foundational
 - Ecosystem links: [OpenSRM](https://github.com/rsionnach/opensrm), [Arbiter](https://github.com/rsionnach/arbiter), [SitRep](https://github.com/rsionnach/sitrep), [Mayday](https://github.com/rsionnach/mayday)
-- Full ecosystem composition documented in opensrm repo: `ECOSYSTEM.md`
+- Full ecosystem composition in `opensrm/ECOSYSTEM.md`: component taxonomy, integration diagram, data flows, deployment tiers, post-incident learning loop
+- **Arbiter** (architecture phase, Apache 2.0): quality measurement engine — per-agent quality tracking (rolling windows), degradation detection, self-calibration, cost-per-quality, governance via one-way safety ratchet; proven as Guardian in GasTown
+- **SitRep** (architecture phase, Apache 2.0): pre-correlation agent — continuously groups signals so correlated view is ready before incident; snapshot schema: id, triggered_by, window, severity, summary, signals, correlations, topology, recommended_actions; states: WATCHING → ALERT → INCIDENT → DEGRADED
+- **Mayday** (architecture phase, Apache 2.0): multi-agent incident response — deterministic orchestrator sequences Triage → (Investigation + Communication) → Remediation; PagerDuty/Slack/email are **downstream notification channels**, not upstream incident sources
+- Deployment tiers: Tier 1 (OpenSRM + NthLayer only, zero agents), Tier 2 (+SitRep), Tier 3+ (+Arbiter +Mayday)
+- Streaming layer: NATS (small teams), Kafka (enterprise) — sits between event producers and consumers (SitRep, Arbiter, Mayday)
+- Alert flow (ecosystem): Alert Source → SitRep Snapshot → Mayday Orchestrator → Agent Pipeline → Notification Channels
+- Post-incident learning loop: Mayday findings → manifest updates + NthLayer rule refinements + Arbiter threshold revisions + SitRep correlation improvements
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -295,7 +322,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Decision log tracks architectural choices that diverge from or clarify specs
 - Deviation log defends against spec drift
 - Technical debt tracked in `plans/tech-debt.md` with AUTO-MANAGED section for audit agents
-- Design and promotion plans (DAG-based, multi-package) stored in `docs/plans/` (e.g., `docs/plans/2026-03-06-c-to-b-promotion-design.md`)
+- Design, promotion, and feature implementation plans (DAG-based, task-by-task) stored in `docs/plans/` (e.g., `docs/plans/2026-03-06-c-to-b-promotion-design.md`, `docs/plans/2026-03-10-alert-for-budget-policy.md`)
 
 ### Quality Grading System
 - Package quality grades (A-F) based on test coverage, docs, error handling, API stability
@@ -367,6 +394,53 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - JSON format produces Sitrep-compatible output; Mermaid uses `graph LR` with Nord-themed classDef tier styles and SLO labels on edges; DOT uses Graphviz digraph with Nord palette tier colors and type-based node shapes (cylinder=database, hexagon=worker/batch, parallelogram=queue), critical edges highlighted in red
 - Env vars: `NTHLAYER_PROMETHEUS_URL`, `NTHLAYER_METRICS_USER`, `NTHLAYER_METRICS_PASSWORD`
 - `build_topology()` (topology/enrichment.py) accepts optional `max_depth` + `root_service` for BFS-limited subgraph export
+
+### Zero Framework Cognition (ZFC) in the Ecosystem
+- Canonical doc: `arbiter/ZFC.md` (applies to entire OpenSRM ecosystem, not just Arbiter)
+- Core tenet: "Transport is code. Judgment is model." Originated by Steve Yegge for GasTown.
+- Two-question test for any function: (1) "Is there exactly one right answer given the inputs?" → transport, write in code. (2) "Does the right answer depend on context, interpretation, or evaluation?" → judgment, send to model.
+- Transport examples: receiving webhook payloads, validating YAML against JSON schema, generating Prometheus rules from declared SLO targets, routing messages, persisting scores
+- Judgment examples: deciding if code is correct, scoring quality dimensions, deciding if declining scores are real degradation vs normal variance, correlating quality drops with changes
+- Config as guidance: a rejection rate threshold of 0.20 means "operator considers 20% concerning", not "trigger WARN at exactly 0.20" — the model decides the outcome using config as context
+- Fail open: if model unavailable, transport continues, judgment pauses ("no quality opinion" not "wrong quality opinion")
+- Model-agnostic by design: swap Claude for Gemini/GPT/local model, transport unchanged; judgment quality changes and is itself measurable
+- ZFC is NOT "put LLM in every code path" — most ecosystem code is and should remain pure transport
+- **NthLayer's ZFC boundary:** code=transport (validate manifest, generate artifacts, enforce gates); model=judgment (infer SLO targets, assess service criticality)
+- **Arbiter governance one-way safety ratchet:** Arbiter can always reduce agent autonomy (safe direction) but can NEVER increase it without human approval — automated constraint is always permitted, automated expansion never is
+- **Arbiter self-calibration:** every judgment emits `gen_ai.decision.*` OTel event; every human correction emits `gen_ai.override.*`; these feed back into Arbiter's own judgment SLO (false accept rate, precision, recall)
+
+### Alert For Duration Override
+- `ForDuration` dataclass (specs/alerting.py) holds severity-based `for` duration overrides: `page` (default "2m") for critical alerts, `ticket` (default "15m") for warning/info
+- Added to `AlertingConfig` as `for_duration: ForDuration = field(default_factory=ForDuration)`
+- `ForDuration.get_for_severity(severity)` returns `page` for "critical", `ticket` otherwise
+- `AlertRule.customize_for_service()` gains optional `for_duration_override: str | None` parameter; applied after rule construction
+- Pipeline wiring: `generate_alerts_from_manifest()` passes `alerting_config=manifest.alerting` to `_load_and_customize_alerts()`; the inner loop calls `alerting_config.for_duration.get_for_severity(alert.severity)` and forwards the result as `for_duration_override`
+- Manifest YAML key: `spec.alerting.for_duration.page` / `spec.alerting.for_duration.ticket`
+- `TIER_DEFAULT_RULES` in specs/alerting.py covers all 4 tiers: `critical`, `high`, `standard`, `low`; "high" sits between critical and standard (budget-warning@0.65, budget-critical@0.85, burn-rate-warning@3.0, budget-exhaustion@6.0)
+
+### Alert Pipeline (slos/pipeline.py)
+- `AlertPipeline(prometheus_url, dry_run, notify)` orchestrates end-to-end SLO alert evaluation
+- `evaluate_service(manifest, sli_measurements, simulate_burn_pct)` → `PipelineResult`
+- Pipeline steps: `resolve_effective_rules()` → build `ErrorBudget` objects → `AlertEvaluator` → `ExplanationEngine` → `AlertNotifier`
+- `dry_run=True`: runs full evaluation (budget calc, rule eval, explanation) but skips all notifications (notifications_sent=0)
+- `simulate_burn_pct`: synthesizes budget consumption at given percentage without requiring Prometheus
+- `PipelineResult` fields: `budgets_evaluated`, `rules_evaluated`, `alerts_triggered`, `notifications_sent`, `explanations`, `events`, `errors`; `worst_severity` property returns "healthy" | "info" | "warning" | "critical"
+- `_build_slo_from_manifest(manifest, slo_def)` converts `SLODefinition` → `SLO`; normalises target: values >1 treated as percentage (99.9 → 0.999)
+- `_convert_spec_rule_to_alert_rule(spec_rule, service, slo_id, channels)` maps `SpecAlertRule` → budget-domain `AlertRule` (slos/alerts.py); distinct from Prometheus `AlertRule` (alerts/models.py)
+- Note: `slos/alerts.py::AlertRule` is a budget alert rule (has `alert_type`, `threshold`); `alerts/models.py::AlertRule` is a Prometheus alerting rule (has `expr`, `duration`)
+
+### Error Budget Policy DSL
+- `BudgetThresholds(warning=0.20, critical=0.10)` — fraction of remaining budget (e.g. 0.10 = 10% remaining triggers critical)
+- `BudgetPolicy(window="30d", thresholds=BudgetThresholds(), on_exhausted=[])` — full policy config in `specs/manifest.py`
+- `on_exhausted` valid values: `freeze_deploys` (blocks deployment), `require_approval` (escalates to WARNING, requires explicit override), `notify` (informational)
+- `BudgetPolicy.validate()` enforces: valid `on_exhausted` values, `warning >= critical` invariant
+- `ErrorBudgetGate.policy: BudgetPolicy | None` — opt-in; absence means existing tier-default behavior
+- YAML path: `spec.deployment.gates.error_budget.policy.{window,thresholds,on_exhausted}`
+- Parser: `_parse_budget_policy(eb_data)` in `specs/opensrm_parser.py` constructs `BudgetPolicy` from gate config dict
+- Conversion to gate layer: `BudgetPolicy → GatePolicy(warning=thresholds.warning*100, blocking=thresholds.critical*100, on_exhausted=...)` — multiply by 100 because `GatePolicy` uses percentage points
+- CLI wiring: `_extract_gate_policy()` (cli/deploy.py) tries `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
+- Exhaustion enforcement in `DeploymentGate.check_deployment()`: when `budget_remaining_pct <= 0` and `on_exhausted` is set, `freeze_deploys` → `BLOCKED`, `require_approval` → `WARNING`
+
 
 ### Build-Time Policy Engine
 - `PolicyEngine` (policies/engine.py) validates spec correctness at CI/build time — distinct from runtime `PolicyAuditRecorder`/`Repository` (policies/audit.py)
