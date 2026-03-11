@@ -172,7 +172,7 @@ dependencies:
   - redis
 ```
 
-NthLayer also supports the [OpenSRM format](https://rsionnach.github.io/nthlayer/concepts/opensrm/) (`apiVersion: srm/v1`) for contracts, deployment gates, and more. See [full spec reference](https://rsionnach.github.io/nthlayer/reference/service-yaml/) for all options.
+NthLayer also supports the [OpenSRM format](https://rsionnach.github.io/nthlayer/concepts/opensrm/) (`apiVersion: opensrm/v1`) for contracts, deployment gates, and more. See [full spec reference](https://rsionnach.github.io/nthlayer/reference/service-yaml/) for all options.
 
 ---
 
@@ -272,30 +272,31 @@ NthLayer is one component in the OpenSRM ecosystem. Each component solves a comp
          │+cost     │ │          │ │          │ │          │
          └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘
               │             │             │             │
-              └──────┬──────┴──────┬──────┘             │
-                     ▼             ▼                    ▼
-              ┌────────────────────────────┐  ┌──────────────┐
-              │  Streaming / Queue Layer   │  │  Consumes    │
-              │  (Kafka / NATS / etc)      │  │  all three   │
-              └──────────┬─────────────────┘  └──────┬───────┘
-                         ▼                           │
-              ┌────────────────────────┐             │
-              │   OTel Collector /     │             │
-              │   Prometheus / etc     │             │
-              └────────────────────────┘             │
-                                                     │
-              ┌──────────────────────────────────────┘
-              │  Learning loop (post-incident):
-              │  Mayday findings → manifest updates
-              │  → NthLayer regenerates → Arbiter
-              │  refines → SitRep improves
-              └──────────────────────────────────────▶ OpenSRM
+              └─────────────┴──────┬──────┴─────────────┘
+                                   ▼
+                     ┌──────────────────────────┐
+                     │      Verdict Store       │
+                     │  (shared data substrate) │
+                     │ create · resolve · link  │
+                     │ accuracy · gaming-check  │
+                     └────────────┬─────────────┘
+                                  │ OTel side-effects
+                                  ▼
+                     ┌──────────────────────────┐
+                     │    OTel Collector /      │
+                     │   Prometheus / Grafana   │
+                     └──────────────────────────┘
+
+              Learning loop (post-incident):
+              Mayday findings → manifest updates
+              → NthLayer regenerates → Arbiter
+              refines → SitRep improves → OpenSRM
 ```
 
 **How NthLayer fits in:**
 
 - NthLayer reads OpenSRM manifests and generates the monitoring infrastructure (Prometheus rules, Grafana dashboards, PagerDuty config) that the rest of the ecosystem relies on
-- The [Arbiter's](https://github.com/rsionnach/arbiter) quality scores flow as OTel metrics, and NthLayer generates dashboards for those scores alongside service dashboards
+- Verdict operations emit OTel side-effects (`gen_ai.decision.*`, `gen_ai.override.*`) that flow into Prometheus. NthLayer generates dashboards for these metrics alongside service dashboards — NthLayer reads from Prometheus, not the Verdict Store directly.
 - NthLayer exports service topology that [SitRep](https://github.com/rsionnach/sitrep) uses for topology-aware signal correlation
 - [Mayday's](https://github.com/rsionnach/mayday) post-incident findings feed back into NthLayer as rule refinements (alerts that should have fired earlier or didn't fire at all)
 
@@ -304,6 +305,7 @@ Each component works alone. Someone who just needs reliability-as-code adopts Nt
 | Component | What it does | Link |
 |-----------|-------------|------|
 | **OpenSRM** | Specification for declaring service reliability requirements | [opensrm](https://github.com/rsionnach/opensrm) |
+| **Verdict** | Data primitive for recording AI judgments and measuring correctness | [verdicts](https://github.com/rsionnach/verdicts) |
 | **Arbiter** | Quality measurement and governance for AI agents | [arbiter](https://github.com/rsionnach/arbiter) |
 | **NthLayer** | Generate monitoring infrastructure from manifests (this repo) | [nthlayer](https://github.com/rsionnach/nthlayer) |
 | **SitRep** | Situational awareness through signal correlation | [sitrep](https://github.com/rsionnach/sitrep) |
