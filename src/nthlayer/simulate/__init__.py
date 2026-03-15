@@ -7,6 +7,10 @@ and dependency graphs. Pure transport — no model calls.
 
 from __future__ import annotations
 
+from nthlayer.simulate.graph import (
+    build_dependency_models,
+    build_failure_models,
+)
 from nthlayer.simulate.models import (
     DependencyModel,
     FailureEvent,
@@ -19,6 +23,8 @@ from nthlayer.simulate.models import (
 )
 
 __all__ = [
+    "build_dependency_models",
+    "build_failure_models",
     "DependencyModel",
     "FailureEvent",
     "PercentileResult",
