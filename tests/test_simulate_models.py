@@ -9,7 +9,6 @@ import pytest
 from nthlayer.simulate.models import (
     DependencyModel,
     FailureEvent,
-    PercentileResult,
     ServiceFailureModel,
     derive_failure_model,
 )
