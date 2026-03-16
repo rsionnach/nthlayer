@@ -92,6 +92,7 @@ nav:
     - Overview: protect/index.md
     - Deployment Gates: commands/check-deploy.md
     - Drift Detection: commands/drift.md
+    - SLO Simulation: commands/simulate.md
     - SLO Portfolio: commands/portfolio.md
     - Reliability Scorecard: commands/scorecard.md
     - Intelligent Alerts: commands/alerts.md
