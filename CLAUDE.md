@@ -548,4 +548,17 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Drift window configurable via `--drift-window` (e.g., "30d")
 - Results displayed in table/JSON/CSV/markdown formats
 - Exit code escalation: CRITICAL drift → exit 2, WARN → exit 1
+
+### Ruff Lint Configuration
+- Target: Python 3.11 (`target-version = "py311"`), line length: 100
+- Enabled rule sets: `E` (pycodestyle errors), `F` (pyflakes), `I` (isort), `B` (flake8-bugbear)
+- Ignored rules: `B008` (Depends() in function defaults — standard FastAPI pattern), `E402` (module-level import not at top — needed for sys.modules mocking in tests)
+- Run via: `make lint` or `ruff check src/ tests/`
+
+### Sloppylint (sloppy) Configuration
+- AI-powered code quality checker; run via `/desloppify` workflow
+- Ignored paths: `tests/*`, `archive/*`, `scripts/*`, `src/nthlayer/workflows/*` (langgraph incompatible with Python 3.14)
+- Disabled checks: `debug_print` (CLI uses print() for user output), `magic_number` (handled by code review), `hallucinated_import` (false positives on relative imports), `wrong_stdlib_import` (false positives on optional deps), `dead_code` (too many false positives on class methods), `duplicate_code` (function structure similarity is not duplication), `overlong_line` (PromQL queries are intentionally long)
+- Active severity threshold: `high` — only critical and high issues are reported
+- CI threshold: `max-score = 500` (score above this fails the build)
 <!-- /AUTO-MANAGED: discovered-conventions -->
