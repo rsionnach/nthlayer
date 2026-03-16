@@ -231,6 +231,7 @@ Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins
 - [x] Metric recommendations
 - [x] OpenSRM manifest format (`srm/v1`)
 - [x] Reliability scorecard
+- [x] Monte Carlo SLO simulation (`nthlayer simulate`)
 - [x] Loki alert generation
 - [x] Recording rules generation
 - [x] Contract & dependency validation
