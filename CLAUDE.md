@@ -212,7 +212,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - Model analyses a codebase and proposes an OpenSRM manifest for it
 - Model provides judgment (what SLOs does this service need?), NthLayer provides transport (validate manifest, generate artifacts)
 - ZFC boundary: model=judgment (infer SLO targets), NthLayer=transport (validate + generate)
-- ZFC canonical doc: https://github.com/rsionnach/arbiter/blob/main/ZFC.md
+- ZFC canonical doc: https://github.com/rsionnach/nthlayer-measure/blob/main/ZFC.md
 
 ### Planned: MCP Server and Backstage Plugin
 - MCP server integration: planned (roadmap)
@@ -229,7 +229,7 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - NthLayer is the **Tool** layer: deterministic, invocable, no reasoning — one of three execution models (Data Sources / Tools / Agents)
 - Execution model test: "Does this component need to reason about ambiguous inputs?" Yes → Agent; same output every time → Tool; queryable state → Data Source
 - Data and tool layers (OpenSRM manifests + NthLayer) work with zero agents; agent layer is additive, not foundational
-- Ecosystem links: [OpenSRM](https://github.com/rsionnach/opensrm), [Arbiter](https://github.com/rsionnach/arbiter), [SitRep](https://github.com/rsionnach/sitrep), [Mayday](https://github.com/rsionnach/mayday)
+- Ecosystem links: [OpenSRM](https://github.com/rsionnach/opensrm), [nthlayer-measure](https://github.com/rsionnach/nthlayer-measure), [nthlayer-correlate](https://github.com/rsionnach/nthlayer-correlate), [nthlayer-respond](https://github.com/rsionnach/nthlayer-respond)
 - Full ecosystem composition in `opensrm/ECOSYSTEM.md`: component taxonomy, integration diagram, data flows, deployment tiers, post-incident learning loop
 - **Arbiter** (architecture phase, Apache 2.0): quality measurement engine — per-agent quality tracking (rolling windows), degradation detection, self-calibration, cost-per-quality, governance via one-way safety ratchet; proven as Guardian in GasTown
 - **SitRep** (architecture phase, Apache 2.0): pre-correlation agent — continuously groups signals so correlated view is ready before incident; snapshot schema: id, triggered_by, window, severity, summary, signals, correlations, topology, recommended_actions; states: WATCHING → ALERT → INCIDENT → DEGRADED
