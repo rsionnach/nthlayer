@@ -5,7 +5,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 ## Quick Reference
 
 - **Language:** Python
-- **License:** MIT (note: other OpenSRM ecosystem components — Arbiter, SitRep, Mayday — are Apache 2.0)
+- **License:** MIT (note: other OpenSRM ecosystem components — nthlayer-measure, nthlayer-correlate, nthlayer-respond — are Apache 2.0)
 - **Build:** `pip install -e .`
 - **Test:** `make test` | `make smoke` (CLI smoke, ~40s offline) | `make smoke-full` (includes Synology)
 - **Lint:** `make lint` and `./scripts/lint/run-all.sh` (custom golden-principle linters)
@@ -231,13 +231,13 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Data and tool layers (OpenSRM manifests + NthLayer) work with zero agents; agent layer is additive, not foundational
 - Ecosystem links: [OpenSRM](https://github.com/rsionnach/opensrm), [nthlayer-measure](https://github.com/rsionnach/nthlayer-measure), [nthlayer-correlate](https://github.com/rsionnach/nthlayer-correlate), [nthlayer-respond](https://github.com/rsionnach/nthlayer-respond)
 - Full ecosystem composition in `opensrm/ECOSYSTEM.md`: component taxonomy, integration diagram, data flows, deployment tiers, post-incident learning loop
-- **Arbiter** (architecture phase, Apache 2.0): quality measurement engine — per-agent quality tracking (rolling windows), degradation detection, self-calibration, cost-per-quality, governance via one-way safety ratchet; proven as Guardian in GasTown
-- **SitRep** (architecture phase, Apache 2.0): pre-correlation agent — continuously groups signals so correlated view is ready before incident; snapshot schema: id, triggered_by, window, severity, summary, signals, correlations, topology, recommended_actions; states: WATCHING → ALERT → INCIDENT → DEGRADED
-- **Mayday** (architecture phase, Apache 2.0): multi-agent incident response — deterministic orchestrator sequences Triage → (Investigation + Communication) → Remediation; PagerDuty/Slack/email are **downstream notification channels**, not upstream incident sources
-- Deployment tiers: Tier 1 (OpenSRM + NthLayer only, zero agents), Tier 2 (+SitRep), Tier 3+ (+Arbiter +Mayday)
-- Streaming layer: NATS (small teams), Kafka (enterprise) — sits between event producers and consumers (SitRep, Arbiter, Mayday)
-- Alert flow (ecosystem): Alert Source → SitRep Snapshot → Mayday Orchestrator → Agent Pipeline → Notification Channels
-- Post-incident learning loop: Mayday findings → manifest updates + NthLayer rule refinements + Arbiter threshold revisions + SitRep correlation improvements
+- **nthlayer-measure** (architecture phase, Apache 2.0): quality measurement engine — per-agent quality tracking (rolling windows), degradation detection, self-calibration, cost-per-quality, governance via one-way safety ratchet; proven as Guardian in GasTown
+- **nthlayer-correlate** (architecture phase, Apache 2.0): pre-correlation agent — continuously groups signals so correlated view is ready before incident; snapshot schema: id, triggered_by, window, severity, summary, signals, correlations, topology, recommended_actions; states: WATCHING → ALERT → INCIDENT → DEGRADED
+- **nthlayer-respond** (architecture phase, Apache 2.0): multi-agent incident response — deterministic orchestrator sequences Triage → (Investigation + Communication) → Remediation; PagerDuty/Slack/email are **downstream notification channels**, not upstream incident sources
+- Deployment tiers: Tier 1 (OpenSRM + NthLayer only, zero agents), Tier 2 (+nthlayer-correlate), Tier 3+ (+nthlayer-measure +nthlayer-respond)
+- Streaming layer: NATS (small teams), Kafka (enterprise) — sits between event producers and consumers (nthlayer-correlate, nthlayer-measure, nthlayer-respond)
+- Alert flow (ecosystem): Alert Source → nthlayer-correlate Snapshot → nthlayer-respond Orchestrator → Agent Pipeline → Notification Channels
+- Post-incident learning loop: nthlayer-respond findings → manifest updates + NthLayer rule refinements + nthlayer-measure threshold revisions + nthlayer-correlate correlation improvements
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -391,12 +391,12 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 ### Topology Export CLI Pattern
 - CLI command: `nthlayer topology export <manifest> [--format json|mermaid|dot] [--output FILE] [--depth N] [--demo]`
 - `--demo` flag runs export with built-in sample data (no manifest required)
-- JSON format produces Sitrep-compatible output; Mermaid uses `graph LR` with Nord-themed classDef tier styles and SLO labels on edges; DOT uses Graphviz digraph with Nord palette tier colors and type-based node shapes (cylinder=database, hexagon=worker/batch, parallelogram=queue), critical edges highlighted in red
+- JSON format produces nthlayer-correlate-compatible output; Mermaid uses `graph LR` with Nord-themed classDef tier styles and SLO labels on edges; DOT uses Graphviz digraph with Nord palette tier colors and type-based node shapes (cylinder=database, hexagon=worker/batch, parallelogram=queue), critical edges highlighted in red
 - Env vars: `NTHLAYER_PROMETHEUS_URL`, `NTHLAYER_METRICS_USER`, `NTHLAYER_METRICS_PASSWORD`
 - `build_topology()` (topology/enrichment.py) accepts optional `max_depth` + `root_service` for BFS-limited subgraph export
 
 ### Zero Framework Cognition (ZFC) in the Ecosystem
-- Canonical doc: `arbiter/ZFC.md` (applies to entire OpenSRM ecosystem, not just Arbiter)
+- Canonical doc: `nthlayer-measure/ZFC.md` (applies to entire OpenSRM ecosystem, not just nthlayer-measure)
 - Core tenet: "Transport is code. Judgment is model." Originated by Steve Yegge for GasTown.
 - Two-question test for any function: (1) "Is there exactly one right answer given the inputs?" → transport, write in code. (2) "Does the right answer depend on context, interpretation, or evaluation?" → judgment, send to model.
 - Transport examples: receiving webhook payloads, validating YAML against JSON schema, generating Prometheus rules from declared SLO targets, routing messages, persisting scores
@@ -406,8 +406,8 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Model-agnostic by design: swap Claude for Gemini/GPT/local model, transport unchanged; judgment quality changes and is itself measurable
 - ZFC is NOT "put LLM in every code path" — most ecosystem code is and should remain pure transport
 - **NthLayer's ZFC boundary:** code=transport (validate manifest, generate artifacts, enforce gates); model=judgment (infer SLO targets, assess service criticality)
-- **Arbiter governance one-way safety ratchet:** Arbiter can always reduce agent autonomy (safe direction) but can NEVER increase it without human approval — automated constraint is always permitted, automated expansion never is
-- **Arbiter self-calibration:** every judgment emits `gen_ai.decision.*` OTel event; every human correction emits `gen_ai.override.*`; these feed back into Arbiter's own judgment SLO (false accept rate, precision, recall)
+- **nthlayer-measure governance one-way safety ratchet:** nthlayer-measure can always reduce agent autonomy (safe direction) but can NEVER increase it without human approval — automated constraint is always permitted, automated expansion never is
+- **nthlayer-measure self-calibration:** every judgment emits `gen_ai.decision.*` OTel event; every human correction emits `gen_ai.override.*`; these feed back into nthlayer-measure's own judgment SLO (false accept rate, precision, recall)
 
 ### Alert For Duration Override
 - `ForDuration` dataclass (specs/alerting.py) holds severity-based `for` duration overrides: `page` (default "2m") for critical alerts, `ticket` (default "15m") for warning/info
