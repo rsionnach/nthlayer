@@ -1,33 +1,217 @@
+# Apache Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
 groups:
-
-- name: LusitaniaeApacheExporter
-
-  
+- name: apache
   rules:
-
-    - alert: ApacheDown
-      expr: 'apache_up == 0'
-      for: 0m
-      labels:
-        severity: critical
-      annotations:
-        summary: Apache down (instance {{ $labels.instance }})
-        description: "Apache down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
-
-    - alert: ApacheWorkersLoad
-      expr: '(sum by (instance) (apache_workers{state="busy"}) / sum by (instance) (apache_scoreboard) ) * 100 > 80'
-      for: 2m
-      labels:
-        severity: warning
-      annotations:
-        summary: Apache workers load (instance {{ $labels.instance }})
-        description: "Apache workers in busy state approach the max workers count 80% workers busy on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
-
-    - alert: ApacheRestart
-      expr: 'apache_uptime_seconds_total / 60 < 1'
-      for: 0m
-      labels:
-        severity: warning
-      annotations:
-        summary: Apache restart (instance {{ $labels.instance }})
-        description: "Apache has just been restarted.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: ApacheDown
+    expr: apache_up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Apache down (instance {{ $labels.instance }})
+      description: "Apache down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: ApacheWorkersLoad
+    expr: (sum by (instance) (apache_workers{state="busy"}) / sum by (instance) (apache_scoreboard) ) * 100 > 80 and sum by
+      (instance) (apache_scoreboard) > 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Apache workers load (instance {{ $labels.instance }})
+      description: "Apache workers in busy state approach the max workers count 80% workers busy on {{ $labels.instance }}\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: ApacheRestart
+    expr: apache_uptime_seconds_total / 60 < 1
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Apache restart (instance {{ $labels.instance }})
+      description: "Apache has just been restarted.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkJobIsNotRunning
+    expr: flink_jobmanager_numRunningJobs == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Flink job is not running (instance {{ $labels.instance }})
+      description: "No Flink jobs are currently running. All jobs may have failed or been cancelled.\n  VALUE = {{ $value\
+        \ }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkNoTaskmanagersRegistered
+    expr: flink_jobmanager_numRegisteredTaskManagers == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Flink no TaskManagers registered (instance {{ $labels.instance }})
+      description: "No TaskManagers are registered with the JobManager. The cluster has no processing capacity.\n  VALUE =\
+        \ {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkAllTaskSlotsUsed
+    expr: flink_jobmanager_taskSlotsAvailable == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink all task slots used (instance {{ $labels.instance }})
+      description: "All Flink task slots are in use ({{ $value }} available). New jobs cannot be scheduled.\n  VALUE = {{\
+        \ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkJobRestartIncreasing
+    expr: increase(flink_jobmanager_job_numRestarts[5m]) > 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink job restart increasing (instance {{ $labels.instance }})
+      description: "Flink job {{ $labels.job_name }} has restarted {{ $value }} times in the last 5 minutes.\n  VALUE = {{\
+        \ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkCheckpointFailures
+    expr: increase(flink_jobmanager_job_numberOfFailedCheckpoints[10m]) > 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink checkpoint failures (instance {{ $labels.instance }})
+      description: "Flink job {{ $labels.job_name }} has {{ $value }} failed checkpoints in the last 10 minutes.\n  VALUE\
+        \ = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkCheckpointDurationHigh
+    expr: flink_jobmanager_job_lastCheckpointDuration / 1000 > 60
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink checkpoint duration high (instance {{ $labels.instance }})
+      description: "Flink job {{ $labels.job_name }} last checkpoint took {{ $value | humanizeDuration }} to complete.\n \
+        \ VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkTaskBackpressured
+    expr: flink_taskmanager_job_task_isBackPressured == 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink task backpressured (instance {{ $labels.instance }})
+      description: "Flink task {{ $labels.task_name }} in job {{ $labels.job_name }} is backpressured.\n  VALUE = {{ $value\
+        \ }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkTaskHighBackpressureTime
+    expr: flink_taskmanager_job_task_backPressuredTimeMsPerSecond > 500
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink task high backpressure time (instance {{ $labels.instance }})
+      description: "Flink task {{ $labels.task_name }} is spending {{ $value | humanize }}ms/sec in backpressure.\n  VALUE\
+        \ = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkTaskmanagerHeapMemoryHigh
+    expr: flink_taskmanager_Status_JVM_Memory_Heap_Used / flink_taskmanager_Status_JVM_Memory_Heap_Max > 0.9
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink TaskManager heap memory high (instance {{ $labels.instance }})
+      description: "Flink TaskManager {{ $labels.instance }} heap memory usage is above 90%.\n  VALUE = {{ $value }}\n  LABELS\
+        \ = {{ $labels }}"
+  - alert: FlinkJobmanagerHeapMemoryHigh
+    expr: flink_jobmanager_Status_JVM_Memory_Heap_Used / flink_jobmanager_Status_JVM_Memory_Heap_Max > 0.9
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink JobManager heap memory high (instance {{ $labels.instance }})
+      description: "Flink JobManager {{ $labels.instance }} heap memory usage is above 90%.\n  VALUE = {{ $value }}\n  LABELS\
+        \ = {{ $labels }}"
+  - alert: FlinkTaskmanagerGcTimeHigh
+    expr: rate(flink_taskmanager_Status_JVM_GarbageCollector_All_Time[5m]) > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink TaskManager GC time high (instance {{ $labels.instance }})
+      description: "Flink TaskManager {{ $labels.instance }} is spending more than 10% of time in garbage collection.\n  VALUE\
+        \ = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: FlinkNoRecordsProcessed
+    expr: rate(flink_taskmanager_job_task_numRecordsIn[5m]) == 0 and flink_taskmanager_job_task_numRecordsIn > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Flink no records processed (instance {{ $labels.instance }})
+      description: "Flink task {{ $labels.task_name }} has not processed any records in the last 5 minutes.\n  VALUE = {{\
+        \ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SparkNoAliveWorkers
+    expr: metrics_master_aliveWorkers_Value == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Spark no alive workers (instance {{ $labels.instance }})
+      description: "No Spark workers are alive. The cluster has no processing capacity.\n  VALUE = {{ $value }}\n  LABELS\
+        \ = {{ $labels }}"
+  - alert: SparkTooManyWaitingApps
+    expr: metrics_master_waitingApps_Value > 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spark too many waiting apps (instance {{ $labels.instance }})
+      description: "Spark has {{ $value }} applications waiting for resources.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels\
+        \ }}"
+  - alert: SparkWorkerMemoryExhausted
+    expr: metrics_worker_memFree_MB_Value == 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spark worker memory exhausted (instance {{ $labels.instance }})
+      description: "Spark worker {{ $labels.instance }} has no free memory ({{ $value }}MB free).\n  VALUE = {{ $value }}\n\
+        \  LABELS = {{ $labels }}"
+  - alert: SparkWorkerCoresExhausted
+    expr: metrics_worker_coresFree_Value == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spark worker cores exhausted (instance {{ $labels.instance }})
+      description: "Spark worker {{ $labels.instance }} has no free cores.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels\
+        \ }}"
+  - alert: SparkExecutorHighGcTime
+    expr: metrics_executor_totalGCTime_seconds_total / metrics_executor_totalDuration > 0.1 and metrics_executor_totalDuration
+      > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spark executor high GC time (instance {{ $labels.instance }})
+      description: "Spark executor {{ $labels.executor_id }} in {{ $labels.application_name }} is spending too much time in\
+        \ GC.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SparkExecutorAllTasksFailing
+    expr: metrics_executor_failedTasks_total > 0 and metrics_executor_completedTasks_total == 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Spark executor all tasks failing (instance {{ $labels.instance }})
+      description: "Spark executor {{ $labels.executor_id }} has only failing tasks ({{ $value }} failed, 0 completed).\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SparkExecutorHighTaskFailureRate
+    expr: metrics_executor_failedTasks_total / metrics_executor_totalTasks_total > 0.1 and metrics_executor_totalTasks_total
+      > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spark executor high task failure rate (instance {{ $labels.instance }})
+      description: "Spark executor {{ $labels.executor_id }} has a task failure rate above 10%.\n  VALUE = {{ $value }}\n\
+        \  LABELS = {{ $labels }}"
+  - alert: SparkExecutorHighDiskSpill
+    expr: metrics_executor_diskUsed_bytes > 1e9
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spark executor high disk spill (instance {{ $labels.instance }})
+      description: "Spark executor {{ $labels.executor_id }} is spilling data to disk. Consider increasing executor memory.\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

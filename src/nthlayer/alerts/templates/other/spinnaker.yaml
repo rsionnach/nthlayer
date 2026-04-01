@@ -1,0 +1,121 @@
+# Spinnaker Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: spinnaker
+  rules:
+  - alert: SpinnakerCircuitBreakerOpen
+    expr: resilience4j_circuitbreaker_state{state="open"} == 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker circuit breaker open (instance {{ $labels.instance }})
+      description: "Circuit breaker {{ $labels.name }} is open on {{ $labels.instance }}, indicating repeated downstream failures.\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerOrcaQueueBackingUp
+    expr: queue_ready_depth > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker Orca queue backing up (instance {{ $labels.instance }})
+      description: "Orca work queue has {{ $value }} messages ready for delivery but not yet picked up. Pipeline executions\
+        \ may be delayed.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerOrcaQueueMessageLagHigh
+    expr: rate(queue_message_lag_seconds_sum[5m]) / rate(queue_message_lag_seconds_count[5m]) > 30 and rate(queue_message_lag_seconds_count[5m])
+      > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker Orca queue message lag high (instance {{ $labels.instance }})
+      description: "Orca queue message lag is {{ $value }}s. Pipeline stages are waiting too long before being processed.\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerDeadMessages
+    expr: rate(queue_dead_messages_total[5m]) > 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: Spinnaker dead messages (instance {{ $labels.instance }})
+      description: "Orca is producing dead-lettered messages ({{ $value }} per second). These are tasks that exhausted all\
+        \ retries and will not be executed.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerZombieExecutions
+    expr: rate(queue_zombies_total[5m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker zombie executions (instance {{ $labels.instance }})
+      description: "{{ $value }} zombie pipeline executions detected. These are executions with no corresponding queue messages.\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerThreadPoolExhaustion
+    expr: threadpool_blockingQueueSize > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker thread pool exhaustion (instance {{ $labels.instance }})
+      description: "Orca message handler thread pool has {{ $value }} blocked threads on {{ $labels.instance }}. Pipeline\
+        \ execution throughput is degraded.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerPollingMonitorItemsOverThreshold
+    expr: sum by (monitor, partition) (pollingMonitor_itemsOverThreshold) > 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Spinnaker polling monitor items over threshold (instance {{ $labels.instance }})
+      description: "Igor polling monitor {{ $labels.monitor }} for {{ $labels.partition }} has exceeded its item threshold,\
+        \ preventing pipeline triggers.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerPollingMonitorFailures
+    expr: rate(pollingMonitor_failed_total[5m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker polling monitor failures (instance {{ $labels.instance }})
+      description: "Igor polling monitor is experiencing failures ({{ $value }} per second). CI/SCM integrations may not trigger\
+        \ pipelines.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerHighApiErrorRate
+    expr: sum by (instance) (rate(controller_invocations_total{status="5xx"}[5m])) / sum by (instance) (rate(controller_invocations_total[5m]))
+      > 0.05 and sum by (instance) (rate(controller_invocations_total[5m])) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker high API error rate (instance {{ $labels.instance }})
+      description: "Spinnaker API 5xx error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}.\n  VALUE\
+        \ = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerApiRateLimitThrottling
+    expr: rate(rateLimitThrottling_total[5m]) > 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker API rate limit throttling (instance {{ $labels.instance }})
+      description: "Gate is actively throttling API requests on {{ $labels.instance }} ({{ $value }} throttled requests per\
+        \ second).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerClouddriverHighErrorRate
+    expr: sum by (instance) (rate(controller_invocations_total{status="5xx", job=~".*clouddriver.*"}[5m])) / sum by (instance)
+      (rate(controller_invocations_total{job=~".*clouddriver.*"}[5m])) > 0.05 and sum by (instance) (rate(controller_invocations_total{job=~".*clouddriver.*"}[5m]))
+      > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker Clouddriver high error rate (instance {{ $labels.instance }})
+      description: "Clouddriver 5xx error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}. Cloud operations\
+        \ may be failing.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: SpinnakerAwsRateLimiting
+    expr: amazonClientProvider_rateLimitDelayMil > 1000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Spinnaker AWS rate limiting (instance {{ $labels.instance }})
+      description: "Clouddriver is being rate-limited by AWS on {{ $labels.instance }} ({{ $value }}ms delay). Cloud operations\
+        \ will be slower.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

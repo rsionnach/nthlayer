@@ -1,0 +1,89 @@
+# Proxmox-Ve Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: proxmox-ve
+  rules:
+  - alert: PveNodeDown
+    expr: pve_up{id=~"node/.*"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: PVE node down (instance {{ $labels.instance }})
+      description: "Proxmox VE node {{ $labels.id }} is down.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: PveVm/ctDown
+    expr: pve_up{id=~"(qemu|lxc)/.*"} == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: PVE VM/CT down (instance {{ $labels.instance }})
+      description: "Proxmox VE guest {{ $labels.id }} is not running.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: PveHighCpuUsage
+    expr: pve_cpu_usage_ratio * 100 > 90
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: PVE high CPU usage (instance {{ $labels.instance }})
+      description: "Proxmox VE CPU usage is above 90% on {{ $labels.id }}. Current value: {{ $value | printf \"%.2f\" }}%\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: PveHighMemoryUsage
+    expr: pve_memory_usage_bytes / pve_memory_size_bytes * 100 > 90 and pve_memory_size_bytes > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: PVE high memory usage (instance {{ $labels.instance }})
+      description: "Proxmox VE memory usage is above 90% on {{ $labels.id }}. Current value: {{ $value | printf \"%.2f\" }}%\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: PveStorageFillingUp
+    expr: pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"} * 100 > 80 and pve_disk_size_bytes{id=~"storage/.*"}
+      > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: PVE storage filling up (instance {{ $labels.instance }})
+      description: "Proxmox VE storage {{ $labels.id }} is above 80% used. Current value: {{ $value | printf \"%.2f\" }}%\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: PveStorageAlmostFull
+    expr: pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"} * 100 > 95 and pve_disk_size_bytes{id=~"storage/.*"}
+      > 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: PVE storage almost full (instance {{ $labels.instance }})
+      description: "Proxmox VE storage {{ $labels.id }} is above 95% used. Current value: {{ $value | printf \"%.2f\" }}%\n\
+        \  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: PveGuestNotBackedUp
+    expr: pve_not_backed_up_total > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: PVE guest not backed up (instance {{ $labels.instance }})
+      description: "{{ $value }} Proxmox VE guest(s) are not covered by any backup job.\n  VALUE = {{ $value }}\n  LABELS\
+        \ = {{ $labels }}"
+  - alert: PveReplicationFailed
+    expr: pve_replication_failed_syncs > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: PVE replication failed (instance {{ $labels.instance }})
+      description: "Proxmox VE replication for {{ $labels.id }} has {{ $value }} failed sync(s).\n  VALUE = {{ $value }}\n\
+        \  LABELS = {{ $labels }}"
+  - alert: PveClusterNotQuorate
+    expr: pve_cluster_info{quorate="0"} == 1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: PVE cluster not quorate (instance {{ $labels.instance }})
+      description: "Proxmox VE cluster has lost quorum.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

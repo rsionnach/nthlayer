@@ -1,0 +1,70 @@
+# Keycloak Alerting Rules
+# Source: https://github.com/samber/awesome-prometheus-alerts
+#
+# Auto-synced by NthLayer. Do not edit manually.
+# Run: python scripts/sync_awesome_alerts.py
+
+groups:
+- name: keycloak
+  rules:
+  - alert: KeycloakHighLoginFailureRate
+    expr: (sum by (realm) (rate(keycloak_failed_login_attempts_total[5m])) / (sum by (realm) (rate(keycloak_logins_total[5m]))
+      + sum by (realm) (rate(keycloak_failed_login_attempts_total[5m])))) * 100 > 5 and (sum by (realm) (rate(keycloak_logins_total[5m]))
+      + sum by (realm) (rate(keycloak_failed_login_attempts_total[5m]))) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Keycloak high login failure rate (instance {{ $labels.instance }})
+      description: "More than 5% of login attempts are failing in realm {{ $labels.realm }} (current value: {{ $value | printf\
+        \ \"%.1f\" }}%).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: KeycloakNoSuccessfulLogins
+    expr: sum by (realm) (rate(keycloak_logins_total[15m])) == 0 and (sum by (realm) (rate(keycloak_logins_total[15m])) +
+      sum by (realm) (rate(keycloak_failed_login_attempts_total[15m]))) > 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Keycloak no successful logins (instance {{ $labels.instance }})
+      description: "No successful logins in realm {{ $labels.realm }} for the last 15 minutes.\n  VALUE = {{ $value }}\n \
+        \ LABELS = {{ $labels }}"
+  - alert: KeycloakHighTokenRefreshErrorRate
+    expr: (sum by (realm) (rate(keycloak_refresh_tokens_errors_total[5m])) / sum by (realm) (rate(keycloak_refresh_tokens_total[5m])))
+      * 100 > 10 and sum by (realm) (rate(keycloak_refresh_tokens_total[5m])) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Keycloak high token refresh error rate (instance {{ $labels.instance }})
+      description: "More than 10% of token refresh attempts are failing in realm {{ $labels.realm }} (current value: {{ $value\
+        \ | printf \"%.1f\" }}%).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: KeycloakHighCodeToTokenExchangeErrorRate
+    expr: (sum by (realm) (rate(keycloak_code_to_tokens_errors_total[5m])) / sum by (realm) (rate(keycloak_code_to_tokens_total[5m])))
+      * 100 > 10 and sum by (realm) (rate(keycloak_code_to_tokens_total[5m])) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Keycloak high code-to-token exchange error rate (instance {{ $labels.instance }})
+      description: "More than 10% of code-to-token exchanges are failing in realm {{ $labels.realm }} (current value: {{ $value\
+        \ | printf \"%.1f\" }}%).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: KeycloakHighRegistrationFailureRate
+    expr: (sum by (realm) (rate(keycloak_registrations_errors_total[5m])) / sum by (realm) (rate(keycloak_registrations_total[5m])))
+      * 100 > 10 and sum by (realm) (rate(keycloak_registrations_total[5m])) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Keycloak high registration failure rate (instance {{ $labels.instance }})
+      description: "More than 10% of registration attempts are failing in realm {{ $labels.realm }} (current value: {{ $value\
+        \ | printf \"%.1f\" }}%).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  - alert: KeycloakSlowRequestResponseTime
+    expr: sum by (method) (rate(keycloak_request_duration_sum[5m])) / sum by (method) (rate(keycloak_request_duration_count[5m]))
+      > 2000 and sum by (method) (rate(keycloak_request_duration_count[5m])) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Keycloak slow request response time (instance {{ $labels.instance }})
+      description: "Keycloak {{ $labels.method }} requests are taking more than 2 seconds on average.\n  VALUE = {{ $value\
+        \ }}\n  LABELS = {{ $labels }}"
