@@ -12,13 +12,39 @@ import structlog
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from nthlayer.scorecard.models import ScoreBand
-from nthlayer.slos.gates import DeploymentGate, GateResult
+from nthlayer_common.gate_models import GateResult
+from nthlayer_common.tiers import TIER_CONFIGS
 from nthlayer.specs.loader import load_manifest
 from nthlayer.specs.manifest import ReliabilityManifest
+
+
+class ScoreBand(str, Enum):
+    """Score classification bands used for static Backstage entity generation.
+
+    Inlined from the deleted nthlayer.scorecard.models module (B6). Runtime
+    scorecard computation now lives in nthlayer-observe; generate retains
+    just the band → letter-grade mapping because backstage.json expects a
+    grade string even when the entity is produced statically.
+    """
+
+    EXCELLENT = "excellent"  # 90-100
+    GOOD = "good"  # 75-89
+    FAIR = "fair"  # 50-74
+    POOR = "poor"  # 25-49
+    CRITICAL = "critical"  # 0-24
+
+
+def _gate_thresholds_for_tier(tier: str) -> dict[str, float | None]:
+    """Static tier → gate threshold lookup (warning/blocking % remaining)."""
+    config = TIER_CONFIGS.get(tier) or TIER_CONFIGS["standard"]
+    return {
+        "warning": config.error_budget_warning_pct,
+        "blocking": config.error_budget_blocking_pct,
+    }
 
 logger = structlog.get_logger()
 
@@ -192,8 +218,7 @@ def _build_backstage_entity(
         slos.append(slo_entry)
 
     # Build deployment gate section with default thresholds
-    gate = DeploymentGate()
-    thresholds = gate.get_threshold_for_tier(service_context.tier)
+    thresholds = _gate_thresholds_for_tier(service_context.tier)
 
     deployment_gate: dict[str, Any] = {
         "status": "APPROVED",  # Default for static generation
@@ -275,8 +300,7 @@ def _build_backstage_entity_from_manifest(
         slos.append(slo_entry)
 
     # Build deployment gate section with default thresholds
-    gate = DeploymentGate()
-    thresholds = gate.get_threshold_for_tier(manifest.tier)
+    thresholds = _gate_thresholds_for_tier(manifest.tier)
 
     deployment_gate: dict[str, Any] = {
         "status": "APPROVED",  # Default for static generation
@@ -359,4 +383,4 @@ def gate_result_to_status(result: GateResult) -> str:
         GateResult.WARNING: "WARNING",
         GateResult.BLOCKED: "BLOCKED",
     }
-    return mapping.get(result, "APPROVED")
+    return mapping.get(result, "BLOCKED")

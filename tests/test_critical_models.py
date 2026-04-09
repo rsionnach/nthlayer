@@ -1,13 +1,7 @@
-"""Tests for critical model files: formatters/models, verification/models, alerts/models."""
+"""Tests for critical model files: formatters/models, alerts/models."""
 
 from nthlayer.alerts.models import AlertRule
 from nthlayer.cli.formatters.models import CheckResult, CheckStatus, ReliabilityReport
-from nthlayer.verification.models import (
-    ContractVerificationResult,
-    DeclaredMetric,
-    MetricSource,
-    VerificationResult,
-)
 
 
 class TestReliabilityReportStatus:
@@ -65,69 +59,6 @@ class TestReliabilityReportStatus:
         assert report.errors == 1
         assert report.warnings == 1
         assert report.passed == 2
-
-
-class TestContractVerificationExitCode:
-    """Tests for ContractVerificationResult.exit_code (CI gate logic)."""
-
-    def _metric(self, name, source=MetricSource.SLO_INDICATOR):
-        return DeclaredMetric(name=name, source=source)
-
-    def test_all_verified_exit_0(self):
-        result = ContractVerificationResult(
-            service_name="test",
-            target_url="http://test",
-            results=[VerificationResult(metric=self._metric("m1"), exists=True)],
-        )
-        assert result.exit_code == 0
-
-    def test_missing_critical_exit_2(self):
-        result = ContractVerificationResult(
-            service_name="test",
-            target_url="http://test",
-            results=[VerificationResult(metric=self._metric("m1"), exists=False)],
-        )
-        assert result.exit_code == 2
-
-    def test_missing_optional_exit_1(self):
-        result = ContractVerificationResult(
-            service_name="test",
-            target_url="http://test",
-            results=[
-                VerificationResult(metric=self._metric("m1"), exists=True),
-                VerificationResult(
-                    metric=self._metric("m2", MetricSource.OBSERVABILITY), exists=False
-                ),
-            ],
-        )
-        assert result.exit_code == 1
-
-    def test_critical_overrides_optional(self):
-        result = ContractVerificationResult(
-            service_name="test",
-            target_url="http://test",
-            results=[
-                VerificationResult(metric=self._metric("m1"), exists=False),
-                VerificationResult(
-                    metric=self._metric("m2", MetricSource.OBSERVABILITY), exists=False
-                ),
-            ],
-        )
-        assert result.exit_code == 2
-
-    def test_critical_verified_property(self):
-        result = ContractVerificationResult(
-            service_name="test",
-            target_url="http://test",
-            results=[
-                VerificationResult(metric=self._metric("m1"), exists=True),
-                VerificationResult(
-                    metric=self._metric("m2", MetricSource.OBSERVABILITY), exists=False
-                ),
-            ],
-        )
-        assert result.critical_verified is True
-        assert result.all_verified is False
 
 
 class TestAlertRuleModel:

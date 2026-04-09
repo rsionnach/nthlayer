@@ -1,38 +1,11 @@
-from __future__ import annotations
+"""
+Re-export shim — canonical source is nthlayer_common.clients.slack.
 
-from typing import Any
+The class was renamed to SlackAPIClient in common to avoid collision with
+nthlayer_common.slack.SlackNotifier (the webhook-based notifier).
+This shim preserves the original name for backward compatibility.
+"""
 
-from nthlayer.clients.base import BaseHTTPClient
+from nthlayer_common.clients.slack import SlackAPIClient as SlackNotifier  # noqa: F401
 
-
-class SlackNotifier(BaseHTTPClient):
-    """Slack API client with retry logic and circuit breaker."""
-
-    def __init__(
-        self,
-        token: str | None,
-        *,
-        base_url: str = "https://slack.com/api",
-        timeout: float = 30.0,
-        max_retries: int = 3,
-        backoff_factor: float = 2.0,
-    ) -> None:
-        super().__init__(
-            base_url,
-            timeout=timeout,
-            max_retries=max_retries,
-            backoff_factor=backoff_factor,
-        )
-        self._token = token
-
-    def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json; charset=utf-8"}
-        if self._token:
-            headers["Authorization"] = f"Bearer {self._token}"
-        return headers
-
-    async def post_message(self, channel: str, text: str, **blocks: Any) -> None:
-        if not self._token:
-            return
-        payload = {"channel": channel, "text": text} | blocks
-        await self.post("/chat.postMessage", json=payload)
+__all__ = ["SlackNotifier"]

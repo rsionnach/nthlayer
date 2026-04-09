@@ -5,6 +5,7 @@ from nthlayer.core.errors import (
     ConfigurationError,
     ExitCode,
     NthLayerError,
+    PolicyAuditError,
     ProviderError,
     ValidationError,
     WarningResult,
@@ -12,6 +13,7 @@ from nthlayer.core.errors import (
     format_error_message,
     main_with_error_handling,
 )
+# Subset only — full tier API at nthlayer.core.tiers or nthlayer_common.tiers
 from nthlayer.core.tiers import (
     TIER_NAMES,
     VALID_TIERS,
@@ -28,6 +30,7 @@ __all__ = [
     "ProviderError",
     "ValidationError",
     "BlockedError",
+    "PolicyAuditError",
     "WarningResult",
     "main_with_error_handling",
     "format_error_message",

@@ -26,17 +26,6 @@ pytestmark = [
 ]
 
 
-# --- Metric Verification ---
-
-
-class TestVerify:
-    def test_checkout_service(self) -> None:
-        """Verify declared metrics exist in Prometheus."""
-        result = run_nthlayer("verify", CHECKOUT_SERVICE, "--prometheus-url", PROMETHEUS_URL)
-        # 0 = all found, 1 = optional missing (warning) — both acceptable
-        assert result.exit_code in (0, 1), result
-
-
 class TestValidateSloLive:
     def test_live_slo_validation(self) -> None:
         """Validate SLO PromQL queries against live Prometheus."""
@@ -45,33 +34,8 @@ class TestValidateSloLive:
         assert result.exit_code in (0, 1), result
 
 
-# --- Drift Analysis ---
-
-
-class TestDrift:
-    def test_checkout_service(self) -> None:
-        """Drift may fail with exit 2 if no SLO data exists for this service."""
-        result = run_nthlayer("drift", CHECKOUT_SERVICE)
-        # 0 = OK, 1 = warn, 2 = critical or no data — all valid for smoke
-        assert result.exit_code in (0, 1, 2), result
-
-
 # --- Deployment Gate (Live) ---
-
-
-class TestCheckDeployLive:
-    def test_live_deploy_check(self) -> None:
-        """Check deployment gate against live Prometheus metrics."""
-        result = run_nthlayer("check-deploy", CHECKOUT_SERVICE, "--prometheus-url", PROMETHEUS_URL)
-        # 0 = approved, 1 = warning, 2 = blocked — all are valid live behavior
-        assert result.exit_code in (0, 1, 2), result
-
-    def test_live_deploy_with_drift(self) -> None:
-        """Check deployment gate with drift analysis enabled."""
-        result = run_nthlayer(
-            "check-deploy", CHECKOUT_SERVICE, "--include-drift", "--prometheus-url", PROMETHEUS_URL
-        )
-        assert result.exit_code in (0, 1, 2), result
+# TestCheckDeployLive removed in B3 — check-deploy now lives in nthlayer-observe.
 
 
 # --- Dashboard Push (requires Grafana) ---

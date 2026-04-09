@@ -1,4 +1,9 @@
-"""Smoke tests for analysis CLI commands (check-deploy, topology, recommend-metrics)."""
+"""Smoke tests for analysis CLI commands (topology, recommend-metrics).
+
+Note: check-deploy smoke tests removed with the command itself in B3 — the
+runtime deployment gate now lives in nthlayer-observe (`nthlayer-observe
+check-deploy`).
+"""
 
 from __future__ import annotations
 
@@ -7,17 +12,6 @@ import pytest
 from _helpers import CHECKOUT_SERVICE, run_nthlayer
 
 pytestmark = pytest.mark.smoke
-
-
-class TestCheckDeploy:
-    def test_demo_does_not_crash(self) -> None:
-        """Demo mode exits 0 (pass) or 1 (warning) — both are valid, not a crash."""
-        result = run_nthlayer("check-deploy", CHECKOUT_SERVICE, "--demo")
-        assert result.exit_code in (0, 1), result
-
-    def test_demo_blocked_exits_2(self) -> None:
-        result = run_nthlayer("check-deploy", CHECKOUT_SERVICE, "--demo-blocked")
-        assert result.exit_code == 2, result
 
 
 class TestTopologyExport:

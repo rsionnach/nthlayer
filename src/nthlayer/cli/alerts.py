@@ -122,25 +122,13 @@ def alerts_explain_command(
         if not budgets_for_slo:
             console.print(f"[yellow]No SLO matching '{slo_filter}' found[/yellow]")
             return 1
-        from nthlayer.slos.explanations import ExplanationEngine
+        # ExplanationEngine removed in Phase 1 — budget explanations
+        # will be restored via nthlayer-observe (bead nthlayer-hmj)
+        console.print("[yellow]Budget explanations not available in nthlayer-generate[/yellow]")
+        return 0
 
-        engine = ExplanationEngine()
-        explanations = [
-            engine.explain_budget(b, tier=manifest.tier, service_type=manifest.type)
-            for b in budgets_for_slo
-        ]
-
-    if output_format == "json":
-        print(json.dumps([e.to_dict() for e in explanations], indent=2))
-    elif output_format == "markdown":
-        for expl in explanations:
-            print(expl.to_markdown())
-            print()
-    else:
-        for expl in explanations:
-            print(expl.to_text())
-            print()
-
+    # Explanation output paths removed — explanations list is always empty post-Phase 1
+    console.print("[yellow]Budget explanations not available in nthlayer-generate[/yellow]")
     return _exit_code([result])
 
 
