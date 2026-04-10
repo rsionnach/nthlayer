@@ -4,7 +4,7 @@ Integration tests for SLO functionality.
 Tests SLO parsing, storage, and error budget calculation.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from nthlayer.slos.calculator import ErrorBudgetCalculator
@@ -440,7 +440,7 @@ class TestErrorBudgetCalculator:
         )
 
         # Simulate measurements: 100% uptime for first half, 99% for second half
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         measurements = []
 
         # First 15 days: 100% uptime
@@ -487,7 +487,7 @@ class TestErrorBudgetCalculator:
         # Burned 10 minutes in first 15 days (half the period)
         # Expected burn for half period: 21.6 / 2 = 10.8 minutes
         # Burn rate: 10 / 10.8 = 0.93x (slower than expected)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=30)
         half_point = now - timedelta(days=15)
 
@@ -518,7 +518,7 @@ class TestErrorBudgetCalculator:
         # Burn rate: 1.5 min/day
         # Remaining: 6.6 minutes
         # Days until exhaustion: 6.6 / 1.5 = 4.4 days
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=10)
 
         exhaustion = calculator.project_budget_exhaustion(
@@ -550,8 +550,8 @@ class TestErrorBudgetCalculator:
         budget = ErrorBudget(
             slo_id="test",
             service="test-service",
-            period_start=datetime.utcnow() - timedelta(days=30),
-            period_end=datetime.utcnow(),
+            period_start=datetime.now(timezone.utc) - timedelta(days=30),
+            period_end=datetime.now(timezone.utc),
             total_budget_minutes=21.6,
             burned_minutes=17.3,  # 80%
             remaining_minutes=4.3,
@@ -563,7 +563,7 @@ class TestErrorBudgetCalculator:
 
     def test_status_calculation(self):
         """Test error budget status calculation."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Healthy: < 50%
         budget = ErrorBudget(
@@ -609,7 +609,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=30)
 
         # Test with empty list (not None)
@@ -629,7 +629,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(hours=1)
 
         # Two measurements 5 min apart, no duration_seconds
@@ -655,7 +655,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(hours=1)
 
         # Single measurement without duration - should use 5 min default
@@ -680,7 +680,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=15)
 
         # Call without period_end
@@ -704,7 +704,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Same start and end - zero elapsed
         burn_rate = calculator.calculate_burn_rate(
@@ -728,7 +728,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(seconds=1)
 
         burn_rate = calculator.calculate_burn_rate(
@@ -752,7 +752,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=15)
 
         # More burned than total budget
@@ -778,7 +778,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=15)
 
         # Zero burn - won't be exhausted
@@ -802,7 +802,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now  # Just started
 
         exhaustion = calculator.project_budget_exhaustion(
@@ -825,7 +825,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Budget at 30% consumption but high burn rate
         # 21.6 min total, 6.48 burned (30%) in first 5 days
@@ -864,7 +864,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Low consumption, low burn rate
         budget = ErrorBudget(
@@ -899,7 +899,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         budget = ErrorBudget(
             slo_id="test",
@@ -933,7 +933,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         budget = ErrorBudget(
             slo_id="test",
@@ -965,7 +965,7 @@ class TestErrorBudgetCalculatorCoverage:
         )
 
         calculator = ErrorBudgetCalculator(slo)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         budget = ErrorBudget(
             slo_id="test",

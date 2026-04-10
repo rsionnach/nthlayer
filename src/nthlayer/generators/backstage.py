@@ -134,7 +134,7 @@ def generate_backstage_entity(
         )
 
     except Exception as e:
-        logger.error("Backstage generation failed for %s: %s", service_file, e)
+        logger.error("backstage_generation_failed", service_file=str(service_file), err=str(e))
         return BackstageGenerationResult(
             success=False,
             service="unknown",
@@ -184,94 +184,6 @@ def generate_backstage_from_manifest(
             service=manifest.name,
             error=str(e),
         )
-
-
-def _build_backstage_entity(
-    service_context: Any,
-    resources: list[Any],
-    source_file: str | Path,
-) -> dict[str, Any]:
-    """Build Backstage entity dict from service context and resources."""
-    now = datetime.now(timezone.utc)
-
-    # Extract SLO resources
-    slo_resources = [r for r in resources if r.kind == "SLO"]
-
-    # Build service section
-    service_section = {
-        "name": service_context.name,
-        "team": service_context.team,
-        "tier": service_context.tier,
-        "type": service_context.type,
-        "description": None,
-        "supportModel": getattr(service_context, "support_model", "self"),
-    }
-
-    # Build SLOs section
-    slos = []
-    for slo_resource in slo_resources:
-        spec = slo_resource.spec
-        slo_entry = {
-            "name": slo_resource.name,
-            "target": spec.get("objective", 99.9),
-            "window": spec.get("window", "30d"),
-            "sloType": spec.get("indicator", {}).get("type"),
-            "description": spec.get("description"),
-            "currentValue": None,  # Static generation - no live data
-            "status": None,
-        }
-        slos.append(slo_entry)
-
-    # Build deployment gate section with default thresholds
-    thresholds = _gate_thresholds_for_tier(service_context.tier)
-
-    deployment_gate: dict[str, Any] = {
-        "status": "APPROVED",  # Default for static generation
-        "message": None,
-        "budgetRemainingPercent": None,  # No live data
-        "warningThreshold": thresholds.get("warning"),
-        "blockingThreshold": thresholds.get("blocking"),
-        "recommendations": [],
-    }
-
-    # Build links section
-    grafana_url = os.environ.get("NTHLAYER_GRAFANA_URL", "")
-    links = {
-        "grafanaDashboard": f"{grafana_url}/d/{service_context.name}" if grafana_url else None,
-        "runbook": None,
-        "serviceManifest": str(source_file),
-        "slothSpec": f"generated/{service_context.name}/sloth/{service_context.name}.yaml",
-        "alertsYaml": f"generated/{service_context.name}/alerts.yaml",
-    }
-
-    return {
-        "schemaVersion": "v1",
-        "generatedAt": now.isoformat(),
-        "service": service_section,
-        "slos": slos,
-        "errorBudget": {
-            "totalMinutes": None,
-            "consumedMinutes": None,
-            "remainingMinutes": None,
-            "remainingPercent": None,
-            "burnRate": None,
-            "status": None,
-        },
-        "score": {
-            "score": None,
-            "grade": None,
-            "band": None,
-            "trend": None,
-            "components": {
-                "sloCompliance": None,
-                "incidentScore": None,
-                "deploySuccessRate": None,
-                "errorBudgetRemaining": None,
-            },
-        },
-        "deploymentGate": deployment_gate,
-        "links": links,
-    }
 
 
 def _build_backstage_entity_from_manifest(

@@ -11,7 +11,7 @@ Explanation generation and notification dispatch are now owned by nthlayer-respo
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -204,7 +204,7 @@ def _calculate_budget(
         # Simulated budget
         total = slo.error_budget_minutes()
         burned = total * (simulate_burn_pct / 100)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         budget = ErrorBudget(
             slo_id=slo.id,
             service=slo.service,

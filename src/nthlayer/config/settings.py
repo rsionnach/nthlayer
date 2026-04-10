@@ -6,11 +6,17 @@ Provides environment-based configuration loading with NTHLAYER_ prefix.
 
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="NTHLAYER_",
+    )
 
     # Debug
     debug: bool = False
@@ -60,10 +66,6 @@ class Settings(BaseSettings):
     slack_bot_token: str | None = None
     slack_default_channel: str | None = None
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        env_prefix = "NTHLAYER_"
 
 
 @lru_cache
