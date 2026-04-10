@@ -6,6 +6,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+
 from nthlayer.specs.alerting import (
     TIER_DEFAULT_RULES,
     AlertChannels,

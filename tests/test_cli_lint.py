@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.cli.lint import _print_result, lint_command
 
 

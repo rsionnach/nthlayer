@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import respx
 from nthlayer.slos.alerts import AlertEvent, AlertSeverity, AlertType
 from nthlayer.slos.pipeline import (
     AlertPipeline,
@@ -53,7 +52,6 @@ class TestPipelineResult:
         assert pr.worst_severity == "healthy"
 
     def test_worst_severity_critical(self) -> None:
-        from nthlayer.slos.alerts import AlertEvent
 
         pr = PipelineResult(
             service="x",
@@ -166,7 +164,8 @@ class TestAlertPipelineEvaluateService:
         assert result.budgets_evaluated == 1
         assert result.alerts_triggered >= 1
         assert result.notifications_sent == 0
-        assert len(result.explanations) >= 1
+        # ExplanationEngine removed in Phase 1 migration — explanations always []
+        assert result.explanations == []
 
     def test_no_slos_returns_error(self) -> None:
         manifest = _make_manifest(slos=[])
@@ -202,8 +201,8 @@ class TestAlertPipelineEvaluateService:
         pipeline = AlertPipeline(dry_run=True)
         result = pipeline.evaluate_service(manifest, simulate_burn_pct=10)
         assert result.alerts_triggered == 0
-        # Should still have a budget explanation
-        assert len(result.explanations) == 1
+        # ExplanationEngine removed in Phase 1 migration — explanations always []
+        assert result.explanations == []
 
     def test_multiple_slos_evaluated(self) -> None:
         slos = [
@@ -270,212 +269,14 @@ class TestAlertPipelinePortfolio:
 # -------------------------------------------------------------------------
 
 
-class TestNotificationPayload:
-    def test_slack_format_explanation_blocks(self) -> None:
-        from nthlayer.slos.explanations import BudgetExplanation, RecommendedAction
-        from nthlayer.slos.notifiers import _format_explanation_blocks
-
-        expl = BudgetExplanation(
-            headline="H",
-            body="B",
-            causes=["Cause A"],
-            recommended_actions=[RecommendedAction("Act 1", 1, "investigate")],
-        )
-        blocks = _format_explanation_blocks(expl)
-        assert len(blocks) == 2  # causes + actions
-        assert "Possible Causes" in blocks[0]["text"]["text"]
-        assert "Recommended Actions" in blocks[1]["text"]["text"]
-
-    def test_slack_message_includes_explanation_when_provided(self) -> None:
-        from nthlayer.slos.explanations import BudgetExplanation, RecommendedAction
-        from nthlayer.slos.notifiers import SlackNotifier
-
-        notifier = SlackNotifier("https://hooks.slack.com/test")
-        event = AlertEvent(
-            id="e1",
-            rule_id="r1",
-            service="svc",
-            slo_id="avail",
-            severity=AlertSeverity.WARNING,
-            title="Test",
-            message="msg",
-            details={},
-        )
-        expl = BudgetExplanation(
-            headline="H",
-            body="B",
-            causes=["Root cause"],
-            recommended_actions=[RecommendedAction("Fix it", 1, "mitigate")],
-        )
-        payload = notifier._format_slack_message(event, explanation=expl)
-        block_texts = [
-            b.get("text", {}).get("text", "") for b in payload["blocks"] if b["type"] == "section"
-        ]
-        combined = " ".join(block_texts)
-        assert "Root cause" in combined
-        assert "Fix it" in combined
-
-    def test_slack_message_without_explanation(self) -> None:
-        from nthlayer.slos.notifiers import SlackNotifier
-
-        notifier = SlackNotifier("https://hooks.slack.com/test")
-        event = AlertEvent(
-            id="e1",
-            rule_id="r1",
-            service="svc",
-            slo_id="avail",
-            severity=AlertSeverity.CRITICAL,
-            title="Crit",
-            message="msg",
-            details={},
-        )
-        payload = notifier._format_slack_message(event)
-        # Should still produce valid blocks without crashing
-        assert payload["text"] == "Crit"
-        assert payload["attachments"][0]["color"] == "#ff0000"
-        # No explanation blocks — only header, message, context
-        section_blocks = [b for b in payload["blocks"] if b["type"] == "section"]
-        assert len(section_blocks) == 1  # just the message
-
-
-# -------------------------------------------------------------------------
-# Slack HTTP dispatch (mocked)
-# -------------------------------------------------------------------------
-
-
-class TestSlackNotifierHTTP:
-    @respx.mock
-    async def test_send_alert_posts_to_webhook(self) -> None:
-        import httpx
-        from nthlayer.slos.notifiers import SlackNotifier
-
-        webhook = "https://hooks.slack.com/services/T/B/X"
-        mock_route = respx.post(webhook).mock(return_value=httpx.Response(200, text="ok"))
-
-        notifier = SlackNotifier(webhook)
-        event = AlertEvent(
-            id="e1",
-            rule_id="r1",
-            service="svc",
-            slo_id="avail",
-            severity=AlertSeverity.WARNING,
-            title="Warn",
-            message="msg",
-            details={},
-        )
-        result = await notifier.send_alert(event)
-        assert result["status"] == "sent"
-        assert mock_route.called
-
-    @respx.mock
-    async def test_send_alert_with_explanation(self) -> None:
-        import httpx
-        from nthlayer.slos.explanations import BudgetExplanation, RecommendedAction
-        from nthlayer.slos.notifiers import SlackNotifier
-
-        webhook = "https://hooks.slack.com/services/T/B/Y"
-        captured_payload: dict = {}
-
-        def capture(request: httpx.Request) -> httpx.Response:
-            import json as _json
-
-            captured_payload.update(_json.loads(request.content))
-            return httpx.Response(200, text="ok")
-
-        respx.post(webhook).mock(side_effect=capture)
-
-        notifier = SlackNotifier(webhook)
-        event = AlertEvent(
-            id="e2",
-            rule_id="r1",
-            service="svc",
-            slo_id="avail",
-            severity=AlertSeverity.CRITICAL,
-            title="Critical",
-            message="msg",
-            details={},
-        )
-        expl = BudgetExplanation(
-            headline="H",
-            body="B",
-            causes=["Bad deploy"],
-            recommended_actions=[RecommendedAction("Rollback", 1, "mitigate")],
-        )
-        result = await notifier.send_alert(event, explanation=expl)
-        assert result["status"] == "sent"
-        # Verify explanation content made it into the payload
-        all_text = str(captured_payload)
-        assert "Bad deploy" in all_text
-        assert "Rollback" in all_text
-
-    @respx.mock
-    async def test_send_alert_raises_on_http_error(self) -> None:
-        import httpx
-        import pytest as _pytest
-        from nthlayer.slos.notifiers import NotificationError, SlackNotifier
-
-        webhook = "https://hooks.slack.com/services/T/B/Z"
-        respx.post(webhook).mock(return_value=httpx.Response(500, text="error"))
-
-        notifier = SlackNotifier(webhook)
-        event = AlertEvent(
-            id="e3",
-            rule_id="r1",
-            service="svc",
-            slo_id="avail",
-            severity=AlertSeverity.WARNING,
-            title="Warn",
-            message="msg",
-            details={},
-        )
-        with _pytest.raises(NotificationError):
-            await notifier.send_alert(event)
-
-
-# -------------------------------------------------------------------------
-# Pipeline dispatch integration (mocked Slack)
-# -------------------------------------------------------------------------
+# TestNotificationPayload, TestSlackNotifierHTTP, and the enabled-dispatch
+# test in TestPipelineDispatchNotifications were removed: they tested
+# ExplanationEngine, SlackNotifier, and notification dispatch, all of which
+# were deleted from generate in Phase 1 (moved to nthlayer-respond).
+# Restoration tracked in nthlayer-observe bead nthlayer-hmj.
 
 
 class TestPipelineDispatchNotifications:
-    @respx.mock
-    def test_pipeline_sends_notifications_when_enabled(self) -> None:
-        """Pipeline dispatch with mocked Slack webhook.
-
-        ``_dispatch_notifications`` calls ``asyncio.run()``, which works
-        when there is no running loop (i.e. inside a sync test).
-        """
-        import httpx
-
-        webhook = "https://hooks.slack.com/services/T/B/PIPE"
-        call_count_holder = [0]
-
-        def count_calls(request: httpx.Request) -> httpx.Response:
-            call_count_holder[0] += 1
-            return httpx.Response(200, text="ok")
-
-        respx.post(webhook).mock(side_effect=count_calls)
-
-        alerting = AlertingConfig(
-            channels=AlertChannels(slack_webhook=webhook),
-            rules=[
-                SpecAlertRule(
-                    name="budget-warn",
-                    type="budget_threshold",
-                    slo="availability",
-                    threshold=0.50,
-                    severity="warning",
-                ),
-            ],
-            auto_rules=False,
-        )
-        manifest = _make_manifest(alerting=alerting)
-        pipeline = AlertPipeline(dry_run=False, notify=True)
-        result = pipeline.evaluate_service(manifest, simulate_burn_pct=80)
-        assert result.alerts_triggered >= 1
-        assert result.notifications_sent >= 1
-        assert call_count_holder[0] >= 1
-
     def test_dry_run_sends_zero_notifications(self) -> None:
         alerting = AlertingConfig(
             channels=AlertChannels(slack_webhook="https://hooks.slack.com/x"),
@@ -505,10 +306,11 @@ class TestPipelineDispatchNotifications:
 class TestForDurationPipeline:
     def test_for_duration_applied_through_pipeline(self) -> None:
         """for_duration from alerting config flows through the pipeline to generated alerts."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from nthlayer.alerts.models import AlertRule
-        from nthlayer.specs.alerting import AlertingConfig, ForDuration
         from nthlayer.generators.alerts import _load_and_customize_alerts
+        from nthlayer.specs.alerting import AlertingConfig, ForDuration
 
         # Create mock alerts that would come from templates
         mock_alerts = [
@@ -541,7 +343,8 @@ class TestForDurationPipeline:
 
     def test_no_alerting_config_keeps_original_duration(self) -> None:
         """Without alerting config, original template durations are preserved."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from nthlayer.alerts.models import AlertRule
         from nthlayer.generators.alerts import _load_and_customize_alerts
 

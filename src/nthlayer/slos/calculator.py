@@ -6,7 +6,7 @@ Calculates error budget consumption from SLI measurements.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from nthlayer.slos.models import SLO, ErrorBudget, SLOStatus
@@ -37,7 +37,7 @@ class ErrorBudgetCalculator:
         """
         # Set default period
         if period_end is None:
-            period_end = datetime.utcnow()
+            period_end = datetime.now(timezone.utc)
         
         if period_start is None:
             period_start = self.slo.time_window.get_start_time(period_end)
@@ -145,7 +145,7 @@ class ErrorBudgetCalculator:
             Burn rate multiplier (e.g., 2.0 = burning 2x faster)
         """
         if period_end is None:
-            period_end = datetime.utcnow()
+            period_end = datetime.now(timezone.utc)
         
         # Calculate how much time has elapsed
         elapsed = period_end - period_start
@@ -186,10 +186,10 @@ class ErrorBudgetCalculator:
         
         if remaining_budget <= 0:
             # Already exhausted
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
         
         # Calculate current burn rate
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         elapsed = now - period_start
         elapsed_seconds = elapsed.total_seconds()
         

@@ -4,10 +4,10 @@ Alert Template Loader
 Loads alerting rules from awesome-prometheus-alerts templates.
 """
 
-import structlog
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import structlog
 import yaml
 
 from .models import AlertRule

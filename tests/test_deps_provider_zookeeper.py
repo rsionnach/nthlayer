@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.dependencies.models import DependencyType
 from nthlayer.dependencies.providers.base import deduplicate_dependencies, infer_dependency_type
 
@@ -262,42 +263,42 @@ class TestZookeeperDepProviderInferType:
         """Test inferring PostgreSQL as DATASTORE."""
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
         assert infer_dependency_type("postgresql") == DependencyType.DATASTORE
 
     def test_infer_mysql(self, mock_kazoo):
         """Test inferring MySQL as DATASTORE."""
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
         assert infer_dependency_type("mysql-primary") == DependencyType.DATASTORE
 
     def test_infer_redis(self, mock_kazoo):
         """Test inferring Redis as DATASTORE."""
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
         assert infer_dependency_type("redis-cache") == DependencyType.DATASTORE
 
     def test_infer_kafka(self, mock_kazoo):
         """Test inferring Kafka as QUEUE."""
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
         assert infer_dependency_type("kafka-cluster") == DependencyType.QUEUE
 
     def test_infer_rabbitmq(self, mock_kazoo):
         """Test inferring RabbitMQ as QUEUE."""
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
         assert infer_dependency_type("rabbitmq") == DependencyType.QUEUE
 
     def test_infer_service(self, mock_kazoo):
         """Test inferring regular service."""
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
         assert infer_dependency_type("payment-api") == DependencyType.SERVICE
 
 
@@ -547,7 +548,7 @@ class TestZookeeperDepProviderDeduplicate:
         from nthlayer.dependencies.models import DiscoveredDependency
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
 
         deps = [
             DiscoveredDependency(
@@ -579,7 +580,7 @@ class TestZookeeperDepProviderDeduplicate:
         from nthlayer.dependencies.models import DiscoveredDependency
         from nthlayer.dependencies.providers.zookeeper import ZookeeperDepProvider
 
-        provider = ZookeeperDepProvider()
+        ZookeeperDepProvider()
 
         deps = [
             DiscoveredDependency(

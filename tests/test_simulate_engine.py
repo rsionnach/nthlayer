@@ -7,10 +7,10 @@ import random
 import pytest
 
 from nthlayer.simulate.engine import (
-    generate_failure_timeline,
-    simulate_run,
-    run_simulation,
     _topological_sort,
+    generate_failure_timeline,
+    run_simulation,
+    simulate_run,
 )
 from nthlayer.simulate.models import (
     DependencyModel,

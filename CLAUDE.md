@@ -25,6 +25,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 | Execution plans (spec implementations) | `plans/` |
 | Technical debt backlog | `plans/tech-debt.md` |
 | Design & promotion plans | `docs/plans/` |
+| Ecosystem capability audit (generate migration plan) | `docs/generate-capability-audit.md` |
 
 Read the specific doc relevant to your task. Do NOT try to load all docs at once.
 
@@ -101,26 +102,60 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `dashboards/` - Intent-based dashboard generation with metric resolution
   - `resolver.py` - MetricResolver: translates intents to Prometheus metrics with fallback chains
   - `templates/` - Technology-specific intent templates (postgresql, redis, kafka, etc.)
-  - `builder_sdk.py` - Grafana dashboard construction using grafana-foundation-sdk
+  - `builder_sdk.py` - `DashboardBuilderSDK`: builds Grafana dashboards via grafana-foundation-sdk;
+    constructor: `service_context`, `resources`, `full_panels`, `discovery_client`,
+    `enable_validation`, `prometheus_url`, `custom_metric_overrides`,
+    `use_intent_templates` (default `True`); `build()` returns
+    `{"dashboard": ..., "overwrite": True, "message": ...}`; hybrid model:
+    intent templates when `use_intent_templates=True`, legacy hardcoded metrics when `False`;
+    `_convert_panel_to_sdk()` handles guidance panels (sets `_no_value_message` attr for
+    post-processing by `_apply_no_value_messages()`); `build_dashboard()` convenience fn
+  - `sdk_adapter.py` - `SDKAdapter`: bridge between NthLayer models and grafana-foundation-sdk;
+    all methods are `@staticmethod`; `create_dashboard()` sets tags/description/
+    time(now-6h/now)/timezone(browser); **`create_guidance_panel()` returns a `(panel, no_value_msg)`
+    tuple** — caller must unpack both values; `convert_slo_to_query()` infers PromQL from SLO name
+    keywords (availability/latency/error) and service type (api/worker/stream);
+    `add_template_variables()` is a no-op placeholder (SDK variable API not yet integrated);
+    module-level `create_service_dashboard()` is incomplete and not used by the main flow
 - `discovery/` - Metric discovery from Prometheus
   - `client.py` - MetricDiscoveryClient: queries Prometheus for available metrics
   - `classifier.py` - Classifies metrics by technology and type
+  - `models.py` - `DiscoveredMetric`, `DiscoveryResult`, `MetricType`, `TechnologyGroup` — uses Pydantic `BaseModel` (not dataclasses; potential tech debt per avoid-heavy-deps feedback)
 - `dependencies/` - Dependency discovery and graphing
   - `discovery.py` - DependencyDiscovery orchestrator
+  - `models.py` - Re-export shim → canonical source is `nthlayer_common.dependency_models` (Phase 0 done); exports DependencyType, DependencyDirection, DiscoveredDependency, ResolvedDependency, DependencyGraph, BlastRadiusResult
   - `providers/` - kubernetes, prometheus, consul, etcd, backstage providers
-- `deployments/` - Deployment detection via webhooks
-  - `base.py` - BaseDeploymentProvider ABC and DeploymentEvent model
-  - `registry.py` - Provider registry for webhook routing
-  - `providers/` - argocd, github, gitlab webhook parsers
-  - `errors.py` - DeploymentProviderError exception
-- `drift/` - Reliability drift detection and trend analysis
-  - `analyzer.py` - DriftAnalyzer for SLO trend analysis with configurable windows
+- `deployments/` — DELETED (B1 ✓ done 2026-04-08; directory shell removed in R5 edge case fix)
+- `scorecard/` — DELETED (B6 ✓ done 2026-04-09); entire scorecard package (models.py, calculator.py) moved to nthlayer-observe. The `ScoreBand` enum was inlined into `generators/backstage.py` because backstage entity generation still needs the band → letter-grade mapping for its static output.
+- `portfolio/` — DELETED (B6 ✓ done 2026-04-09); entire portfolio package (models.py, aggregator.py) moved to nthlayer-observe.
 - `topology/` - Dependency graph topology export for visualization
   - `models.py` - TopologyNode, TopologyEdge, TopologyGraph, SLOContract dataclasses
   - `enrichment.py` - build_topology(): converts DependencyGraph → TopologyGraph with SLO contract enrichment
   - `serializers.py` - Pure serializers: serialize_json(), serialize_mermaid(), serialize_dot()
-- `providers/` - External service integrations (grafana, prometheus, pagerduty, mimir)
-- `identity/` - Service identity resolution across naming conventions
+- `clients/` - Re-export shims → canonical source is `nthlayer_common.clients` (Phase 0 done)
+  - `__init__.py` - Exports: BaseHTTPClient, CortexClient, PagerDutyClient, SlackNotifier (re-exports from nthlayer_common.clients.*)
+  - `base.py` - Re-export shim → `nthlayer_common.clients.base` (BaseHTTPClient, PermanentHTTPError, RetryableHTTPError, is_retryable_status)
+  - `cortex.py` - Re-export shim → `nthlayer_common.clients.cortex` (CortexClient)
+  - `pagerduty.py` - Re-export shim → `nthlayer_common.clients.pagerduty` (PagerDutyClient)
+  - `slack.py` - Re-export shim → `nthlayer_common.clients.slack`; SlackAPIClient exported as SlackNotifier for backward compat
+- `providers/` - Re-export shims → canonical source is `nthlayer_common.providers` for grafana/mimir/pagerduty (Phase 0 done); prometheus already done
+  - `grafana.py` - Re-export shim → `nthlayer_common.providers.grafana` (GrafanaProvider, GrafanaProviderError, GrafanaDashboardResource, GrafanaDatasourceResource, GrafanaFolderResource)
+  - `mimir.py` - Re-export shim → `nthlayer_common.providers.mimir` (MimirRulerProvider, MimirRulerError, RulerPushResult, DEFAULT_USER_AGENT)
+  - `pagerduty.py` - Re-export shim → `nthlayer_common.providers.pagerduty` (PagerDutyProvider, PagerDutyProviderError, PagerDutyTeamMembershipResource)
+- `identity/` - Re-export shims → canonical source is `nthlayer_common.identity` (Phase 0 done, including ownership symbols and live ownership providers)
+  - `__init__.py` - Re-export shim: all identity + ownership symbols from `nthlayer_common.identity`
+  - `models.py` - Re-export shim: ServiceIdentity, IdentityMatch from `nthlayer_common.identity.models`
+  - `normalizer.py` - Re-export shim: NormalizationRule, DEFAULT_RULES, normalize_service_name, extract_from_pattern, PROVIDER_PATTERNS, extract_service_name from `nthlayer_common.identity.normalizer`
+  - `resolver.py` - Re-export shim: IdentityResolver from `nthlayer_common.identity.resolver`
+  - `ownership.py` - Re-export shim → canonical source is `nthlayer_common.identity.ownership`: `OwnershipSource`, `DEFAULT_CONFIDENCE`, `OwnershipSignal`, `OwnershipAttribution`, `OwnershipResolver`, `create_demo_attribution`
+  - `ownership_providers/` - Mixed: live providers are re-export shims → `nthlayer_common.identity.ownership_providers`; static providers remain here
+    - `__init__.py` - Re-exports all providers including static-only `CODEOWNERSProvider`, `DeclaredOwnershipProvider`
+    - `base.py` - Re-export shim → `nthlayer_common.identity.ownership_providers.base` (BaseOwnershipProvider, OwnershipProviderHealth)
+    - `backstage.py` - Re-export shim → `nthlayer_common.identity.ownership_providers.backstage`
+    - `kubernetes.py` - Re-export shim → `nthlayer_common.identity.ownership_providers.kubernetes`
+    - `pagerduty.py` - Re-export shim → `nthlayer_common.identity.ownership_providers.pagerduty`
+    - `declared.py` - Static: reads `ownership:` from service manifest (confidence=1.0); remains in nthlayer (generate-only)
+    - `codeowners.py` - Static: reads CODEOWNERS file from repo (confidence=0.85); remains in nthlayer (generate-only)
 - `specs/` - Service specification models and parsing
   - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
   - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy); `BudgetPolicy`, `BudgetThresholds`, `ErrorBudgetGate` dataclasses for error budget policy DSL
@@ -128,57 +163,42 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `loader.py` - Auto-detect format and load manifests
   - `parser.py` - Legacy format parser, `render_resource_spec()` for variable substitution
   - `opensrm_parser.py` - OpenSRM YAML parser; `_parse_budget_policy()` helper constructs `BudgetPolicy` from gate config
-- `slos/` - SLO definition, validation, and recording rule generation
-  - `models.py` - SLO, ErrorBudget, SLOStatus, Incident dataclasses; default target: 0.999
+- `slos/` - SLO definition, validation, and recording rule generation (runtime infra deleted B3 ✓ done 2026-04-09)
+  - `models.py` - Re-export shim → canonical source is `nthlayer_common.slo_models` (Phase 0 done); exports SLO, ErrorBudget, SLOStatus, TimeWindow, TimeWindowType, Incident for backward compat
   - `parser.py` - OpenSLO YAML parsing
-  - `collector.py` - SLOCollector: Prometheus queries for live budget data
-  - `calculator.py` - ErrorBudgetCalculator
-  - `gates.py` - Deployment gate enforcement (error budget thresholds); `GatePolicy.on_exhausted` list drives exhaustion behaviors (freeze_deploys, require_approval, notify) enforced in `DeploymentGate.check_deployment()`
-  - `deployment.py` - DeploymentRecorder for storing deployment events
-  - `correlator.py` - DeploymentCorrelator: 5-factor weighted scoring (burn_rate 0.35, proximity 0.25, magnitude 0.15, dependency 0.15, history 0.10)
+  - `calculator.py` - `ErrorBudgetCalculator(slo)`; `calculate_budget(period_start, period_end, sli_measurements)` → `ErrorBudget`; `calculate_burn_rate(current_burn_minutes, period_start, period_end)` → multiplier (1.0 = on pace, >1.0 = burning fast); `project_budget_exhaustion(current_burn_minutes, period_start)` → `datetime | None`; measurement format: `{timestamp, sli_value: 0.0–1.0, duration_seconds?}` — last measurement assumes 300s if no explicit duration
   - `ceiling.py` - SLO ceiling validation against upstream SLAs
-  - `alerts.py` - Budget alert evaluation: AlertSeverity, AlertType, AlertRule (budget-domain rule with alert_type+threshold, distinct from Prometheus AlertRule in alerts/models.py), AlertEvent, AlertEvaluator
-  - `pipeline.py` - AlertPipeline: end-to-end alert orchestration (spec → budget → evaluate → explain → notify); PipelineResult dataclass with worst_severity property
-  - `explanations.py` - ExplanationEngine, BudgetExplanation: human-readable context for triggered alerts
-  - `notifiers.py` - AlertNotifier: Slack/PagerDuty notification dispatch
+  - `alerts.py` - Budget alert evaluation: AlertSeverity, AlertType, AlertRule (budget-domain rule with alert_type+threshold, distinct from Prometheus AlertRule in alerts/models.py), AlertEvent, AlertEvaluator; tech debt: `AlertRule.created_at` and `AlertEvent.triggered_at` use `datetime.utcnow()` as `default_factory` (deprecated in Python 3.12+; should be `datetime.now(timezone.utc)`)
+  - `pipeline.py` - AlertPipeline: end-to-end alert orchestration (spec → budget → evaluate); PipelineResult dataclass with worst_severity property; ExplanationEngine and AlertNotifier removed in Phase 1 migration (notifications_sent always 0, explanations always [])
+  - `collector.py`, `storage.py`, `gates.py`, `correlator.py`, `deployment.py`, `cli_helpers.py` — DELETED (B3 ✓); moved to nthlayer-observe
+  - Test: `tests/test_slos.py` covers `ErrorBudgetCalculator`, `SLO`/`ErrorBudget` models, and OpenSLO parser (`parse_slo_file`, `parse_slo_dict`) including all error paths
 - `alerts/` - Alert rule generation from dependencies and SLOs
 - `domain/` - Core domain models
-  - `models.py` - Pydantic models: RunStatus, TeamSource, Team, Service, Run, Finding
-- `db/` - Database persistence layer
-  - `models.py` - SQLAlchemy ORM models (Run, Finding, SLO, ErrorBudget, Deployment, Incident, Policy audit)
-  - `repositories.py` - RunRepository: async CRUD for jobs/findings with idempotency
-  - `session.py` - SQLAlchemy async engine/session factory
+  - `models.py` - Re-export shim → canonical source is `nthlayer_common.domain_models` (Phase 0 done); exports RunStatus, TeamSource, Team, Service, Run, Finding for backward compat
+- `db/` — DELETED (B5 ✓ done 2026-04-09); entire SQLAlchemy persistence layer (models.py, repositories.py, session.py) + `alembic/` + `alembic.ini` moved to nthlayer-observe. `config/settings.py` also lost its DB settings (`database_url`, `db_pool_size`, `db_max_overflow`, `db_pool_timeout`, `db_pool_recycle`). Note: `cli/slo.py::slo_blame_command` still reads `NTHLAYER_DATABASE_URL` from env for its dead stub output — removal tracked separately (the command is an unreachable stub that references deleted runtime concepts).
 - `integrations/` - Third-party service setup clients
   - `pagerduty.py` - PagerDutyClient: service/escalation policy/team creation
-- `cloudwatch.py` - AWS CloudWatch MetricsCollector (optional `[aws]` extra)
+- `cloudwatch.py`, `cache.py`, `tracing.py`, `secrets.py`, `queue/`, `workflows/` — DELETED (B7 ✓ done 2026-04-09); all were orphaned runtime scaffolding (aws_xray tracing, redis cache, aioboto3 secrets/queue, cloudwatch metrics collector, langgraph workflows) with no consumers in generate.
 - `generators/` - Resource generation from manifests
   - `alerts.py` - Alert rule generation from service dependencies (awesome-prometheus-alerts)
   - `sloth.py` - Sloth SLO specification YAML generation
   - `docs.py` - Service README, ADR scaffold, and API documentation generation; `DocsGenerationResult` dataclass
-  - `backstage.py` - Backstage entity JSON generation for service catalog
+  - `backstage.py` - Backstage entity JSON generation for service catalog; `BackstageGenerationResult` dataclass; `generate_backstage_entity(service_file, output_dir, prometheus_url, environment)` — auto-detects format via `load_manifest()`, writes `backstage.json`; `generate_backstage_from_manifest(manifest, output_dir)` — takes `ReliabilityManifest` directly; `_build_backstage_entity_from_manifest(manifest)` preferred internal builder; `_build_backstage_entity(service_context, resources, source_file)` — legacy builder for old service_context+resources format (kept for compatibility, not the call path from the public API); `band_to_grade(band) -> str | None` maps `ScoreBand` → letter (A-F); `gate_result_to_status(result) -> str` maps `GateResult` → "APPROVED"/"WARNING"/"BLOCKED"; static generation: `errorBudget` and `score` sections are `None` (no live data); reads `NTHLAYER_GRAFANA_URL` env var for dashboard links; imports `GateResult` from `nthlayer_common.gate_models`; gate thresholds come from `nthlayer_common.tiers.TIER_CONFIGS` via local `_gate_thresholds_for_tier()` helper (B3 forward-port); unknown tiers (e.g. "high") fall back to "standard" config with `logger.warning("tier_not_in_config", ...)`; `ScoreBand` is defined locally in this module (inlined B6 after `nthlayer.scorecard.models` deletion); uses `structlog` for error logging (desloppify afaf427); note: `logger.error()` calls use `%s` positional args rather than structlog keyword-arg style — minor debt; tests split across `tests/test_backstage_generator.py` (file-path entry point) and `tests/test_generators_backstage.py` (manifest-level builder, added B6)
 - `validation/` - Metadata and resource validation
-- `policies/` - Policy DSL, build-time spec validation, and deployment gate enforcement
+- `policies/` - Build-time spec validation only (runtime policy infra deleted B2 ✓ done 2026-04-08)
   - `engine.py` - PolicyEngine: loads rules from YAML or dict, evaluates against ReliabilityManifest
   - `models.py` - Build-time models: PolicyRule, PolicyViolation, PolicyReport, RuleType, PolicySeverity
   - `rules.py` - RULE_EVALUATORS registry: required_fields, tier_constraint, dependency_rule evaluators
-  - `evaluator.py` - Runtime policy evaluation engine (deployment gates)
-  - `audit.py` - Runtime audit domain models (PolicyEvaluation, PolicyViolation, PolicyOverride)
-  - `recorder.py` - PolicyAuditRecorder for audit events
-  - `repository.py` - PolicyAuditRepository for audit queries
-- `api/` - FastAPI API (webhooks, policies, health, teams)
-  - `main.py` - App factory; registers teams, webhooks, policies, health routers; optional Mangum/Lambda handler
-  - `routes/webhooks.py` - Deployment webhook receiver
-  - `routes/policies.py` - Policy audit and override API
-  - `routes/health.py` - Liveness (`/health`) and readiness (`/ready`) endpoints with DB/Redis checks
-- `cli/deploy.py` - `check-deploy` command; `_extract_gate_policy()` resolves `GatePolicy` from `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
+  - `evaluator.py`, `conditions.py`, `audit.py`, `recorder.py`, `repository.py` — DELETED (B2 ✓); moved to nthlayer-observe
+- `api/` — DELETED (B4 ✓ done 2026-04-09); entire FastAPI server (main.py, auth.py, deps.py, routes/health.py, routes/teams.py) moved to nthlayer-observe. `config/settings.py` also lost its API-specific settings (`api_prefix`, `cors_origins`, `cognito_user_pool_id`, `cognito_region`, `cognito_audience`, `jwt_jwks_url`, `jwt_issuer`). Remaining orphaned settings (`deployment_webhook_secret_*`, `deployment_providers`, `sqs_queue_url`, `job_queue_backend`, `redis_max_connections`) were removed in B7 ✓.
+- `cli/deploy.py` — DELETED (B3 ✓ done 2026-04-09); `check-deploy` command moved to nthlayer-observe. Use `nthlayer-observe check-deploy` for runtime deployment gate enforcement.
+- `cli/alerts.py` - Alert evaluation CLI; 4 subcommands: `evaluate` (full pipeline, supports `--path` for directory, `--dry-run`, `--format json|table`), `show` (effective rules, json/yaml/table), `explain` (stub — returns "not available in nthlayer-generate"; bead nthlayer-hmj), `test` (simulate burn %, `--simulate-burn`, `--no-notify`); exit codes 0=healthy/1=warning/2=critical; follows `register_alerts_parser` / `handle_alerts_command` pattern; `AlertPipeline` deferred import
 - `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
   - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
   - `sarif.py` - SARIF 2.1.0 formatter (GitHub Code Scanning); defines NTHLAYER001-011 rule taxonomy
   - `json_fmt.py`, `junit.py`, `markdown.py` - Additional output formatters
   - `__init__.py` - `format_report(report, output_format, output_file)` unified entry point
-- `verification/` - Prometheus metric contract verification
-  - `verifier.py` - `MetricVerifier`: checks declared metrics exist in Prometheus
 - `scripts/lint/` - Custom linters for golden principles
   - `check-exception-handling.sh` - Enforce exception handling with context
   - `check-no-orphan-todos.sh` - Enforce TODO tracking via Beads
@@ -203,10 +223,9 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 4. Dashboard generation: IntentTemplate.get_panel_specs() → MetricResolver.resolve() → Panel objects
 5. Metric resolution: Custom overrides → Discovery → Fallback chain → Guidance
 6. Resource creation: Async providers apply changes (Grafana, PagerDuty, etc.)
-7. Deployment webhooks: Provider parses webhook → DeploymentEvent → DeploymentRecorder → Database
-8. Drift analysis: DriftAnalyzer queries Prometheus for trend analysis → severity assessment (CRITICAL/WARN/OK)
-9. Policy evaluation: PolicyEvaluator checks conditions → PolicyAuditRecorder logs result → API returns override option if blocked
-10. Topology export: DependencyGraph → build_topology() → TopologyGraph → serialize_json/mermaid/dot()
+7. Deployment webhooks: MOVED to nthlayer-observe (B1 ✓ deleted from generate)
+8. Policy evaluation: MOVED to nthlayer-observe (B2 ✓ deleted from generate)
+9. Topology export: DependencyGraph → build_topology() → TopologyGraph → serialize_json/mermaid/dot()
 
 ### Planned: Agentic Inference (`nthlayer infer`)
 - Model analyses a codebase and proposes an OpenSRM manifest for it
@@ -238,6 +257,50 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Streaming layer: NATS (small teams), Kafka (enterprise) — sits between event producers and consumers (nthlayer-correlate, nthlayer-measure, nthlayer-respond)
 - Alert flow (ecosystem): Alert Source → nthlayer-correlate Snapshot → nthlayer-respond Orchestrator → Agent Pipeline → Notification Channels
 - Post-incident learning loop: nthlayer-respond findings → manifest updates + NthLayer rule refinements + nthlayer-measure threshold revisions + nthlayer-correlate correlation improvements
+
+### Ecosystem Migration — COMPLETE (Phases 0–5)
+Full audit at `docs/generate-capability-audit.md` (2026-04-06, routing corrected per `NTHLAYER-OBSERVE-SPEC.md`), architectural spec at `NTHLAYER-OBSERVE-SPEC.md`. Migration is complete: generate is now a pure compiler; all runtime infrastructure lives in nthlayer-observe.
+
+**Architecture (post-migration):** generate (specs → artifacts, stateless) → observe (live state → assessments, stateful, no LLM) → measure/correlate/respond/learn (assessments → verdicts, agentic, LLM)
+
+**Key routing rule:** ALL runtime infrastructure moves to nthlayer-observe. No code moves to measure or correlate — they gain a new Assessment input interface instead of receiving moved code.
+
+**Classification summary (296 Python files, 46 CLI commands):**
+- **STAYS in generate (~175 files, 59%):** all manifest parsing/models, all generators (sloth, alerts, backstage, docs, loki, alertmanager, pagerduty, dashboards, recording_rules), template system, build-time policy engine, CLI formatters, SLO calculator/ceiling/models/parser, topology models/serializers/enrichment, orchestration engine, simulation engine, all generate/validate CLI commands
+- **MOVE to nthlayer-observe (~85 files, 28%):** `slos/collector.py`, `slos/storage.py`, `slos/gates.py` (DeploymentGate/GatePolicy), `slos/correlator.py` (5-factor deterministic scoring — not LLM reasoning), `cli/deploy.py` (check-deploy), `policies/evaluator.py` + `conditions.py` (DONE ✓ B2 deleted), policy audit trail (`policies/audit.py`, `recorder.py`, `repository.py`) (DONE ✓ B2 deleted), `drift/` (DONE ✓ — deleted from generate P5), `discovery/`, `verification/` (DONE ✓ — deleted from generate P5), `dependencies/discovery.py` + all providers, `cli/blast_radius.py` (DONE ✓ — deleted from generate P5), `cli/dependencies.py` (DONE ✓ — deleted from generate P5), live Prometheus enrichment in portfolio/scorecard, entire `api/` FastAPI server, `deployments/` (DONE ✓ B1 Python files deleted), `db/` (ORM + session + repositories)
+- **MOVE to nthlayer-respond (~5 files, 2%):** `slos/notifiers.py` (Slack/PD — DONE ✓ deleted), `slos/explanations.py` (DONE ✓ deleted), pipeline notification dispatch (DONE ✓ removed from pipeline.py)
+- **MOVE to nthlayer-learn (~1 file):** `scorecard/trends.py` (DONE ✓ — moved; TrendAnalyzer/TrendData removed from scorecard exports)
+- **SHARE via nthlayer-common (~20 files, 7%):** `providers/prometheus.py` (DONE — shim), `clients/` (DONE — shims: base, pagerduty, slack, cortex), `providers/registry.py` + `providers/lock.py` (DONE — shims), `providers/base.py` (DONE — shim), `providers/grafana.py` (DONE — shim), `providers/mimir.py` (DONE — shim), `providers/pagerduty.py` (DONE — shim), `identity/` (normalizer, resolver, models — DONE — shims), `identity/ownership.py` (DONE — shim), `identity/ownership_providers/` (base, kubernetes, backstage, pagerduty — DONE — shims; declared/codeowners stay in nthlayer), `dependencies/models.py`, `domain/models.py`, `core/tiers.py` (DONE — shim), `core/errors.py` (DONE — shim), `slos/models.py`, `integrations/pagerduty.py`
+- **REMOVE (~10 files):** deprecated `slos/deployment.py` methods (DONE ✓ — record_from_argocd/record_from_github removed), `workflows/team_reconcile.py` (DONE ✓ — workflows/ deleted), `demo.py`, `workers/` (DONE ✓ — workers/ deleted), `queue/`; `drift/` (DONE ✓ P5), `verification/` (DONE ✓ P5)
+
+**Migration order:**
+- Phase 0: Extract shared utils to nthlayer-common (tiers ✓, errors ✓, slos/models ✓, deps models ✓, domain models ✓, gate_models ✓, identity ✓, providers/base+lock+registry+prometheus ✓, identity/ownership.py ✓, identity/ownership_providers (base/backstage/kubernetes/pagerduty) ✓, clients/ (base/pagerduty/slack/cortex) ✓, providers/grafana+mimir+pagerduty ✓, integrations/pagerduty)
+- Phase 1: Quick wins — move notifiers/explanations → respond; remove deprecated code + workers/queue ✓ (notifiers.py + explanations.py deleted, pipeline stripped of ExplanationEngine + AlertNotifier; workflows/ deleted, workers/ deleted, deprecated deployment.py methods removed, scorecard/trends.py moved to nthlayer-learn)
+- Phase 2: Create nthlayer-observe — package structure, Assessment dataclass, SLO collector + storage
+- Phase 3: Move drift, verification, discovery, dependencies to observe
+- Phase 4: Move gate infrastructure to observe — gates, check-deploy, policies runtime, api, deployments, db
+- Phase 5: Cleanup ✓ DONE (2026-04-08) — removed `drift/` (868 lines) and `verification/` (739 lines) from generate; removed CLI commands `drift`, `verify`, `deps`, `blast-radius` (now in nthlayer-observe); removed drift flags from deploy/portfolio; removed scipy/numpy from pyproject.toml. **Scope revision:** `discovery/` and `dependencies/` were NOT removed — both are still load-bearing in generate (dashboards/resolver.py, metrics/discovery.py, cli/topology.py, topology/enrichment.py, slos/correlator.py).
+
+**Observe migration phases (P0–P5) complete.** Code has been copied to observe. Runtime files still present in generate will be deleted in the Purify Generate epic (see below).
+
+### Purify Generate Epic — Next Phase
+
+Spec: `docs/superpowers/specs/2026-04-08-purify-generate-design.md`
+
+P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic deletes those files from generate so it becomes a true pure compiler: zero SQLAlchemy, zero FastAPI, zero alembic, zero runtime policy evaluation, zero live Prometheus gate enforcement, zero webhook handling.
+
+**7 beads, removal order (leaf-first):**
+- B1 (nthlayer-9dm.1) CLOSED ✓ 2026-04-08: Deleted `deployments/` Python files (base.py, registry.py, errors.py, providers/argocd+github+gitlab) + `api/routes/webhooks.py` + tests (test_deployment_providers.py)
+- B2 (nthlayer-9dm.2) CLOSED ✓ 2026-04-08: Deleted `policies/evaluator.py`, `conditions.py`, `audit.py`, `recorder.py`, `repository.py` + `api/routes/policies.py` + tests (test_policies_evaluator.py, test_policy_audit.py); removed `check_deployment_with_audit()` from `slos/gates.py`; kept build-time `engine.py`/`models.py`/`rules.py`
+- B3 (nthlayer-9dm.3) CLOSED ✓ 2026-04-09: Deleted `cli/deploy.py`, `slos/gates.py`, `slos/correlator.py`, `slos/collector.py`, `slos/storage.py`, `slos/deployment.py`, `slos/cli_helpers.py` + tests (test_cli_deploy.py, test_gates.py, test_slo_correlator.py, test_collector.py, test_slo_storage.py, test_slo_deployment.py, test_slo_cli_helpers.py); removed `check-deploy` from `demo.py`, smoke tests, and `cli/__init__.py`; forward-ported backstage.py gate threshold lookup to use `nthlayer_common.tiers.TIER_CONFIGS` directly. Note: `tests/test_budget_policy.py` was NOT deleted — only the `TestBudgetPolicyCLIWiring` class was removed; the file remains with tests for the build-time `BudgetPolicy` model in `specs/manifest.py` (TestBudgetPolicy, TestErrorBudgetGateWithPolicy, TestBudgetPolicyParsing, TestBudgetPolicyValidation)
+- B4 (nthlayer-9dm.4) CLOSED ✓ 2026-04-09: Deleted entire `api/` directory (__init__.py, main.py, auth.py, deps.py, routes/__init__.py, routes/health.py, routes/teams.py) + tests (test_api_auth.py, test_api_reconcile.py); removed API-specific settings from `config/settings.py` (api_prefix, cors_origins, cognito_*, jwt_*).
+- B5 (nthlayer-9dm.5) CLOSED ✓ 2026-04-09: Deleted `src/nthlayer/db/` (__init__.py, models.py, session.py, repositories.py) + `alembic/` + `alembic.ini` + tests (test_db_models.py, test_db_repositories.py, test_repository.py, test_db_session.py); removed DB settings from `config/settings.py` (database_url, db_pool_size, db_max_overflow, db_pool_timeout, db_pool_recycle)
+- B6 (nthlayer-9dm.6) CLOSED ✓ 2026-04-09: Inlined `ScoreBand` enum into `generators/backstage.py` (the `DeploymentGate` → `TIER_CONFIGS` forward-port was already done in B3); deleted `src/nthlayer/portfolio/` (models.py, aggregator.py, __init__.py), `src/nthlayer/scorecard/` (models.py, calculator.py, __init__.py), `src/nthlayer/cli/portfolio.py`, `src/nthlayer/cli/scorecard.py`, tests (test_cli_portfolio.py, test_portfolio_aggregator.py, test_portfolio_cli.py, test_scorecard.py); removed portfolio/scorecard parser registrations + dispatch from demo.py and cli/__init__.py; dropped obsolete test_portfolio_command_dispatch from test_demo.py.
+- B7 (nthlayer-9dm.7) CLOSED ✓ 2026-04-09: Purged all runtime deps from pyproject.toml (fastapi, uvicorn[standard], mangum, sqlalchemy, alembic, psycopg[binary], redis, aws-xray-sdk, PyJWT[crypto], jwcrypto, python-json-logger, orjson, tenacity, circuitbreaker); also deleted orphan modules (cache.py, tracing.py, cloudwatch.py, queue/, secrets.py, workflows/) and their tests + fixtures (mock_server.py, test_mock_server_integration.py); pruned dev extras (types-redis, aiosqlite, greenlet); simplified `[aws]` optional extra to just `boto3` (still required by config/secrets/backends.py for AWSSecretBackend); removed orphan Settings fields (deployment_webhook_secret_*, deployment_providers, sqs_queue_url, job_queue_backend, redis_max_connections). uv.lock regenerated with 91 packages total (down from ~120).
+
+**Acceptance criteria:** zero `import sqlalchemy`/`import fastapi`/`from nthlayer.db`/`from nthlayer.api`/`from nthlayer.deployments` in remaining code; `nthlayer --help` shows only generate/validate/compile commands; `pip install -e .` works without runtime deps; full test suite passes.
+
+**Workflow:** each bead requires `/rule-of-five-planning` before and `/rule-of-five-reviews` (4 passes) before closing.
 <!-- /AUTO-MANAGED: architecture -->
 
 <!-- AUTO-MANAGED: learned-patterns -->
@@ -276,24 +339,14 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Handlers are modular - new resource types register without changing orchestration core
 - `ServiceOrchestrator` (orchestrator.py) is now a facade for backward compatibility
 
-### Deployment Detection Provider Pattern
-- Provider-agnostic webhook handling via `BaseDeploymentProvider` ABC
-- Each provider implements `verify_webhook()` (signature validation) and `parse_webhook()` (payload parsing)
-- Providers return `DeploymentEvent` intermediate model (service, commit_sha, environment, author, etc.)
-- `DeploymentProviderRegistry` maps provider names to implementations
-- Webhook route dispatches based on `/webhooks/deployments/{provider_name}` path parameter
-- `DeploymentRecorder.record_event()` stores events to database for correlation analysis
-- Self-registering providers: import triggers `register_deployment_provider()` at module load
-- Supported providers: ArgoCD (app.sync.succeeded), GitHub Actions (workflow_run.completed), GitLab (Pipeline Hook)
+### Deployment Detection Provider Pattern (moved to nthlayer-observe — B1 ✓ done 2026-04-08)
+- Pattern deleted from generate; implementation now lives in nthlayer-observe
+- See nthlayer-observe CLAUDE.md for the provider ABC, registry, and webhook routing details
 
-### Drift Analysis Integration
-- `DriftAnalyzer` (drift/analyzer.py) detects reliability trend degradation
-- Integrated into `portfolio` and `deploy` CLI commands via `--drift` flag
-- Configurable analysis windows (default from tier-specific config)
-- Results include severity (CRITICAL/WARN/OK) and trend direction
-- Tier-based thresholds determine when drift blocks deployments
-- Exit code escalation: drift severity can upgrade warning (1) to critical (2)
-- Portfolio aggregation: drift results included in JSON/CSV/Markdown output
+### Drift Analysis Integration (moved to nthlayer-observe — P5 ✓ done 2026-04-08)
+- `drift/` deleted from generate entirely; `DriftAnalyzer` now lives in nthlayer-observe
+- `--drift` flag removed from `portfolio` (deleted B6) and `deploy` (deleted B3) CLI commands
+- Use `nthlayer-observe drift --service <name> --prometheus-url <url>` for runtime drift detection
 
 ### Golden Principles Enforcement
 - Mechanical rules enforced via custom lint scripts in `scripts/lint/`
@@ -333,25 +386,16 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Packages with D or lower grades should have active Beads issues for improvement
 - Run `/audit-codebase` to identify specific gaps
 
-### Policy Audit Trail Pattern
-- Immutable audit records for all policy evaluations, violations, and overrides
-- Domain models: `PolicyEvaluation` (gate checks), `PolicyViolation` (blocked/warning), `PolicyOverride` (manual approvals)
-- Repository pattern: `PolicyAuditRepository` for queries, `PolicyAuditRecorder` for writes
-- REST API exposes audit history at `GET /policies/{service}/audit`
-- Override creation at `POST /policies/{service}/override` with approval metadata (who, why, when expires)
-- Enables compliance tracking and post-mortem analysis of deployment gate decisions
+### Policy Audit Trail Pattern (moved to nthlayer-observe — B2 ✓ done 2026-04-08)
+- Audit domain models, recorder, repository, and REST API deleted from generate
+- See nthlayer-observe CLAUDE.md for PolicyEvaluation, PolicyAuditRecorder, PolicyAuditRepository details
 
-### Fail-Open Error Handling for Audit Systems
-- All DB operations in audit recorders wrapped in try/except blocks
-- Audit errors logged via structlog with `exc_info=True` but never block deployments
-- Methods return `None` on DB error to signal failure gracefully
-- Critical principle: "audit failures are logged, not fatal" — deployments continue even if audit trail breaks
-- Prevents cascading failures where observability systems block deployment gates
-- Applied in `PolicyAuditRecorder` for gate evaluations and overrides
+### Fail-Open Error Handling for Audit Systems (moved to nthlayer-observe — B2 ✓ done 2026-04-08)
+- PolicyAuditRecorder deleted from generate; fail-open pattern applies in nthlayer-observe implementation
 
 ### Shared Constants for Module Defaults
 - Repeated magic values extracted into module-level constants in `__init__.py` (not scattered across callers)
-- Example: default SLO objective `0.999` defined once in `slos/__init__.py`, imported by `collector.py`, `cli/slo.py`, `cli/deploy.py`, `cli/portfolio.py`, `portfolio/aggregator.py`, `recording_rules/builder.py`
+- Example: default SLO objective `99.9` defined once in `slos/__init__.py`, imported by `cli/slo.py`, `recording_rules/builder.py`, etc. (consolidated in 7fd958e)
 - Pattern: if a default value appears in 3+ call sites, promote it to a named constant in the owning module's `__init__.py`
 
 ### CLI Formatter System
@@ -366,6 +410,15 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
   - NTHLAYER009: PolicyRequiredField, NTHLAYER010: PolicyTierConstraint, NTHLAYER011: PolicyDependencyRule
 - Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
 
+### Dashboard Validate CLI Command (cli/dashboard_validate.py)
+- `validate_dashboard_command(service_file, prometheus_url, technology, list_intents)` — resolves dashboard intents against live Prometheus metrics
+- Exit codes: 0 = all resolved, **2** = unresolved intents + prometheus_url provided, 0 = unresolved + no prometheus_url (offline/static mode), 1 = file/YAML error
+- `list_intents_command(service_file, technology)` — lists available intents for a service's technology stack; exit 0
+- Display helpers (all exported): `_display_service_info`, `_display_technologies`, `_display_intent_results`, `_display_single_intent`, `_display_discovery_result`, `_display_summary`, `_display_final_verdict`
+- Depends on `DashboardValidator` (dashboards/validator.py) returning `ValidationResult` with `resolved`, `synthesized`, `custom`, `fallback`, `unresolved` lists and `discovery_count`
+- `IntentResult(name, status, metric_name, message)` — per-intent outcome; `status` is `ResolutionStatus` enum (RESOLVED, FALLBACK, UNRESOLVED)
+- Test file: `tests/test_cli_dashboard_validate.py`
+
 ### CLI Smoke Test Suite
 - Location: `tests/smoke/` — end-to-end subprocess tests that invoke the real `nthlayer` CLI
 - Runner: `tests/smoke/_helpers.run_nthlayer(*args)` executes `uv run nthlayer <args>` and returns `CLIResult(exit_code, stdout, stderr, command)`
@@ -375,8 +428,8 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
   - `test_validate_commands.py` — `validate-spec`, `validate`, `validate-metadata`, `validate-slo --demo`
   - `test_generate_commands.py` — all `generate-*` commands with `--dry-run`
   - `test_apply_plan.py` — `plan` and `apply --output-dir`; validates dashboard JSON structure and alerts YAML (must have `groups` key)
-  - `test_analysis_commands.py` — `check-deploy --demo` (exit 0/1), `check-deploy --demo-blocked` (exit 2), `topology export --demo`, `recommend-metrics`
-  - `test_synology.py` (Tier 2) — `verify` and `drift`; skipped unless `NTHLAYER_PROMETHEUS_URL` is set; marked `pytest.mark.synology`
+  - `test_analysis_commands.py` — `topology export --demo` (JSON/Mermaid formats), `recommend-metrics`; check-deploy tests removed in B3 (now in nthlayer-observe)
+  - `test_synology.py` (Tier 2) — `validate-slo` live tests and Grafana dashboard push; `TestCheckDeployLive` removed in B3; verify/drift tests removed in P5 — all now in nthlayer-observe; skipped unless `NTHLAYER_PROMETHEUS_URL` is set; marked `pytest.mark.synology`
 - Makefile targets: `make smoke` (offline, `-x` fail-fast), `make smoke-full` (sets `NTHLAYER_PROMETHEUS_URL`/`NTHLAYER_GRAFANA_URL` for Synology)
 - Pre-push hook: `smoke-test` in `.pre-commit-config.yaml` runs `uv run pytest tests/smoke/ -x -q --tb=short` automatically before every `git push`
 
@@ -421,13 +474,16 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 ### Alert Pipeline (slos/pipeline.py)
 - `AlertPipeline(prometheus_url, dry_run, notify)` orchestrates end-to-end SLO alert evaluation
 - `evaluate_service(manifest, sli_measurements, simulate_burn_pct)` → `PipelineResult`
-- Pipeline steps: `resolve_effective_rules()` → build `ErrorBudget` objects → `AlertEvaluator` → `ExplanationEngine` → `AlertNotifier`
-- `dry_run=True`: runs full evaluation (budget calc, rule eval, explanation) but skips all notifications (notifications_sent=0)
+- Pipeline steps: `resolve_effective_rules()` → build `ErrorBudget` objects → `AlertEvaluator` (ExplanationEngine + AlertNotifier removed in Phase 1 migration — now owned by nthlayer-respond)
+- Pipeline is fully synchronous post-Phase 1 — no `asyncio` import; all evaluation is sequential
+- `notify` param accepted but always forced to `False`; `notifications_sent` always 0; `explanations` always empty list
+- `dry_run=True`: runs full evaluation (budget calc, rule eval) but skips all notifications (no-op post-migration)
 - `simulate_burn_pct`: synthesizes budget consumption at given percentage without requiring Prometheus
 - `PipelineResult` fields: `budgets_evaluated`, `rules_evaluated`, `alerts_triggered`, `notifications_sent`, `explanations`, `events`, `errors`; `worst_severity` property returns "healthy" | "info" | "warning" | "critical"
 - `_build_slo_from_manifest(manifest, slo_def)` converts `SLODefinition` → `SLO`; normalises target: values >1 treated as percentage (99.9 → 0.999)
 - `_convert_spec_rule_to_alert_rule(spec_rule, service, slo_id, channels)` maps `SpecAlertRule` → budget-domain `AlertRule` (slos/alerts.py); distinct from Prometheus `AlertRule` (alerts/models.py)
 - Note: `slos/alerts.py::AlertRule` is a budget alert rule (has `alert_type`, `threshold`); `alerts/models.py::AlertRule` is a Prometheus alerting rule (has `expr`, `duration`)
+- `alerts_explain_command` (cli/alerts.py): both code paths (with and without `--slo-filter`) return "Budget explanations not available in nthlayer-generate"; dead explanation iteration removed post-Phase 1; restoration tracked via bead nthlayer-hmj (nthlayer-observe)
 
 ### Error Budget Policy DSL
 - `BudgetThresholds(warning=0.20, critical=0.10)` — fraction of remaining budget (e.g. 0.10 = 10% remaining triggers critical)
@@ -438,9 +494,29 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - YAML path: `spec.deployment.gates.error_budget.policy.{window,thresholds,on_exhausted}`
 - Parser: `_parse_budget_policy(eb_data)` in `specs/opensrm_parser.py` constructs `BudgetPolicy` from gate config dict
 - Conversion to gate layer: `BudgetPolicy → GatePolicy(warning=thresholds.warning*100, blocking=thresholds.critical*100, on_exhausted=...)` — multiply by 100 because `GatePolicy` uses percentage points
-- CLI wiring: `_extract_gate_policy()` (cli/deploy.py) tries `DeploymentGate` resource first, then falls back to manifest `BudgetPolicy` conversion
-- Exhaustion enforcement in `DeploymentGate.check_deployment()`: when `budget_remaining_pct <= 0` and `on_exhausted` is set, `freeze_deploys` → `BLOCKED`, `require_approval` → `WARNING`
+- CLI wiring: `_extract_gate_policy()` was in `cli/deploy.py` (DELETED B3); gate enforcement now lives in nthlayer-observe
+- Exhaustion enforcement in `DeploymentGate.check_deployment()`: `freeze_deploys` → `BLOCKED`, `require_approval` → `WARNING` — now in nthlayer-observe
 
+
+### SLO CLI Commands (cli/slo.py)
+- Three subcommands under `nthlayer slo`: `show`, `list`, `collect`
+- `slo_show_command(service, service_file)`: static display — reads SLO resources from manifest, calculates error budget as `window_minutes × (100 - objective) / 100`, truncates queries >60 chars. Returns 1 if no file found or no SLOs defined.
+- `slo_list_command()`: scans `services/` and `examples/services/` relative to cwd for all `kind: SLO` resources; prints table. Returns 0 even when empty (no SLOs found is not an error).
+- `slo_collect_command(service, prometheus_url, service_file)`: queries live Prometheus — resolves URL from `--prometheus-url` arg → `NTHLAYER_PROMETHEUS_URL` env → `http://localhost:9090`. Auth via `NTHLAYER_METRICS_USER`/`NTHLAYER_METRICS_PASSWORD`. Connection errors print warning and return 0 (not 1). Async internals via `_collect_slo_metrics()` + `PrometheusProvider`.
+- `_parse_window_minutes(window)`: `30d` → 43200, `24h` → 1440, `1w` → 10080; unknown format defaults to 30d (43200 minutes).
+- Style inconsistency (known): `slo show` uses Rich `console`/`header` from `nthlayer.cli.ux`; `slo list` and `slo collect` use plain `print()`.
+- Architectural note: `slo collect` queries live Prometheus from a generate CLI — tension with pure-compiler goal; tracked as debt.
+- Dead stub: `slo_blame_command` reads `NTHLAYER_DATABASE_URL` from env but is unreachable (references deleted db/ runtime concepts); removal tracked separately.
+- Test files: `tests/test_cli_slo.py` (comprehensive unit tests with fixtures/mocks/capsys) and `tests/test_slo_cli.py` (simpler integration-style using `os.chdir()`); duplication is known tech debt.
+
+### Validate-SLO CLI Command (cli/validate_slo.py)
+- `validate_slo_command(service_file, prometheus_url, output_format, demo)` — checks that PromQL metric names in SLO recording rules exist in Prometheus
+- `SLOValidationResult` dataclass: `slo_name`, `query`, `metrics`, `found_metrics`, `missing_metrics`, `all_found`; serializes via `.to_dict()`
+- `extract_metric_names(query)` — parses PromQL expression and returns metric names, filtering out `PROMQL_FUNCTIONS` (sum, rate, avg, max, min, histogram_quantile, etc.)
+- `create_demo_slo_results()` — returns 3 fixed results (payment-api) with mixed found/missing metrics; used by `--demo` flag
+- Exit codes: 0 = all metrics found, 1 = any metric missing (demo always exits 1), 1 = file not found
+- Output formats: table (default) and json (`{"service": ..., "results": [...], "all_valid": bool}`)
+- `--demo` flag bypasses file parsing; runs against hardcoded payment-api results showing "Found" + "Missing" sections
 
 ### Build-Time Policy Engine
 - `PolicyEngine` (policies/engine.py) validates spec correctness at CI/build time — distinct from runtime `PolicyAuditRecorder`/`Repository` (policies/audit.py)
@@ -464,10 +540,12 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Always raise `ProviderError` or `NthLayerError` subclasses for application errors
 - Never use bare `Exception` or `RuntimeError` in application code
 - Provider modules define their own error subclasses: `GrafanaProviderError(ProviderError)`
-- Import errors from `nthlayer.core.errors`
-- Full error taxonomy in `core/errors.py`: `ConfigurationError` (exit 10), `ProviderError` (exit 11), `ValidationError` (exit 12), `BlockedError` (exit 2), `PolicyAuditError` (exit 12), `WarningResult` (exit 1)
+- **Canonical source:** `nthlayer_common.errors` (migrated from `core/errors.py` in Phase 0). `nthlayer.core.errors` is a backward-compat re-export shim — existing imports continue to work
+- Full error taxonomy: `ConfigurationError` (exit 10), `ProviderError` (exit 11), `ValidationError` (exit 12), `BlockedError` (exit 2), `PolicyAuditError` (exit 12), `WarningResult` (exit 1)
 - Use `ExitCode` enum for exit codes: `ExitCode.SUCCESS=0`, `WARNING=1`, `BLOCKED=2`, `CONFIG_ERROR=10`, `PROVIDER_ERROR=11`, `VALIDATION_ERROR=12`, `UNKNOWN_ERROR=127`
-- CLI command main functions: wrap with `@main_with_error_handling()` decorator from `nthlayer.core.errors` for unified exit code conversion
+- CLI command main functions: wrap with `@main_with_error_handling()` decorator from `nthlayer.core.errors` (or `nthlayer_common`) for unified exit code conversion
+- `exit_with_error()` stays in `nthlayer.core.errors` (not in nthlayer-common) — it imports `nthlayer.cli.ux` which is generate-only
+- `nthlayer.core` (`core/__init__.py`) re-exports only a subset of tier symbols: `Tier`, `TierConfig`, `TIER_NAMES`, `VALID_TIERS`, `get_tier_config`. For the full set (`TIER_CONFIGS`, `normalize_tier`, `is_valid_tier`, `get_tier_thresholds`, `get_slo_targets`), import from `nthlayer.core.tiers` or `nthlayer_common.tiers` directly
 - Silently swallowed exceptions (bare `except` or `except Exception: pass`) must have explicit `# intentionally ignored: <reason>` comment
 - Golden Principle #4: Re-raise exceptions with context using `raise XError("doing X") from err` at layer boundaries
 - Lint enforcement: `check-exception-handling.sh` detects bare except blocks without intentional-ignore comments
@@ -495,46 +573,36 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - `DependencyDiscovery` (dependencies/discovery.py) orchestrates multiple providers
 - Uses `IdentityResolver` to normalize service names across providers
 
-### Deployment Detection
-- Deployment providers in `src/nthlayer/deployments/providers/`
-- Each provider extends `BaseDeploymentProvider` with `verify_webhook()` and `parse_webhook()`
-- Providers: argocd, github, gitlab
-- `DeploymentProviderRegistry` (deployments/registry.py) manages provider registration
-- Webhook signature verification via HMAC SHA256 (X-Hub-Signature-256, X-Argo-Signature headers)
-- FastAPI webhook endpoint: `POST /webhooks/deployments/{provider_name}`
-- Response codes: 201 (recorded), 204 (skipped), 401 (invalid signature), 404 (unknown provider)
+### Deployment Detection (moved to nthlayer-observe — B1 ✓ done 2026-04-08)
+- All deployment webhook provider code deleted from generate; now lives in nthlayer-observe
+- `deployments/` directory shell remains with empty `providers/` subdir pending full cleanup in B4
 
-### Policy Audit API
-- Policy evaluation, violation, and override tracking via REST API
-- Endpoints: `POST /policies/{service}/override`, `GET /policies/{service}/audit?hours=24`
-- Audit trail `hours` query param controls time window (default=24, range 1-720)
-- Domain models in `policies/audit.py`: PolicyEvaluation, PolicyViolation, PolicyOverride
-- `PolicyAuditRecorder` (policies/recorder.py) records audit events
-- `PolicyAuditRepository` (policies/repository.py) queries audit history
-- Integrated with deployment gates for manual override workflows
-- Audit trail endpoint returns evaluations, violations, and overrides in single response
-- policies router registered in `api/main.py` under `settings.api_prefix` with tag "policies"
+### Policy Audit API (moved to nthlayer-observe — B2 ✓ done 2026-04-08)
+- All runtime policy audit code deleted from generate: `policies/audit.py`, `recorder.py`, `repository.py`, `evaluator.py`, `conditions.py`, `api/routes/policies.py`
+- `policies/` now contains only build-time engine (engine.py, models.py, rules.py)
+- `api/main.py` no longer registers the policies router
 
 ### Optional Dependency Groups
-- Install with extras for optional integrations: `pip install -e ".[aws]"`, `pip install -e ".[workflows]"`
+- Install with extras for optional integrations: `pip install -e ".[aws]"`, `pip install -e ".[kubernetes]"`
 - `[aws]`: boto3, aioboto3 — required for CloudWatch and SQS modules
-- `[workflows]`: langgraph, langchain — required for `workflows/` LangGraph orchestration
 - `[kubernetes]`: kubernetes client — required for K8s dependency discovery provider
 - `[zookeeper]`: kazoo — required for Zookeeper discovery provider
 - `[etcd]`: etcd3 — required for etcd discovery provider
 - `[service-discovery]`: kazoo + etcd3 bundled — for all service discovery providers at once
 - Core `structlog`, `httpx`, `pagerduty`, `grafana-foundation-sdk` are always installed
-- Lazy import pattern: Optional imports use `__getattr__` in `__init__.py` (e.g., `queue/__init__.py` for SQS JobEnqueuer) to delay import until used, avoiding hard dependency on missing extras
-- Runtime import deferral: `api/deps.py` imports `SQS JobEnqueuer` inside the function body at call time (not at module load) — use this pattern in FastAPI dependency functions to avoid failing on startup when optional extras are absent
+- Lazy import pattern: the original example (`queue/__init__.py` deferring SQS `JobEnqueuer`) was deleted in B7 with the whole queue package; the pattern itself — use `__getattr__` in `__init__.py` to delay importing optional-extra classes until they are accessed — still applies anywhere generate needs to gate on an extra
+- Runtime import deferral: the original motivating example lived in `api/deps.py` (deleted in B4); the pattern itself — import optional-extra classes inside the function body so the module still loads when the extra is missing — still applies anywhere generate consumes optional extras at call time
 - TYPE_CHECKING guard prevents circular imports while allowing type hints for optional classes
 
 ### Test Organization
-- Shared mock servers live in `tests/fixtures/` (e.g., `tests/fixtures/mock_server.py`) — this is the canonical location; `tests/mock_server.py` is a legacy duplicate, do not add new files there
+- `tests/fixtures/` now holds only YAML demo fixtures; `tests/fixtures/mock_server.py` and the legacy `tests/mock_server.py` were deleted in B7 (fastapi-based mock stack for provider integration tests — the tests only ran against a manually-started server and had been failing for months)
 - Integration tests using mock servers live in `tests/integration/` (e.g., `tests/integration/test_mock_server_integration.py`)
 - CLI end-to-end smoke tests live in `tests/smoke/` — invoke the real CLI via subprocess; see "CLI Smoke Test Suite" pattern for details
+- **Unit tests for CLI commands** live in `tests/test_cli_*.py` — use `capsys`/`tmp_path`/`unittest.mock.patch` (no subprocess): `test_cli_alerts.py` (alerts show/evaluate/explain/test, respx mocking), `test_cli_dashboard.py` (generate_dashboard_command, dry-run, default path), `test_cli_dashboard_validate.py` (validate_dashboard_command exit codes 0/1/2, list_intents_command), `test_cli_environments.py` (list/diff/validate env commands), `test_cli_generate.py` (generate_slo_command, sloth-only format support), `test_cli_setup.py` (setup wizard, connection testing, GrafanaProfile/PrometheusProfile fixtures), `test_cli_validate_slo.py` (PromQL extraction, SLOValidationResult, demo mode)
+- **Unit tests for providers/identity**: `tests/test_prometheus_provider.py` (PrometheusProvider init, query, query_range; uses AsyncMock on `_request`), `tests/test_ownership.py` (OwnershipSource/Signal/Attribution, DeclaredOwnershipProvider, CODEOWNERSProvider; pytest.mark.asyncio)
 - Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
 - Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
-- Apply `importorskip` to any test module that imports from `[aws]`, `[workflows]`, or other optional extras
+- Apply `importorskip` to any test module that imports from `[aws]`, `[kubernetes]`, or other optional extras
 
 ### Async/Await Usage
 - All provider operations are async (health checks, resource creation, discovery)
@@ -542,22 +610,20 @@ Built on: grafana-foundation-sdk, awesome-prometheus-alerts, pint, OpenSLO. Insp
 - Parallel operations use `asyncio.gather()` with `return_exceptions=True`
 - Provider interfaces define `async def aclose()` for cleanup
 
-### CLI Drift Analysis
-- `nthlayer portfolio --drift` includes trend analysis for all services
-- `nthlayer check-deploy --include-drift` checks deployment gate with drift detection
-- Drift window configurable via `--drift-window` (e.g., "30d")
-- Results displayed in table/JSON/CSV/markdown formats
-- Exit code escalation: CRITICAL drift → exit 2, WARN → exit 1
+### CLI Drift Analysis (moved to nthlayer-observe in P5)
+- Drift commands are now in nthlayer-observe: `nthlayer-observe drift --service <name> --prometheus-url <url>`
+- `nthlayer portfolio --drift` and `nthlayer check-deploy --include-drift` flags have been removed from generate
+- Use `nthlayer-observe drift` for runtime drift detection; generate has no drift module
 
 ### Ruff Lint Configuration
 - Target: Python 3.11 (`target-version = "py311"`), line length: 100
 - Enabled rule sets: `E` (pycodestyle errors), `F` (pyflakes), `I` (isort), `B` (flake8-bugbear)
-- Ignored rules: `B008` (Depends() in function defaults — standard FastAPI pattern), `E402` (module-level import not at top — needed for sys.modules mocking in tests)
+- Ignored rules: `E402` (module-level import not at top — needed for sys.modules mocking in tests), `E501` (line too long — PromQL queries, SARIF rules, metric names are intentionally >100 chars)
 - Run via: `make lint` or `ruff check src/ tests/`
 
 ### Sloppylint (sloppy) Configuration
 - AI-powered code quality checker; run via `/desloppify` workflow
-- Ignored paths: `tests/*`, `archive/*`, `scripts/*`, `src/nthlayer/workflows/*` (langgraph incompatible with Python 3.14)
+- Ignored paths: `tests/*`, `archive/*`, `scripts/*` (the stale `src/nthlayer/workflows/*` glob was dropped in B7 when workflows/ was physically deleted)
 - Disabled checks: `debug_print` (CLI uses print() for user output), `magic_number` (handled by code review), `hallucinated_import` (false positives on relative imports), `wrong_stdlib_import` (false positives on optional deps), `dead_code` (too many false positives on class methods), `duplicate_code` (function structure similarity is not duplication), `overlong_line` (PromQL queries are intentionally long)
 - Active severity threshold: `high` — only critical and high issues are reported
 - CI threshold: `max-score = 500` (score above this fails the build)

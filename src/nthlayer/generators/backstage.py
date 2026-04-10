@@ -8,32 +8,64 @@ reliability data (SLOs, error budgets, scorecard, deployment gate) in service pa
 from __future__ import annotations
 
 import json
-import structlog
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from nthlayer.scorecard.models import ScoreBand
-from nthlayer.slos.gates import DeploymentGate, GateResult
+import structlog
+from nthlayer_common.gate_models import GateResult
+from nthlayer_common.tiers import TIER_CONFIGS
+
 from nthlayer.specs.loader import load_manifest
 from nthlayer.specs.manifest import ReliabilityManifest
 
+
+class ScoreBand(str, Enum):
+    """Score classification bands used for static Backstage entity generation.
+
+    Inlined from the deleted nthlayer.scorecard.models module (B6). Runtime
+    scorecard computation now lives in nthlayer-observe; generate retains
+    just the band → letter-grade mapping because backstage.json expects a
+    grade string even when the entity is produced statically.
+    """
+
+    EXCELLENT = "excellent"  # 90-100
+    GOOD = "good"  # 75-89
+    FAIR = "fair"  # 50-74
+    POOR = "poor"  # 25-49
+    CRITICAL = "critical"  # 0-24
+
+
 logger = structlog.get_logger()
 
-# Score band to letter grade mapping
+
+def _gate_thresholds_for_tier(tier: str) -> dict[str, float | None]:
+    """Static tier → gate threshold lookup (warning/blocking % remaining).
+
+    Falls back to "standard" if the tier is not in TIER_CONFIGS (e.g. "high"
+    tier is defined in the OpenSRM spec but not yet in nthlayer_common.tiers).
+    """
+    config = TIER_CONFIGS.get(tier)
+    if config is None:
+        logger.warning("tier_not_in_config", tier=tier, fallback="standard")
+        config = TIER_CONFIGS["standard"]
+    return {
+        "warning": config.error_budget_warning_pct,
+        "blocking": config.error_budget_blocking_pct,
+    }
+
+# Score band to letter grade mapping.
+# ScoreBand(str, Enum) means dict.get("excellent") matches ScoreBand.EXCELLENT
+# as a key — no need for duplicate string entries.
 BAND_TO_GRADE: dict[ScoreBand | str, str] = {
     ScoreBand.EXCELLENT: "A",
     ScoreBand.GOOD: "B",
     ScoreBand.FAIR: "C",
     ScoreBand.POOR: "D",
     ScoreBand.CRITICAL: "F",
-    "excellent": "A",
-    "good": "B",
-    "fair": "C",
-    "poor": "D",
-    "critical": "F",
 }
 
 
@@ -103,7 +135,7 @@ def generate_backstage_entity(
         )
 
     except Exception as e:
-        logger.error("Backstage generation failed for %s: %s", service_file, e)
+        logger.error("backstage_generation_failed", service_file=str(service_file), err=str(e))
         return BackstageGenerationResult(
             success=False,
             service="unknown",
@@ -155,95 +187,6 @@ def generate_backstage_from_manifest(
         )
 
 
-def _build_backstage_entity(
-    service_context: Any,
-    resources: list[Any],
-    source_file: str | Path,
-) -> dict[str, Any]:
-    """Build Backstage entity dict from service context and resources."""
-    now = datetime.now(timezone.utc)
-
-    # Extract SLO resources
-    slo_resources = [r for r in resources if r.kind == "SLO"]
-
-    # Build service section
-    service_section = {
-        "name": service_context.name,
-        "team": service_context.team,
-        "tier": service_context.tier,
-        "type": service_context.type,
-        "description": None,
-        "supportModel": getattr(service_context, "support_model", "self"),
-    }
-
-    # Build SLOs section
-    slos = []
-    for slo_resource in slo_resources:
-        spec = slo_resource.spec
-        slo_entry = {
-            "name": slo_resource.name,
-            "target": spec.get("objective", 99.9),
-            "window": spec.get("window", "30d"),
-            "sloType": spec.get("indicator", {}).get("type"),
-            "description": spec.get("description"),
-            "currentValue": None,  # Static generation - no live data
-            "status": None,
-        }
-        slos.append(slo_entry)
-
-    # Build deployment gate section with default thresholds
-    gate = DeploymentGate()
-    thresholds = gate.get_threshold_for_tier(service_context.tier)
-
-    deployment_gate: dict[str, Any] = {
-        "status": "APPROVED",  # Default for static generation
-        "message": None,
-        "budgetRemainingPercent": None,  # No live data
-        "warningThreshold": thresholds.get("warning"),
-        "blockingThreshold": thresholds.get("blocking"),
-        "recommendations": [],
-    }
-
-    # Build links section
-    grafana_url = os.environ.get("NTHLAYER_GRAFANA_URL", "")
-    links = {
-        "grafanaDashboard": f"{grafana_url}/d/{service_context.name}" if grafana_url else None,
-        "runbook": None,
-        "serviceManifest": str(source_file),
-        "slothSpec": f"generated/{service_context.name}/sloth/{service_context.name}.yaml",
-        "alertsYaml": f"generated/{service_context.name}/alerts.yaml",
-    }
-
-    return {
-        "schemaVersion": "v1",
-        "generatedAt": now.isoformat(),
-        "service": service_section,
-        "slos": slos,
-        "errorBudget": {
-            "totalMinutes": None,
-            "consumedMinutes": None,
-            "remainingMinutes": None,
-            "remainingPercent": None,
-            "burnRate": None,
-            "status": None,
-        },
-        "score": {
-            "score": None,
-            "grade": None,
-            "band": None,
-            "trend": None,
-            "components": {
-                "sloCompliance": None,
-                "incidentScore": None,
-                "deploySuccessRate": None,
-                "errorBudgetRemaining": None,
-            },
-        },
-        "deploymentGate": deployment_gate,
-        "links": links,
-    }
-
-
 def _build_backstage_entity_from_manifest(
     manifest: ReliabilityManifest,
 ) -> dict[str, Any]:
@@ -275,8 +218,7 @@ def _build_backstage_entity_from_manifest(
         slos.append(slo_entry)
 
     # Build deployment gate section with default thresholds
-    gate = DeploymentGate()
-    thresholds = gate.get_threshold_for_tier(manifest.tier)
+    thresholds = _gate_thresholds_for_tier(manifest.tier)
 
     deployment_gate: dict[str, Any] = {
         "status": "APPROVED",  # Default for static generation

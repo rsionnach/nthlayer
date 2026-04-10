@@ -1,16 +1,17 @@
 """
 Alert pipeline orchestration.
 
-Wires spec parsing, error budget calculation, alert evaluation,
-explanation generation, and notification dispatch into a single
-``evaluate_service`` / ``evaluate_portfolio`` entry-point.
+Resolves effective alert rules, calculates error budgets, and evaluates
+rules via AlertEvaluator. Entry points: ``evaluate_service`` / ``evaluate_portfolio``.
+
+Note: ExplanationEngine and AlertNotifier were removed in Phase 1.
+Explanation generation and notification dispatch are now owned by nthlayer-respond.
 """
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -22,9 +23,7 @@ from nthlayer.slos.alerts import (
     AlertSeverity,
     AlertType,
 )
-from nthlayer.slos.explanations import BudgetExplanation, ExplanationEngine
 from nthlayer.slos.models import SLO, ErrorBudget, TimeWindow
-from nthlayer.slos.notifiers import AlertNotifier
 from nthlayer.specs.alerting import (
     AlertingConfig,
     SpecAlertRule,
@@ -44,7 +43,7 @@ class PipelineResult:
     rules_evaluated: int = 0
     alerts_triggered: int = 0
     notifications_sent: int = 0
-    explanations: list[BudgetExplanation] = field(default_factory=list)
+    explanations: list[Any] = field(default_factory=list)
     events: list[AlertEvent] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     budgets: list[ErrorBudget] = field(default_factory=list)
@@ -82,8 +81,6 @@ class AlertPipeline:
     1. Load manifest -> resolve effective alert rules
     2. Calculate error budgets (from measurements or simulation)
     3. Evaluate rules via AlertEvaluator
-    4. Generate explanations via ExplanationEngine
-    5. Dispatch notifications via AlertNotifier (if enabled)
     """
 
     def __init__(
@@ -94,9 +91,8 @@ class AlertPipeline:
     ) -> None:
         self.prometheus_url = prometheus_url
         self.dry_run = dry_run
-        self.notify = notify and not dry_run
+        self.notify = False  # Notifications removed — respond owns notification dispatch
         self._evaluator = AlertEvaluator()
-        self._explainer = ExplanationEngine()
 
     def evaluate_service(
         self,
@@ -127,13 +123,10 @@ class AlertPipeline:
             result.errors.append("No SLOs defined in manifest")
             return result
 
-        # Resolve channels for notification
+        # Resolve channels (used for alert rule construction)
         channels = alerting.channels.resolve_env_vars()
 
-        # Map event id -> explanation for notification enrichment
-        event_explanations: dict[str, BudgetExplanation] = {}
-
-        # 2. For each SLO: build budget, evaluate rules, explain
+        # 2. For each SLO: build budget, evaluate rules
         for slo_def in manifest.slos:
             slo = _build_slo_from_manifest(manifest, slo_def)
             budget = _calculate_budget(
@@ -155,40 +148,6 @@ class AlertPipeline:
             events = self._evaluator.evaluate_rules(budget, alert_rules)
             result.events.extend(events)
             result.alerts_triggered += len(events)
-
-            # Explain each triggered event
-            deps = manifest.dependencies or None
-            deploy = manifest.deployment
-            obs = manifest.observability
-            for event in events:
-                explanation = self._explainer.explain_alert(
-                    event,
-                    budget,
-                    tier=manifest.tier,
-                    service_type=manifest.type,
-                    dependencies=deps,
-                    deployment=deploy,
-                    observability=obs,
-                )
-                result.explanations.append(explanation)
-                event_explanations[event.id] = explanation
-
-            # Also generate a budget explanation regardless of alerts
-            if not events:
-                explanation = self._explainer.explain_budget(
-                    budget,
-                    tier=manifest.tier,
-                    service_type=manifest.type,
-                    dependencies=deps,
-                    deployment=deploy,
-                    observability=obs,
-                )
-                result.explanations.append(explanation)
-
-        # 5. Dispatch notifications
-        if self.notify and result.events:
-            sent = _dispatch_notifications(result.events, channels, event_explanations)
-            result.notifications_sent = sent
 
         return result
 
@@ -245,7 +204,7 @@ def _calculate_budget(
         # Simulated budget
         total = slo.error_budget_minutes()
         burned = total * (simulate_burn_pct / 100)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         budget = ErrorBudget(
             slo_id=slo.id,
             service=slo.service,
@@ -294,41 +253,3 @@ def _convert_spec_rule_to_alert_rule(
     )
 
 
-def _dispatch_notifications(
-    events: list[AlertEvent],
-    channels: Any,
-    event_explanations: dict[str, BudgetExplanation] | None = None,
-) -> int:
-    """Send notifications for triggered events. Returns count sent."""
-    sent = 0
-    notifier = AlertNotifier()
-    if getattr(channels, "slack_webhook", None):
-        notifier.add_slack(channels.slack_webhook)
-    if getattr(channels, "pagerduty_key", None):
-        notifier.add_pagerduty(channels.pagerduty_key)
-
-    if not notifier.notifiers:
-        return 0
-
-    explanations = event_explanations or {}
-
-    async def _send_all() -> int:
-        count = 0
-        for event in events:
-            try:
-                expl = explanations.get(event.id)
-                results = await notifier.send_alert(event, explanation=expl)
-                # Only count if at least one channel succeeded
-                if any(r.get("status") == "sent" for r in results.values() if isinstance(r, dict)):
-                    count += 1
-            except Exception as exc:
-                logger.warning("notification_failed", error=str(exc))
-        return count
-
-    try:
-        sent = asyncio.run(_send_all())
-    except RuntimeError:
-        # Already in an event loop — use nest_asyncio or skip
-        logger.warning("async_dispatch_skipped", reason="event_loop_running")
-
-    return sent

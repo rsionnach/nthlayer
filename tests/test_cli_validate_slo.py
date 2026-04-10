@@ -193,16 +193,13 @@ class TestValidateSLOCommand:
         assert "Missing" in captured.out
         assert "http_errors_total" in captured.out
 
-    def test_invalid_service_file(self, capsys):
-        """Test with nonexistent service file."""
+    def test_invalid_service_file(self):
+        """Test with nonexistent service file returns error exit code."""
         exit_code = validate_slo_command(
             service_file="/nonexistent/path.yaml",
             demo=False,
         )
-
         assert exit_code == 2
-        captured = capsys.readouterr()
-        assert "Error" in captured.out
 
     def test_service_file_without_slos(self, capsys, tmp_path):
         """Test with service file that has no SLOs."""

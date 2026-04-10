@@ -17,10 +17,11 @@ Usage:
 
 from __future__ import annotations
 
-import structlog
 import warnings
 from pathlib import Path
 from typing import Any, Literal
+
+import structlog
 
 logger = structlog.get_logger()
 

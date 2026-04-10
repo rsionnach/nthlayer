@@ -5,6 +5,7 @@ Tests for Mimir Ruler API provider.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from nthlayer.providers.mimir import (
     MimirRulerError,
     MimirRulerProvider,

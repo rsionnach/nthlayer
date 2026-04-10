@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from nthlayer.cli.simulate import simulate_command
 
 

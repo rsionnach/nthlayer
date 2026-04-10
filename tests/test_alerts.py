@@ -3,6 +3,7 @@ Tests for alert generation module.
 """
 
 import pytest
+
 from nthlayer.alerts import AlertRule, AlertTemplateLoader
 
 

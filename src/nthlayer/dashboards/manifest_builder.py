@@ -8,8 +8,9 @@ Supports both OpenSRM and legacy formats through the unified manifest model.
 
 from __future__ import annotations
 
-import structlog
 from typing import Any, Dict, List, Optional
+
+import structlog
 
 from nthlayer.dashboards.builder_sdk import DashboardBuilderSDK
 from nthlayer.specs.manifest import ReliabilityManifest

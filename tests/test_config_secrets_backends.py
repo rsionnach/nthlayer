@@ -98,7 +98,7 @@ class TestVaultSecretBackend:
                     ),
                 ):
                     backend = VaultSecretBackend(config)
-                    client = backend._get_client()
+                    backend._get_client()
 
         mock_client.auth.kubernetes.login.assert_called_once_with(
             role="nthlayer-role", jwt="k8s-jwt"
@@ -120,7 +120,7 @@ class TestVaultSecretBackend:
 
         with patch.dict("sys.modules", {"hvac": mock_hvac}):
             backend = VaultSecretBackend(config)
-            client = backend._get_client()
+            backend._get_client()
 
         mock_client.auth.approle.login.assert_called_once_with(
             role_id="role-123", secret_id="secret-456"

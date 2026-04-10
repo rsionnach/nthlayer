@@ -3,6 +3,7 @@
 import pytest
 import respx
 from httpx import Response
+
 from nthlayer.dependencies.models import DependencyType
 from nthlayer.dependencies.providers.backstage import (
     BackstageDepProvider,
@@ -426,7 +427,7 @@ class TestBackstageDepProviderDeduplicate:
         """Test deduplication keeps highest confidence."""
         from nthlayer.dependencies.models import DiscoveredDependency
 
-        provider = BackstageDepProvider(url="https://backstage.example.com")
+        BackstageDepProvider(url="https://backstage.example.com")
 
         deps = [
             DiscoveredDependency(

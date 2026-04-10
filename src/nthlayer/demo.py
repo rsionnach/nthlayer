@@ -22,27 +22,16 @@ import yaml
 from nthlayer.alerts import AlertTemplateLoader
 from nthlayer.alerts.models import AlertRule
 from nthlayer.cli.alerts import handle_alerts_command, register_alerts_parser
-from nthlayer.cli.blast_radius import (
-    handle_blast_radius_command,
-    register_blast_radius_parser,
-)
-from nthlayer.cli.deps import handle_deps_command, register_deps_parser
-from nthlayer.cli.drift import handle_drift_command, register_drift_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.identity import handle_identity_command, register_identity_parser
 from nthlayer.cli.migrate import handle_migrate_command, register_migrate_parser
-from nthlayer.cli.simulate import handle_simulate_command, register_simulate_parser
 from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
-from nthlayer.cli.portfolio import handle_portfolio_command, register_portfolio_parser
 from nthlayer.cli.recommend_metrics import (
     handle_recommend_metrics_command,
     register_recommend_metrics_parser,
 )
-from nthlayer.cli.scorecard import (
-    handle_scorecard_command,
-    register_scorecard_parser,
-)
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
+from nthlayer.cli.simulate import handle_simulate_command, register_simulate_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.cli.topology import handle_topology_command, register_topology_parser
 from nthlayer.cli.ux import print_banner
@@ -58,7 +47,6 @@ from nthlayer.cli.validate_spec import (
     handle_validate_spec_command,
     register_validate_spec_parser,
 )
-from nthlayer.cli.verify import handle_verify_command, register_verify_parser
 from nthlayer.providers.grafana import GrafanaProvider, GrafanaProviderError
 
 # Version from package metadata (single source of truth: pyproject.toml)
@@ -645,48 +633,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="Preview without making changes"
     )
 
-    deploy_parser = subparsers.add_parser(
-        "check-deploy", help="Check deployment gate (error budget validation)"
-    )
-    deploy_parser.add_argument("service_file", help="Path to service YAML file")
-    deploy_parser.add_argument(
-        "--prometheus-url",
-        "-p",
-        help="Prometheus URL (or use PROMETHEUS_URL env var)",
-    )
-    deploy_parser.add_argument(
-        "--env", "--environment", dest="environment", help="Environment name (dev, staging, prod)"
-    )
-    deploy_parser.add_argument(
-        "--auto-env",
-        action="store_true",
-        help="Auto-detect environment from context (CI/CD env vars)",
-    )
-    deploy_parser.add_argument(
-        "--demo",
-        action="store_true",
-        help="Show demo output with sample data (for VHS recordings)",
-    )
-    deploy_parser.add_argument(
-        "--demo-blocked",
-        action="store_true",
-        help="Show demo output with BLOCKED scenario (for VHS recordings)",
-    )
-    deploy_parser.add_argument(
-        "--include-drift",
-        action="store_true",
-        help="Include drift analysis in deployment gate check",
-    )
-    deploy_parser.add_argument(
-        "--drift-window",
-        help="Drift analysis window (e.g., 30d, 14d). Uses tier default if not specified",
-    )
-    deploy_parser.add_argument(
-        "--include-correlation",
-        action="store_true",
-        help="Include deployment correlation analysis in gate check",
-    )
-
     init_parser = subparsers.add_parser("init", help="Initialize new NthLayer service")
     init_parser.add_argument(
         "service_name", nargs="?", help="Service name (lowercase-with-hyphens)"
@@ -851,14 +797,8 @@ def build_parser() -> argparse.ArgumentParser:
     # SLO commands (new unified interface)
     register_slo_parser(subparsers)
 
-    # Portfolio command
-    register_portfolio_parser(subparsers)
-
     # Setup command
     register_setup_parser(subparsers)
-
-    # Verify command (contract verification)
-    register_verify_parser(subparsers)
 
     # Loki alerts command
     register_loki_parser(subparsers)
@@ -869,12 +809,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Validate spec command (conftest/OPA)
     register_validate_spec_parser(subparsers)
 
-    # Drift detection command
-    register_drift_parser(subparsers)
-
-    # Dependency discovery commands
-    register_deps_parser(subparsers)
-    register_blast_radius_parser(subparsers)
+    # Topology export command
     register_topology_parser(subparsers)
 
     # Ownership command
@@ -888,9 +823,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Recommend metrics command
     register_recommend_metrics_parser(subparsers)
-
-    # Scorecard command
-    register_scorecard_parser(subparsers)
 
     # Alert evaluation commands
     register_alerts_parser(subparsers)
@@ -919,11 +851,6 @@ def _print_welcome() -> None:
     console.print()
 
     console.print("  [bold]Key Commands:[/bold]")
-    console.print("    [info]nthlayer verify[/info]             Verify metrics exist in Prometheus")
-    console.print(
-        "    [info]nthlayer check-deploy[/info]       Check error budget before deploying"
-    )
-    console.print("    [info]nthlayer portfolio[/info]          View org-wide SLO health")
     console.print()
 
     console.print("  [muted]Run 'nthlayer --help' for all commands[/muted]")
@@ -1112,28 +1039,6 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         )
 
-    if args.command == "check-deploy":
-        from nthlayer.cli.deploy import check_deploy_command
-        from nthlayer.specs.environment_detection import get_environment
-
-        env = get_environment(
-            explicit_env=getattr(args, "environment", None),
-            auto_detect=getattr(args, "auto_env", False),
-        )
-
-        sys.exit(
-            check_deploy_command(
-                args.service_file,
-                prometheus_url=getattr(args, "prometheus_url", None),
-                environment=env,
-                demo=getattr(args, "demo", False),
-                demo_blocked=getattr(args, "demo_blocked", False),
-                include_drift=getattr(args, "include_drift", False),
-                include_correlation=getattr(args, "include_correlation", False),
-                drift_window=getattr(args, "drift_window", None),
-            )
-        )
-
     if args.command == "init":
         from nthlayer.cli.init import init_command
 
@@ -1299,14 +1204,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "slo":
         sys.exit(handle_slo_command(args))
 
-    if args.command == "portfolio":
-        sys.exit(handle_portfolio_command(args))
-
     if args.command == "setup":
         sys.exit(handle_setup_command(args))
-
-    if args.command == "verify":
-        sys.exit(handle_verify_command(args))
 
     if args.command == "generate-loki-alerts":
         sys.exit(handle_loki_command(args))
@@ -1316,15 +1215,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "validate-spec":
         sys.exit(handle_validate_spec_command(args))
-
-    if args.command == "drift":
-        sys.exit(handle_drift_command(args))
-
-    if args.command == "deps":
-        sys.exit(handle_deps_command(args))
-
-    if args.command == "blast-radius":
-        sys.exit(handle_blast_radius_command(args))
 
     if args.command == "topology":
         sys.exit(handle_topology_command(args))
@@ -1340,9 +1230,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "recommend-metrics":
         sys.exit(handle_recommend_metrics_command(args))
-
-    if args.command == "scorecard":
-        sys.exit(handle_scorecard_command(args))
 
     if args.command == "alerts":
         sys.exit(handle_alerts_command(args))

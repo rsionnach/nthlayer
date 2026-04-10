@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+
 from nthlayer.cli.generate import generate_slo_command
 from nthlayer.specs.parser import parse_service_file
 

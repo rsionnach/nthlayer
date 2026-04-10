@@ -11,6 +11,7 @@ Skip integration tests: pytest tests/test_metrics_discovery.py -v -m "not integr
 import os
 
 import pytest
+
 from nthlayer.metrics.discovery import (
     discover_all_metrics,
     discover_metrics_with_details,

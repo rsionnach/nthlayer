@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from nthlayer.simulate.models import DependencyModel, derive_failure_model
-from nthlayer.simulate.what_if import parse_what_if, apply_scenario
+from nthlayer.simulate.what_if import apply_scenario, parse_what_if
 
 
 class TestParseWhatIf:

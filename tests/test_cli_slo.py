@@ -1,6 +1,6 @@
 """Tests for CLI SLO commands.
 
-Tests for nthlayer slo commands including show, list, collect, and blame.
+Tests for nthlayer slo commands including show, list, and collect.
 """
 
 import argparse
@@ -9,12 +9,12 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from nthlayer.cli.slo import (
     _parse_window_minutes,
     _print_slo_result,
     handle_slo_command,
     register_slo_parser,
-    slo_blame_command,
     slo_collect_command,
     slo_list_command,
     slo_show_command,
@@ -361,61 +361,6 @@ class TestSloCollectCommand:
         assert "1/1" in captured.out or "healthy" in captured.out.lower()
 
 
-class TestSloBlameCommand:
-    """Tests for slo_blame_command function."""
-
-    def test_no_database_configured(self, capsys):
-        """Test message when database not configured."""
-        with patch.dict("os.environ", {}, clear=True):
-            result = slo_blame_command(service="test")
-
-        assert result == 1
-        captured = capsys.readouterr()
-        assert "Database not configured" in captured.out
-
-    def test_shows_setup_instructions(self, capsys):
-        """Test showing setup instructions when no database."""
-        with patch.dict("os.environ", {}, clear=True):
-            slo_blame_command(service="test")
-
-        captured = capsys.readouterr()
-        assert "DATABASE_URL" in captured.out
-        assert "ArgoCD" in captured.out or "deployment" in captured.out.lower()
-
-    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_no_correlations_found(self, capsys):
-        """Test message when no correlations found (stub implementation)."""
-        result = slo_blame_command(service="test")
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "No deployment correlations found" in captured.out
-
-    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_uses_custom_days(self, capsys):
-        """Test using custom lookback days."""
-        slo_blame_command(service="test", days=14)
-
-        captured = capsys.readouterr()
-        assert "14" in captured.out
-
-    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_shows_service_name(self, capsys):
-        """Test that service name is shown in output."""
-        slo_blame_command(service="payment-api")
-
-        captured = capsys.readouterr()
-        assert "payment-api" in captured.out
-
-    @patch.dict("os.environ", {"NTHLAYER_DATABASE_URL": "postgresql://test"})
-    def test_shows_confidence_threshold(self, capsys):
-        """Test that confidence threshold is shown."""
-        slo_blame_command(service="test", min_confidence=0.75)
-
-        captured = capsys.readouterr()
-        assert "75%" in captured.out
-
-
 class TestParseWindowMinutes:
     """Tests for _parse_window_minutes function."""
 
@@ -536,18 +481,6 @@ class TestRegisterSloParser:
         assert args.service == "my-service"
         assert args.prometheus_url == "http://prom:9090"
 
-    def test_registers_blame_command(self):
-        """Test that blame command is registered."""
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
-        register_slo_parser(subparsers)
-
-        args = parser.parse_args(
-            ["slo", "blame", "my-service", "--days", "14", "--min-confidence", "0.7"]
-        )
-        assert args.service == "my-service"
-        assert args.days == 14
-        assert args.min_confidence == 0.7
 
 
 class TestHandleSloCommand:
@@ -597,23 +530,6 @@ class TestHandleSloCommand:
 
         assert result == 0
         mock_collect.assert_called_once()
-
-    @patch("nthlayer.cli.slo.slo_blame_command")
-    def test_handles_blame_command(self, mock_blame):
-        """Test handling blame command."""
-        mock_blame.return_value = 0
-
-        args = argparse.Namespace(
-            slo_command="blame",
-            service="test",
-            days=7,
-            min_confidence=0.5,
-        )
-
-        result = handle_slo_command(args)
-
-        assert result == 0
-        mock_blame.assert_called_once()
 
     def test_handles_no_subcommand(self, capsys):
         """Test handling when no subcommand specified."""

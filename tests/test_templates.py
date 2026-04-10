@@ -1,6 +1,7 @@
 """Tests for service template system."""
 
 import pytest
+
 from nthlayer.specs.parser import parse_service_file
 from nthlayer.specs.template import substitute_variables
 from nthlayer.specs.template_loader import TemplateLoader

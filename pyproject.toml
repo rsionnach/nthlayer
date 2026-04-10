@@ -9,35 +9,17 @@ description = "NthLayer - The Missing Layer of Reliability"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "nthlayer-common>=0.1.3",
     "grafana-foundation-sdk>=0.0.11",
-    "fastapi>=0.111.0,<1.0.0",
-    "uvicorn[standard]>=0.27.0,<0.41",
-    "mangum>=0.17.0,<0.21.0",
     "pydantic>=2.7.0,<3.0.0",
     "pydantic-settings>=2.2.1,<3.0.0",
-    "sqlalchemy>=2.0.30,<3.0.0",
-    "alembic>=1.13.1,<2.0.0",
-    "psycopg[binary]>=3.2.0,<4.0.0",
-    "redis>=5.0.4,<8.0.0",
     "httpx>=0.27.0,<0.29.0",
     "pagerduty>=6.0.0,<7.0.0",
-    # boto3/aioboto3 moved to [aws] optional group
-    # langgraph/langchain moved to [workflows] optional group
     "structlog>=24.1.0,<25.0.0",
-    "orjson>=3.10.0,<4.0.0",
-    "python-json-logger>=2.0.7,<5.0.0",
-    "tenacity>=8.2.3,<10.0.0",
-    "circuitbreaker>=2.0.0,<3.0.0",
-    "aws-xray-sdk>=2.12.0,<3.0.0",
-    "PyJWT[crypto]>=2.8.0,<3.0.0",
-    "jwcrypto>=1.5.6,<2.0.0",
     "pyyaml>=6.0.1,<7.0.0",
     "rich>=13.7.0,<15.0.0",
     "rich-argparse>=1.4.0,<2.0.0",
     "questionary>=2.0.0,<3.0.0",
-    # Drift detection dependencies
-    "scipy>=1.11.0,<2.0.0",
-    "numpy>=1.24.0,<3.0.0",
     # Dependency discovery
     "cachetools>=5.3.0,<7.0.0",
     "opentelemetry-semantic-conventions>=0.60b1",
@@ -54,22 +36,15 @@ dev = [
     "respx>=0.21.0,<0.23.0",
     "ruff>=0.4.0,<0.15.0",
     "mypy>=1.10.0,<1.20.0",
-    "types-redis>=4.6.0",
     "types-requests>=2.31.0",
     "types-python-dateutil>=2.8.19",
     "types-PyYAML>=6.0.0",
     "anyio>=4.3.0,<5.0.0",
-    "aiosqlite>=0.20.0,<1.0.0",
-    "greenlet>=3.0.0,<4.0.0",
     "kubernetes>=28.0.0,<36.0.0",  # For testing K8s provider
 ]
 docs = [
     "mkdocs-material>=9.5.0",
     "mkdocs-minify-plugin>=0.8.0",
-]
-drift-ml = [
-    # Future ML-enhanced drift detection
-    "scikit-learn>=1.3.0,<2.0.0",
 ]
 kubernetes = [
     # Kubernetes dependency discovery
@@ -89,15 +64,12 @@ service-discovery = [
     "etcd3>=0.12.0,<1.0.0",
 ]
 aws = [
-    # AWS integrations (CloudWatch, SQS)
-    "aioboto3>=12.3.0,<16.0.0",
+    # AWS Secrets Manager backend (nthlayer.config.secrets.backends.AWSSecretBackend)
     "boto3>=1.34.0,<2.0.0",
 ]
-workflows = [
-    # LangGraph workflow orchestration
-    "langgraph>=1.0.0,<2.0.0",
-    "langchain>=0.3.0,<1.3.0",
-]
+
+[tool.uv.sources]
+nthlayer-common = { path = "../nthlayer-common", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -114,6 +86,26 @@ markers = [
     "synology: Tests requiring Synology Prometheus/Grafana",
 ]
 
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+
+# Optional dependencies — not installed in dev/CI unless extras are used
+[[tool.mypy.overrides]]
+module = [
+    "kubernetes.*",           # [kubernetes] optional extra
+    "kazoo.*",                # [zookeeper] optional extra
+    "etcd3.*",                # [etcd] optional extra
+    "boto3.*",                # [aws] optional extra
+    "hvac.*",                 # HashiCorp Vault (secrets backend, optional)
+    "azure.*",                # Azure Key Vault (secrets backend, optional)
+    "google.cloud.*",         # GCP Secret Manager (secrets backend, optional)
+    "doppler.*",              # Doppler (secrets backend, optional)
+    "pagerduty.*",            # No type stubs available
+    "grafana_foundation_sdk.*",  # No type stubs available
+]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -121,8 +113,8 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
 ignore = [
-    "B008",  # Depends() in function defaults - standard FastAPI pattern
     "E402",  # Module level import not at top - needed for sys.modules mocking in tests
+    "E501",  # Line too long - PromQL queries, SARIF rules, metric names are intentionally >100 chars
 ]
 
 [tool.sloppy]
@@ -131,7 +123,6 @@ ignore = [
     "tests/*",
     "archive/*",
     "scripts/*",
-    "src/nthlayer/workflows/*",  # langgraph incompatible with Python 3.14
 ]
 disable = [
     "debug_print",         # CLI uses print() for user output

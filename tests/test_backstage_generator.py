@@ -9,16 +9,16 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from nthlayer_common.gate_models import GateResult
 
 from nthlayer.generators.backstage import (
     BackstageGenerationResult,
+    ScoreBand,
     band_to_grade,
     gate_result_to_status,
     generate_backstage_entity,
     generate_backstage_from_manifest,
 )
-from nthlayer.scorecard.models import ScoreBand
-from nthlayer.slos.gates import GateResult
 from nthlayer.specs.manifest import ReliabilityManifest, SLODefinition
 
 

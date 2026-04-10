@@ -5,7 +5,6 @@ Commands:
     nthlayer slo show <service>    - Show SLOs and current error budget
     nthlayer slo list              - List all SLOs
     nthlayer slo collect <service> - Query Prometheus, calculate budget
-    nthlayer slo blame <service>   - Show deploy → burn correlation
 """
 
 from __future__ import annotations
@@ -362,63 +361,6 @@ def _print_slo_result(result: dict[str, Any]) -> None:
     print()
 
 
-def slo_blame_command(
-    service: str,
-    days: int = 7,
-    min_confidence: float = 0.5,
-) -> int:
-    """Show which deployments burned error budget.
-
-    The blame command correlates deployments with error budget burns.
-    It requires a database configured (NTHLAYER_DATABASE_URL) and
-    deployment events recorded from CI/CD.
-    """
-    from nthlayer.cli.ux import console, header
-
-    console.print()
-    header(f"Deployment Blame: {service}")
-    console.print()
-
-    # Check if database is configured
-    database_url = os.environ.get("NTHLAYER_DATABASE_URL")
-
-    if not database_url:
-        console.print("[yellow]Database not configured.[/yellow]")
-        console.print()
-        console.print("Deployment blame analysis requires:")
-        console.print()
-        console.print("[bold]1. Configure database:[/bold]")
-        console.print("   [cyan]export NTHLAYER_DATABASE_URL=postgresql://...[/cyan]")
-        console.print()
-        console.print("[bold]2. Record deployments from CI/CD:[/bold]")
-        console.print("   Supported integrations:")
-        console.print("   - ArgoCD (Application CRD webhook)")
-        console.print("   - GitHub Actions (deployment events API)")
-        console.print("   - Tekton (PipelineRun CRD)")
-        console.print("   - GitLab CI (pipeline webhooks)")
-        console.print()
-        console.print(
-            "For now, use [cyan]nthlayer slo collect[/cyan] to see current budget status."
-        )
-        console.print()
-        return 1
-
-    # Database is configured - show that correlation is available
-    console.print(
-        f"Analyzing deployments for [cyan]{service}[/cyan] over the last [cyan]{days}[/cyan] days..."
-    )
-    console.print()
-    console.print("[yellow]No deployment correlations found.[/yellow]")
-    console.print()
-    console.print("This could mean:")
-    console.print("  - No deployments recorded in the database")
-    console.print("  - No error budget burns during this period")
-    console.print("  - Correlations below confidence threshold ({:.0%})".format(min_confidence))
-    console.print()
-
-    return 0
-
-
 def _parse_window_minutes(window: str) -> float:
     """Parse window string like '30d' into minutes."""
     if window.endswith("d"):
@@ -458,18 +400,6 @@ def register_slo_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Prometheus server URL (or set NTHLAYER_PROMETHEUS_URL)",
     )
 
-    # slo blame
-    blame_parser = slo_subparsers.add_parser(
-        "blame", help="Show which deployments burned error budget"
-    )
-    blame_parser.add_argument("service", help="Service name")
-    blame_parser.add_argument("--days", type=int, default=7, help="Lookback period in days")
-    blame_parser.add_argument(
-        "--min-confidence",
-        type=float,
-        default=0.5,
-        help="Minimum confidence threshold (0-1)",
-    )
 
 
 def handle_slo_command(args: argparse.Namespace) -> int:
@@ -489,12 +419,6 @@ def handle_slo_command(args: argparse.Namespace) -> int:
             prometheus_url=getattr(args, "prometheus_url", None),
             service_file=getattr(args, "file", None),
         )
-    elif command == "blame":
-        return slo_blame_command(
-            service=args.service,
-            days=args.days,
-            min_confidence=args.min_confidence,
-        )
     else:
         print("Usage: nthlayer slo <command>")
         print()
@@ -502,5 +426,4 @@ def handle_slo_command(args: argparse.Namespace) -> int:
         print("  show <service>     Show SLO details and error budget")
         print("  list               List all SLOs")
         print("  collect <service>  Collect metrics from Prometheus")
-        print("  blame <service>    Show deployment blame")
         return 1

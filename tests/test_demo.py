@@ -9,6 +9,7 @@ from importlib.metadata import version as get_version
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from nthlayer.alerts.models import AlertRule
 from nthlayer.demo import (
     _default_org_id,
@@ -938,33 +939,11 @@ teams:
             mock.assert_called_once()
             assert exc_info.value.code == 0
 
-    def test_portfolio_command_dispatch(self, tmp_path, monkeypatch):
-        """portfolio command dispatches to handler."""
-        monkeypatch.chdir(tmp_path)
-
-        with patch("nthlayer.demo.handle_portfolio_command", return_value=0) as mock:
-            with pytest.raises(SystemExit) as exc_info:
-                main(["portfolio"])
-
-            mock.assert_called_once()
-            assert exc_info.value.code == 0
-
     def test_setup_command_dispatch(self):
         """setup command dispatches to handler."""
         with patch("nthlayer.demo.handle_setup_command", return_value=0) as mock:
             with pytest.raises(SystemExit) as exc_info:
                 main(["setup"])
-
-            mock.assert_called_once()
-            assert exc_info.value.code == 0
-
-    def test_verify_command_dispatch(self, tmp_path, monkeypatch):
-        """verify command dispatches to handler."""
-        monkeypatch.chdir(tmp_path)
-
-        with patch("nthlayer.demo.handle_verify_command", return_value=0) as mock:
-            with pytest.raises(SystemExit) as exc_info:
-                main(["verify", "service.yaml"])
 
             mock.assert_called_once()
             assert exc_info.value.code == 0
@@ -1120,16 +1099,6 @@ alert_templates:
             main(["generate-recording-rules", "nonexistent.yaml"])
 
         assert exc_info.value.code == 1
-
-    def test_check_deploy_command(self, tmp_path, monkeypatch):
-        """check-deploy command exits 2 for missing file (parse error)."""
-        monkeypatch.chdir(tmp_path)
-
-        with pytest.raises(SystemExit) as exc_info:
-            main(["check-deploy", "nonexistent.yaml"])
-
-        # Check-deploy command returns exit code 2 for parse errors
-        assert exc_info.value.code == 2
 
     def test_generate_alerts_command(self, tmp_path, monkeypatch):
         """generate-alerts command exits 1 for missing file."""

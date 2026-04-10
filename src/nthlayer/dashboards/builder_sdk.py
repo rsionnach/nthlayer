@@ -11,9 +11,9 @@ Enhanced with the Hybrid Model:
 - Custom metric overrides from service YAML
 """
 
-import structlog
 from typing import Any, Dict, List, Optional
 
+import structlog
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
 from nthlayer.dashboards.resolver import MetricResolver, create_resolver
@@ -632,9 +632,10 @@ class DashboardBuilderSDK:
                     description=getattr(old_panel, "description", ""),
                     query=None,
                 )
-                # Store noValue message for post-processing
+                # Store noValue message for post-processing (dynamic attr,
+                # read back by _apply_no_value_messages via hasattr/getattr)
                 if no_value_msg:
-                    panel._no_value_message = no_value_msg
+                    panel._no_value_message = no_value_msg  # type: ignore[attr-defined]
                 return panel
 
             if not queries:

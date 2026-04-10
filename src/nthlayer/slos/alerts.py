@@ -8,7 +8,7 @@ error budgets are at risk.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -139,7 +139,7 @@ class AlertEvaluator:
 
         # Create alert event
         event = AlertEvent(
-            id=f"alert-{budget.service}-{int(datetime.utcnow().timestamp())}",
+            id=f"alert-{budget.service}-{int(datetime.now(timezone.utc).timestamp())}",
             rule_id=rule.id,
             service=budget.service,
             slo_id=budget.slo_id,
@@ -188,7 +188,7 @@ class AlertEvaluator:
 
         # Create alert event
         event = AlertEvent(
-            id=f"alert-{budget.service}-{int(datetime.utcnow().timestamp())}",
+            id=f"alert-{budget.service}-{int(datetime.now(timezone.utc).timestamp())}",
             rule_id=rule.id,
             service=budget.service,
             slo_id=budget.slo_id,
@@ -255,7 +255,7 @@ class AlertEvaluator:
         )
 
         event = AlertEvent(
-            id=f"alert-{budget.service}-{int(datetime.utcnow().timestamp())}",
+            id=f"alert-{budget.service}-{int(datetime.now(timezone.utc).timestamp())}",
             rule_id=rule.id,
             service=budget.service,
             slo_id=budget.slo_id,

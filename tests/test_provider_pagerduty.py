@@ -1,4 +1,5 @@
 import pytest
+
 from nthlayer.providers.pagerduty import (
     PagerDutyProvider,
     PagerDutyProviderError,

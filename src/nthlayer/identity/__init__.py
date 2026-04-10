@@ -1,13 +1,14 @@
 """
-Identity resolution for service name normalization.
+Re-export shim — canonical source is nthlayer_common.identity.
 
-Normalizes service names from different providers to canonical forms,
-enabling cross-provider service identity matching.
+This shim maintains backward compatibility during the ecosystem migration.
+All identity and ownership symbols are now in nthlayer-common.
 """
 
 from nthlayer.identity.models import IdentityMatch, ServiceIdentity
 from nthlayer.identity.normalizer import (
     DEFAULT_RULES,
+    PROVIDER_PATTERNS,
     NormalizationRule,
     extract_from_pattern,
     extract_service_name,
@@ -33,6 +34,7 @@ __all__ = [
     "extract_service_name",
     "NormalizationRule",
     "DEFAULT_RULES",
+    "PROVIDER_PATTERNS",
     # Resolver
     "IdentityResolver",
     # Ownership

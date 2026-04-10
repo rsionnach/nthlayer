@@ -1,9 +1,9 @@
 """Template loader for NthLayer service templates."""
 
-import structlog
 from pathlib import Path
 from typing import Dict
 
+import structlog
 import yaml
 
 from nthlayer.core.errors import ConfigurationError

@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import httpx
+
 from nthlayer.integrations.pagerduty import PagerDutyClient, PagerDutySetupResult
 
 

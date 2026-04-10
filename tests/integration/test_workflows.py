@@ -1,6 +1,7 @@
 """Integration tests for end-to-end workflows."""
 
 import pytest
+
 from nthlayer.cli.generate import generate_slo_command
 from nthlayer.cli.init import init_command
 from nthlayer.cli.validate import validate_command

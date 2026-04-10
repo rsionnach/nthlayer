@@ -661,14 +661,16 @@ class TestQuestionaryIntegration:
 
     def test_questionary_style_is_valid_style_object(self):
         """PROMPT_STYLE should be a valid questionary Style object."""
-        from nthlayer.cli.ux import PROMPT_STYLE
         from questionary import Style
+
+        from nthlayer.cli.ux import PROMPT_STYLE
 
         assert isinstance(PROMPT_STYLE, Style)
 
     def test_questionary_select_accepts_style(self):
         """questionary.select should accept our PROMPT_STYLE without error."""
         import questionary
+
         from nthlayer.cli.ux import PROMPT_STYLE
 
         # Create a select question (don't ask it)
@@ -684,6 +686,7 @@ class TestQuestionaryIntegration:
     def test_questionary_checkbox_accepts_style(self):
         """questionary.checkbox should accept our PROMPT_STYLE without error."""
         import questionary
+
         from nthlayer.cli.ux import PROMPT_STYLE
 
         # Create a checkbox question (don't ask it)
@@ -699,6 +702,7 @@ class TestQuestionaryIntegration:
     def test_questionary_text_accepts_style(self):
         """questionary.text should accept our PROMPT_STYLE without error."""
         import questionary
+
         from nthlayer.cli.ux import PROMPT_STYLE
 
         # Create a text question (don't ask it)
@@ -713,6 +717,7 @@ class TestQuestionaryIntegration:
     def test_questionary_confirm_accepts_style(self):
         """questionary.confirm should accept our PROMPT_STYLE without error."""
         import questionary
+
         from nthlayer.cli.ux import PROMPT_STYLE
 
         # Create a confirm question (don't ask it)
