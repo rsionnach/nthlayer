@@ -86,6 +86,26 @@ markers = [
     "synology: Tests requiring Synology Prometheus/Grafana",
 ]
 
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+
+# Optional dependencies — not installed in dev/CI unless extras are used
+[[tool.mypy.overrides]]
+module = [
+    "kubernetes.*",           # [kubernetes] optional extra
+    "kazoo.*",                # [zookeeper] optional extra
+    "etcd3.*",                # [etcd] optional extra
+    "boto3.*",                # [aws] optional extra
+    "hvac.*",                 # HashiCorp Vault (secrets backend, optional)
+    "azure.*",                # Azure Key Vault (secrets backend, optional)
+    "google.cloud.*",         # GCP Secret Manager (secrets backend, optional)
+    "doppler.*",              # Doppler (secrets backend, optional)
+    "pagerduty.*",            # No type stubs available
+    "grafana_foundation_sdk.*",  # No type stubs available
+]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

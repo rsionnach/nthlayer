@@ -195,19 +195,19 @@ class SDKAdapter:
         try:
             from grafana_foundation_sdk.builders import text
 
-            panel = text.Panel()
-            panel.title(title)
-            if hasattr(panel, "content"):
-                panel.content(content)
-            if hasattr(panel, "mode"):
-                panel.mode(mode)
-            return panel
+            p: Any = text.Panel()
+            p.title(title)
+            if hasattr(p, "content"):
+                p.content(content)
+            if hasattr(p, "mode"):
+                p.mode(mode)
+            return p
         except ImportError:
             # Fallback: create a stat panel with the title indicating guidance
-            panel = stat.Panel()
-            panel.title(f"{title}")
-            panel.description(content)
-            return panel
+            p = stat.Panel()
+            p.title(f"{title}")
+            p.description(content)
+            return p
 
     @staticmethod
     def create_guidance_panel(
@@ -307,6 +307,7 @@ class SDKAdapter:
             queries.append(query)
 
         # Create appropriate panel type
+        sdk_panel: Any
         if panel_type == "stat":
             sdk_panel = SDKAdapter.create_stat_panel(
                 title=panel.title,

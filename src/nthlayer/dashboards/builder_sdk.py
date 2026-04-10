@@ -632,9 +632,10 @@ class DashboardBuilderSDK:
                     description=getattr(old_panel, "description", ""),
                     query=None,
                 )
-                # Store noValue message for post-processing
+                # Store noValue message for post-processing (dynamic attr,
+                # read back by _apply_no_value_messages via hasattr/getattr)
                 if no_value_msg:
-                    panel._no_value_message = no_value_msg
+                    setattr(panel, "_no_value_message", no_value_msg)
                 return panel
 
             if not queries:
