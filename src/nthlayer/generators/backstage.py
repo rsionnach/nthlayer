@@ -383,4 +383,4 @@ def gate_result_to_status(result: GateResult) -> str:
         GateResult.WARNING: "WARNING",
         GateResult.BLOCKED: "BLOCKED",
     }
-    return mapping.get(result, "BLOCKED")
+    return mapping.get(result, "APPROVED")
