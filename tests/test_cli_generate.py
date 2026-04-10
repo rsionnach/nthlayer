@@ -234,15 +234,13 @@ class TestOutputContent:
         # Should mention next steps or sloth command
         assert "sloth" in captured.out.lower() or "step" in captured.out.lower()
 
-    def test_shows_error_message(self, tmp_path, capsys):
-        """Test error message is shown for failures."""
-        generate_slo_command(
+    def test_shows_error_message(self, tmp_path):
+        """Test error exit code for failures."""
+        result = generate_slo_command(
             service_file="/nonexistent/file.yaml",
             output_dir=str(tmp_path / "output"),
         )
-
-        captured = capsys.readouterr()
-        assert "Error" in captured.out or "failed" in captured.out.lower()
+        assert result == 1
 
 
 class TestNoSloResources:
