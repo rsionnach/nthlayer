@@ -38,15 +38,23 @@ class ScoreBand(str, Enum):
     CRITICAL = "critical"  # 0-24
 
 
+logger = structlog.get_logger()
+
+
 def _gate_thresholds_for_tier(tier: str) -> dict[str, float | None]:
-    """Static tier → gate threshold lookup (warning/blocking % remaining)."""
-    config = TIER_CONFIGS.get(tier) or TIER_CONFIGS["standard"]
+    """Static tier → gate threshold lookup (warning/blocking % remaining).
+
+    Falls back to "standard" if the tier is not in TIER_CONFIGS (e.g. "high"
+    tier is defined in the OpenSRM spec but not yet in nthlayer_common.tiers).
+    """
+    config = TIER_CONFIGS.get(tier)
+    if config is None:
+        logger.warning("tier_not_in_config", tier=tier, fallback="standard")
+        config = TIER_CONFIGS["standard"]
     return {
         "warning": config.error_budget_warning_pct,
         "blocking": config.error_budget_blocking_pct,
     }
-
-logger = structlog.get_logger()
 
 # Score band to letter grade mapping.
 # ScoreBand(str, Enum) means dict.get("excellent") matches ScoreBand.EXCELLENT
