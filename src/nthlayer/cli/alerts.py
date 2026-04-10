@@ -107,29 +107,14 @@ def alerts_explain_command(
     output_format: str = "table",
     slo_filter: str | None = None,
 ) -> int:
-    """Show budget explanations for a service."""
-    from nthlayer.slos.pipeline import AlertPipeline
+    """Show budget explanations for a service.
 
-    prom_url = prometheus_url or os.environ.get("NTHLAYER_PROMETHEUS_URL")
-    pipeline = AlertPipeline(prometheus_url=prom_url, dry_run=True)
-    manifest = load_manifest(service_file, suppress_deprecation_warning=True)
-    result = pipeline.evaluate_service(manifest)
-
-    explanations = result.explanations
-    if slo_filter:
-        # Filter budgets/explanations by SLO name
-        budgets_for_slo = [b for b in result.budgets if slo_filter in b.slo_id]
-        if not budgets_for_slo:
-            console.print(f"[yellow]No SLO matching '{slo_filter}' found[/yellow]")
-            return 1
-        # ExplanationEngine removed in Phase 1 — budget explanations
-        # will be restored via nthlayer-observe (bead nthlayer-hmj)
-        console.print("[yellow]Budget explanations not available in nthlayer-generate[/yellow]")
-        return 0
-
-    # Explanation output paths removed — explanations list is always empty post-Phase 1
+    ExplanationEngine was removed from generate in Phase 1 — budget
+    explanations will be restored via nthlayer-observe (bead nthlayer-hmj).
+    Until then, this command returns a "not available" message.
+    """
     console.print("[yellow]Budget explanations not available in nthlayer-generate[/yellow]")
-    return _exit_code([result])
+    return 0
 
 
 def alerts_test_command(

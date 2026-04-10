@@ -196,42 +196,23 @@ class TestAlertsEvaluate:
 
 
 class TestAlertsExplain:
-    def test_explain_json(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-        f = _write_opensrm_manifest(tmp_path)
-        alerts_explain_command(f, output_format="json")
-        out = json.loads(capsys.readouterr().out)
-        assert isinstance(out, list)
-        assert len(out) >= 1
-        assert "headline" in out[0]
+    """Post-Phase 1: explanations are unavailable in generate.
 
-    def test_explain_markdown(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-        f = _write_opensrm_manifest(tmp_path)
-        alerts_explain_command(f, output_format="markdown")
-        out = capsys.readouterr().out
-        assert "##" in out  # Markdown headline
+    The alerts_explain_command always returns 0 with a "not available"
+    message. Restoration tracked in nthlayer-observe (bead nthlayer-hmj).
+    """
 
-    def test_explain_text(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_explain_returns_zero(self, tmp_path: Path) -> None:
         f = _write_opensrm_manifest(tmp_path)
-        alerts_explain_command(f, output_format="table")
-        out = capsys.readouterr().out
-        assert "budget" in out.lower()
+        assert alerts_explain_command(f, output_format="json") == 0
 
-    def test_explain_slo_filter_match(
-        self,
-        tmp_path: Path,
-        capsys: pytest.CaptureFixture,
-    ) -> None:
+    def test_explain_with_slo_filter(self, tmp_path: Path) -> None:
         f = _write_opensrm_manifest(tmp_path)
-        code = alerts_explain_command(f, output_format="json", slo_filter="availability")
-        out = json.loads(capsys.readouterr().out)
-        assert isinstance(out, list)
-        assert len(out) >= 1
-        assert code in (0, 1, 2)
+        assert alerts_explain_command(f, slo_filter="availability") == 0
 
-    def test_explain_slo_filter_no_match(self, tmp_path: Path) -> None:
+    def test_explain_with_nonexistent_slo_filter(self, tmp_path: Path) -> None:
         f = _write_opensrm_manifest(tmp_path)
-        code = alerts_explain_command(f, slo_filter="nonexistent")
-        assert code == 1
+        assert alerts_explain_command(f, slo_filter="nonexistent") == 0
 
 
 # -------------------------------------------------------------------------

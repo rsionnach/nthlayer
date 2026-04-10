@@ -102,7 +102,21 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
 - `dashboards/` - Intent-based dashboard generation with metric resolution
   - `resolver.py` - MetricResolver: translates intents to Prometheus metrics with fallback chains
   - `templates/` - Technology-specific intent templates (postgresql, redis, kafka, etc.)
-  - `builder_sdk.py` - Grafana dashboard construction using grafana-foundation-sdk
+  - `builder_sdk.py` - `DashboardBuilderSDK`: builds Grafana dashboards via grafana-foundation-sdk;
+    constructor: `service_context`, `resources`, `full_panels`, `discovery_client`,
+    `enable_validation`, `prometheus_url`, `custom_metric_overrides`,
+    `use_intent_templates` (default `True`); `build()` returns
+    `{"dashboard": ..., "overwrite": True, "message": ...}`; hybrid model:
+    intent templates when `use_intent_templates=True`, legacy hardcoded metrics when `False`;
+    `_convert_panel_to_sdk()` handles guidance panels (sets `_no_value_message` attr for
+    post-processing by `_apply_no_value_messages()`); `build_dashboard()` convenience fn
+  - `sdk_adapter.py` - `SDKAdapter`: bridge between NthLayer models and grafana-foundation-sdk;
+    all methods are `@staticmethod`; `create_dashboard()` sets tags/description/
+    time(now-6h/now)/timezone(browser); **`create_guidance_panel()` returns a `(panel, no_value_msg)`
+    tuple** — caller must unpack both values; `convert_slo_to_query()` infers PromQL from SLO name
+    keywords (availability/latency/error) and service type (api/worker/stream);
+    `add_template_variables()` is a no-op placeholder (SDK variable API not yet integrated);
+    module-level `create_service_dashboard()` is incomplete and not used by the main flow
 - `discovery/` - Metric discovery from Prometheus
   - `client.py` - MetricDiscoveryClient: queries Prometheus for available metrics
   - `classifier.py` - Classifies metrics by technology and type
@@ -167,14 +181,14 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `alerts.py` - Alert rule generation from service dependencies (awesome-prometheus-alerts)
   - `sloth.py` - Sloth SLO specification YAML generation
   - `docs.py` - Service README, ADR scaffold, and API documentation generation; `DocsGenerationResult` dataclass
-  - `backstage.py` - Backstage entity JSON generation for service catalog; `BackstageGenerationResult` dataclass; `generate_backstage_entity(service_file, output_dir, prometheus_url, environment)` — auto-detects format via `load_manifest()`, writes `backstage.json`; `generate_backstage_from_manifest(manifest, output_dir)` — takes `ReliabilityManifest` directly; `_build_backstage_entity_from_manifest(manifest)` preferred internal builder; `band_to_grade(band) -> str | None` maps `ScoreBand` → letter (A-F); `gate_result_to_status(result) -> str` maps `GateResult` → "APPROVED"/"WARNING"/"BLOCKED"; static generation: `errorBudget` and `score` sections are `None` (no live data); reads `NTHLAYER_GRAFANA_URL` env var for dashboard links; imports `GateResult` from `nthlayer_common.gate_models`; gate thresholds come from `nthlayer_common.tiers.TIER_CONFIGS` via local `_gate_thresholds_for_tier()` helper (B3 forward-port); `ScoreBand` is defined locally in this module (inlined B6 after `nthlayer.scorecard.models` deletion); tests split across `tests/test_backstage_generator.py` (file-path entry point) and `tests/test_generators_backstage.py` (manifest-level builder, added B6)
+  - `backstage.py` - Backstage entity JSON generation for service catalog; `BackstageGenerationResult` dataclass; `generate_backstage_entity(service_file, output_dir, prometheus_url, environment)` — auto-detects format via `load_manifest()`, writes `backstage.json`; `generate_backstage_from_manifest(manifest, output_dir)` — takes `ReliabilityManifest` directly; `_build_backstage_entity_from_manifest(manifest)` preferred internal builder; `_build_backstage_entity(service_context, resources, source_file)` — legacy builder for old service_context+resources format (kept for compatibility, not the call path from the public API); `band_to_grade(band) -> str | None` maps `ScoreBand` → letter (A-F); `gate_result_to_status(result) -> str` maps `GateResult` → "APPROVED"/"WARNING"/"BLOCKED"; static generation: `errorBudget` and `score` sections are `None` (no live data); reads `NTHLAYER_GRAFANA_URL` env var for dashboard links; imports `GateResult` from `nthlayer_common.gate_models`; gate thresholds come from `nthlayer_common.tiers.TIER_CONFIGS` via local `_gate_thresholds_for_tier()` helper (B3 forward-port); `ScoreBand` is defined locally in this module (inlined B6 after `nthlayer.scorecard.models` deletion); uses `structlog` for error logging (desloppify afaf427); note: `logger.error()` calls use `%s` positional args rather than structlog keyword-arg style — minor debt; tests split across `tests/test_backstage_generator.py` (file-path entry point) and `tests/test_generators_backstage.py` (manifest-level builder, added B6)
 - `validation/` - Metadata and resource validation
 - `policies/` - Build-time spec validation only (runtime policy infra deleted B2 ✓ done 2026-04-08)
   - `engine.py` - PolicyEngine: loads rules from YAML or dict, evaluates against ReliabilityManifest
   - `models.py` - Build-time models: PolicyRule, PolicyViolation, PolicyReport, RuleType, PolicySeverity
   - `rules.py` - RULE_EVALUATORS registry: required_fields, tier_constraint, dependency_rule evaluators
   - `evaluator.py`, `conditions.py`, `audit.py`, `recorder.py`, `repository.py` — DELETED (B2 ✓); moved to nthlayer-observe
-- `api/` — DELETED (B4 ✓ done 2026-04-09); entire FastAPI server (main.py, auth.py, deps.py, routes/health.py, routes/teams.py) moved to nthlayer-observe. `config/settings.py` also lost its API-specific settings (`api_prefix`, `cors_origins`, `cognito_user_pool_id`, `cognito_region`, `cognito_audience`, `jwt_jwks_url`, `jwt_issuer`). Orphaned settings still present in `config/settings.py` pending B7 cleanup: `deployment_webhook_secret_argocd/github/gitlab`, `deployment_providers` (deployments/ deleted B1), `sqs_queue_url`, `job_queue_backend` (queue/ deleted B1, settings not yet removed).
+- `api/` — DELETED (B4 ✓ done 2026-04-09); entire FastAPI server (main.py, auth.py, deps.py, routes/health.py, routes/teams.py) moved to nthlayer-observe. `config/settings.py` also lost its API-specific settings (`api_prefix`, `cors_origins`, `cognito_user_pool_id`, `cognito_region`, `cognito_audience`, `jwt_jwks_url`, `jwt_issuer`). Remaining orphaned settings (`deployment_webhook_secret_*`, `deployment_providers`, `sqs_queue_url`, `job_queue_backend`, `redis_max_connections`) were removed in B7 ✓.
 - `cli/deploy.py` — DELETED (B3 ✓ done 2026-04-09); `check-deploy` command moved to nthlayer-observe. Use `nthlayer-observe check-deploy` for runtime deployment gate enforcement.
 - `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
@@ -378,9 +392,8 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 
 ### Shared Constants for Module Defaults
 - Repeated magic values extracted into module-level constants in `__init__.py` (not scattered across callers)
-- Example: default SLO objective `0.999` defined once in `slos/__init__.py`, imported by `cli/slo.py`, `recording_rules/builder.py`, etc.
+- Example: default SLO objective `99.9` defined once in `slos/__init__.py`, imported by `cli/slo.py`, `recording_rules/builder.py`, etc. (consolidated in 7fd958e)
 - Pattern: if a default value appears in 3+ call sites, promote it to a named constant in the owning module's `__init__.py`
-- Note: `cli/deploy.py`, `cli/portfolio.py`, `portfolio/aggregator.py`, `slos/collector.py` are deleted — remove from any import example lists
 
 ### CLI Formatter System
 - All CLI command output flows through `cli/formatters/` — never construct ad-hoc output strings
@@ -393,6 +406,15 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
   - NTHLAYER007: OwnershipMissing, NTHLAYER008: RunbookMissing
   - NTHLAYER009: PolicyRequiredField, NTHLAYER010: PolicyTierConstraint, NTHLAYER011: PolicyDependencyRule
 - Set `rule_id` on `CheckResult` to emit structured SARIF annotations; omit for generic findings
+
+### Dashboard Validate CLI Command (cli/dashboard_validate.py)
+- `validate_dashboard_command(service_file, prometheus_url, technology, list_intents)` — resolves dashboard intents against live Prometheus metrics
+- Exit codes: 0 = all resolved, **2** = unresolved intents + prometheus_url provided, 0 = unresolved + no prometheus_url (offline/static mode), 1 = file/YAML error
+- `list_intents_command(service_file, technology)` — lists available intents for a service's technology stack; exit 0
+- Display helpers (all exported): `_display_service_info`, `_display_technologies`, `_display_intent_results`, `_display_single_intent`, `_display_discovery_result`, `_display_summary`, `_display_final_verdict`
+- Depends on `DashboardValidator` (dashboards/validator.py) returning `ValidationResult` with `resolved`, `synthesized`, `custom`, `fallback`, `unresolved` lists and `discovery_count`
+- `IntentResult(name, status, metric_name, message)` — per-intent outcome; `status` is `ResolutionStatus` enum (RESOLVED, FALLBACK, UNRESOLVED)
+- Test file: `tests/test_cli_dashboard_validate.py`
 
 ### CLI Smoke Test Suite
 - Location: `tests/smoke/` — end-to-end subprocess tests that invoke the real `nthlayer` CLI
@@ -472,6 +494,26 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 - CLI wiring: `_extract_gate_policy()` was in `cli/deploy.py` (DELETED B3); gate enforcement now lives in nthlayer-observe
 - Exhaustion enforcement in `DeploymentGate.check_deployment()`: `freeze_deploys` → `BLOCKED`, `require_approval` → `WARNING` — now in nthlayer-observe
 
+
+### SLO CLI Commands (cli/slo.py)
+- Three subcommands under `nthlayer slo`: `show`, `list`, `collect`
+- `slo_show_command(service, service_file)`: static display — reads SLO resources from manifest, calculates error budget as `window_minutes × (100 - objective) / 100`, truncates queries >60 chars. Returns 1 if no file found or no SLOs defined.
+- `slo_list_command()`: scans `services/` and `examples/services/` relative to cwd for all `kind: SLO` resources; prints table. Returns 0 even when empty (no SLOs found is not an error).
+- `slo_collect_command(service, prometheus_url, service_file)`: queries live Prometheus — resolves URL from `--prometheus-url` arg → `NTHLAYER_PROMETHEUS_URL` env → `http://localhost:9090`. Auth via `NTHLAYER_METRICS_USER`/`NTHLAYER_METRICS_PASSWORD`. Connection errors print warning and return 0 (not 1). Async internals via `_collect_slo_metrics()` + `PrometheusProvider`.
+- `_parse_window_minutes(window)`: `30d` → 43200, `24h` → 1440, `1w` → 10080; unknown format defaults to 30d (43200 minutes).
+- Style inconsistency (known): `slo show` uses Rich `console`/`header` from `nthlayer.cli.ux`; `slo list` and `slo collect` use plain `print()`.
+- Architectural note: `slo collect` queries live Prometheus from a generate CLI — tension with pure-compiler goal; tracked as debt.
+- Dead stub: `slo_blame_command` reads `NTHLAYER_DATABASE_URL` from env but is unreachable (references deleted db/ runtime concepts); removal tracked separately.
+- Test files: `tests/test_cli_slo.py` (comprehensive unit tests with fixtures/mocks/capsys) and `tests/test_slo_cli.py` (simpler integration-style using `os.chdir()`); duplication is known tech debt.
+
+### Validate-SLO CLI Command (cli/validate_slo.py)
+- `validate_slo_command(service_file, prometheus_url, output_format, demo)` — checks that PromQL metric names in SLO recording rules exist in Prometheus
+- `SLOValidationResult` dataclass: `slo_name`, `query`, `metrics`, `found_metrics`, `missing_metrics`, `all_found`; serializes via `.to_dict()`
+- `extract_metric_names(query)` — parses PromQL expression and returns metric names, filtering out `PROMQL_FUNCTIONS` (sum, rate, avg, max, min, histogram_quantile, etc.)
+- `create_demo_slo_results()` — returns 3 fixed results (payment-api) with mixed found/missing metrics; used by `--demo` flag
+- Exit codes: 0 = all metrics found, 1 = any metric missing (demo always exits 1), 1 = file not found
+- Output formats: table (default) and json (`{"service": ..., "results": [...], "all_valid": bool}`)
+- `--demo` flag bypasses file parsing; runs against hardcoded payment-api results showing "Found" + "Missing" sections
 
 ### Build-Time Policy Engine
 - `PolicyEngine` (policies/engine.py) validates spec correctness at CI/build time — distinct from runtime `PolicyAuditRecorder`/`Repository` (policies/audit.py)
@@ -553,6 +595,8 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 - `tests/fixtures/` now holds only YAML demo fixtures; `tests/fixtures/mock_server.py` and the legacy `tests/mock_server.py` were deleted in B7 (fastapi-based mock stack for provider integration tests — the tests only ran against a manually-started server and had been failing for months)
 - Integration tests using mock servers live in `tests/integration/` (e.g., `tests/integration/test_mock_server_integration.py`)
 - CLI end-to-end smoke tests live in `tests/smoke/` — invoke the real CLI via subprocess; see "CLI Smoke Test Suite" pattern for details
+- **Unit tests for CLI commands** live in `tests/test_cli_*.py` — use `capsys`/`tmp_path`/`unittest.mock.patch` (no subprocess): `test_cli_alerts.py` (alerts show/evaluate/explain/test, respx mocking), `test_cli_dashboard.py` (generate_dashboard_command, dry-run, default path), `test_cli_dashboard_validate.py` (validate_dashboard_command exit codes 0/1/2, list_intents_command), `test_cli_environments.py` (list/diff/validate env commands), `test_cli_generate.py` (generate_slo_command, sloth-only format support), `test_cli_setup.py` (setup wizard, connection testing, GrafanaProfile/PrometheusProfile fixtures), `test_cli_validate_slo.py` (PromQL extraction, SLOValidationResult, demo mode)
+- **Unit tests for providers/identity**: `tests/test_prometheus_provider.py` (PrometheusProvider init, query, query_range; uses AsyncMock on `_request`), `tests/test_ownership.py` (OwnershipSource/Signal/Attribution, DeclaredOwnershipProvider, CODEOWNERSProvider; pytest.mark.asyncio)
 - Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
 - Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
 - Apply `importorskip` to any test module that imports from `[aws]`, `[kubernetes]`, or other optional extras

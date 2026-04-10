@@ -48,18 +48,15 @@ def _gate_thresholds_for_tier(tier: str) -> dict[str, float | None]:
 
 logger = structlog.get_logger()
 
-# Score band to letter grade mapping
+# Score band to letter grade mapping.
+# ScoreBand(str, Enum) means dict.get("excellent") matches ScoreBand.EXCELLENT
+# as a key — no need for duplicate string entries.
 BAND_TO_GRADE: dict[ScoreBand | str, str] = {
     ScoreBand.EXCELLENT: "A",
     ScoreBand.GOOD: "B",
     ScoreBand.FAIR: "C",
     ScoreBand.POOR: "D",
     ScoreBand.CRITICAL: "F",
-    "excellent": "A",
-    "good": "B",
-    "fair": "C",
-    "poor": "D",
-    "critical": "F",
 }
 
 
