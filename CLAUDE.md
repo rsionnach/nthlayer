@@ -124,7 +124,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `discovery.py` - DependencyDiscovery orchestrator
   - `models.py` - Re-export shim → canonical source is `nthlayer_common.dependency_models` (Phase 0 done); exports DependencyType, DependencyDirection, DiscoveredDependency, ResolvedDependency, DependencyGraph, BlastRadiusResult
   - `providers/` - kubernetes, prometheus, consul, etcd, backstage providers
-- `deployments/` - DELETED (B1 ✓ done 2026-04-08) — all Python files removed; empty directory shell remains pending full cleanup in B4
+- `deployments/` — DELETED (B1 ✓ done 2026-04-08; directory shell removed in R5 edge case fix)
 - `scorecard/` — DELETED (B6 ✓ done 2026-04-09); entire scorecard package (models.py, calculator.py) moved to nthlayer-observe. The `ScoreBand` enum was inlined into `generators/backstage.py` because backstage entity generation still needs the band → letter-grade mapping for its static output.
 - `portfolio/` — DELETED (B6 ✓ done 2026-04-09); entire portfolio package (models.py, aggregator.py) moved to nthlayer-observe.
 - `topology/` - Dependency graph topology export for visualization
@@ -616,7 +616,7 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 ### Ruff Lint Configuration
 - Target: Python 3.11 (`target-version = "py311"`), line length: 100
 - Enabled rule sets: `E` (pycodestyle errors), `F` (pyflakes), `I` (isort), `B` (flake8-bugbear)
-- Ignored rules: `B008` (Depends() in function defaults — standard FastAPI pattern), `E402` (module-level import not at top — needed for sys.modules mocking in tests)
+- Ignored rules: `E402` (module-level import not at top — needed for sys.modules mocking in tests), `E501` (line too long — PromQL queries, SARIF rules, metric names are intentionally >100 chars)
 - Run via: `make lint` or `ruff check src/ tests/`
 
 ### Sloppylint (sloppy) Configuration
