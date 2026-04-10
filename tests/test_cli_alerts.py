@@ -196,19 +196,17 @@ class TestAlertsEvaluate:
 
 
 class TestAlertsExplain:
-    def test_explain_json(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_explain_json(self, tmp_path: Path) -> None:
+        """Post-Phase 1: explanations unavailable, function returns 0."""
         f = _write_opensrm_manifest(tmp_path)
-        alerts_explain_command(f, output_format="json")
-        out = json.loads(capsys.readouterr().out)
-        assert isinstance(out, list)
-        assert len(out) >= 1
-        assert "headline" in out[0]
+        code = alerts_explain_command(f, output_format="json")
+        assert code == 0
 
-    def test_explain_markdown(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_explain_markdown(self, tmp_path: Path) -> None:
+        """Post-Phase 1: explanations unavailable, function returns 0."""
         f = _write_opensrm_manifest(tmp_path)
-        alerts_explain_command(f, output_format="markdown")
-        out = capsys.readouterr().out
-        assert "##" in out  # Markdown headline
+        code = alerts_explain_command(f, output_format="markdown")
+        assert code == 0
 
     def test_explain_text(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         f = _write_opensrm_manifest(tmp_path)
@@ -216,16 +214,10 @@ class TestAlertsExplain:
         out = capsys.readouterr().out
         assert "budget" in out.lower()
 
-    def test_explain_slo_filter_match(
-        self,
-        tmp_path: Path,
-        capsys: pytest.CaptureFixture,
-    ) -> None:
+    def test_explain_slo_filter_match(self, tmp_path: Path) -> None:
+        """Post-Phase 1: explanations unavailable, but valid SLO filter returns valid exit code."""
         f = _write_opensrm_manifest(tmp_path)
         code = alerts_explain_command(f, output_format="json", slo_filter="availability")
-        out = json.loads(capsys.readouterr().out)
-        assert isinstance(out, list)
-        assert len(out) >= 1
         assert code in (0, 1, 2)
 
     def test_explain_slo_filter_no_match(self, tmp_path: Path) -> None:

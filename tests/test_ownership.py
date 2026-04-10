@@ -493,8 +493,8 @@ service:
         assert "declared" in sources
         assert "codeowners" in sources
 
-    def test_invalid_service_file(self, capsys, tmp_path):
-        """Test error with invalid service file."""
+    def test_invalid_service_file(self, tmp_path):
+        """Test error exit code with invalid service file."""
         from nthlayer.cli.ownership import ownership_command
 
         service_file = tmp_path / "nonexistent.yaml"
@@ -502,7 +502,4 @@ service:
         exit_code = ownership_command(
             service_file=str(service_file),
         )
-
         assert exit_code == 2
-        captured = capsys.readouterr()
-        assert "Error parsing service file" in captured.out

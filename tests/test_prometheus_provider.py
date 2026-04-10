@@ -340,14 +340,14 @@ class TestRequest:
     @pytest.mark.asyncio
     async def test_request_handles_api_error(self, prometheus_provider, mock_error_response):
         """Test that API errors are properly handled."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.json.return_value = mock_error_response
+        mock_response.raise_for_status = MagicMock()
 
-            mock_response = MagicMock()
-            mock_response.json.return_value = mock_error_response
-            mock_response.raise_for_status = MagicMock()
-            mock_client.request.return_value = mock_response
+        with patch.object(
+            prometheus_provider._client, "request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = mock_response
 
             with pytest.raises(PrometheusProviderError) as exc_info:
                 await prometheus_provider._request("GET", "/api/v1/query", params={"query": "bad"})
