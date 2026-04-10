@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+env:
+  # Resolve nthlayer-common from PyPI, not the local path in [tool.uv.sources]
+  UV_NO_SOURCES: "1"
+
 jobs:
   test:
     runs-on: ubuntu-latest
