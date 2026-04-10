@@ -4,7 +4,6 @@ CLI commands for alert evaluation and management.
 Usage:
     nthlayer alerts evaluate <service-file>   # Full pipeline run
     nthlayer alerts show <service-file>       # Show effective rules
-    nthlayer alerts explain <service-file>    # Budget explanations
     nthlayer alerts test <service-file>       # Dry-run simulation
 
 Exit codes:
@@ -98,22 +97,6 @@ def alerts_show_command(
     else:
         _print_rules_table(manifest.name, manifest.tier, effective)
 
-    return 0
-
-
-def alerts_explain_command(
-    service_file: str,
-    prometheus_url: str | None = None,
-    output_format: str = "table",
-    slo_filter: str | None = None,
-) -> int:
-    """Show budget explanations for a service.
-
-    ExplanationEngine was removed from generate in Phase 1 — budget
-    explanations will be restored via nthlayer-observe (bead nthlayer-hmj).
-    Until then, this command returns a "not available" message.
-    """
-    console.print("[yellow]Budget explanations not available in nthlayer-generate[/yellow]")
     return 0
 
 
@@ -298,7 +281,7 @@ def register_alerts_parser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``alerts`` subcommand group."""
     alerts_parser = subparsers.add_parser(
         "alerts",
-        help="Evaluate, simulate, and explain alert rules",
+        help="Evaluate, simulate, and test alert rules",
         description=(
             "Run alert evaluation against service specs. "
             "Exit codes: 0=healthy, 1=warning, 2=critical."
@@ -337,22 +320,6 @@ def register_alerts_parser(subparsers: argparse._SubParsersAction) -> None:
         default="table",
         help="Output format (default: table)",
     )
-
-    # explain
-    explain_p = alerts_sub.add_parser("explain", help="Show budget explanations")
-    explain_p.add_argument("service_file", help="Path to service YAML file")
-    explain_p.add_argument(
-        "--prometheus-url",
-        "-p",
-        help="Prometheus URL (or set NTHLAYER_PROMETHEUS_URL)",
-    )
-    explain_p.add_argument(
-        "--format",
-        choices=["table", "json", "markdown"],
-        default="table",
-        help="Output format (default: table)",
-    )
-    explain_p.add_argument("--slo", dest="slo_filter", help="Filter by SLO name")
 
     # test
     test_p = alerts_sub.add_parser("test", help="Simulate burn and show what would fire")
@@ -395,14 +362,6 @@ def handle_alerts_command(args: argparse.Namespace) -> int:
             output_format=getattr(args, "format", "table"),
         )
 
-    if sub == "explain":
-        return alerts_explain_command(
-            service_file=args.service_file,
-            prometheus_url=getattr(args, "prometheus_url", None),
-            output_format=getattr(args, "format", "table"),
-            slo_filter=getattr(args, "slo_filter", None),
-        )
-
     if sub == "test":
         return alerts_test_command(
             service_file=args.service_file,
@@ -411,5 +370,5 @@ def handle_alerts_command(args: argparse.Namespace) -> int:
             no_notify=getattr(args, "no_notify", False),
         )
 
-    console.print("Usage: nthlayer alerts {evaluate|show|explain|test}")
+    console.print("Usage: nthlayer alerts {evaluate|show|test}")
     return 1
