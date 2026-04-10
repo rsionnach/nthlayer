@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 import yaml
 
+from nthlayer.alerts import AlertRule
 from nthlayer.generators.alerts import (
     extract_dependencies,
     filter_by_tier,
     generate_alerts_for_service,
     write_prometheus_yaml,
 )
-from nthlayer.alerts import AlertRule
 from nthlayer.specs.models import Resource
 
 

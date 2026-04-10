@@ -9,21 +9,21 @@ Uses the official PagerDuty Python SDK (pagerduty>=6.0.0).
 
 from __future__ import annotations
 
-import structlog
 from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone as timezone_module
 from typing import Any
 
 import pagerduty
+import structlog
 from pagerduty import RestApiV2Client
 
+from nthlayer.core.errors import ProviderError
 from nthlayer.pagerduty.defaults import (
     get_escalation_config,
     get_schedule_config,
     get_schedules_for_tier,
 )
-from nthlayer.core.errors import ProviderError
 from nthlayer.pagerduty.naming import (
     get_escalation_policy_name,
     get_schedule_name,

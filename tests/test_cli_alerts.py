@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import respx
 import yaml
+
 from nthlayer.cli.alerts import (
     alerts_evaluate_command,
     alerts_explain_command,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from _helpers import CHECKOUT_SERVICE, PAYMENT_API_OPENSRM, PROJECT_ROOT, run_nthlayer
 
 pytestmark = pytest.mark.smoke

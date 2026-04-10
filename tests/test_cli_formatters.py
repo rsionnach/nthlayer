@@ -16,11 +16,10 @@ from nthlayer.cli.formatters import (
     ReliabilityReport,
     format_report,
 )
-from nthlayer.cli.formatters.sarif import SARIF_RULES
 from nthlayer.cli.formatters.json_fmt import format_json
 from nthlayer.cli.formatters.junit import format_junit
 from nthlayer.cli.formatters.markdown import format_markdown
-from nthlayer.cli.formatters.sarif import format_sarif
+from nthlayer.cli.formatters.sarif import SARIF_RULES, format_sarif
 
 
 @pytest.fixture

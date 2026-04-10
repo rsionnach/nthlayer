@@ -11,9 +11,10 @@ All validation produces warnings (not errors) per spec.
 
 from __future__ import annotations
 
-import structlog
 import math
 from pathlib import Path
+
+import structlog
 
 from nthlayer.specs.manifest import Contract, ReliabilityManifest
 

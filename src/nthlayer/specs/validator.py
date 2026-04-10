@@ -98,8 +98,9 @@ def validate_service_file(
     file_path = Path(file_path)
 
     # First, detect the format to use appropriate parser
-    from nthlayer.specs.opensrm_parser import is_opensrm_format
     import yaml
+
+    from nthlayer.specs.opensrm_parser import is_opensrm_format
 
     try:
         with open(file_path) as f:

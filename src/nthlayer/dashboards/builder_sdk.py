@@ -11,9 +11,9 @@ Enhanced with the Hybrid Model:
 - Custom metric overrides from service YAML
 """
 
-import structlog
 from typing import Any, Dict, List, Optional
 
+import structlog
 from grafana_foundation_sdk.cog.encoder import JSONEncoder
 
 from nthlayer.dashboards.resolver import MetricResolver, create_resolver

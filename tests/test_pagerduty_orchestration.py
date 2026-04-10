@@ -5,6 +5,7 @@ Tests for PagerDuty Event Orchestration management.
 from unittest.mock import MagicMock, patch
 
 import pagerduty
+
 from nthlayer.pagerduty.orchestration import (
     EventOrchestrationManager,
     OrchestrationResult,

@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.core.errors import ProviderError
 from nthlayer.orchestration.handlers import (
     AlertHandler,

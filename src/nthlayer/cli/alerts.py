@@ -115,7 +115,6 @@ def alerts_explain_command(
     manifest = load_manifest(service_file, suppress_deprecation_warning=True)
     result = pipeline.evaluate_service(manifest)
 
-    explanations = result.explanations
     if slo_filter:
         # Filter budgets/explanations by SLO name
         budgets_for_slo = [b for b in result.budgets if slo_filter in b.slo_id]

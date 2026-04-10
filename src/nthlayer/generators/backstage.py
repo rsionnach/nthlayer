@@ -8,7 +8,6 @@ reliability data (SLOs, error budgets, scorecard, deployment gate) in service pa
 from __future__ import annotations
 
 import json
-import structlog
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,8 +15,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+import structlog
 from nthlayer_common.gate_models import GateResult
 from nthlayer_common.tiers import TIER_CONFIGS
+
 from nthlayer.specs.loader import load_manifest
 from nthlayer.specs.manifest import ReliabilityManifest
 

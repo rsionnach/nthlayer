@@ -557,7 +557,7 @@ class TestCreateResolver:
     @patch("nthlayer.dashboards.resolver.MetricDiscoveryClient")
     def test_with_discovery_kwargs(self, mock_client_class):
         """Test passing additional kwargs to discovery client."""
-        resolver = create_resolver(
+        create_resolver(
             prometheus_url="http://prometheus:9090",
             timeout=30,
         )

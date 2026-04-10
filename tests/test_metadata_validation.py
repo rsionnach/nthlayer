@@ -2,6 +2,7 @@
 
 import pytest
 import yaml
+
 from nthlayer.validation import (
     AlertForDuration,
     HasRequiredAnnotations,

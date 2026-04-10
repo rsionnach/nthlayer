@@ -8,7 +8,6 @@ check-deploy`).
 from __future__ import annotations
 
 import pytest
-
 from _helpers import CHECKOUT_SERVICE, run_nthlayer
 
 pytestmark = pytest.mark.smoke

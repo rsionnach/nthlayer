@@ -5,6 +5,7 @@ Uses parametrization to test all templates with the same test patterns.
 """
 
 import pytest
+
 from nthlayer.dashboards.templates.base_intent import IntentBasedTemplate
 from nthlayer.dashboards.templates.consul_intent import ConsulIntentTemplate
 from nthlayer.dashboards.templates.elasticsearch_intent import ElasticsearchIntentTemplate
@@ -184,7 +185,7 @@ class TestSpecificTemplates:
         template = HTTPIntentTemplate()
         assert template.name == "http"
         specs = template.get_panel_specs("test-service")
-        overview = template.get_overview_panels("test-service")
+        template.get_overview_panels("test-service")
         assert len(specs) > 0
 
     def test_kafka_template_basic(self):
@@ -210,7 +211,7 @@ class TestSpecificTemplates:
         template = MySQLIntentTemplate()
         assert template.name == "mysql"
         specs = template.get_panel_specs("test-service")
-        overview = template.get_overview_panels("test-service")
+        template.get_overview_panels("test-service")
         assert len(specs) > 0
 
     def test_nats_template_basic(self):
@@ -236,7 +237,7 @@ class TestSpecificTemplates:
         template = PostgreSQLIntentTemplate()
         assert template.name == "postgresql"
         specs = template.get_panel_specs("test-service")
-        overview = template.get_overview_panels("test-service")
+        template.get_overview_panels("test-service")
         assert len(specs) > 0
 
     def test_pulsar_template_basic(self):
@@ -262,7 +263,7 @@ class TestSpecificTemplates:
         template = RedisIntentTemplate()
         assert template.name == "redis"
         specs = template.get_panel_specs("test-service")
-        overview = template.get_overview_panels("test-service")
+        template.get_overview_panels("test-service")
         assert len(specs) > 0
 
     def test_stream_template_basic(self):
@@ -270,7 +271,7 @@ class TestSpecificTemplates:
         template = StreamIntentTemplate()
         assert template.name == "stream"
         specs = template.get_panel_specs("test-service")
-        overview = template.get_overview_panels("test-service")
+        template.get_overview_panels("test-service")
         assert len(specs) > 0
 
     def test_traefik_template_basic(self):
@@ -287,5 +288,5 @@ class TestSpecificTemplates:
         template = WorkerIntentTemplate()
         assert template.name == "worker"
         specs = template.get_panel_specs("test-service")
-        overview = template.get_overview_panels("test-service")
+        template.get_overview_panels("test-service")
         assert len(specs) > 0

@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 from nthlayer.cli.plan import plan_command, print_plan_summary
 from nthlayer.orchestrator import PlanResult
 
@@ -187,7 +188,7 @@ class TestPlanCommand:
 
     def test_plan_text_output(self, sample_service_yaml, capsys):
         """Test plan with text output format."""
-        result = plan_command(
+        plan_command(
             service_yaml=sample_service_yaml,
             output_format="table",
         )

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.cli.validate_metadata import (
     _print_validation_result,
     validate_metadata_command,

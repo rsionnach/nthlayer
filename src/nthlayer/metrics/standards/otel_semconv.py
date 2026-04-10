@@ -11,15 +11,9 @@ Package: https://pypi.org/project/opentelemetry-semantic-conventions/
 
 from __future__ import annotations
 
-# HTTP Metrics
-from opentelemetry.semconv.metrics.http_metrics import (
-    HTTP_CLIENT_REQUEST_DURATION,
-    HTTP_SERVER_REQUEST_DURATION,
-)
-
-# DB Metrics
-from opentelemetry.semconv.metrics.db_metrics import (
-    DB_CLIENT_OPERATION_DURATION,
+# DB Attributes
+from opentelemetry.semconv.attributes.db_attributes import (
+    DB_OPERATION_NAME,
 )
 
 # HTTP Attributes
@@ -34,22 +28,27 @@ from opentelemetry.semconv.attributes.url_attributes import (
     URL_SCHEME,
 )
 
-# DB Attributes
-from opentelemetry.semconv.attributes.db_attributes import (
-    DB_OPERATION_NAME,
+# DB Metrics
+from opentelemetry.semconv.metrics.db_metrics import (
+    DB_CLIENT_OPERATION_DURATION,
+)
+
+# HTTP Metrics
+from opentelemetry.semconv.metrics.http_metrics import (
+    HTTP_CLIENT_REQUEST_DURATION,
+    HTTP_SERVER_REQUEST_DURATION,
 )
 
 # Alias for backward compatibility - OTel renamed db.system to db.system.name
 DB_SYSTEM = "db.system"
 
 # Server Attributes
-from opentelemetry.semconv.attributes.server_attributes import (
-    SERVER_ADDRESS,
-)
-
 # Error Attributes
 from opentelemetry.semconv.attributes.error_attributes import (
     ERROR_TYPE,
+)
+from opentelemetry.semconv.attributes.server_attributes import (
+    SERVER_ADDRESS,
 )
 
 # Legacy metrics from MetricInstruments (older schema)

@@ -5,9 +5,10 @@ This module provides the base class for intent-based templates that use
 the metric resolution system instead of hardcoded metric names.
 """
 
-import structlog
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional
+
+import structlog
 
 from nthlayer.dashboards.models import Panel, Target
 from nthlayer.dashboards.panel_spec import PanelSpec, PanelType

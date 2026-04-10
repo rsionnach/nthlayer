@@ -9,6 +9,7 @@ from importlib.metadata import version as get_version
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from nthlayer.alerts.models import AlertRule
 from nthlayer.demo import (
     _default_org_id,

@@ -14,6 +14,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+# Now import formatters (they import from .models, not from here)
+from .json_fmt import format_json
+from .junit import format_junit
+from .markdown import format_markdown
+
 # Import data models from models.py first (before formatter imports)
 from .models import (
     CheckResult,
@@ -21,11 +26,6 @@ from .models import (
     OutputFormat,
     ReliabilityReport,
 )
-
-# Now import formatters (they import from .models, not from here)
-from .json_fmt import format_json
-from .junit import format_junit
-from .markdown import format_markdown
 from .sarif import format_sarif
 
 

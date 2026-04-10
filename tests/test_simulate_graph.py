@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from nthlayer.simulate.graph import (
-    build_failure_models,
     build_dependency_models,
+    build_failure_models,
 )
 from nthlayer.specs.manifest import (
     Dependency,

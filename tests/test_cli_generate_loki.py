@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.cli.generate_loki import (
     generate_loki_command,
     handle_loki_command,
@@ -262,11 +263,11 @@ class TestGenerateLokiCommand:
 
         # Create mix of service and dependency alerts
         alerts = []
-        for i in range(3):
+        for _i in range(3):
             alert = MagicMock()
             alert.category = "service"
             alerts.append(alert)
-        for i in range(5):
+        for _i in range(5):
             alert = MagicMock()
             alert.category = "dependency"
             alerts.append(alert)
