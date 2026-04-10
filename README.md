@@ -7,9 +7,9 @@
 
 # NthLayer
 
-**Shift-left reliability for platform teams.**
+**Reliability as code. Pure compiler.**
 
-Define reliability requirements as code. Validate SLOs against dependency chains. Detect drift before incidents. Gate deployments on real data.
+Define reliability requirements in a manifest. Generate dashboards, alerts, SLOs, and documentation — deterministically, every time.
 
 [![Status: Alpha](https://img.shields.io/badge/Status-Alpha-orange?style=for-the-badge)](https://github.com/rsionnach/nthlayer)
 [![PyPI](https://img.shields.io/pypi/v/nthlayer?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/nthlayer/)
@@ -20,11 +20,9 @@ Define reliability requirements as code. Validate SLOs against dependency chains
 
 ```bash
 pip install nthlayer
+nthlayer init
+nthlayer apply service.yaml
 ```
-
-<div align="center">
-  <img src="demo/vhs/check-deploy-demo.gif" alt="nthlayer check-deploy demo" width="700">
-</div>
 
 ---
 
@@ -34,33 +32,38 @@ Reliability decisions happen too late. Teams set SLOs in isolation, deploy witho
 
 ## 💡 The Solution
 
-NthLayer moves reliability left:
+NthLayer is a **pure compiler** for reliability infrastructure. Write a manifest, get artifacts:
 
 ```
-service.yaml → validate → check-deploy → deploy
-                  │            │
-                  │            └── Error budget ok? Drift acceptable?
+service.yaml → validate → apply
+                  │          │
+                  │          └── Grafana dashboards, Prometheus alerts,
+                  │              recording rules, SLOs, PagerDuty config,
+                  │              Backstage entities, service docs
                   │
                   └── SLO feasible? Dependencies support it? Metrics exist?
+                      Policies pass? Ceiling valid?
 ```
+
+NthLayer generates. [nthlayer-observe](https://github.com/rsionnach/nthlayer-observe) enforces at runtime.
 
 ---
 
 ## ⚡ Core Features
 
-### Drift Detection
+### Artifact Generation
 
-Predict SLO exhaustion before it happens. Don't wait for the budget to hit zero.
+Generate dashboards, alerts, and SLOs from a single spec.
 
 ```bash
-$ nthlayer drift payment-api
+$ nthlayer apply service.yaml
 
-payment-api: CRITICAL
-  Current: 73.2% budget remaining
-  Trend: -2.1%/day (gradual decline)
-  Projection: Budget exhausts in 23 days
-
-  Recommendation: Investigate error rate increase before next release
+Generated:
+  → dashboard.json (Grafana)
+  → alerts.yaml (Prometheus)
+  → recording-rules.yaml (Prometheus)
+  → slos.yaml (OpenSLO)
+  → backstage.json (Backstage entity)
 ```
 
 ### Dependency-Aware SLO Validation
@@ -82,37 +85,6 @@ Serial availability: 99.84%
 Recommendation: Reduce target to 99.8% or improve user-service SLO
 ```
 
-### Deployment Gates
-
-Block deploys when error budget is exhausted or drift is critical.
-
-```bash
-$ nthlayer check-deploy payment-api
-
-ERROR: Deployment blocked
-  - Error budget: -47 minutes (exhausted)
-  - Drift severity: critical
-  - 3 P1 incidents in last 7 days
-
-Exit code: 2 (BLOCKED)
-```
-
-### Blast Radius Analysis
-
-Understand impact before making changes.
-
-```bash
-$ nthlayer blast-radius payment-api
-
-Direct dependents (3):
-  • checkout-service (critical) - 847K req/day
-  • order-service (critical) - 523K req/day
-  • refund-worker (standard) - 12K req/day
-
-Transitive impact: 12 services, 2.1M daily requests
-Risk: HIGH - affects checkout flow
-```
-
 ### Metric Recommendations
 
 Enforce OpenTelemetry conventions. Know what's missing before production.
@@ -127,18 +99,41 @@ Required (SLO-critical):
 Run with --show-code for instrumentation examples.
 ```
 
-### Artifact Generation
+### Monte Carlo SLO Simulation
 
-Generate dashboards, alerts, and SLOs from a single spec.
+Model failure scenarios before they happen.
 
 ```bash
-$ nthlayer apply service.yaml
+$ nthlayer simulate service.yaml --scenarios 10000
 
-Generated:
-  → dashboard.json (Grafana)
-  → alerts.yaml (Prometheus)
-  → recording-rules.yaml (Prometheus)
-  → slos.yaml (OpenSLO)
+Monte Carlo Simulation (10,000 runs)
+  SLO: availability ≥ 99.9%
+  Result: 94.2% of scenarios meet target
+  P50 availability: 99.95%
+  P99 availability: 99.82%
+  Risk: 5.8% chance of SLO breach in 30d window
+```
+
+### Topology Export
+
+Export dependency graphs for correlation engines.
+
+```bash
+$ nthlayer topology export service.yaml --format json
+$ nthlayer topology export service.yaml --format mermaid
+$ nthlayer topology export service.yaml --format dot
+```
+
+### Policy Validation
+
+Enforce organizational standards at build time.
+
+```bash
+$ nthlayer validate service.yaml --policies policies.yaml
+
+✓ required_fields: ownership.runbook present
+✗ tier_constraint: critical services require deployment gates
+✓ dependency_rule: all critical deps have SLOs
 ```
 
 ---
@@ -154,9 +149,6 @@ nthlayer init
 
 # Validate and generate
 nthlayer apply service.yaml
-
-# Check deployment readiness
-nthlayer check-deploy payment-api
 ```
 
 ### Minimal `service.yaml`
@@ -182,8 +174,17 @@ NthLayer also supports the [OpenSRM format](https://rsionnach.github.io/nthlayer
 # GitHub Actions
 - name: Validate reliability
   run: |
-    nthlayer validate-slo ${{ matrix.service }}
-    nthlayer check-deploy ${{ matrix.service }}
+    nthlayer validate service.yaml
+    nthlayer validate-slo service.yaml
+    nthlayer apply service.yaml --output-dir generated/
+```
+
+For runtime enforcement (deployment gates, drift detection, error budget checks), use [nthlayer-observe](https://github.com/rsionnach/nthlayer-observe):
+
+```yaml
+- name: Gate deployment
+  run: |
+    nthlayer-observe check-deploy payment-api
 ```
 
 Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins**
@@ -195,9 +196,9 @@ Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins
 | Traditional Approach | NthLayer |
 |---------------------|----------|
 | Set SLOs in isolation | Validate against dependency chains |
-| Alert when budget exhausted | Predict exhaustion with drift detection |
-| Discover missing metrics in incidents | Enforce before deployment |
 | Manual dashboard creation | Generate from spec |
+| Copy-paste alerts | 593+ alert templates, auto-selected |
+| Discover missing metrics in incidents | Enforce before deployment |
 | "Is this ready?" = opinion | "Is this ready?" = deterministic check |
 
 ---
@@ -211,7 +212,6 @@ Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins
 | Guide | Description |
 |-------|-------------|
 | [Quick Start](https://rsionnach.github.io/nthlayer/getting-started/quick-start/) | Get running in 5 minutes |
-| [Drift Detection](https://rsionnach.github.io/nthlayer/features/drift/) | Predict SLO exhaustion |
 | [Dependency Discovery](https://rsionnach.github.io/nthlayer/features/dependencies/) | Automatic dependency mapping |
 | [CI/CD Integration](https://rsionnach.github.io/nthlayer/guides/cicd/) | Pipeline setup |
 | [CLI Reference](https://rsionnach.github.io/nthlayer/reference/cli/) | All commands |
@@ -220,27 +220,31 @@ Works with: **GitHub Actions**, **GitLab CI**, **ArgoCD**, **Tekton**, **Jenkins
 
 ## 🗺️ Roadmap
 
-- [x] Artifact generation (dashboards, alerts, SLOs)
-- [x] Deployment gates (check-deploy)
-- [x] Error budget tracking
-- [x] Portfolio view
-- [x] Drift detection
-- [x] Dependency discovery
-- [x] validate-slo
-- [x] blast-radius
-- [x] Metric recommendations
-- [x] OpenSRM manifest format (`srm/v1`)
-- [x] Reliability scorecard
-- [x] Monte Carlo SLO simulation (`nthlayer simulate`)
-- [x] Loki alert generation
-- [x] Recording rules generation
-- [x] Contract & dependency validation
-- [x] Intelligent alerts pipeline
+### Generate (this repo)
+- [x] Artifact generation (dashboards, alerts, SLOs, recording rules, Loki alerts)
+- [x] Dependency-aware SLO validation
+- [x] Metric recommendations (OpenTelemetry conventions)
+- [x] Monte Carlo SLO simulation
+- [x] Policy validation (build-time)
+- [x] Topology export (JSON, Mermaid, DOT)
+- [x] OpenSRM manifest format (`opensrm/v1`)
 - [x] Identity resolution & ownership
+- [x] Backstage entity generation
+- [x] Service documentation generation
 - [x] CI/CD GitHub Action
 - [ ] Agentic inference (`nthlayer infer`)
 - [ ] MCP server integration
 - [ ] Backstage plugin
+
+### Observe ([nthlayer-observe](https://github.com/rsionnach/nthlayer-observe))
+- [x] Deployment gates (`check-deploy`)
+- [x] Drift detection (`drift`)
+- [x] Error budget collection (`collect`)
+- [x] Portfolio view (`portfolio`)
+- [x] Reliability scorecard (`scorecard`)
+- [x] Blast radius analysis (`blast-radius`)
+- [x] Dependency discovery (`discover`, `dependencies`)
+- [x] Runtime verification (`verify`)
 
 ---
 
@@ -301,14 +305,15 @@ NthLayer is one component in the OpenSRM ecosystem. Each component solves a comp
 - NthLayer exports service topology that [nthlayer-correlate](https://github.com/rsionnach/nthlayer-correlate) uses for topology-aware signal correlation
 - [nthlayer-respond's](https://github.com/rsionnach/nthlayer-respond) post-incident findings feed back into NthLayer as rule refinements (alerts that should have fired earlier or didn't fire at all)
 
-Each component works alone. Someone who just needs reliability-as-code adopts NthLayer without needing nthlayer-measure, nthlayer-correlate, or nthlayer-respond.
+Each component works alone. Someone who just needs reliability-as-code adopts NthLayer without needing the rest of the ecosystem.
 
 | Component | What it does | Link |
 |-----------|-------------|------|
 | **OpenSRM** | Specification for declaring service reliability requirements | [OpenSRM](https://github.com/rsionnach/opensrm) |
+| **NthLayer** | Generate monitoring infrastructure from manifests (this repo) | [nthlayer](https://github.com/rsionnach/nthlayer) |
+| **nthlayer-observe** | Runtime enforcement: deployment gates, drift detection, error budgets | [nthlayer-observe](https://github.com/rsionnach/nthlayer-observe) |
 | **nthlayer-learn** | Data primitive for recording AI judgments and measuring correctness | [nthlayer-learn](https://github.com/rsionnach/nthlayer-learn) |
 | **nthlayer-measure** | Quality measurement and governance for AI agents | [nthlayer-measure](https://github.com/rsionnach/nthlayer-measure) |
-| **NthLayer** | Generate monitoring infrastructure from manifests (this repo) | [nthlayer](https://github.com/rsionnach/nthlayer) |
 | **nthlayer-correlate** | Situational awareness through signal correlation | [nthlayer-correlate](https://github.com/rsionnach/nthlayer-correlate) |
 | **nthlayer-respond** | Multi-agent incident response | [nthlayer-respond](https://github.com/rsionnach/nthlayer-respond) |
 
