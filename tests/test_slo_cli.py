@@ -1,6 +1,6 @@
 """Tests for SLO CLI commands.
 
-Tests for nthlayer slo show/list/collect/blame commands.
+Tests for nthlayer slo show/list/collect commands.
 """
 
 import tempfile
@@ -252,26 +252,6 @@ resources:
             )
             # Returns 0 even with connection error (displays error in output)
             assert result == 0
-
-
-class TestSloBlameCommand:
-    """Tests for nthlayer slo blame command."""
-
-    def test_blame_requires_database(self):
-        """Test that blame returns error when database not configured."""
-        import os
-
-        from nthlayer.cli.slo import slo_blame_command
-
-        # Ensure database URL is not set
-        old_db_url = os.environ.pop("NTHLAYER_DATABASE_URL", None)
-        try:
-            result = slo_blame_command("payment-api")
-            # Returns 1 when database not configured
-            assert result == 1
-        finally:
-            if old_db_url is not None:
-                os.environ["NTHLAYER_DATABASE_URL"] = old_db_url
 
 
 class TestWindowParsing:
