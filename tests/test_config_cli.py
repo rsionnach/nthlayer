@@ -663,7 +663,7 @@ class TestSecretsVerifyCommand:
             }
             mock_resolver.return_value = mock_instance
 
-            result = secrets_verify_command()
+            secrets_verify_command()
 
         mock_instance.verify_secrets.assert_called_once_with(REQUIRED_SECRETS)
 

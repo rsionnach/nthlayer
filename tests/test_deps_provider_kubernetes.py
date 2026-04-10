@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from nthlayer.dependencies.models import DependencyType
 from nthlayer.dependencies.providers.base import deduplicate_dependencies
 
@@ -444,7 +445,7 @@ class TestKubernetesDepProviderHelpers:
         from nthlayer.dependencies.models import DiscoveredDependency
         from nthlayer.dependencies.providers.kubernetes import KubernetesDepProvider
 
-        provider = KubernetesDepProvider()
+        KubernetesDepProvider()
 
         deps = [
             DiscoveredDependency(

@@ -3,6 +3,7 @@
 import pytest
 import respx
 from httpx import Response
+
 from nthlayer.dependencies.models import DependencyType
 from nthlayer.dependencies.providers.base import deduplicate_dependencies, infer_dependency_type
 from nthlayer.dependencies.providers.consul import (
@@ -236,32 +237,32 @@ class TestConsulDepProviderInferType:
 
     def test_infer_postgres(self):
         """Test inferring PostgreSQL as DATASTORE."""
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
         assert infer_dependency_type("postgresql") == DependencyType.DATASTORE
 
     def test_infer_mysql(self):
         """Test inferring MySQL as DATASTORE."""
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
         assert infer_dependency_type("mysql-primary") == DependencyType.DATASTORE
 
     def test_infer_redis(self):
         """Test inferring Redis as DATASTORE."""
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
         assert infer_dependency_type("redis-cache") == DependencyType.DATASTORE
 
     def test_infer_kafka(self):
         """Test inferring Kafka as QUEUE."""
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
         assert infer_dependency_type("kafka-cluster") == DependencyType.QUEUE
 
     def test_infer_rabbitmq(self):
         """Test inferring RabbitMQ as QUEUE."""
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
         assert infer_dependency_type("rabbitmq") == DependencyType.QUEUE
 
     def test_infer_service(self):
         """Test inferring regular service."""
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
         assert infer_dependency_type("payment-api") == DependencyType.SERVICE
 
 
@@ -601,7 +602,7 @@ class TestConsulDepProviderDeduplicate:
         """Test deduplication keeps highest confidence."""
         from nthlayer.dependencies.models import DiscoveredDependency
 
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
 
         deps = [
             DiscoveredDependency(
@@ -632,7 +633,7 @@ class TestConsulDepProviderDeduplicate:
         """Test deduplication keeps different targets."""
         from nthlayer.dependencies.models import DiscoveredDependency
 
-        provider = ConsulDepProvider()
+        ConsulDepProvider()
 
         deps = [
             DiscoveredDependency(

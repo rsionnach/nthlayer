@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from _helpers import CHECKOUT_SERVICE, run_nthlayer
 
 pytestmark = pytest.mark.smoke

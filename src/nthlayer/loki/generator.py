@@ -6,9 +6,9 @@ Generates LogQL alert rules from service definitions.
 
 from __future__ import annotations
 
-import structlog
 from pathlib import Path
 
+import structlog
 import yaml
 
 from nthlayer.specs.helpers import extract_dependency_technologies

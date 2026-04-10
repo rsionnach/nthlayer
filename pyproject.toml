@@ -94,6 +94,7 @@ line-length = 100
 select = ["E", "F", "I", "B"]
 ignore = [
     "E402",  # Module level import not at top - needed for sys.modules mocking in tests
+    "E501",  # Line too long - PromQL queries, SARIF rules, metric names are intentionally >100 chars
 ]
 
 [tool.sloppy]

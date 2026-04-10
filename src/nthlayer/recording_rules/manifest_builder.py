@@ -296,7 +296,6 @@ class ManifestRecordingRuleBuilder:
     ) -> list[RecordingRule]:
         """Build recording rules for throughput SLO."""
         minimum_rps = slo.target
-        window = slo.window
 
         rules = []
 

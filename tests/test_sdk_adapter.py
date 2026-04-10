@@ -3,6 +3,7 @@
 import json
 
 import pytest
+
 from nthlayer.dashboards.models import Panel, Target
 from nthlayer.dashboards.sdk_adapter import SDKAdapter, create_service_dashboard
 from nthlayer.specs.models import ServiceContext

@@ -4,8 +4,9 @@ Metric classifier for technology and type detection.
 Classifies discovered metrics into technology groups based on naming patterns.
 """
 
-import structlog
 import re
+
+import structlog
 
 from .models import DiscoveredMetric, MetricType, TechnologyGroup
 

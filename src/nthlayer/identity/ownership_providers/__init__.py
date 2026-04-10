@@ -7,7 +7,10 @@ Static providers (declared, codeowners) remain here in generate.
 """
 
 from nthlayer.identity.ownership_providers.backstage import BackstageOwnershipProvider
-from nthlayer.identity.ownership_providers.base import BaseOwnershipProvider, OwnershipProviderHealth
+from nthlayer.identity.ownership_providers.base import (
+    BaseOwnershipProvider,
+    OwnershipProviderHealth,
+)
 from nthlayer.identity.ownership_providers.codeowners import CODEOWNERSProvider
 from nthlayer.identity.ownership_providers.declared import DeclaredOwnershipProvider
 from nthlayer.identity.ownership_providers.kubernetes import KubernetesOwnershipProvider

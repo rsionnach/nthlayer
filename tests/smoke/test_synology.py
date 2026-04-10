@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 from _helpers import CHECKOUT_SERVICE, run_nthlayer
 
 PROMETHEUS_URL = os.environ.get("NTHLAYER_PROMETHEUS_URL", "")

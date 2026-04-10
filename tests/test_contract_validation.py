@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 import yaml
+
 from nthlayer.specs.contracts import (
     ContractRegistry,
     validate_dependency_expectations,

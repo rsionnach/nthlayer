@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.cli.environments import (
     _diff_dicts,
     diff_envs_command,
@@ -387,7 +388,7 @@ class TestValidateEnvCommand:
             mismatch = env_dir / "test.yaml"
             mismatch.write_text("environment: different\nservice:\n  tier: low\n")
 
-            result = validate_env_command("test", directory=tmpdir)
+            validate_env_command("test", directory=tmpdir)
 
             # Should warn but not fail
             captured = capsys.readouterr()
@@ -402,7 +403,7 @@ class TestValidateEnvCommand:
             unknown = env_dir / "test.yaml"
             unknown.write_text("environment: test\nunknown_field: value\n")
 
-            result = validate_env_command("test", directory=tmpdir)
+            validate_env_command("test", directory=tmpdir)
 
             captured = capsys.readouterr()
             # Should warn about unknown field

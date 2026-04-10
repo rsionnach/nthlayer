@@ -12,10 +12,11 @@ Resolution Waterfall:
 5. Guidance (return instrumentation instructions)
 """
 
-import structlog
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
+
+import structlog
 
 from nthlayer.dashboards.intents import MetricIntent, get_intent
 from nthlayer.discovery.client import MetricDiscoveryClient

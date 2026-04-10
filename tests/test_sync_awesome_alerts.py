@@ -2,13 +2,12 @@
 Tests for the awesome-prometheus-alerts sync script.
 """
 
+# Import from scripts directory
+import sys
 import tempfile
 from pathlib import Path
 
 import yaml
-
-# Import from scripts directory
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 

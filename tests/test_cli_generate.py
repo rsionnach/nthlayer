@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 from nthlayer.cli.generate import generate_slo_command
 
 

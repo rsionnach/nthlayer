@@ -1,10 +1,11 @@
 """Tests for service specification parsing and validation."""
 
 import pytest
+
 from nthlayer.specs import Resource, ServiceContext, parse_service_file
-from nthlayer.specs.validator import validate_service_file
 from nthlayer.specs.parser import ServiceParseError, render_resource_spec
 from nthlayer.specs.template import substitute_variables, validate_template_variables
+from nthlayer.specs.validator import validate_service_file
 
 
 class TestServiceContext:

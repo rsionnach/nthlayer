@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.dependencies.models import DependencyType
 from nthlayer.dependencies.providers.base import deduplicate_dependencies, infer_dependency_type
 
@@ -302,42 +303,42 @@ class TestEtcdDepProviderInferType:
         """Test inferring PostgreSQL as DATASTORE."""
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
         assert infer_dependency_type("postgresql") == DependencyType.DATASTORE
 
     def test_infer_mysql(self, mock_etcd3):
         """Test inferring MySQL as DATASTORE."""
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
         assert infer_dependency_type("mysql-primary") == DependencyType.DATASTORE
 
     def test_infer_redis(self, mock_etcd3):
         """Test inferring Redis as DATASTORE."""
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
         assert infer_dependency_type("redis-cache") == DependencyType.DATASTORE
 
     def test_infer_kafka(self, mock_etcd3):
         """Test inferring Kafka as QUEUE."""
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
         assert infer_dependency_type("kafka-cluster") == DependencyType.QUEUE
 
     def test_infer_rabbitmq(self, mock_etcd3):
         """Test inferring RabbitMQ as QUEUE."""
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
         assert infer_dependency_type("rabbitmq") == DependencyType.QUEUE
 
     def test_infer_service(self, mock_etcd3):
         """Test inferring regular service."""
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
         assert infer_dependency_type("payment-api") == DependencyType.SERVICE
 
 
@@ -600,7 +601,7 @@ class TestEtcdDepProviderDeduplicate:
         from nthlayer.dependencies.models import DiscoveredDependency
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
 
         deps = [
             DiscoveredDependency(
@@ -629,7 +630,7 @@ class TestEtcdDepProviderDeduplicate:
         from nthlayer.dependencies.models import DiscoveredDependency
         from nthlayer.dependencies.providers.etcd import EtcdDepProvider
 
-        provider = EtcdDepProvider()
+        EtcdDepProvider()
 
         deps = [
             DiscoveredDependency(

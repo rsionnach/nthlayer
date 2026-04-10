@@ -4,10 +4,10 @@ Prometheus metric discovery client.
 Queries Prometheus to discover actual metrics for a service, inspired by autograf.
 """
 
-import structlog
 from typing import Dict, List, Optional
 
 import httpx
+import structlog
 
 from .classifier import MetricClassifier
 from .models import DiscoveredMetric, DiscoveryResult, MetricType, TechnologyGroup

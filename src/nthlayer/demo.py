@@ -25,13 +25,13 @@ from nthlayer.cli.alerts import handle_alerts_command, register_alerts_parser
 from nthlayer.cli.generate_loki import handle_loki_command, register_loki_parser
 from nthlayer.cli.identity import handle_identity_command, register_identity_parser
 from nthlayer.cli.migrate import handle_migrate_command, register_migrate_parser
-from nthlayer.cli.simulate import handle_simulate_command, register_simulate_parser
 from nthlayer.cli.ownership import handle_ownership_command, register_ownership_parser
 from nthlayer.cli.recommend_metrics import (
     handle_recommend_metrics_command,
     register_recommend_metrics_parser,
 )
 from nthlayer.cli.setup import handle_setup_command, register_setup_parser
+from nthlayer.cli.simulate import handle_simulate_command, register_simulate_parser
 from nthlayer.cli.slo import handle_slo_command, register_slo_parser
 from nthlayer.cli.topology import handle_topology_command, register_topology_parser
 from nthlayer.cli.ux import print_banner

@@ -6,6 +6,7 @@ Tests for the secret resolution system and backends.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nthlayer.config.secrets import (
     SECRET_REF_PATTERN,
     EnvSecretBackend,

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pagerduty
 import pytest
+
 from nthlayer.pagerduty.resources import (
     PagerDutyAPIError,
     PagerDutyResourceManager,

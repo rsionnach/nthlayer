@@ -6,11 +6,11 @@ Generates Sloth specification YAML from NthLayer service definitions.
 
 from __future__ import annotations
 
-import structlog
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import structlog
 import yaml
 
 from nthlayer.specs.manifest import ReliabilityManifest, SLODefinition

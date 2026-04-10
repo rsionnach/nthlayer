@@ -1,6 +1,7 @@
 """Tests for conftest/OPA policy validation."""
 
 import yaml
+
 from nthlayer.validation.conftest import ConftestValidator, validate_spec
 
 

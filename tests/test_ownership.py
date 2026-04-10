@@ -3,6 +3,7 @@
 import json
 
 import pytest
+
 from nthlayer.identity.ownership import (
     DEFAULT_CONFIDENCE,
     OwnershipAttribution,

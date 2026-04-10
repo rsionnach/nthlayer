@@ -7,6 +7,7 @@ Tests SLO parsing, storage, and error budget calculation.
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
 from nthlayer.slos.calculator import ErrorBudgetCalculator
 from nthlayer.slos.models import SLO, ErrorBudget, SLOStatus, TimeWindow, TimeWindowType
 from nthlayer.slos.parser import OpenSLOParserError, parse_slo_dict, parse_slo_file

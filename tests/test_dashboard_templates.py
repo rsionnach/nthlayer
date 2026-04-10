@@ -1,6 +1,7 @@
 """Tests for technology-specific dashboard templates."""
 
 import pytest
+
 from nthlayer.dashboards.templates import (
     HTTPAPITemplate,
     KubernetesTemplate,
@@ -42,7 +43,8 @@ class TestTemplateRegistry:
         postgres2 = get_template("postgres")
         postgres3 = get_template("PostgreSQL")
 
-        assert type(postgres1) == type(postgres2) == type(postgres3)
+        assert isinstance(postgres1, type(postgres2))
+        assert isinstance(postgres2, type(postgres3))
 
     def test_get_template_raises_for_unknown(self):
         """Test that unknown technologies raise KeyError."""

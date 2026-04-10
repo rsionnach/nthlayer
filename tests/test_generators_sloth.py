@@ -4,12 +4,12 @@ import yaml
 
 from nthlayer.generators.sloth import (
     SlothGenerationResult,
+    _extract_error_query,
+    _extract_total_query,
     convert_indicator_to_sli,
     convert_to_sloth_slo,
     generate_alerting_config,
     generate_sloth_from_manifest,
-    _extract_error_query,
-    _extract_total_query,
 )
 from nthlayer.specs.manifest import ReliabilityManifest, SLODefinition
 from nthlayer.specs.models import ServiceContext

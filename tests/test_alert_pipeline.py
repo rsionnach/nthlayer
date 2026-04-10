@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import respx
+
 from nthlayer.slos.alerts import AlertEvent, AlertSeverity, AlertType
 from nthlayer.slos.pipeline import (
     AlertPipeline,
@@ -505,10 +506,11 @@ class TestPipelineDispatchNotifications:
 class TestForDurationPipeline:
     def test_for_duration_applied_through_pipeline(self) -> None:
         """for_duration from alerting config flows through the pipeline to generated alerts."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from nthlayer.alerts.models import AlertRule
-        from nthlayer.specs.alerting import AlertingConfig, ForDuration
         from nthlayer.generators.alerts import _load_and_customize_alerts
+        from nthlayer.specs.alerting import AlertingConfig, ForDuration
 
         # Create mock alerts that would come from templates
         mock_alerts = [
@@ -541,7 +543,8 @@ class TestForDurationPipeline:
 
     def test_no_alerting_config_keeps_original_duration(self) -> None:
         """Without alerting config, original template durations are preserved."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from nthlayer.alerts.models import AlertRule
         from nthlayer.generators.alerts import _load_and_customize_alerts
 
