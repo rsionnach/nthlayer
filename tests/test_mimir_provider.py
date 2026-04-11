@@ -4,13 +4,13 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from nthlayer_common.clients.base import BaseHTTPClient, PermanentHTTPError, RetryableHTTPError
 
 from nthlayer.providers.mimir import (
     MimirRulerError,
     MimirRulerProvider,
     RulerPushResult,
 )
-from nthlayer_common.clients.base import BaseHTTPClient, PermanentHTTPError, RetryableHTTPError
 
 
 class TestMimirRulerProvider:
