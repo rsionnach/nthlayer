@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import httpx
 import pytest
 
 from nthlayer.providers.mimir import (
@@ -11,7 +10,7 @@ from nthlayer.providers.mimir import (
     MimirRulerProvider,
     RulerPushResult,
 )
-from nthlayer_common.clients.base import BaseHTTPClient
+from nthlayer_common.clients.base import BaseHTTPClient, PermanentHTTPError, RetryableHTTPError
 
 
 class TestMimirRulerProvider:
@@ -77,8 +76,8 @@ class TestPushRules:
     async def test_push_rules_connection_error(self) -> None:
         provider = MimirRulerProvider(ruler_url="https://mimir:8080")
         with patch.object(provider, "_request", new_callable=AsyncMock) as mock_req:
-            mock_req.side_effect = httpx.ConnectError("Connection refused")
-            with pytest.raises(MimirRulerError, match="connect"):
+            mock_req.side_effect = RetryableHTTPError("Connection refused")
+            with pytest.raises(MimirRulerError, match="failed"):
                 await provider.push_rules("test-service", "rules: []")
 
 
@@ -147,7 +146,7 @@ class TestListRules:
     async def test_list_rules_error(self) -> None:
         provider = MimirRulerProvider(ruler_url="https://mimir:8080")
         with patch.object(provider, "_request", new_callable=AsyncMock) as mock_req:
-            mock_req.side_effect = httpx.HTTPError("Internal error")
+            mock_req.side_effect = PermanentHTTPError("Internal error")
             with pytest.raises(MimirRulerError):
                 await provider.list_rules()
 
