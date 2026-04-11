@@ -11,7 +11,6 @@ import yaml
 
 from nthlayer.cli.alerts import (
     alerts_evaluate_command,
-    alerts_explain_command,
     alerts_show_command,
     alerts_test_command,
     handle_alerts_command,
@@ -191,29 +190,7 @@ class TestAlertsEvaluate:
         assert "ok-svc" in out or "err-svc" in out
 
 
-# -------------------------------------------------------------------------
-# alerts explain
-# -------------------------------------------------------------------------
-
-
-class TestAlertsExplain:
-    """Post-Phase 1: explanations are unavailable in generate.
-
-    The alerts_explain_command always returns 0 with a "not available"
-    message. Restoration tracked in nthlayer-observe (bead nthlayer-hmj).
-    """
-
-    def test_explain_returns_zero(self, tmp_path: Path) -> None:
-        f = _write_opensrm_manifest(tmp_path)
-        assert alerts_explain_command(f, output_format="json") == 0
-
-    def test_explain_with_slo_filter(self, tmp_path: Path) -> None:
-        f = _write_opensrm_manifest(tmp_path)
-        assert alerts_explain_command(f, slo_filter="availability") == 0
-
-    def test_explain_with_nonexistent_slo_filter(self, tmp_path: Path) -> None:
-        f = _write_opensrm_manifest(tmp_path)
-        assert alerts_explain_command(f, slo_filter="nonexistent") == 0
+# alerts explain — removed. Use nthlayer-observe explain instead.
 
 
 # -------------------------------------------------------------------------

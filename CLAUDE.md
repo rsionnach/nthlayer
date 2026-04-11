@@ -6,7 +6,7 @@ Reliability at build time, not incident time. Validate production readiness in C
 
 - **Language:** Python
 - **License:** MIT (note: other OpenSRM ecosystem components — nthlayer-measure, nthlayer-correlate, nthlayer-respond — are Apache 2.0)
-- **Build:** `pip install -e .`
+- **Build:** `uv sync --extra dev` (local dev) | `uv sync --no-sources --extra dev` (CI — resolves nthlayer-common from PyPI)
 - **Test:** `make test` | `make smoke` (CLI smoke, ~40s offline) | `make smoke-full` (includes Synology)
 - **Lint:** `make lint` and `./scripts/lint/run-all.sh` (custom golden-principle linters)
 - **Typecheck:** `make typecheck`
@@ -26,6 +26,8 @@ Reliability at build time, not incident time. Validate production readiness in C
 | Technical debt backlog | `plans/tech-debt.md` |
 | Design & promotion plans | `docs/plans/` |
 | Ecosystem capability audit (generate migration plan) | `docs/generate-capability-audit.md` |
+| Mimir move + ExplanationEngine design (nthlayer-2xe, nthlayer-hmj) | `docs/superpowers/specs/2026-04-10-mimir-move-and-explanation-engine-design.md` |
+| Mimir move + ExplanationEngine implementation plan (nthlayer-2xe, nthlayer-hmj) | `docs/superpowers/plans/2026-04-10-mimir-move-and-explanation-engine.md` |
 
 Read the specific doc relevant to your task. Do NOT try to load all docs at once.
 
@@ -139,8 +141,9 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `pagerduty.py` - Re-export shim → `nthlayer_common.clients.pagerduty` (PagerDutyClient)
   - `slack.py` - Re-export shim → `nthlayer_common.clients.slack`; SlackAPIClient exported as SlackNotifier for backward compat
 - `providers/` - Re-export shims → canonical source is `nthlayer_common.providers` for grafana/mimir/pagerduty (Phase 0 done); prometheus already done
+  - **Taxonomy (nthlayer-2xe):** `providers/` = `Provider` protocol implementers only (async health_check, plan, apply, drift — idempotent declarative state sync). `clients/` = standalone HTTP clients (BaseHTTPClient subclasses with retry + circuit breaker — imperative push/delete/list/send).
   - `grafana.py` - Re-export shim → `nthlayer_common.providers.grafana` (GrafanaProvider, GrafanaProviderError, GrafanaDashboardResource, GrafanaDatasourceResource, GrafanaFolderResource)
-  - `mimir.py` - Re-export shim → `nthlayer_common.providers.mimir` (MimirRulerProvider, MimirRulerError, RulerPushResult, DEFAULT_USER_AGENT)
+  - `mimir.py` - Re-export shim → `nthlayer_common.providers.mimir` (MimirRulerProvider, MimirRulerError, RulerPushResult, DEFAULT_USER_AGENT). nthlayer-2xe ✓ complete: canonical source is now `nthlayer_common.clients.mimir` (BaseHTTPClient subclass); `nthlayer_common/providers/mimir.py` is a re-export shim; this file unchanged (double shim).
   - `pagerduty.py` - Re-export shim → `nthlayer_common.providers.pagerduty` (PagerDutyProvider, PagerDutyProviderError, PagerDutyTeamMembershipResource)
 - `identity/` - Re-export shims → canonical source is `nthlayer_common.identity` (Phase 0 done, including ownership symbols and live ownership providers)
   - `__init__.py` - Re-export shim: all identity + ownership symbols from `nthlayer_common.identity`
@@ -192,7 +195,7 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
   - `evaluator.py`, `conditions.py`, `audit.py`, `recorder.py`, `repository.py` — DELETED (B2 ✓); moved to nthlayer-observe
 - `api/` — DELETED (B4 ✓ done 2026-04-09); entire FastAPI server (main.py, auth.py, deps.py, routes/health.py, routes/teams.py) moved to nthlayer-observe. `config/settings.py` also lost its API-specific settings (`api_prefix`, `cors_origins`, `cognito_user_pool_id`, `cognito_region`, `cognito_audience`, `jwt_jwks_url`, `jwt_issuer`). Remaining orphaned settings (`deployment_webhook_secret_*`, `deployment_providers`, `sqs_queue_url`, `job_queue_backend`, `redis_max_connections`) were removed in B7 ✓.
 - `cli/deploy.py` — DELETED (B3 ✓ done 2026-04-09); `check-deploy` command moved to nthlayer-observe. Use `nthlayer-observe check-deploy` for runtime deployment gate enforcement.
-- `cli/alerts.py` - Alert evaluation CLI; 4 subcommands: `evaluate` (full pipeline, supports `--path` for directory, `--dry-run`, `--format json|table`), `show` (effective rules, json/yaml/table), `explain` (stub — returns "not available in nthlayer-generate"; bead nthlayer-hmj), `test` (simulate burn %, `--simulate-burn`, `--no-notify`); exit codes 0=healthy/1=warning/2=critical; follows `register_alerts_parser` / `handle_alerts_command` pattern; `AlertPipeline` deferred import
+- `cli/alerts.py` - Alert evaluation CLI; 3 subcommands: `evaluate` (full pipeline, supports `--path` for directory, `--dry-run`, `--format json|table`), `show` (effective rules, json/yaml/table), `test` (simulate burn %, `--simulate-burn`, `--no-notify`); exit codes 0=healthy/1=warning/2=critical; follows `register_alerts_parser` / `handle_alerts_command` pattern; `AlertPipeline` deferred import. `explain` stub deleted (nthlayer-hmj ✓ complete — real command is `nthlayer-observe explain`)
 - `cli/docs.py` - `generate-docs` command: generates README, ADR scaffold, API docs from service manifest
 - `cli/formatters/` - Multi-format CLI output system
   - `models.py` - `ReliabilityReport`, `CheckResult`, `OutputFormat`, `CheckStatus` canonical models
@@ -483,7 +486,7 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 - `_build_slo_from_manifest(manifest, slo_def)` converts `SLODefinition` → `SLO`; normalises target: values >1 treated as percentage (99.9 → 0.999)
 - `_convert_spec_rule_to_alert_rule(spec_rule, service, slo_id, channels)` maps `SpecAlertRule` → budget-domain `AlertRule` (slos/alerts.py); distinct from Prometheus `AlertRule` (alerts/models.py)
 - Note: `slos/alerts.py::AlertRule` is a budget alert rule (has `alert_type`, `threshold`); `alerts/models.py::AlertRule` is a Prometheus alerting rule (has `expr`, `duration`)
-- `alerts_explain_command` (cli/alerts.py): both code paths (with and without `--slo-filter`) return "Budget explanations not available in nthlayer-generate"; dead explanation iteration removed post-Phase 1; restoration tracked via bead nthlayer-hmj (nthlayer-observe)
+- `alerts explain` subcommand: deleted from cli/alerts.py (nthlayer-hmj ✓ complete). Real implementation lives in nthlayer-observe as `nthlayer-observe explain --store assessments.db [--service SERVICE] [--slo SLO] [--format table|json|markdown]`. Uses `ExplanationEngine` (nthlayer_observe.explanation) and `BudgetExplanation` (nthlayer_common.explanation).
 
 ### Error Budget Policy DSL
 - `BudgetThresholds(warning=0.20, critical=0.10)` — fraction of remaining budget (e.g. 0.10 = 10% remaining triggers critical)
@@ -627,4 +630,13 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 - Disabled checks: `debug_print` (CLI uses print() for user output), `magic_number` (handled by code review), `hallucinated_import` (false positives on relative imports), `wrong_stdlib_import` (false positives on optional deps), `dead_code` (too many false positives on class methods), `duplicate_code` (function structure similarity is not duplication), `overlong_line` (PromQL queries are intentionally long)
 - Active severity threshold: `high` — only critical and high issues are reported
 - CI threshold: `max-score = 500` (score above this fails the build)
+
+### CI Workflow (.github/workflows/ci.yml)
+- Triggers: push and PR on `main` and `develop`
+- `UV_NO_SOURCES=1` env: resolves `nthlayer-common` from PyPI, ignoring the local `[tool.uv.sources]` editable path
+- Install: `uv sync --no-sources --extra dev` in all jobs
+- **test** job: matrix Python 3.11 + 3.12; runs ruff + mypy + pytest (ignores `tests/integration/`, fail-fast with `-x`)
+- **lint** job: ruff check only (separate job for PR annotations)
+- **security** job: `pip-audit` — non-blocking (`|| echo ...`), no `--strict`; review periodically
+- **self-check** job: installs nthlayer, validates `examples/services/checkout-service.yaml`, runs `nthlayer apply --lint`, asserts `generated/checkout-service/dashboard.json` and `alerts.yaml` exist
 <!-- /AUTO-MANAGED: discovered-conventions -->

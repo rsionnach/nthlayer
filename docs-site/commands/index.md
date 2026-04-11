@@ -47,7 +47,7 @@ NthLayer provides a comprehensive CLI for managing your reliability stack.
 
 | Command | Description |
 |---------|-------------|
-| [`nthlayer alerts`](alerts.md) | Evaluate, simulate, and explain alert rules |
+| [`nthlayer alerts`](alerts.md) | Evaluate, simulate, and test alert rules |
 
 ## Environment Management
 

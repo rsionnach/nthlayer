@@ -958,7 +958,7 @@ provides-extras = ["dev", "docs", "kubernetes", "zookeeper", "etcd", "service-di
 
 [[package]]
 name = "nthlayer-common"
-version = "0.1.2"
+version = "0.1.4"
 source = { editable = "../nthlayer-common" }
 dependencies = [
     { name = "cachetools" },
@@ -982,7 +982,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
-    { name = "structlog", specifier = ">=24.1.0,<25.0.0" },
+    { name = "structlog", specifier = ">=24.1.0" },
     { name = "tenacity", specifier = ">=8.2.3,<10.0.0" },
 ]
 provides-extras = ["dev"]

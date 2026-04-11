@@ -137,11 +137,10 @@ nthlayer scorecard --prometheus-url $PROM_URL
 
 ### Intelligent Alerts
 
-Context-aware alert evaluation with technology-specific explanations:
+Context-aware alert evaluation and simulation:
 
 ```bash
 nthlayer alerts evaluate services/ --path services/
-nthlayer alerts explain services/payment-api.yaml
 nthlayer alerts test services/payment-api.yaml --simulate-burn 90
 ```
 
