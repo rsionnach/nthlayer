@@ -1,15 +1,17 @@
 # nthlayer alerts
 
-Evaluate, simulate, and explain alert rules for a service.
+Evaluate, simulate, and test alert rules for a service.
 
 ## Synopsis
 
 ```bash
 nthlayer alerts evaluate <service-file> [options]
 nthlayer alerts show <service-file> [options]
-nthlayer alerts explain <service-file> [options]
 nthlayer alerts test <service-file> [options]
 ```
+
+> **Budget explanations** have moved to [nthlayer-observe](https://github.com/rsionnach/nthlayer-observe):
+> `nthlayer-observe explain --store assessments.db --service payment-api`
 
 ## Description
 
@@ -21,7 +23,6 @@ The `alerts` command family provides an intelligent alerts pipeline that combine
 |------------|-------------|
 | `evaluate` | Full pipeline evaluation against live or simulated budget data |
 | `show` | Display effective alert rules (explicit + auto-generated) |
-| `explain` | Show context-aware budget explanations with investigation actions |
 | `test` | Simulate budget burn and show what alerts would fire |
 
 ## Exit Codes
@@ -105,32 +106,6 @@ Tier: critical | Rules: 6
 │ slo_target_miss         │ target   │ latency      │      0.99 │ warning  │ yes     │
 └─────────────────────────┴──────────┴──────────────┴───────────┴──────────┴─────────┘
 ```
-
-### alerts explain
-
-Show context-aware budget explanations with technology-specific investigation actions.
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--prometheus-url URL`, `-p URL` | Prometheus URL (or set `NTHLAYER_PROMETHEUS_URL`) |
-| `--format FORMAT` | Output format: `table` (default), `json`, `markdown` |
-| `--slo NAME` | Filter explanations to a specific SLO |
-
-**Example:**
-
-```bash
-nthlayer alerts explain services/payment-api.yaml \
-  --prometheus-url http://prometheus:9090
-```
-
-The explanation engine provides:
-
-- Budget status and burn rate analysis
-- Technology-specific investigation steps (e.g., PostgreSQL slow query checks, Redis memory analysis)
-- Recommended actions based on service type and tier
-- Links to relevant runbooks and dashboards
 
 ### alerts test
 
