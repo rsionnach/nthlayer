@@ -210,13 +210,51 @@ def parse_opensrm_file(file_path: str | Path) -> ReliabilityManifest:
 
 
 def _parse_slos(slos_data: dict[str, Any]) -> list[SLODefinition]:
-    """Parse SLOs from OpenSRM spec.slos section."""
+    """Parse SLOs from OpenSRM spec.slos section.
+
+    Handles both standard SLOs (availability, latency, etc.) and the
+    ``judgment`` block which contains flat judgment SLOs (reversal_rate,
+    high_confidence_failure, calibration, feedback_latency).
+    """
+    from nthlayer.specs.manifest import JUDGMENT_SLO_TYPES
+
     slos = []
 
     for name, config in slos_data.items():
         if not isinstance(config, dict):
             # Simple target value
             slos.append(SLODefinition(name=name, target=float(config)))
+            continue
+
+        # Judgment SLO block: expand children into flat SLODefinitions
+        if name == "judgment":
+            for j_name, j_config in config.items():
+                if not isinstance(j_config, dict):
+                    continue
+                j_target = j_config.get("target")
+                if j_target is not None:
+                    slos.append(
+                        SLODefinition(
+                            name=j_name,
+                            target=float(j_target),
+                            window=j_config.get("window", "30d"),
+                            slo_type="judgment",
+                        )
+                    )
+                elif j_name == "feedback_latency":
+                    # feedback_latency uses percentiles, not a target
+                    slos.append(
+                        SLODefinition(
+                            name=j_name,
+                            target=0.0,  # placeholder — p50/p90 in labels
+                            window="30d",
+                            slo_type="judgment",
+                            labels={
+                                k: str(v)
+                                for k, v in j_config.items()
+                            },
+                        )
+                    )
             continue
 
         # Full SLO definition
