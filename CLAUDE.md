@@ -161,11 +161,11 @@ When fixing a GitHub Issue: `fix: <description> (<bead-id>, closes #<number>)`
     - `codeowners.py` - Static: reads CODEOWNERS file from repo (confidence=0.85); remains in nthlayer (generate-only)
 - `specs/` - Service specification models and parsing
   - `helpers.py` - Shared utilities: `TECH_KEYWORDS` constant, `infer_technology_from_name()` function
-  - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy); `BudgetPolicy`, `BudgetThresholds`, `ErrorBudgetGate` dataclasses for error budget policy DSL
+  - `manifest.py` - ReliabilityManifest unified model (OpenSRM + legacy); `BudgetPolicy`, `BudgetThresholds`, `ErrorBudgetGate` dataclasses for error budget policy DSL; ownership/oncall dataclasses: `PagerDutyConfig`, `RosterMember` (name, slack_id, ntfy_topic?, phone?), `Override` (start/end ISO 8601, user, reason?), `ManifestEscalationStep` (after, notify "slack_dm"|"ntfy"|"slack_channel"|"phone"|"pagerduty", target?, phone?), `RotationConfig` (type "weekly"|"daily", handoff, roster), `OnCallConfig` (timezone IANA, rotation, overrides, escalation); `Ownership` dataclass includes `oncall: OnCallConfig | None`
   - `alerting.py` - `AlertingConfig`, `ForDuration` dataclasses; `ForDuration.get_for_severity()` maps severity → `for` duration override
   - `loader.py` - Auto-detect format and load manifests
   - `parser.py` - Legacy format parser, `render_resource_spec()` for variable substitution
-  - `opensrm_parser.py` - OpenSRM YAML parser; `_parse_budget_policy()` helper constructs `BudgetPolicy` from gate config
+  - `opensrm_parser.py` - OpenSRM YAML parser; `_parse_budget_policy()` helper constructs `BudgetPolicy` from gate config; `_parse_ownership()` calls `_parse_oncall()` for `spec.ownership.oncall`; `_parse_oncall()` builds `RosterMember` list (requires name+slack_id), `Override` list (requires start+end+user), `ManifestEscalationStep` list (requires after+notify), validates IANA timezone via `ZoneInfo`; raises `OpenSRMParseError` for missing required fields or invalid timezone
 - `slos/` - SLO definition, validation, and recording rule generation (runtime infra deleted B3 ✓ done 2026-04-09)
   - `models.py` - Re-export shim → canonical source is `nthlayer_common.slo_models` (Phase 0 done); exports SLO, ErrorBudget, SLOStatus, TimeWindow, TimeWindowType, Incident for backward compat
   - `parser.py` - OpenSLO YAML parsing
@@ -369,6 +369,8 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 - Deployed to GitHub Pages at rsionnach.github.io/nthlayer/
 - Source docs in `docs-site/`, built output in `site/` (gitignored)
 - Assets: Custom CSS (stylesheets/nord.css), Mermaid config (javascripts/mermaid-config.js)
+- **Known docs drift:** `docs-site/commands/index.md` and `docs-site/index.md` still list `check-deploy`, `drift`, `portfolio`, `scorecard`, `blast-radius`, `deps` as nthlayer commands — these have all migrated to nthlayer-observe and need a docs update pass
+- `docs-site/commands/alerts.md` correctly notes budget explanations redirect: `nthlayer-observe explain --store assessments.db --service <service>` (the `alerts explain` subcommand was deleted in nthlayer-hmj)
 
 ### Execution Plan Tracking
 - Plans in `plans/` track spec implementation lifecycle
@@ -587,7 +589,7 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 
 ### Optional Dependency Groups
 - Install with extras for optional integrations: `pip install -e ".[aws]"`, `pip install -e ".[kubernetes]"`
-- `[aws]`: boto3, aioboto3 — required for CloudWatch and SQS modules
+- `[aws]`: boto3 only — required for `AWSSecretBackend` in `config/secrets/backends.py` (CloudWatch/SQS modules deleted in B7)
 - `[kubernetes]`: kubernetes client — required for K8s dependency discovery provider
 - `[zookeeper]`: kazoo — required for Zookeeper discovery provider
 - `[etcd]`: etcd3 — required for etcd discovery provider
@@ -602,9 +604,9 @@ P0–P5 copied runtime code to nthlayer-observe. The Purify Generate epic delete
 - Integration tests using mock servers live in `tests/integration/` (e.g., `tests/integration/test_mock_server_integration.py`)
 - CLI end-to-end smoke tests live in `tests/smoke/` — invoke the real CLI via subprocess; see "CLI Smoke Test Suite" pattern for details
 - **Unit tests for CLI commands** live in `tests/test_cli_*.py` — use `capsys`/`tmp_path`/`unittest.mock.patch` (no subprocess): `test_cli_alerts.py` (alerts show/evaluate/explain/test, respx mocking), `test_cli_dashboard.py` (generate_dashboard_command, dry-run, default path), `test_cli_dashboard_validate.py` (validate_dashboard_command exit codes 0/1/2, list_intents_command), `test_cli_environments.py` (list/diff/validate env commands), `test_cli_generate.py` (generate_slo_command, sloth-only format support), `test_cli_setup.py` (setup wizard, connection testing, GrafanaProfile/PrometheusProfile fixtures), `test_cli_validate_slo.py` (PromQL extraction, SLOValidationResult, demo mode)
-- **Unit tests for providers/identity**: `tests/test_prometheus_provider.py` (PrometheusProvider init, query, query_range; uses AsyncMock on `_request`), `tests/test_ownership.py` (OwnershipSource/Signal/Attribution, DeclaredOwnershipProvider, CODEOWNERSProvider; pytest.mark.asyncio)
+- **Unit tests for providers/identity**: `tests/test_prometheus_provider.py` (PrometheusProvider init, query, query_range; uses AsyncMock on `_request`), `tests/test_ownership.py` (OwnershipSource/Signal/Attribution, DeclaredOwnershipProvider, CODEOWNERSProvider; pytest.mark.asyncio), `tests/test_mimir_provider.py` (MimirRulerProvider init/headers, push_rules, delete_rules, list_rules, health_check, RulerPushResult; TestBackwardCompat verifies all 3 import paths resolve to same class: `nthlayer.providers.mimir` → `nthlayer_common.providers.mimir` → `nthlayer_common.clients.mimir`; all async tests use pytest.mark.asyncio with patch.object on `_request`)
 - Shared pytest config (structlog suppression, fixtures) lives in `tests/conftest.py`
-- Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `aioboto3 = pytest.importorskip("aioboto3", reason="aioboto3 is required for workers tests")`
+- Tests for optional-dependency modules use `pytest.importorskip("package")` at module level to skip when extras are not installed: `kubernetes = pytest.importorskip("kubernetes", reason="kubernetes is required for K8s provider tests")`
 - Apply `importorskip` to any test module that imports from `[aws]`, `[kubernetes]`, or other optional extras
 
 ### Async/Await Usage

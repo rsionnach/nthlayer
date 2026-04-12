@@ -102,6 +102,59 @@ class PagerDutyConfig:
 
 
 @dataclass
+class RosterMember:
+    """A person in the on-call rotation roster."""
+
+    name: str
+    slack_id: str
+    ntfy_topic: str | None = None
+    phone: str | None = None
+
+
+@dataclass
+class Override:
+    """Manual on-call override (holidays, swaps)."""
+
+    start: str  # ISO 8601
+    end: str  # ISO 8601
+    user: str
+    reason: str | None = None
+
+
+@dataclass
+class ManifestEscalationStep:
+    """A single step in the escalation policy (build-time schema).
+
+    Prefixed with 'Manifest' to distinguish from the runtime
+    EscalationStep in nthlayer_respond.oncall.escalation (Phase 3).
+    """
+
+    after: str  # e.g. "0m", "5m", "10m"
+    notify: str  # "slack_dm" | "ntfy" | "slack_channel" | "phone" | "pagerduty"
+    target: str | None = None  # "next_oncall" | "engineering_manager"
+    phone: str | None = None  # direct phone override for this step
+
+
+@dataclass
+class RotationConfig:
+    """On-call rotation schedule configuration."""
+
+    type: str  # "weekly" | "daily"
+    handoff: str  # e.g. "monday 09:00" or "09:00"
+    roster: list[RosterMember] = field(default_factory=list)
+
+
+@dataclass
+class OnCallConfig:
+    """On-call configuration within spec.ownership."""
+
+    timezone: str  # IANA timezone string
+    rotation: RotationConfig
+    overrides: list[Override] = field(default_factory=list)
+    escalation: list[ManifestEscalationStep] = field(default_factory=list)
+
+
+@dataclass
 class Ownership:
     """Service ownership information (OpenSRM spec.ownership)."""
 
@@ -112,6 +165,7 @@ class Ownership:
     pagerduty: PagerDutyConfig | None = None
     runbook: str | None = None
     documentation: str | None = None
+    oncall: OnCallConfig | None = None
 
 
 # =============================================================================

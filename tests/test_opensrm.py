@@ -11,6 +11,11 @@ from nthlayer.specs.manifest import (
     VALID_SERVICE_TYPES,
     VALID_TIERS,
     Dependency,
+    ManifestEscalationStep,
+    OnCallConfig,
+    Override,
+    RosterMember,
+    RotationConfig,
     SourceFormat,
 )
 from nthlayer.specs.opensrm_parser import (
@@ -1168,6 +1173,331 @@ class TestOpenSRMParserOwnershipEdgeCases:
         assert manifest.ownership is not None
         assert manifest.ownership.pagerduty is not None
         assert manifest.ownership.pagerduty.service_id == "PD123"
+
+
+class TestOnCallConfig:
+    """Test OnCallConfig dataclasses and oncall parsing."""
+
+    def _make_manifest_with_oncall(self, oncall_data: dict) -> dict:
+        """Helper: build a minimal OpenSRM manifest with oncall block."""
+        return {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {
+                "name": "fraud-detect",
+                "team": "ml-platform",
+                "tier": "critical",
+            },
+            "spec": {
+                "type": "ai-gate",
+                "ownership": {
+                    "team": "ml-platform",
+                    "slack": "#ml-platform-oncall",
+                    "oncall": oncall_data,
+                },
+            },
+        }
+
+    def test_roster_member_dataclass(self):
+        """Test RosterMember has the expected fields."""
+        member = RosterMember(
+            name="Alice",
+            slack_id="U0123ALICE",
+            ntfy_topic="oncall-alice",
+            phone="+353851234567",
+        )
+        assert member.name == "Alice"
+        assert member.slack_id == "U0123ALICE"
+        assert member.ntfy_topic == "oncall-alice"
+        assert member.phone == "+353851234567"
+
+    def test_roster_member_optional_fields(self):
+        """Test RosterMember with only required fields."""
+        member = RosterMember(name="Bob", slack_id="U0456BOB")
+        assert member.ntfy_topic is None
+        assert member.phone is None
+
+    def test_override_dataclass(self):
+        """Test Override has the expected fields."""
+        override = Override(
+            start="2026-04-14T00:00:00Z",
+            end="2026-04-21T00:00:00Z",
+            user="Bob",
+            reason="Alice on annual leave",
+        )
+        assert override.start == "2026-04-14T00:00:00Z"
+        assert override.user == "Bob"
+        assert override.reason == "Alice on annual leave"
+
+    def test_override_optional_reason(self):
+        """Test Override with no reason."""
+        override = Override(
+            start="2026-04-14T00:00:00Z",
+            end="2026-04-21T00:00:00Z",
+            user="Bob",
+        )
+        assert override.reason is None
+
+    def test_escalation_step_dataclass(self):
+        """Test ManifestEscalationStep has the expected fields."""
+        step = ManifestEscalationStep(
+            after="5m",
+            notify="ntfy",
+            target="next_oncall",
+        )
+        assert step.after == "5m"
+        assert step.notify == "ntfy"
+        assert step.target == "next_oncall"
+        assert step.phone is None
+
+    def test_rotation_config_dataclass(self):
+        """Test RotationConfig with roster."""
+        roster = [
+            RosterMember(name="Alice", slack_id="U01"),
+            RosterMember(name="Bob", slack_id="U02"),
+        ]
+        config = RotationConfig(type="weekly", handoff="monday 09:00", roster=roster)
+        assert config.type == "weekly"
+        assert config.handoff == "monday 09:00"
+        assert len(config.roster) == 2
+
+    def test_oncall_config_full(self):
+        """Test OnCallConfig with all fields."""
+        config = OnCallConfig(
+            timezone="Europe/Dublin",
+            rotation=RotationConfig(
+                type="weekly",
+                handoff="monday 09:00",
+                roster=[RosterMember(name="Alice", slack_id="U01")],
+            ),
+            overrides=[
+                Override(
+                    start="2026-04-14T00:00:00Z",
+                    end="2026-04-21T00:00:00Z",
+                    user="Bob",
+                ),
+            ],
+            escalation=[
+                ManifestEscalationStep(after="0m", notify="slack_dm"),
+                ManifestEscalationStep(after="5m", notify="ntfy"),
+            ],
+        )
+        assert config.timezone == "Europe/Dublin"
+        assert config.rotation.type == "weekly"
+        assert len(config.overrides) == 1
+        assert len(config.escalation) == 2
+
+    def test_ownership_with_oncall_parsed(self):
+        """Test that oncall block is parsed from OpenSRM manifest."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "Europe/Dublin",
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [
+                        {
+                            "name": "Alice",
+                            "slack_id": "U0123ALICE",
+                            "ntfy_topic": "oncall-alice",
+                            "phone": "+353851234567",
+                        },
+                        {
+                            "name": "Bob",
+                            "slack_id": "U0456BOB",
+                            "ntfy_topic": "oncall-bob",
+                        },
+                    ],
+                },
+                "overrides": [
+                    {
+                        "start": "2026-04-14T00:00:00Z",
+                        "end": "2026-04-21T00:00:00Z",
+                        "user": "Bob",
+                        "reason": "Alice on annual leave",
+                    },
+                ],
+                "escalation": [
+                    {"after": "0m", "notify": "slack_dm"},
+                    {"after": "5m", "notify": "ntfy"},
+                    {"after": "10m", "notify": "slack_dm", "target": "next_oncall"},
+                ],
+            }
+        )
+        manifest = parse_opensrm(data)
+        assert manifest.ownership is not None
+        assert manifest.ownership.oncall is not None
+
+        oncall = manifest.ownership.oncall
+        assert oncall.timezone == "Europe/Dublin"
+        assert oncall.rotation.type == "weekly"
+        assert oncall.rotation.handoff == "monday 09:00"
+        assert len(oncall.rotation.roster) == 2
+        assert oncall.rotation.roster[0].name == "Alice"
+        assert oncall.rotation.roster[0].slack_id == "U0123ALICE"
+        assert oncall.rotation.roster[0].ntfy_topic == "oncall-alice"
+        assert oncall.rotation.roster[0].phone == "+353851234567"
+        assert oncall.rotation.roster[1].ntfy_topic == "oncall-bob"
+        assert oncall.rotation.roster[1].phone is None
+
+        assert len(oncall.overrides) == 1
+        assert oncall.overrides[0].user == "Bob"
+        assert oncall.overrides[0].reason == "Alice on annual leave"
+
+        assert len(oncall.escalation) == 3
+        assert oncall.escalation[0].after == "0m"
+        assert oncall.escalation[0].notify == "slack_dm"
+        assert oncall.escalation[0].target is None
+        assert oncall.escalation[2].target == "next_oncall"
+
+    def test_ownership_without_oncall(self):
+        """Test that ownership without oncall block has oncall=None."""
+        data = {
+            "apiVersion": "srm/v1",
+            "kind": "ServiceReliabilityManifest",
+            "metadata": {
+                "name": "test",
+                "team": "test",
+                "tier": "standard",
+            },
+            "spec": {
+                "type": "api",
+                "ownership": {
+                    "team": "test",
+                    "slack": "#alerts",
+                },
+            },
+        }
+        manifest = parse_opensrm(data)
+        assert manifest.ownership is not None
+        assert manifest.ownership.oncall is None
+
+    def test_oncall_minimal(self):
+        """Test oncall with only required fields (no overrides, no escalation)."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "UTC",
+                "rotation": {
+                    "type": "daily",
+                    "handoff": "09:00",
+                    "roster": [
+                        {"name": "Alice", "slack_id": "U01"},
+                    ],
+                },
+            }
+        )
+        manifest = parse_opensrm(data)
+        oncall = manifest.ownership.oncall
+        assert oncall is not None
+        assert oncall.timezone == "UTC"
+        assert oncall.rotation.type == "daily"
+        assert len(oncall.overrides) == 0
+        assert len(oncall.escalation) == 0
+
+    def test_escalation_step_with_phone_override(self):
+        """Test escalation step with direct phone number for engineering_manager."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "Europe/Dublin",
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [{"name": "Alice", "slack_id": "U01"}],
+                },
+                "escalation": [
+                    {
+                        "after": "30m",
+                        "notify": "phone",
+                        "target": "engineering_manager",
+                        "phone": "+353859876543",
+                    },
+                ],
+            }
+        )
+        manifest = parse_opensrm(data)
+        step = manifest.ownership.oncall.escalation[0]
+        assert step.after == "30m"
+        assert step.notify == "phone"
+        assert step.target == "engineering_manager"
+        assert step.phone == "+353859876543"
+
+    def test_roster_member_missing_name_raises(self):
+        """Roster member without name raises OpenSRMParseError."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "UTC",
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [{"slack_id": "U01"}],  # missing name
+                },
+            }
+        )
+        with pytest.raises(OpenSRMParseError, match="roster.*missing required field"):
+            parse_opensrm(data)
+
+    def test_override_missing_user_raises(self):
+        """Override without user raises OpenSRMParseError."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "UTC",
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [{"name": "Alice", "slack_id": "U01"}],
+                },
+                "overrides": [
+                    {"start": "2026-04-14T00:00:00Z", "end": "2026-04-21T00:00:00Z"},
+                ],  # missing user
+            }
+        )
+        with pytest.raises(OpenSRMParseError, match="overrides.*missing required field"):
+            parse_opensrm(data)
+
+    def test_escalation_missing_notify_raises(self):
+        """Escalation step without notify raises OpenSRMParseError."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "UTC",
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [{"name": "Alice", "slack_id": "U01"}],
+                },
+                "escalation": [{"after": "5m"}],  # missing notify
+            }
+        )
+        with pytest.raises(OpenSRMParseError, match="escalation.*missing required field"):
+            parse_opensrm(data)
+
+    def test_missing_timezone_raises(self):
+        """Missing timezone raises OpenSRMParseError."""
+        data = self._make_manifest_with_oncall(
+            {
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [{"name": "Alice", "slack_id": "U01"}],
+                },
+            }
+        )
+        with pytest.raises(OpenSRMParseError, match="timezone is required"):
+            parse_opensrm(data)
+
+    def test_invalid_timezone_raises(self):
+        """Invalid timezone string raises OpenSRMParseError."""
+        data = self._make_manifest_with_oncall(
+            {
+                "timezone": "Europ/Dublin",
+                "rotation": {
+                    "type": "weekly",
+                    "handoff": "monday 09:00",
+                    "roster": [{"name": "Alice", "slack_id": "U01"}],
+                },
+            }
+        )
+        with pytest.raises(OpenSRMParseError, match="invalid IANA timezone"):
+            parse_opensrm(data)
 
 
 class TestOpenSRMParserGateEdgeCases:
