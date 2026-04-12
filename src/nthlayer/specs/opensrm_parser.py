@@ -41,12 +41,17 @@ from nthlayer.specs.manifest import (
     DeploymentGates,
     ErrorBudgetGate,
     Instrumentation,
+    ManifestEscalationStep,
     Observability,
+    OnCallConfig,
+    Override,
     Ownership,
     PagerDutyConfig,
     RecentIncidentsGate,
     ReliabilityManifest,
     RollbackConfig,
+    RosterMember,
+    RotationConfig,
     SLOComplianceGate,
     SLODefinition,
     SourceFormat,
@@ -303,6 +308,9 @@ def _parse_ownership(ownership_data: dict[str, Any] | None) -> Ownership | None:
             escalation_policy_id=pd_data.get("escalation_policy_id"),
         )
 
+    # Parse on-call config
+    oncall = _parse_oncall(ownership_data.get("oncall"))
+
     return Ownership(
         team=team,
         slack=ownership_data.get("slack"),
@@ -311,6 +319,87 @@ def _parse_ownership(ownership_data: dict[str, Any] | None) -> Ownership | None:
         pagerduty=pagerduty,
         runbook=ownership_data.get("runbook"),
         documentation=ownership_data.get("documentation"),
+        oncall=oncall,
+    )
+
+
+def _parse_oncall(oncall_data: dict[str, Any] | None) -> OnCallConfig | None:
+    """Parse on-call configuration from OpenSRM spec.ownership.oncall section."""
+    if not oncall_data:
+        return None
+
+    rotation_data = oncall_data.get("rotation", {})
+
+    roster = []
+    for i, raw_member in enumerate(rotation_data.get("roster", [])):
+        try:
+            roster.append(
+                RosterMember(
+                    name=raw_member["name"],
+                    slack_id=raw_member["slack_id"],
+                    ntfy_topic=raw_member.get("ntfy_topic"),
+                    phone=raw_member.get("phone"),
+                )
+            )
+        except KeyError as e:
+            raise OpenSRMParseError(
+                f"oncall.rotation.roster[{i}] missing required field: {e}"
+            ) from e
+
+    overrides = []
+    for i, raw_override in enumerate(oncall_data.get("overrides", [])):
+        try:
+            overrides.append(
+                Override(
+                    start=raw_override["start"],
+                    end=raw_override["end"],
+                    user=raw_override["user"],
+                    reason=raw_override.get("reason"),
+                )
+            )
+        except KeyError as e:
+            raise OpenSRMParseError(
+                f"oncall.overrides[{i}] missing required field: {e}"
+            ) from e
+
+    escalation = []
+    for i, raw_step in enumerate(oncall_data.get("escalation", [])):
+        try:
+            escalation.append(
+                ManifestEscalationStep(
+                    after=raw_step["after"],
+                    notify=raw_step["notify"],
+                    target=raw_step.get("target"),
+                    phone=raw_step.get("phone"),
+                )
+            )
+        except KeyError as e:
+            raise OpenSRMParseError(
+                f"oncall.escalation[{i}] missing required field: {e}"
+            ) from e
+
+    # Validate timezone
+    tz_name = oncall_data.get("timezone")
+    if not tz_name:
+        raise OpenSRMParseError("oncall.timezone is required")
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(tz_name)
+    except (KeyError, ValueError):
+        raise OpenSRMParseError(
+            f"oncall.timezone: invalid IANA timezone: {tz_name!r}"
+        ) from None
+
+    return OnCallConfig(
+        timezone=tz_name,
+        rotation=RotationConfig(
+            type=rotation_data.get("type", "weekly"),
+            handoff=rotation_data.get("handoff", "monday 09:00"),
+            roster=roster,
+        ),
+        overrides=overrides,
+        escalation=escalation,
     )
 
 

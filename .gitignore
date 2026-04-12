@@ -4,6 +4,18 @@
 # Archive (internal development notes and one-off scripts)
 archive/
 
+# Spec/design documents (internal, not for public repos)
+*_SPEC.md
+*-SPEC.md
+*SPEC*.md
+SRE-EXPERIENCE.md
+RESPOND-COMMS*.md
+COSTOPTIMISATION.md
+
+# Beads task tracking (centralized in opensrm Dolt DB)
+.beads/
+.beads.archived/
+
 # MkDocs build output
 site/
 
