@@ -21,7 +21,7 @@ dependencies = [
     "rich-argparse>=1.4.0,<2.0.0",
     "questionary>=2.0.0,<3.0.0",
     # Dependency discovery
-    "cachetools>=5.3.0,<7.0.0",
+    "cachetools>=5.3.0,<8.0.0",
     "opentelemetry-semantic-conventions>=0.60b1",
 ]
 
