@@ -1,8 +1,15 @@
-name: Release to PyPI
+name: Release meta-package to PyPI
+
+# Triggers only on tags in the meta-v* namespace, separate from the front-door
+# repo's historical v0.1.0a* tags (which were the legacy generator releases,
+# now superseded by nthlayer-generate's v1.0.0+ tags). The meta-package is
+# the only thing this repo publishes to PyPI.
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'meta-v*'
+  workflow_dispatch:  # manual fallback
 
 jobs:
   publish:
@@ -19,13 +26,17 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      - name: Build package
+      - name: Build meta-package
+        working-directory: meta-package
         run: uv build
 
       - name: Verify package
+        working-directory: meta-package
         run: uvx twine check dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Uses trusted publishing - no token needed!
-        # Configure at: https://pypi.org/manage/project/nthlayer/settings/publishing/
+        with:
+          packages-dir: meta-package/dist/
+        # Uses trusted publishing — configure at:
+        # https://pypi.org/manage/project/nthlayer/settings/publishing/

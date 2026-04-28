@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nthlayer"
+version = "1.0.0"
+description = "NthLayer ecosystem meta-package — installs all tiers (core, workers, bench, generate)."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "NthLayer", email = "noreply@nthlayer.io" },
+]
+keywords = [
+    "sre",
+    "reliability",
+    "slo",
+    "opensrm",
+    "observability",
+    "prometheus",
+    "grafana",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "nthlayer-core==1.0.0",
+    "nthlayer-workers==1.0.0",
+    "nthlayer-bench==1.0.0",
+    "nthlayer-generate==1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rsionnach/nthlayer"
+Documentation = "https://github.com/rsionnach/nthlayer"
+Repository = "https://github.com/rsionnach/nthlayer"
+Changelog = "https://github.com/rsionnach/nthlayer/releases"
+
+# No [project.scripts] — the meta-package is dependency-only.
+# CLI binaries come from the sub-packages: nthlayer (core), nthlayer-workers,
+# nthlayer-bench, nthlayer-generate.
+
+[tool.setuptools]
+# No Python source — meta-package is metadata-only.
+packages = []
