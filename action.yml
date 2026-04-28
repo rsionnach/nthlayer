@@ -1,10 +1,20 @@
 name: 'NthLayer Reliability Check'
-description: 'Validate service reliability in CI/CD. SLO validation, deployment gates, drift detection, and blast radius analysis.'
+description: 'Validate service reliability in CI/CD via the NthLayer compiler. SLO/alert/dashboard generation, build-time policy validation, and dependency analysis.'
 author: 'NthLayer'
+
+# Note on advertised commands (2026-04-26 repurpose):
+#
+# This action delegates to nthlayer-generate (the deterministic compiler) at
+# a pinned tag. Earlier versions of the action.yml description listed
+# `check-deploy`, `drift`, `blast-radius`, and `validate-slo` as supported
+# commands. Those commands were never part of the nthlayer CLI surface — they
+# were stale references to runtime tooling that lives elsewhere in the
+# ecosystem (now in nthlayer-workers, accessed via nthlayer-core's HTTP API).
+# The repurposed action no longer advertises them. Generator commands only.
 
 inputs:
   command:
-    description: 'NthLayer command to run (plan, check-deploy, drift, validate-slo, blast-radius)'
+    description: 'NthLayer compiler command to run (plan, apply, validate, validate-spec, lint, generate-dashboard, generate-alerts)'
     required: false
     default: 'plan'
   service:
@@ -15,7 +25,7 @@ inputs:
     required: false
     default: 'prod'
   prometheus-url:
-    description: 'Prometheus server URL'
+    description: 'Prometheus server URL (for dashboard validate / metric discovery)'
     required: false
   prometheus-username:
     description: 'Prometheus basic auth username'
@@ -67,9 +77,17 @@ runs:
       with:
         python-version: '3.11'
 
-    - name: Install NthLayer
+    - name: Install NthLayer compiler (nthlayer-generate, pinned)
       shell: bash
-      run: pip install nthlayer
+      # Pinned to a specific nthlayer-generate version so action behaviour is
+      # explicit, never implicit via an upstream default branch. Bump this
+      # version deliberately when adopting nthlayer-generate releases — see
+      # CLAUDE.md "When working in this repo" for the version-pinning invariant.
+      #
+      # The nthlayer-generate package on PyPI declares both `nthlayer` and
+      # `nthlayer-generate` as console scripts, so existing `nthlayer <command>`
+      # invocations in this action continue to work unchanged.
+      run: pip install 'nthlayer-generate==1.0.0'
 
     - name: Run NthLayer Check
       id: run
