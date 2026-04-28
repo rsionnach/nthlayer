@@ -36,10 +36,6 @@ NthLayer is a six-repo system. One specification, one shared library, one compil
 
 **You want to understand the design decisions.** Architectural decisions, RFCs, and migration plans live in [`opensrm/docs/superpowers/`][opensrm-docs]. Notable: the [three-tier architecture decision (2026-04-21)][tier-decision] and the [six-repo consolidation rationale (2026-04-21)][consol].
 
-## Reading list
-
-<!-- TODO: Rob to insert dev.to article series link here. Series introduces NthLayer's ZFC (Zero Framework Cognition) model, the OpenSRM spec, and the v1.5 architecture. -->
-
 ## Current status
 
 NthLayer is in **v1.5 development**. The three-tier architecture is being actively built; the six-repo consolidation completed 2026-04-26. Production-ready usage today centres on `nthlayer-generate` (the compiler — stable surface, CI/CD-ready) plus the OpenSRM spec.
