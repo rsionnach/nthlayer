@@ -147,3 +147,17 @@ UAT.md
 
 # Dolt database files (added by bd init)
 .dolt/
+
+# Migration targets — explicitly track ecosystem content under docs/
+# even though filenames may match the ignore patterns above. The negations
+# below let docs/{specs,superpowers,archived-specs,roadmap}/** through
+# while keeping root-level *_SPEC.md, *PLAN.md, etc. as local-only working
+# drafts.
+!docs/specs/**
+!docs/superpowers/**
+!docs/archived-specs/**
+!docs/roadmap/**
+!docs/metrics-contract.md
+!docs/testing.md
+!docs/COSTOPTIMISATION.md
+!docs/DEMO-IMPROVEMENT-SPEC.md
