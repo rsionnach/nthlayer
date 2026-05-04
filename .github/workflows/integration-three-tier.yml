@@ -1,0 +1,124 @@
+# Three-tier integration test (opensrm-saun.1, P5.1).
+#
+# Boots the full nthlayer-core + nthlayer-workers + fake-service + Prometheus
+# stack and asserts the verdict chain (observe -> measure -> correlate ->
+# respond -> learn) plus bench-readable cases. The harness lives at
+# test/integration-three-tier.sh in the ecosystem workspace.
+#
+# Security note: this workflow does NOT consume any untrusted GitHub event
+# input (no issue/PR/comment data flows into shell commands). Triggered by
+# workflow_dispatch and cron only.
+#
+# Repo pinning trade-off (v1.5 phase):
+#   We checkout each implementation repo at `main`. This is correct for v1.5
+#   because the components are still co-evolving rapidly and a nightly run
+#   against latest-main is the early-warning signal we want.
+#   Once v1.0 releases stabilise, switch the `ref` fields below to released
+#   versions (e.g. `v1.5.0`) so the test exercises a known, shippable
+#   combination rather than a moving target.
+#
+# Trigger policy:
+#   - workflow_dispatch: manual run
+#   - cron 04:00 UTC nightly: latest-main soak signal
+#   - NOT on push/PR — the test takes ~5 min and boots Docker
+#
+# Known blockers (auto-failure expected until these land):
+#   - opensrm-saun.1.2 — CloudEvents envelope contract mismatch (respond
+#     verdicts get rejected by core with 422 missing_fields). The test reaches
+#     "Wait for respond -> triage verdict" and times out.
+#   - opensrm-saun.1.3 — AttributeError in RemediationAgent on canned-LLM
+#     responses. Caught by broad except, but degrades remediation.
+#   When you see this workflow fail in this window, check those beads first.
+#   Drop this section once both are closed.
+
+name: integration-three-tier
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  three-tier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout ecosystem (test harness lives here)
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-ecosystem
+          path: nthlayer-ecosystem
+          ref: main
+
+      - name: Checkout nthlayer-common
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-common
+          path: nthlayer-common
+          ref: main
+
+      - name: Checkout nthlayer-core
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-core
+          path: nthlayer-core
+          ref: main
+
+      - name: Checkout nthlayer-workers
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-workers
+          path: nthlayer-workers
+          ref: main
+
+      - name: Checkout nthlayer-bench
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-bench
+          path: nthlayer-bench
+          ref: main
+
+      - name: Stage repos as siblings under the ecosystem workspace
+        run: |
+          set -eux
+          mv nthlayer-common nthlayer-ecosystem/
+          mv nthlayer-core nthlayer-ecosystem/
+          mv nthlayer-workers nthlayer-ecosystem/
+          mv nthlayer-bench nthlayer-ecosystem/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install jq (assertion helper uses it)
+        run: sudo apt-get update -qq && sudo apt-get install -y jq
+
+      - name: Run three-tier integration test
+        working-directory: nthlayer-ecosystem
+        env:
+          NTHLAYER_LLM_STUB: canned
+        run: ./test/integration-three-tier.sh
+
+      - name: Preserve work dir on failure
+        if: failure()
+        run: |
+          echo "Integration test failed — collecting preserved logs"
+          ls /tmp/three-tier-debug-* 2>/dev/null || true
+          for d in /tmp/three-tier-debug-*; do
+            [ -d "$d" ] || continue
+            echo "=== $d/core.log (last 100 lines) ==="
+            tail -100 "$d/core.log" 2>/dev/null || true
+            echo "=== $d/workers.log (last 200 lines) ==="
+            tail -200 "$d/workers.log" 2>/dev/null || true
+          done
+
+      - name: Upload preserved logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: three-tier-debug-logs
+          path: /tmp/three-tier-debug-*
+          retention-days: 7
+          if-no-files-found: ignore
