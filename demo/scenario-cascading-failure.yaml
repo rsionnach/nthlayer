@@ -1,0 +1,61 @@
+scenario:
+  name: Cascading AI Model Failure
+  description: >
+    A bad model deploys to fraud-detect. Reversal rate climbs. NthLayer detects
+    the judgment quality drift, correlates the root cause, and responds.
+    Then the cascade: payment-api starts failing because fraud-detect is slow.
+    NthLayer separates the two incidents.
+
+  services:
+    fraud-detect:
+      port: 8001
+      type: ai-gate
+    payment-api:
+      port: 8002
+      type: api
+
+  phases:
+    - name: Steady State
+      duration: 15
+      description: All services healthy. NthLayer monitoring via generated rules.
+      actions: []
+
+    - name: Bad Model Deploy
+      duration: 45
+      description: >
+        Model v2.3 deployed to fraud-detect. Reversal rate climbs from 2% to 8%.
+        NthLayer-measure detects judgment quality drift.
+      actions:
+        - service: fraud-detect
+          control:
+            reversal_rate: 0.08
+            latency_p99: 0.25
+
+    - name: Cascade
+      duration: 30
+      description: >
+        Fraud-detect degradation cascades to payment-api.
+        Error rate and latency climb on payment-api.
+      actions:
+        - service: payment-api
+          control:
+            error_rate: 0.05
+            latency_p99: 0.8
+
+    - name: Recovery
+      duration: 20
+      description: >
+        NthLayer-respond has identified root cause and triggered rollback.
+        Both services return to healthy.
+      actions:
+        - service: fraud-detect
+          control: reset
+        - service: payment-api
+          control: reset
+
+    - name: Deploy Gate
+      duration: 10
+      description: >
+        Model v2.4 attempts to deploy. The judgment SLO gate blocks it.
+        The loop is closed.
+      actions: []

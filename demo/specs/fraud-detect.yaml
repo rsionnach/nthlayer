@@ -1,0 +1,27 @@
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: fraud-detect
+  team: payments-ml
+  tier: critical
+spec:
+  type: ai-gate
+  slos:
+    reversal_rate:
+      target: 98.5
+      window: 2m
+      description: >-
+        Non-reversal rate — minimum 98.5% of AI decisions must not be reversed
+        (max 1.5% reversal rate). The PromQL inverts reversal-rate to
+        non-reversal-rate so the SLI reads "higher is better" like availability.
+      indicator:
+        query: >-
+          1 - (sum(rate(gen_ai_overrides_total{service="fraud-detect"}[2m]))
+          / clamp_min(sum(rate(gen_ai_decisions_total{service="fraud-detect"}[2m])), 1))
+    availability:
+      target: 99.9
+      window: 30d
+      indicator:
+        query: >-
+          sum(rate(http_requests_total{service="fraud-detect",status="200"}[5m]))
+          / clamp_min(sum(rate(http_requests_total{service="fraud-detect"}[5m])), 1)

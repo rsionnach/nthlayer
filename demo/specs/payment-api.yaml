@@ -1,0 +1,20 @@
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: payment-api
+  team: payments-team
+  tier: critical
+spec:
+  type: api
+  slos:
+    availability:
+      target: 99.99
+      window: 30d
+      indicator:
+        query: >-
+          sum(rate(http_requests_total{service="payment-api",status="200"}[5m]))
+          / clamp_min(sum(rate(http_requests_total{service="payment-api"}[5m])), 1)
+  dependencies:
+    - name: fraud-detect
+      type: ai-gate
+      critical: true

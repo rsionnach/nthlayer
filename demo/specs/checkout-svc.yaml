@@ -1,0 +1,20 @@
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: checkout-svc
+  team: orders-team
+  tier: critical
+spec:
+  type: api
+  slos:
+    availability:
+      target: 99.95
+      window: 30d
+      indicator:
+        query: >-
+          sum(rate(http_requests_total{service="checkout-svc",status="200"}[5m]))
+          / clamp_min(sum(rate(http_requests_total{service="checkout-svc"}[5m])), 1)
+  dependencies:
+    - name: payment-api
+      type: api
+      critical: true

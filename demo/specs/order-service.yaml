@@ -1,0 +1,20 @@
+apiVersion: srm/v1
+kind: ServiceReliabilityManifest
+metadata:
+  name: order-service
+  team: orders-team
+  tier: critical
+spec:
+  type: api
+  slos:
+    availability:
+      target: 99.95
+      window: 30d
+      indicator:
+        query: >-
+          sum(rate(http_requests_total{service="order-service",status="200"}[5m]))
+          / clamp_min(sum(rate(http_requests_total{service="order-service"}[5m])), 1)
+  dependencies:
+    - name: payment-api
+      type: api
+      critical: true
