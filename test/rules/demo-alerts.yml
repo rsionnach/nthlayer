@@ -1,0 +1,40 @@
+groups:
+  - name: nthlayer-demo
+    rules:
+      - alert: AIReversalRateHigh
+        expr: |
+          sum by(service) (rate(gen_ai_overrides_total[2m]))
+          /
+          sum by(service) (rate(gen_ai_decisions_total[2m]))
+          > 0.03
+        for: 10s
+        labels:
+          severity: critical
+          component: measure
+        annotations:
+          summary: "AI reversal rate high on {{ $labels.service }}"
+          description: "Reversal rate {{ $value | humanizePercentage }} exceeds 3% threshold"
+
+      - alert: ServiceErrorRateHigh
+        expr: |
+          sum by(service) (rate(http_requests_total{status=~"5.."}[2m]))
+          /
+          sum by(service) (rate(http_requests_total[2m]))
+          > 0.02
+        for: 10s
+        labels:
+          severity: warning
+          component: measure
+        annotations:
+          summary: "Error rate high on {{ $labels.service }}"
+          description: "5xx error rate {{ $value | humanizePercentage }} exceeds 2% threshold"
+
+      - alert: ServiceLatencyHigh
+        expr: |
+          histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[2m])) > 0.5
+        for: 10s
+        labels:
+          severity: warning
+          component: measure
+        annotations:
+          summary: "p99 latency high on {{ $labels.service }}"
