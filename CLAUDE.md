@@ -10,6 +10,10 @@
 - `mkdocs.yml`, `docs-site/`, `docs/`, `documentation/`, `presentations/` — Docs site source + design assets
 - `.github/workflows/docs.yml` — Docs site build + GitHub Pages deploy
 - `.github/workflows/ci.yml` — Front-door CI (kept; may be slimmed in a follow-up)
+- `.github/workflows/release.yml` — Meta-package release to PyPI. Triggers on `push: tags: meta-v*` + `workflow_dispatch`. Builds from `meta-package/` subdirectory; publishes via trusted publishing to the `nthlayer` PyPI project.
+- `meta-package/` — Source for the `nthlayer` PyPI meta-package (`pip install nthlayer`). Dependency-only: pins nthlayer-core, nthlayer-workers, nthlayer-bench, nthlayer-generate at matching 1.0.0 releases. No Python source, no console scripts.
+- `meta-package/pyproject.toml` — Package metadata: name="nthlayer", version="1.0.0", requires-python=">=3.11", MIT licence, Production/Stable classifier.
+- `meta-package/README.md` — PyPI display content; explains meta-package as evaluator/demo entry point, points production users at individual sub-packages.
 - `CHANGELOG.md`, `CONTRIBUTING.md`, `AGENTS.md`, `ATTRIBUTION.md`, `LICENSING_COMPLIANCE.md` — Project metadata
 - Git tags `v0.1.0a2`–`v0.1.0a20` — preserved; pinned consumers continue to resolve to historical commits
 
@@ -36,10 +40,22 @@ Most changes here are documentation. The flow is:
 
 For implementation work, switch to the relevant implementation repo. Each has its own CLAUDE.md describing its conventions.
 
+## PyPI meta-package
+
+`meta-package/` is the authoritative source for `pip install nthlayer`. Key facts:
+
+- **Purpose:** friendly entry point for evaluators, demos, and local dev. For production, install individual tiers (`nthlayer-core`, `nthlayer-workers`, `nthlayer-bench`, `nthlayer-generate`).
+- **Content:** dependency-only (`packages = []`); no Python modules, no console scripts. All CLIs come from sub-packages.
+- **Pinning:** each release pins all four sub-packages at the same version (e.g. `==1.0.0`). nthlayer-common is a transitive dep resolved by sub-packages.
+- **Tag namespace:** `meta-v*` (e.g. `meta-v1.0.0`). Separate from the historical `v0.1.0a*` front-door tags and from sub-package release tags.
+- **First release:** `meta-v1.0.0` — tag pushed, GH release created, PyPI publish succeeded. `pip install nthlayer==1.0.0` resolves the full ecosystem closure.
+- **Workflow:** `.github/workflows/release.yml` triggers on `meta-v*` push + `workflow_dispatch`. Uses trusted publishing — configure at https://pypi.org/manage/project/nthlayer/settings/publishing/.
+
 ## Branch + tag policy
 
 - `main` is the published front-door state. PRs land here.
-- Tags `v0.1.0a*` are preserved for historical pinning. The next major release tag for this repo will likely follow the action's evolution (e.g. `v1` if `action.yml` is repurposed without breaking changes; `v2` if a clean break is needed).
+- Tags `v0.1.0a*` — preserved for historical pinning (legacy generator releases); these resolve to historical commits and are not updated.
+- Tags `meta-v*` — PyPI meta-package releases (e.g. `meta-v1.0.0`). Each `meta-v` tag triggers `.github/workflows/release.yml` and publishes to PyPI.
 - Stars and the repo URL must not change — they are first-class social proof and consumer-pinning surfaces.
 
 ## Spec + planning references (live in opensrm, not here)
