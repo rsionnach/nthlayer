@@ -41,20 +41,26 @@ PROMETHEUS_URL="${PROMETHEUS_URL:-http://localhost:9090}"
 LATENCY_BUDGET_SECONDS="${LATENCY_BUDGET_SECONDS:-30}"
 
 CORE_URL="http://localhost:${CORE_PORT}"
-ECOSYSTEM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TEST_DIR="${ECOSYSTEM_ROOT}/test"
+# FRONTDOOR_ROOT is the front-door checkout (this repo). Holds test/ + demo/.
+# WORKSPACE_ROOT is the parent that has all sibling implementation repos
+# (nthlayer-common/, nthlayer-core/, nthlayer-workers/, nthlayer-bench/).
+# This works both locally (sibling repos as siblings of nthlayer/ in the
+# ecosystem working dir) and in CI (each repo checked out at <workspace>/<name>).
+FRONTDOOR_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WORKSPACE_ROOT="$(cd "${FRONTDOOR_ROOT}/.." && pwd)"
+TEST_DIR="${FRONTDOOR_ROOT}/test"
 WORK_DIR="$(mktemp -d -t three-tier-XXXXXX)"
 STATE_DB="${WORK_DIR}/three-tier.db"
-SPECS_DIR="${ECOSYSTEM_ROOT}/demo/specs"
+SPECS_DIR="${FRONTDOOR_ROOT}/demo/specs"
 ASSERTIONS="${TEST_DIR}/three_tier_assertions.py"
 
 # Worker process runs from nthlayer-bench's venv so the assertions script
 # (which imports nthlayer_bench.sre.case_bench) and nthlayer_workers (which
 # the worker process needs) both resolve. nthlayer-bench depends on
 # nthlayer-common; we use uv --directory per-call to pick the right venv.
-RUN_CORE="uv run --directory ${ECOSYSTEM_ROOT}/nthlayer-core"
-RUN_WORKERS="uv run --directory ${ECOSYSTEM_ROOT}/nthlayer-workers"
-RUN_BENCH="uv run --directory ${ECOSYSTEM_ROOT}/nthlayer-bench"
+RUN_CORE="uv run --directory ${WORKSPACE_ROOT}/nthlayer-core"
+RUN_WORKERS="uv run --directory ${WORKSPACE_ROOT}/nthlayer-workers"
+RUN_BENCH="uv run --directory ${WORKSPACE_ROOT}/nthlayer-bench"
 
 CORE_PID=""
 WORKERS_PID=""

@@ -3,7 +3,17 @@
 # Boots the full nthlayer-core + nthlayer-workers + fake-service + Prometheus
 # stack and asserts the verdict chain (observe -> measure -> correlate ->
 # respond -> learn) plus bench-readable cases. The harness lives at
-# test/integration-three-tier.sh in the ecosystem workspace.
+# test/integration-three-tier.sh in this front-door repo (post 2026-04-26
+# consolidation; previously lived in an unversioned ecosystem working dir).
+#
+# Workspace layout in CI (matches the local sibling-repo layout):
+#   <workspace>/nthlayer/         — this repo (test/, demo/, harness)
+#   <workspace>/nthlayer-common/
+#   <workspace>/nthlayer-core/
+#   <workspace>/nthlayer-workers/
+#   <workspace>/nthlayer-bench/
+# The test script computes WORKSPACE_ROOT = <front-door>/.. and resolves
+# sibling repos relative to that.
 #
 # Security note: this workflow does NOT consume any untrusted GitHub event
 # input (no issue/PR/comment data flows into shell commands). Triggered by
@@ -46,12 +56,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout ecosystem (test harness lives here)
+      - name: Checkout front-door (test harness lives here)
         uses: actions/checkout@v4
         with:
-          repository: rsionnach/nthlayer-ecosystem
-          path: nthlayer-ecosystem
-          ref: main
+          path: nthlayer
 
       - name: Checkout nthlayer-common
         uses: actions/checkout@v4
@@ -81,14 +89,6 @@ jobs:
           path: nthlayer-bench
           ref: main
 
-      - name: Stage repos as siblings under the ecosystem workspace
-        run: |
-          set -eux
-          mv nthlayer-common nthlayer-ecosystem/
-          mv nthlayer-core nthlayer-ecosystem/
-          mv nthlayer-workers nthlayer-ecosystem/
-          mv nthlayer-bench nthlayer-ecosystem/
-
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
@@ -96,7 +96,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y jq
 
       - name: Run three-tier integration test
-        working-directory: nthlayer-ecosystem
+        working-directory: nthlayer
         env:
           NTHLAYER_LLM_STUB: canned
         run: ./test/integration-three-tier.sh
