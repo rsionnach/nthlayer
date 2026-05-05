@@ -95,6 +95,9 @@ jobs:
       - name: Install jq (assertion helper uses it)
         run: sudo apt-get update -qq && sudo apt-get install -y jq
 
+      - name: Install fake-service Python deps
+        run: pip3 install prometheus-client
+
       - name: Run three-tier integration test
         working-directory: nthlayer
         env:
