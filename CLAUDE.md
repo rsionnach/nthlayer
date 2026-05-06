@@ -111,10 +111,52 @@ OpenSRM specification (the format itself) lives in [`opensrm`](https://github.co
 Three test surfaces:
 
 - `test/integration-chain.sh` — verdict chain acceptance test (seeded, no Prometheus). See script header.
-- `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness test (real core API + workers + bench-via-API). Boots Docker stack, drives reversal_rate breach via fake-service, asserts verdict chain end-to-end. CI integration: `.github/workflows/integration-three-tier.yml` (workflow_dispatch + nightly).
+- `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness test (real core API + workers + bench-via-API). Boots Docker stack, drives reversal_rate breach via fake-service, asserts verdict chain end-to-end. CI integration: `.github/workflows/integration-three-tier.yml` (workflow_dispatch + nightly cron 04:00 UTC, timeout 15 min).
 - `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2). See script header.
 
 For worker pipeline architecture see [`docs/superpowers/specs/2026-04-25-p3-e1-respond-coordinator-worker-design.md`](docs/superpowers/specs/2026-04-25-p3-e1-respond-coordinator-worker-design.md). For demo orchestration see `demo/demo.sh` header and `demo/scenario-cascading-failure.yaml`.
+
+**`test/integration-three-tier.sh` — harness details:**
+
+Env overrides: `CORE_PORT` (default 8000), `FAKE_PORT` (default 8001), `PROMETHEUS_URL` (default `http://localhost:9090`), `LATENCY_BUDGET_SECONDS` (default 30).
+
+Repo resolution: `FRONTDOOR_ROOT` = this repo root; `WORKSPACE_ROOT` = `FRONTDOOR_ROOT/..` — resolves sibling repos the same way in both local sibling-repo layout and CI checkout layout.
+
+`RUN_BENCH` (`uv run --directory nthlayer-bench`) is used for running the assertions helper (not just bench commands) because `test/three_tier_assertions.py` imports `nthlayer_bench.sre.case_bench`.
+
+Boot sequence (always-fresh):
+1. `docker compose up -d prometheus` — Prometheus only; Grafana/AlertManager omitted (flaky file-mount, not queried by assertions)
+2. Poll Prometheus `/-/ready` (60s)
+3. Start `fake-service.py --name fraud-detect --type ai-gate` (15s health check)
+4. Start `nthlayer serve` with `NTHLAYER_STORE_PATH` + `NTHLAYER_MANIFESTS_DIR`; poll `/health` (30s); sanity-check `GET /manifests` returns ≥1 manifest
+5. Start `nthlayer-workers serve` with `NTHLAYER_LLM_STUB=canned` and all cycle intervals 5s (`--collect-interval 5 --measure-interval 5 --correlate-interval 5 --respond-interval 5`); poll for first heartbeat (30s)
+
+Trigger: `POST /control {"reversal_rate": 0.08, "rps": 100}` to fake-service.
+
+Verdict chain assertions (timeouts chosen for the Prometheus 2m window):
+1. `wait-verdict-type quality_breach --service fraud-detect` (180s)
+2. `wait-assessment-kind correlation_snapshot` (30s)
+3. `wait-verdict-type triage` (60s)
+4. `wait-case --service fraud-detect` (60s)
+5. `wait-assessment-kind retrospective` (60s) — falls back to `calibration_signal` (60s) if no retrospective yet
+
+Strong lineage: `assert-lineage TRIAGE_ID QUALITY_BREACH_ID` walks `GET /verdicts/{id}/ancestors`. `correlation_snapshot` is an assessment (not a verdict), so the ancestry is walked transitively through verdicts.
+
+Bench-via-API: `fetch-case-via-bench --state pending` directly imports `nthlayer_bench.sre.case_bench.fetch_case_bench` — proves the bench logic layer reads through core API.
+
+Latency budget: `assert-latency QUALITY_BREACH_AT CASE_AT LATENCY_BUDGET_SECONDS` — defined as `quality_breach.created_at` → `case.created_at`; excludes Prometheus window staleness and bench-fetch overhead.
+
+`run_assertion()` pattern: `output=$(...) || fail; eval "${output}"` — the two-step form is load-bearing; the compact `eval "$(…)"` silently swallows assertion failures when the helper produces empty stdout.
+
+Teardown trap (EXIT/INT/TERM): kills workers → core → fake-service in order; runs `docker compose down --remove-orphans`; on failure moves work dir to `/tmp/three-tier-debug-$(date +%s)` and prints known-blocker guidance.
+
+**`.github/workflows/integration-three-tier.yml` — CI details:**
+
+- Triggers: `workflow_dispatch` + cron `0 4 * * *` (nightly 04:00 UTC). NOT on push/PR (takes ~5 min, boots Docker).
+- Checks out all 5 repos (`nthlayer`, `nthlayer-common`, `nthlayer-core`, `nthlayer-workers`, `nthlayer-bench`) at `ref: main`. Pinning trade-off: `main` is correct while components co-evolve in v1.5; switch to released versions post-v1.0.
+- Installs: `uv` via `astral-sh/setup-uv@v7`; `jq` via apt; `prometheus-client` via pip3 (for fake-service).
+- On failure: prints `core.log` (last 100 lines) and `workers.log` (last 200 lines) inline, then uploads `/tmp/three-tier-debug-*` as artifact `three-tier-debug-logs` (7-day retention, `if-no-files-found: ignore`).
+- Security: no untrusted GitHub event input flows into shell commands.
 
 <!-- Drop when opensrm-saun.1.2 and opensrm-saun.1.3 close. -->
 **Known blockers (auto-failure expected until closed):**
