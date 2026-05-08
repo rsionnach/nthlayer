@@ -104,6 +104,7 @@ Current ecosystem specs live in this repo at `docs/specs/`. Architectural design
 - [Phase 0 decisions ratified](docs/superpowers/plans/2026-04-21-phase-0-decisions.md) — pre-implementation auth, policy, and team-filtering decisions
 - [V2 reconciliation report](docs/superpowers/specs/2026-04-20-v2-reconciliation-report.md) — per-spec reconciliation of v2 design discrepancies
 - [Core API security audit](docs/superpowers/specs/2026-05-06-core-api-security-audit.md) — P4-SEC.1 audit of nthlayer-core server.py + store.py (opensrm-9uow.1): SQL injection SAFE, error leakage FIXED (`_store_error_response`), input validation ACCEPTABLE, path injection SAFE; known limitations deferred to v2: no auth/CORS/rate-limiting/body-size-limit; related beads: opensrm-9uow.2 (safe-actions), opensrm-9uow.3 (dependencies)
+- [Dependency security audit](docs/superpowers/specs/2026-05-06-dependency-security-audit.md) — P4-SEC.3 pip-audit scan of all five active lockfiles (opensrm-9uow.3): one CVE found (pygments 2.19.2, CVE-2026-4539 via `rich ← instructor/typer`), fixed via `pygments>=2.20.0` transitive pin in `nthlayer-common/pyproject.toml`; all five repos re-locked to pygments 2.20.0; pinning policy (uv.lock = exact, pyproject.toml = bounded ranges) and supply-chain mitigations documented
 
 OpenSRM specification (the format itself) lives in [`opensrm`](https://github.com/rsionnach/opensrm).
 
