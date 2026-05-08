@@ -75,6 +75,16 @@ Most changes are documentation, ecosystem specs, or test/demo infrastructure:
 
 For implementation work, switch to the relevant component repo. Each has its own CLAUDE.md describing its conventions.
 
+## Ecosystem root workspace
+
+The parent directory (`nthlayer-ecosystem/`) is **not a git repository** — it hosts sibling clones of every active member plus three local-only convenience files:
+
+- `pyproject.toml` — editable-deps workspace config. `uv sync` from the ecosystem root builds a single `.venv/` with all five Python members (`nthlayer-common`, `nthlayer-generate`, `nthlayer-core`, `nthlayer-workers`, `nthlayer-bench`) installed editable. Cross-repo edits land immediately.
+- `CLAUDE.md` — ecosystem-level agent instructions (member taxonomy, "always operate inside a member repo" rule).
+- `README.md` — workspace overview for new contributors.
+
+These files are never committed; CI and per-repo `uv sync` use each member's own `pyproject.toml` + `uv.lock`. The workspace pyproject is dev-convenience only. See the bead `opensrm-hty.6` (RM.6) for the rationale.
+
 ## Branch + tag policy
 
 - `main` is the published front-door state. PRs land here.
