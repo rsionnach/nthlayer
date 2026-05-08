@@ -24,7 +24,7 @@ Separate concern (not in the active count):
 
 - `nthlayer-site/` — marketing/demo site (separate concern; HTML/JS, no Python; no CLAUDE.md yet).
 
-Deprecated standalone repos (consolidated into nthlayer-workers 2026-04-26): `nthlayer-observe/`, `nthlayer-learn/`, `nthlayer-measure/`, `nthlayer-correlate/`, `nthlayer-respond/`. Each has a PyPI deprecation release that emits a `DeprecationWarning`.
+Deprecated standalone repos `nthlayer-observe`, `nthlayer-learn`, `nthlayer-measure`, `nthlayer-correlate`, `nthlayer-respond` were consolidated into nthlayer-workers 2026-04-26 and removed from local disk 2026-05-08 under `opensrm-hty.7` (RM.7). Each has a PyPI deprecation release (`v1.0.0`) that emits a `DeprecationWarning`; upstream GitHub repos remain for historical reference.
 
 ## What this repo hosts
 
