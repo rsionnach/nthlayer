@@ -68,56 +68,26 @@ FAKE_PID=""
 DOCKER_UP="false"
 
 # ---------------------------------------------------------------------------
-# Output helpers
+# Output helpers (used by both this script and the shared library)
 # ---------------------------------------------------------------------------
 
+# Define BEFORE sourcing _three_tier_lib.sh — the lib uses tt_log/tt_info/
+# tt_pass/tt_fail and falls back to plain ASCII versions if the caller
+# hasn't defined them.
 log()  { printf '\n=== %s ===\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
 fail() { printf '  ✗ FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf '  ✓ %s\n' "$*"; }
+tt_log()  { log  "$@"; }
+tt_info() { info "$@"; }
+tt_fail() { fail "$@"; }
+tt_pass() { pass "$@"; }
 
-# ---------------------------------------------------------------------------
-# Teardown — registered before any process starts so an early failure cleans up
-# ---------------------------------------------------------------------------
-
-teardown() {
-    local exit_code=$?
-    log "Teardown"
-    if [[ -n "${WORKERS_PID}" ]]; then
-        info "stopping workers (pid ${WORKERS_PID})"
-        kill -TERM "${WORKERS_PID}" 2>/dev/null || true
-        wait "${WORKERS_PID}" 2>/dev/null || true
-    fi
-    if [[ -n "${CORE_PID}" ]]; then
-        info "stopping core (pid ${CORE_PID})"
-        kill -TERM "${CORE_PID}" 2>/dev/null || true
-        wait "${CORE_PID}" 2>/dev/null || true
-    fi
-    if [[ -n "${FAKE_PID}" ]]; then
-        info "stopping fake-service (pid ${FAKE_PID})"
-        kill -TERM "${FAKE_PID}" 2>/dev/null || true
-        wait "${FAKE_PID}" 2>/dev/null || true
-    fi
-    if [[ "${DOCKER_UP}" == "true" ]]; then
-        info "stopping docker compose stack"
-        (cd "${TEST_DIR}" && docker compose down --remove-orphans >/dev/null 2>&1) || true
-    fi
-    if [[ ${exit_code} -eq 0 ]]; then
-        info "removing work dir ${WORK_DIR}"
-        rm -rf "${WORK_DIR}"
-        printf '\nPASS — three-tier integration test complete.\n'
-    else
-        # Preserve logs on failure for diagnosis. The work dir contains
-        # core.log, workers.log, fake.log + the SQLite store snapshot.
-        local saved_dir="/tmp/three-tier-debug-$(date +%s)"
-        info "preserving work dir for debug → ${saved_dir}"
-        mv "${WORK_DIR}" "${saved_dir}" 2>/dev/null || true
-        printf '\nFAIL — three-tier integration test failed (exit %d).\n' "${exit_code}" >&2
-        printf 'Logs preserved at %s\n' "${saved_dir}" >&2
-        # Known-blockers note: keeps the nightly CI failure informative
-        # while these dependency bugs are open. Drop this block once both
-        # are closed.
-        cat >&2 <<'KNOWN_BLOCKERS'
+# Known-blockers hook — printed by teardown_three_tier_stack on failure.
+# Keeps the nightly CI failure informative while specific dependency
+# bugs are open; drop this function once both are closed.
+tt_known_blockers() {
+    cat <<'KNOWN_BLOCKERS'
 
 Known dependency bugs that block this test from passing (as of 2026-05-02):
 
@@ -134,7 +104,21 @@ opensrm-saun.1.2. If the test was passing recently and now fails for a
 different reason, check the preserved workers.log first. Both follow-up
 beads link to opensrm-saun.1 in the Dolt DB.
 KNOWN_BLOCKERS
-    fi
+}
+
+# Source the shared boot/teardown library (opensrm-saun.2.1).
+# shellcheck source=./_three_tier_lib.sh
+source "$(dirname "$0")/_three_tier_lib.sh"
+
+# ---------------------------------------------------------------------------
+# Teardown — registered before any process starts so an early failure cleans up
+# ---------------------------------------------------------------------------
+
+teardown() {
+    local exit_code=$?
+    teardown_three_tier_stack "${WORK_DIR}" "${TEST_DIR}" "${FAKE_PORT}" \
+        three-tier "${exit_code}" \
+        "PASS — three-tier integration test complete."
     exit "${exit_code}"
 }
 trap teardown EXIT INT TERM
@@ -144,111 +128,26 @@ trap teardown EXIT INT TERM
 # ---------------------------------------------------------------------------
 
 log "Pre-flight"
-for cmd in docker uv curl python3 jq lsof; do
-    command -v "${cmd}" >/dev/null 2>&1 || fail "missing required command: ${cmd}"
-done
+preflight_required_commands
 [[ -f "${ASSERTIONS}" ]] || fail "assertions helper not found: ${ASSERTIONS}"
 [[ -d "${SPECS_DIR}" ]] || fail "specs dir not found: ${SPECS_DIR}"
 [[ -f "${TEST_DIR}/docker-compose.yml" ]] || fail "docker-compose.yml not found in ${TEST_DIR}"
 [[ -f "${TEST_DIR}/fake-service.py" ]] || fail "fake-service.py not found in ${TEST_DIR}"
-
-# Port conflict check: surfaces EADDRINUSE up front instead of letting
-# core/fake-service hang on the health-check loops with the real cause
-# buried in the log file. Skip 9090 — that's Prometheus inside Docker, the
-# binding race is handled by the docker compose health poll later.
-for port_pair in "core:${CORE_PORT}" "fake-service:${FAKE_PORT}"; do
-    name="${port_pair%%:*}"
-    port="${port_pair##*:}"
-    if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
-        fail "port ${port} (${name}) is already in use — free it before running this test"
-    fi
-done
-
+preflight_port_conflicts "${CORE_PORT}" "${FAKE_PORT}"
 pass "all prerequisites present"
 
 # ---------------------------------------------------------------------------
-# Boot Prometheus stack
+# Boot the three-tier stack (Prometheus → fake-service → core → workers)
 # ---------------------------------------------------------------------------
 
-log "Bring up Docker (Prometheus only — test doesn't query Grafana/AlertManager)"
-# Selective up: the test reads from Prometheus directly. Grafana provisioning
-# has a flaky file-mount on some Docker Desktop setups, and AlertManager
-# isn't queried by any assertion. Bring up just Prometheus to minimise blast
-# radius. Teardown still runs the full `down` so we don't leave orphans.
-(cd "${TEST_DIR}" && docker compose up -d prometheus >/dev/null)
-DOCKER_UP="true"
-
-# Poll Prometheus /-/ready
-deadline=$(( $(date +%s) + 60 ))
-until curl -fsS "${PROMETHEUS_URL}/-/ready" >/dev/null 2>&1; do
-    [[ $(date +%s) -lt ${deadline} ]] || fail "Prometheus did not become ready in 60s"
-    sleep 1
-done
-pass "Prometheus ready"
-
-# ---------------------------------------------------------------------------
-# Start fake-service
-# ---------------------------------------------------------------------------
-
-log "Start fake-service (fraud-detect on ${FAKE_PORT})"
-python3 "${TEST_DIR}/fake-service.py" --name fraud-detect --type ai-gate --port "${FAKE_PORT}" \
-    >"${WORK_DIR}/fake.log" 2>&1 &
-FAKE_PID=$!
-
-deadline=$(( $(date +%s) + 15 ))
-until curl -fsS "http://localhost:${FAKE_PORT}/health" >/dev/null 2>&1; do
-    [[ $(date +%s) -lt ${deadline} ]] || fail "fake-service did not start in 15s; see ${WORK_DIR}/fake.log"
-    sleep 0.5
-done
-pass "fake-service ready (pid ${FAKE_PID})"
-
-# ---------------------------------------------------------------------------
-# Start nthlayer-core
-# ---------------------------------------------------------------------------
-
-log "Start nthlayer-core on ${CORE_PORT}"
-NTHLAYER_STORE_PATH="${STATE_DB}" \
-NTHLAYER_MANIFESTS_DIR="${SPECS_DIR}" \
-${RUN_CORE} nthlayer serve --host 127.0.0.1 --port "${CORE_PORT}" \
-    >"${WORK_DIR}/core.log" 2>&1 &
-CORE_PID=$!
-
-deadline=$(( $(date +%s) + 30 ))
-until curl -fsS "${CORE_URL}/health" >/dev/null 2>&1; do
-    [[ $(date +%s) -lt ${deadline} ]] || fail "core did not become healthy in 30s; see ${WORK_DIR}/core.log"
-    sleep 0.5
-done
-pass "core ready (pid ${CORE_PID})"
-
-# Sanity check manifests are loaded
-manifest_count=$(curl -fsS "${CORE_URL}/manifests" | jq 'length')
-[[ "${manifest_count}" -ge 1 ]] || fail "core /manifests returned ${manifest_count} manifests (expected ≥1)"
-pass "core has loaded ${manifest_count} manifests from ${SPECS_DIR}"
-
-# ---------------------------------------------------------------------------
-# Start nthlayer-workers (with LLM stub)
-# ---------------------------------------------------------------------------
-
-log "Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, all intervals 5s)"
-NTHLAYER_LLM_STUB=canned \
-${RUN_WORKERS} nthlayer-workers serve \
-    --core-url "${CORE_URL}" \
-    --instance-id "three-tier-test" \
-    --prometheus-url "${PROMETHEUS_URL}" \
-    --collect-interval 5 \
-    --measure-interval 5 \
-    --correlate-interval 5 \
-    --respond-interval 5 \
-    >"${WORK_DIR}/workers.log" 2>&1 &
-WORKERS_PID=$!
-
-# Wait for at least one heartbeat to land in core. We don't filter by
-# component — any registered worker module heartbeating proves the worker
-# process can talk to core.
-log "Wait for first worker heartbeat"
-${RUN_BENCH} python "${ASSERTIONS}" wait-heartbeat \
-    --core-url "${CORE_URL}" --timeout 30 --interval 1
-pass "workers heartbeating into core"
+# Override the work-dir state DB path the lib's default. The lib uses
+# ${WORK_DIR}/state.db; this script's existing logs reference STATE_DB
+# under the same path so this is a no-op renaming for the lib's purposes.
+boot_three_tier_stack \
+    "${WORK_DIR}" "${TEST_DIR}" "${SPECS_DIR}" \
+    "${CORE_PORT}" "${FAKE_PORT}" "${CORE_URL}" "${PROMETHEUS_URL}" \
+    "${RUN_CORE}" "${RUN_WORKERS}" "${RUN_BENCH}" "${ASSERTIONS}" \
+    "three-tier-test"
 
 # ---------------------------------------------------------------------------
 # Trigger breach

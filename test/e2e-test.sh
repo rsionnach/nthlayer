@@ -63,6 +63,19 @@ info() { printf '  %s\n' "$*"; }
 pass() { echo "  ✓ PASS"; PASSED=$((PASSED + 1)); }
 fail() { echo "  ✗ FAIL: $1" >&2; FAILED=$((FAILED + 1)); }
 
+# Adapter helpers for the shared boot/teardown library (opensrm-saun.2.1).
+# The lib's tt_log/tt_info/tt_pass/tt_fail names sidestep e2e's step
+# counters (which are tied to its 9-step narrative) and emit plain log
+# lines for the boot/teardown phases.
+tt_log()  { printf '\n=== %s ===\n' "$*"; }
+tt_info() { printf '  %s\n' "$*"; }
+tt_pass() { printf '  ✓ %s\n' "$*"; }
+tt_fail() { printf '  ✗ FAIL: %s\n' "$*" >&2; exit 1; }
+
+# Source the shared library AFTER tt_* are defined so the lib picks them up.
+# shellcheck source=./_three_tier_lib.sh
+source "$(dirname "$0")/_three_tier_lib.sh"
+
 # Run a step function and capture pass/fail without aborting the script.
 # A step body must call ``pass`` or ``fail`` before returning; if neither
 # happens (or the body exits non-zero through a bare $(...) failure that
@@ -93,40 +106,15 @@ run_step() {
 
 teardown() {
     local exit_code=$?
-    # Disarm the trap to avoid recursive teardown if a SIGINT/SIGTERM
-    # arrives during cleanup (the second invocation would re-enter `wait`
-    # on already-reaped PIDs and re-run the work-dir mv).
-    trap - INT TERM
-    echo -e "\n--- Cleanup ---"
-    # Best-effort reset of fake-service before stopping it
-    curl -sf -X POST "http://localhost:${FAKE_PORT}/reset" >/dev/null 2>&1 || true
-    if [[ -n "${WORKERS_PID}" ]]; then
-        info "stopping workers (pid ${WORKERS_PID})"
-        kill -TERM "${WORKERS_PID}" 2>/dev/null || true
-        wait "${WORKERS_PID}" 2>/dev/null || true
+    # Treat any failed step as a failure for log-preservation purposes,
+    # even when the script exits 0 overall (the e2e summary may report
+    # FAILED>0 without bubbling a non-zero exit). The library's
+    # success-path branch only runs when exit_code == 0.
+    if [[ ${FAILED} -gt 0 && ${exit_code} -eq 0 ]]; then
+        exit_code=1
     fi
-    if [[ -n "${CORE_PID}" ]]; then
-        info "stopping core (pid ${CORE_PID})"
-        kill -TERM "${CORE_PID}" 2>/dev/null || true
-        wait "${CORE_PID}" 2>/dev/null || true
-    fi
-    if [[ -n "${FAKE_PID}" ]]; then
-        info "stopping fake-service (pid ${FAKE_PID})"
-        kill -TERM "${FAKE_PID}" 2>/dev/null || true
-        wait "${FAKE_PID}" 2>/dev/null || true
-    fi
-    if [[ "${DOCKER_UP}" == "true" ]]; then
-        info "stopping docker compose stack"
-        (cd "${TEST_DIR}" && docker compose down --remove-orphans >/dev/null 2>&1) || true
-    fi
-    if [[ ${exit_code} -eq 0 && ${FAILED} -eq 0 ]]; then
-        info "removing work dir ${WORK_DIR}"
-        rm -rf "${WORK_DIR}"
-    else
-        local saved="/tmp/e2e-debug-$(date +%s)"
-        info "preserving work dir for debug → ${saved}"
-        mv "${WORK_DIR}" "${saved}" 2>/dev/null || true
-    fi
+    teardown_three_tier_stack "${WORK_DIR}" "${TEST_DIR}" "${FAKE_PORT}" \
+        e2e "${exit_code}"
 }
 trap teardown EXIT INT TERM
 
@@ -135,72 +123,17 @@ trap teardown EXIT INT TERM
 # ---------------------------------------------------------------------------
 
 boot_stack() {
-    echo "=== Pre-flight ==="
-    for cmd in docker uv curl python3 jq lsof; do
-        command -v "${cmd}" >/dev/null 2>&1 || { echo "missing: ${cmd}" >&2; exit 1; }
-    done
-    [[ -f "${ASSERTIONS}" ]] || { echo "assertions helper not found: ${ASSERTIONS}" >&2; exit 1; }
-    [[ -d "${SPECS_DIR}" ]]  || { echo "specs dir not found: ${SPECS_DIR}" >&2; exit 1; }
+    tt_log "Pre-flight"
+    preflight_required_commands
+    [[ -f "${ASSERTIONS}" ]] || tt_fail "assertions helper not found: ${ASSERTIONS}"
+    [[ -d "${SPECS_DIR}" ]]  || tt_fail "specs dir not found: ${SPECS_DIR}"
+    preflight_port_conflicts "${CORE_PORT}" "${FAKE_PORT}"
 
-    for port_pair in "core:${CORE_PORT}" "fake-service:${FAKE_PORT}"; do
-        name="${port_pair%%:*}"
-        port="${port_pair##*:}"
-        if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
-            echo "port ${port} (${name}) already in use; free it before running e2e" >&2
-            exit 1
-        fi
-    done
-
-    echo "=== Bring up Docker (Prometheus only) ==="
-    (cd "${TEST_DIR}" && docker compose up -d prometheus >/dev/null)
-    DOCKER_UP="true"
-    deadline=$(( $(date +%s) + 60 ))
-    until curl -fsS "${PROMETHEUS_URL}/-/ready" >/dev/null 2>&1; do
-        [[ $(date +%s) -lt ${deadline} ]] || { echo "Prometheus not ready in 60s" >&2; exit 1; }
-        sleep 1
-    done
-
-    echo "=== Start fake-service (fraud-detect on ${FAKE_PORT}) ==="
-    python3 "${TEST_DIR}/fake-service.py" --name fraud-detect --type ai-gate --port "${FAKE_PORT}" \
-        >"${WORK_DIR}/fake.log" 2>&1 &
-    FAKE_PID=$!
-    deadline=$(( $(date +%s) + 15 ))
-    until curl -fsS "http://localhost:${FAKE_PORT}/health" >/dev/null 2>&1; do
-        [[ $(date +%s) -lt ${deadline} ]] || { echo "fake-service did not start" >&2; exit 1; }
-        sleep 0.5
-    done
-
-    echo "=== Start nthlayer-core on ${CORE_PORT} ==="
-    NTHLAYER_STORE_PATH="${STATE_DB}" \
-    NTHLAYER_MANIFESTS_DIR="${SPECS_DIR}" \
-    ${RUN_CORE} nthlayer serve --host 127.0.0.1 --port "${CORE_PORT}" \
-        >"${WORK_DIR}/core.log" 2>&1 &
-    CORE_PID=$!
-    deadline=$(( $(date +%s) + 30 ))
-    until curl -fsS "${CORE_URL}/health" >/dev/null 2>&1; do
-        [[ $(date +%s) -lt ${deadline} ]] || { echo "core not healthy in 30s" >&2; exit 1; }
-        sleep 0.5
-    done
-
-    echo "=== Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, intervals 5s) ==="
-    NTHLAYER_LLM_STUB=canned \
-    ${RUN_WORKERS} nthlayer-workers serve \
-        --core-url "${CORE_URL}" \
-        --instance-id "e2e-test" \
-        --prometheus-url "${PROMETHEUS_URL}" \
-        --collect-interval 5 \
-        --measure-interval 5 \
-        --correlate-interval 5 \
-        --respond-interval 5 \
-        --retrospective-interval 5 \
-        --outcome-interval 10 \
-        >"${WORK_DIR}/workers.log" 2>&1 &
-    WORKERS_PID=$!
-
-    # Wait for the first worker heartbeat so subsequent steps don't race a
-    # cold worker process.
-    ${RUN_BENCH} python "${ASSERTIONS}" wait-heartbeat \
-        --core-url "${CORE_URL}" --timeout 30 --interval 1 >/dev/null
+    boot_three_tier_stack \
+        "${WORK_DIR}" "${TEST_DIR}" "${SPECS_DIR}" \
+        "${CORE_PORT}" "${FAKE_PORT}" "${CORE_URL}" "${PROMETHEUS_URL}" \
+        "${RUN_CORE}" "${RUN_WORKERS}" "${RUN_BENCH}" "${ASSERTIONS}" \
+        "e2e-test"
 }
 
 # ---------------------------------------------------------------------------
