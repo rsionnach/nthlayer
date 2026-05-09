@@ -123,12 +123,15 @@ OpenSRM specification (the format itself) lives in [`opensrm`](https://github.co
 Three test surfaces:
 
 - `test/integration-chain.sh` — verdict chain acceptance test (seeded, no Prometheus). See script header.
-- `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness test (real core API + workers + bench-via-API). Boots Docker stack, drives reversal_rate breach via fake-service, asserts verdict chain end-to-end. CI integration: `.github/workflows/integration-three-tier.yml` (workflow_dispatch + nightly cron 04:00 UTC, timeout 15 min).
-- `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2). See script header.
+- `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness test (real core API + workers + bench-via-API). Boots Docker stack, drives reversal_rate breach via fake-service, asserts verdict chain end-to-end. Sources `_three_tier_lib.sh` for preflight/boot/teardown (270 lines, down from 371). CI integration: `.github/workflows/integration-three-tier.yml` (workflow_dispatch + nightly cron 04:00 UTC, timeout 15 min).
+- `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2). Sources `_three_tier_lib.sh` for preflight/boot/teardown (391 lines, down from 458). See script header.
+- `test/_three_tier_lib.sh` — shared boot/teardown library (opensrm-saun.2.1). Sourced by `integration-three-tier.sh` and `e2e-test.sh`. Four helpers: `preflight_required_commands [extra...]` (checks docker/uv/curl/python3/jq/lsof + optional extras), `preflight_port_conflicts CORE_PORT FAKE_PORT` (EADDRINUSE catcher; skips Prometheus 9090 since that's inside Docker), `boot_three_tier_stack ...` (Docker compose + Prometheus poll + fake-service + core + workers + heartbeat wait; sets globals CORE_PID/WORKERS_PID/FAKE_PID/DOCKER_UP), `teardown_three_tier_stack ...` (disarms INT/TERM trap to prevent recursive teardown, ordered SIGTERM workers→core→fake-service, docker compose down --remove-orphans; success removes WORK_DIR, failure preserves logs at `/tmp/<save-prefix>-debug-<ts>` and calls optional `tt_known_blockers` hook). Hook pattern: callers define `tt_log`/`tt_info`/`tt_pass`/`tt_fail`/`tt_known_blockers` before sourcing; fallbacks provided. Normalises two inconsistencies from the originals: trap-disarm for recursive teardown is now centralised; known-blocker text is an optional caller hook instead of hardcoded.
 
 For worker pipeline architecture see [`docs/superpowers/specs/2026-04-25-p3-e1-respond-coordinator-worker-design.md`](docs/superpowers/specs/2026-04-25-p3-e1-respond-coordinator-worker-design.md). For demo orchestration see `demo/demo.sh` header and `demo/scenario-cascading-failure.yaml`.
 
 **`test/integration-three-tier.sh` — harness details:**
+
+Boot/teardown logic (preflight, stack startup, trap disarm, log preservation) is now in `test/_three_tier_lib.sh`. The details below describe the full behaviour; the library owns the implementation.
 
 Env overrides: `CORE_PORT` (default 8000), `FAKE_PORT` (default 8001), `PROMETHEUS_URL` (default `http://localhost:9090`), `LATENCY_BUDGET_SECONDS` (default 30).
 
