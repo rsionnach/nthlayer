@@ -99,7 +99,7 @@ These files are never committed; CI and per-repo `uv sync` use each member's own
 
 - **Purpose:** friendly entry point for evaluators, demos, and local dev. For production, install individual tiers.
 - **Content:** dependency-only (`packages = []`); no Python modules, no console scripts.
-- **Pinning:** each release pins all four sub-packages at the same version (e.g. `==1.0.0`). nthlayer-common is a transitive dep.
+- **Pinning:** each release pins all four sub-packages at explicit versions; they are not guaranteed to match. `nthlayer-generate` follows its own versioning baseline (currently `==1.1.0`); `nthlayer-core`, `nthlayer-workers`, and `nthlayer-bench` are aligned (currently `==1.6.0`). nthlayer-common is a transitive dep.
 - **Tag namespace:** `meta-v*` (e.g. `meta-v1.0.0`). Separate from legacy `v0.1.0a*` and from sub-package tags.
 - **First release:** `meta-v1.0.0` — published; `pip install nthlayer==1.0.0` resolves the full ecosystem closure.
 - **Workflow:** `.github/workflows/release.yml` (triggered on `meta-v*` push + `workflow_dispatch`). Trusted publishing.
