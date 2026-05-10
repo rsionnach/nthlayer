@@ -1,27 +1,49 @@
+# Dependabot — dependency-bump automation. GitHub-native; no Mend.io
+# account required. Auto-merge for patch updates on external runtime
+# deps + patch/minor on dev deps is handled by
+# .github/workflows/dependabot-automerge.yml.
 version: 2
-updates:
-  # Python dependencies
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "deps"
-    labels:
-      - "dependencies"
-      - "python"
 
-  # GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
+updates:
+  # Meta-package pyproject lives at meta-package/pyproject.toml. The
+  # repo root has no Python source.
+  - package-ecosystem: uv
+    directory: /meta-package
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 3
-    commit-message:
-      prefix: "ci"
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Dublin
     labels:
-      - "dependencies"
-      - "github-actions"
+      - dependencies
+    groups:
+      nthlayer-ecosystem:
+        patterns:
+          - "nthlayer-*"
+        update-types:
+          - "patch"
+          - "minor"
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - "patch"
+          - "minor"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Dublin
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      ci-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+          - "minor"

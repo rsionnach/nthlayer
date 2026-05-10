@@ -1,0 +1,32 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Release summary
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          RP_TAG: ${{ steps.release.outputs.tag_name }}
+          RP_MAJOR: ${{ steps.release.outputs.major }}
+          RP_MINOR: ${{ steps.release.outputs.minor }}
+          RP_PATCH: ${{ steps.release.outputs.patch }}
+        run: |
+          {
+            echo "Release created: $RP_TAG"
+            echo "Version: $RP_MAJOR.$RP_MINOR.$RP_PATCH"
+          } >> "$GITHUB_STEP_SUMMARY"

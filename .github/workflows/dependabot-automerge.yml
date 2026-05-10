@@ -1,0 +1,82 @@
+name: dependabot-automerge
+
+# Dependabot doesn't auto-merge by itself. This workflow inspects
+# Dependabot PR metadata and enables GitHub native auto-merge for the
+# subset that matches our policy:
+#   - external (non-nthlayer) runtime deps: patch only
+#   - dev deps: patch + minor
+#   - nthlayer-* siblings: never (cross-repo review gate)
+#   - any major bump: never
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Decide auto-merge eligibility
+        id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          DEP_TYPE: ${{ steps.meta.outputs.dependency-type }}
+          DEP_NAMES: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          # Refuse if any nthlayer-* dep is in the update.
+          if printf '%s\n' "$DEP_NAMES" | grep -q '^nthlayer-'; then
+            echo "reason=nthlayer-ecosystem-needs-review" >> "$GITHUB_OUTPUT"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Major bumps never auto-merge.
+          if [[ "$UPDATE_TYPE" == "version-update:semver-major" ]]; then
+            echo "reason=major-bump-needs-review" >> "$GITHUB_OUTPUT"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Dev deps: patch + minor allowed.
+          if [[ "$DEP_TYPE" == "direct:development" ]]; then
+            if [[ "$UPDATE_TYPE" == "version-update:semver-patch" || \
+                  "$UPDATE_TYPE" == "version-update:semver-minor" ]]; then
+              echo "reason=dev-dep-${UPDATE_TYPE##*-}" >> "$GITHUB_OUTPUT"
+              echo "eligible=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          # External runtime deps: patch only.
+          if [[ "$UPDATE_TYPE" == "version-update:semver-patch" ]]; then
+            echo "reason=external-patch" >> "$GITHUB_OUTPUT"
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Default: refuse (e.g. external minor bumps need review).
+          echo "reason=runtime-minor-needs-review" >> "$GITHUB_OUTPUT"
+          echo "eligible=false" >> "$GITHUB_OUTPUT"
+
+      - name: Enable native auto-merge
+        if: steps.decide.outputs.eligible == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          {
+            echo "Auto-merge enabled — reason: $REASON"
+            echo "GitHub will merge as soon as required checks pass."
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh pr merge --auto --squash "$PR_URL"
+
+      - name: Annotate when not eligible
+        if: steps.decide.outputs.eligible != 'true'
+        env:
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          echo "Auto-merge skipped — reason: $REASON" >> "$GITHUB_STEP_SUMMARY"
