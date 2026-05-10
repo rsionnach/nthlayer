@@ -46,6 +46,7 @@ Deprecated standalone repos `nthlayer-observe`, `nthlayer-learn`, `nthlayer-meas
   - `integration-three-tier.yml` — cross-repo three-tier integration test (`workflow_dispatch` + nightly cron)
   - `publish-docker.yml` — Docker image publish
 - `meta-package/` — source for `pip install nthlayer`. Dependency-only; pins core/workers/bench/generate at matching versions.
+- `docs/release-runbook.md` — operator runbook covering the full ecosystem-wide release pipeline: per-repo release-please flow, meta-package coordination, the GITHUB_TOKEN cascade-block workaround, manual PyPI publish steps, and post-release verification checklist. **New in Phase 5.**
 - `CHANGELOG.md`, `CONTRIBUTING.md`, `AGENTS.md`, `ATTRIBUTION.md`, `LICENSING_COMPLIANCE.md` — project metadata
 - Git tags `v0.1.0a2`–`v0.1.0a20` — preserved; pinned consumers continue to resolve to historical commits
 
@@ -211,3 +212,13 @@ Auth flow, policy evaluation, team filtering, Regorus vs regopy, and v1.5-first 
 63 tasks across 8 phases (Phase 0 decisions, Repo Migration RM.1–RM.7, Phases 1–5, Docs, Security). Phase 1 builds primitives (CoreAPIClient, CloudEvents, store schema, core HTTP API); Phase 2 completes core (manifest parser, catalogue); Phase 3 implements workers; Phase 4 builds the bench TUI; Phase 5 wires three-tier integration tests, demo, and release. Tech stack: Python 3.11+, SQLite WAL, Starlette, httpx, Instructor, Textual, scipy, networkx, opentelemetry-sdk.
 
 Canonical plan with task-by-task detail and current progress: [`docs/superpowers/plans/2026-04-21-nthlayer-v1.5-epic-tree.md`](docs/superpowers/plans/2026-04-21-nthlayer-v1.5-epic-tree.md). Per-component design specs are co-located in `docs/superpowers/specs/`.
+
+## CI / Release pipeline
+
+The nthlayer front-door repo uses `googleapis/release-please-action@v4` for the meta-package. Config lives in `release-please-config.json` (package type `python`, component `meta`, package path `meta-package/`) and `.release-please-manifest.json` (version anchor at `meta-package/`). Tags follow the pattern `meta-v*` (e.g. `meta-v1.0.0`), kept separate from the legacy `v0.1.0a*` generator tags and from sub-package `v*` tags. Commit taxonomy: `feat`/`fix`/`perf`/`deps`/`docs` surface in the changelog; `chore`/`test`/`ci`/`build`/`style`/`refactor` are hidden (refactor is also hidden here, unlike the library repos). When the release PR is merged, release-please creates the `meta-v*` tag and `release.yml` fires.
+
+**No smoke gate.** The meta-package is dependency-only (`packages = []`, no Python modules, no console scripts). There is nothing to smoke-test at install time — the gate pattern used by the four library repos does not apply here. `release.yml` goes straight from `twine check` to PyPI trusted-publishing.
+
+Dependabot config (`.github/dependabot.yml`) declares the `uv` ecosystem pointing at `/meta-package` (where `pyproject.toml` and `uv.lock` live) on a Monday-morning Europe/Dublin schedule; sibling `nthlayer-*` packages are grouped into a single weekly PR. There is no `github-actions` ecosystem entry for the front-door workflows because those workflows pin to `main` by convention. Auto-merge policy (`.github/workflows/dependabot-automerge.yml`): external patch and dev patch/minor auto-merge; sibling packages and any major bump require review.
+
+For the full cross-repo release procedure — coordinating per-library release-please runs, bumping the meta-package pins, the GITHUB_TOKEN cascade-block workaround, and post-release PyPI verification — see **`docs/release-runbook.md`** (added Phase 5).
