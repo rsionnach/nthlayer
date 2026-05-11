@@ -19,10 +19,15 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 DEMO_DIR="$(cd "$(dirname "$0")" && pwd)"
-ECOSYSTEM_DIR="$(cd "$DEMO_DIR/.." && pwd)"
+# Front-door root (this repo): hosts test/, demo-output/, specs, scripts.
+FRONTDOOR_ROOT="$(cd "$DEMO_DIR/.." && pwd)"
+# Workspace root: parent of the front-door, where sibling component repos
+# (nthlayer-core/-workers/-bench/-common) are cloned. demo.sh launches
+# those via `uv run --directory`.
+WORKSPACE_ROOT="$(cd "$FRONTDOOR_ROOT/.." && pwd)"
 SITE_DIR="${SITE_DIR:-/Users/robfox/Documents/GitHub/nthlayer-site}"
-TEST_DIR="$ECOSYSTEM_DIR/test"
-OUTPUT_DIR="$ECOSYSTEM_DIR/demo-output"
+TEST_DIR="$FRONTDOOR_ROOT/test"
+OUTPUT_DIR="$FRONTDOOR_ROOT/demo-output"
 
 SCENARIO_FILE="$DEMO_DIR/scenario-cascading-failure.yaml"
 VERDICT_FEED_SCRIPT="$DEMO_DIR/verdict-feed.sh"
@@ -37,9 +42,9 @@ PROMETHEUS_URL="http://localhost:9090"
 SPECS_DIR="$DEMO_DIR/specs"
 
 # Three-tier process directories (v1.5)
-RUN_CORE="uv run --directory $ECOSYSTEM_DIR/nthlayer-core"
-RUN_WORKERS="uv run --directory $ECOSYSTEM_DIR/nthlayer-workers"
-RUN_BENCH="uv run --directory $ECOSYSTEM_DIR/nthlayer-bench"
+RUN_CORE="uv run --directory $WORKSPACE_ROOT/nthlayer-core"
+RUN_WORKERS="uv run --directory $WORKSPACE_ROOT/nthlayer-workers"
+RUN_BENCH="uv run --directory $WORKSPACE_ROOT/nthlayer-bench"
 
 # Persistent state file paths under OUTPUT_DIR
 STATE_DB="$OUTPUT_DIR/three-tier.db"
@@ -107,10 +112,10 @@ cmd_start_preflight() {
     # nthlayer-learn / nthlayer-measure / etc. checks)
     local -a packages=(nthlayer-core nthlayer-workers nthlayer-bench nthlayer-common)
     for pkg in "${packages[@]}"; do
-        if [[ -d "$ECOSYSTEM_DIR/$pkg" ]]; then
+        if [[ -d "$WORKSPACE_ROOT/$pkg" ]]; then
             success "$pkg directory found"
         else
-            error "$pkg not found at $ECOSYSTEM_DIR/$pkg"
+            error "$pkg not found at $WORKSPACE_ROOT/$pkg"
             missing=$((missing + 1))
         fi
     done
