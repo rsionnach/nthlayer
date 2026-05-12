@@ -366,7 +366,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--state", default="pending")
     p.add_argument("--limit", type=int, default=50)
 
-    p = sub.add_parser("render-portfolio"); _add_common(p, with_poll=False)
+    p = sub.add_parser("render-portfolio")
+    _add_common(p, with_poll=False)
 
     p = sub.add_parser("assert-latency")
     p.add_argument("start", help="ISO 8601 timestamp")
