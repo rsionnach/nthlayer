@@ -141,6 +141,8 @@ Repo resolution: `FRONTDOOR_ROOT` = this repo root; `WORKSPACE_ROOT` = `FRONTDOO
 
 `RUN_BENCH` (`uv run --directory nthlayer-bench`) is used for running the assertions helper (not just bench commands) because `test/three_tier_assertions.py` imports `nthlayer_bench.sre.case_bench`.
 
+`test/three_tier_assertions.py` surface: integration-test subcommands `wait-heartbeat`, `wait-verdict-type`, `wait-assessment-kind`, `wait-case`, `assert-lineage`, `fetch-case-via-bench`, `assert-latency` (all KEY=value-on-stdout for `eval`-capture by `cmd_scenario`); plus the demo-only `render-portfolio` (opensrm-42y.3) which prints the canonical Step 1 portfolio table by joining latest `portfolio_status` + per-service `slo_status` assessments. `render-portfolio` is fail-open with exit 0 on any error — do not reuse in assertions.
+
 Boot sequence (always-fresh):
 1. `docker compose up -d prometheus` — Prometheus only; Grafana/AlertManager omitted (flaky file-mount, not queried by assertions)
 2. Poll Prometheus `/-/ready` (60s)
