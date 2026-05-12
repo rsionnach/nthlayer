@@ -34,6 +34,7 @@ VERDICT_FEED_SCRIPT="$DEMO_DIR/verdict-feed.sh"
 FAKE_SERVICE_SCRIPT="$TEST_DIR/fake-service.py"
 SCENARIO_RUNNER="$DEMO_DIR/scenario-runner.py"
 ASSERTIONS="$TEST_DIR/three_tier_assertions.py"
+RENDER_EXPLANATION="$DEMO_DIR/render_explanation.py"
 
 HTTP_SERVER_PORT=8080
 CORE_PORT="${CORE_PORT:-8000}"
@@ -502,9 +503,19 @@ cmd_scenario() {
 
     # ── Step 4: Budget Explanation ──────────────────────────
     header "Step 4: Budget Explanation"
-    clog "$C_OBSERVE" "observe" "post-breach SLO status for fraud-detect:"
-    curl -fsS "$CORE_URL/assessments?kind=slo_status&service=fraud-detect&limit=5" \
-        | jq -r '.[] | "  \(.data.slo_name // "?"): \(.data.status // "?")  sli=\(.data.sli_value // .data.value // "?")"' 2>/dev/null \
+    clog "$C_OBSERVE" "observe" "running ExplanationEngine against fraud-detect's slo_status + drift_signal..."
+    # Pattern (b) per opensrm-42y.16: ingest worker-emitted assessments
+    # from core and run the in-process ExplanationEngine (opensrm-42y.4).
+    # `$RUN_WORKERS` rather than `$RUN_BENCH` because the engine lives in
+    # nthlayer-workers, not in the bench venv used by `$ASSERTIONS`.
+    #
+    # `2>/dev/null` is load-bearing for the same reason as render-portfolio:
+    # the helper writes operator diagnostics to stderr (fetch failures,
+    # malformed payloads) and the narrative table to stdout. Suppress
+    # stderr to keep the demo terminal clean; the helper exits 0 on any
+    # failure so `set -euo pipefail` does not abort the scenario.
+    $RUN_WORKERS python "$RENDER_EXPLANATION" \
+        --core-url "$CORE_URL" --service fraud-detect 2>/dev/null \
         | while IFS= read -r line; do clog "$C_OBSERVE" "observe" "$line"; done
     sleep "$PAUSE"
 
