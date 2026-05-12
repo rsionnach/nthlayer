@@ -229,6 +229,75 @@ async def cmd_fetch_case_via_bench(args: argparse.Namespace) -> None:
     )
 
 
+async def cmd_render_portfolio(args: argparse.Namespace) -> None:
+    """Render the canonical portfolio table for demo Step 1 / Step 8.
+
+    Joins the most-recent portfolio_status assessment (per-service overall
+    status + slo_count) with recent slo_status assessments (per-SLO
+    percent_consumed). The per-service "budget remaining" cell is computed
+    as ``100 - max(percent_consumed across that service's SLOs)`` — the
+    worst-SLO view, which matches how operators read the table during an
+    incident (one breached SLO defines the budget you have left).
+
+    Pattern (b) per opensrm-42y.16 audit: poll worker-emitted assessments
+    rather than invoking observe CLI on demand. The renderer is read-only
+    against core's HTTP API.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        port_result = await client.get_assessments(
+            kind="portfolio_status", limit=1,
+        )
+        if not port_result.ok or not port_result.data:
+            print("  (no portfolio_status assessment available yet)")
+            return
+        portfolio = port_result.data[0]
+        data = portfolio.get("data", {}) or {}
+        services = data.get("services", []) or []
+
+        slo_result = await client.get_assessments(
+            kind="slo_status", limit=200,
+        )
+        # Assessments are ordered created_at DESC, so the first time we
+        # see a (service, slo_name) pair holds the latest reading.
+        consumed: dict[tuple[str, str], float | None] = {}
+        for a in (slo_result.data or []):
+            svc = a.get("service") or ""
+            d = a.get("data", {}) or {}
+            slo = d.get("slo_name", "?")
+            key = (svc, slo)
+            if key in consumed:
+                continue
+            consumed[key] = d.get("percent_consumed")
+
+        per_svc_worst: dict[str, float] = {}
+        for (svc, _slo), pc in consumed.items():
+            if pc is None:
+                continue
+            current = per_svc_worst.get(svc)
+            per_svc_worst[svc] = pc if current is None else max(current, pc)
+
+        for s in sorted(services, key=lambda x: x.get("service", "")):
+            svc = s.get("service", "?")
+            status = s.get("overall_status", "?")
+            slos = s.get("slo_count", 0)
+            pc = per_svc_worst.get(svc)
+            if pc is None:
+                budget_cell = "budget=  N/A"
+            else:
+                remaining = max(0.0, 100.0 - pc)
+                budget_cell = f"budget={remaining:>5.1f}%"
+            slo_label = "SLO" if slos == 1 else "SLOs"
+            print(f"  {svc:<16} {status:<10}  {budget_cell}  ({slos} {slo_label})")
+
+        print(
+            f"  total: {data.get('total_services', 0)} services "
+            f"({data.get('healthy_count', 0)} healthy / "
+            f"{data.get('warning_count', 0)} warning / "
+            f"{data.get('critical_count', 0)} critical / "
+            f"{data.get('exhausted_count', 0)} exhausted)"
+        )
+
+
 def cmd_assert_latency(args: argparse.Namespace) -> None:
     """Assert (end - start) ≤ ``max_seconds``.
 
@@ -291,6 +360,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--state", default="pending")
     p.add_argument("--limit", type=int, default=50)
 
+    p = sub.add_parser("render-portfolio"); _add_common(p, with_poll=False)
+
     p = sub.add_parser("assert-latency")
     p.add_argument("start", help="ISO 8601 timestamp")
     p.add_argument("end", help="ISO 8601 timestamp")
@@ -305,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         "wait-case": cmd_wait_case,
         "assert-lineage": cmd_assert_lineage,
         "fetch-case-via-bench": cmd_fetch_case_via_bench,
+        "render-portfolio": cmd_render_portfolio,
         "assert-latency": cmd_assert_latency,
     }[args.cmd]
 

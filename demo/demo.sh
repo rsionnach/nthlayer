@@ -461,9 +461,12 @@ cmd_scenario() {
         clog "$C_OBSERVE" "observe" "portfolio assessment: $ASSESSMENT_ID"
     fi
 
-    clog "$C_OBSERVE" "observe" "current SLO statuses:"
-    curl -fsS "$CORE_URL/assessments?kind=slo_status&limit=20" \
-        | jq -r '.[] | "  \(.service)/\(.data.slo_name // "?"): \(.data.status // "?")"' 2>/dev/null \
+    # Canonical portfolio table per opensrm-42y.3: services × overall status
+    # × budget remaining (worst SLO), sourced from the worker-emitted
+    # portfolio_status + slo_status assessments. Pattern (b) per the
+    # 42y.16 audit — no on-demand CLI invocation.
+    clog "$C_OBSERVE" "observe" "baseline portfolio:"
+    $RUN_BENCH python "$ASSERTIONS" render-portfolio --core-url "$CORE_URL" 2>/dev/null \
         | while IFS= read -r line; do clog "$C_OBSERVE" "observe" "$line"; done
     sleep "$PAUSE"
 
