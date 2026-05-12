@@ -504,8 +504,8 @@ cmd_scenario() {
     # ── Step 4: Budget Explanation ──────────────────────────
     header "Step 4: Budget Explanation"
     clog "$C_OBSERVE" "observe" "running ExplanationEngine against fraud-detect's slo_status + drift_signal..."
-    # Pattern (b) per opensrm-42y.16: ingest worker-emitted assessments
-    # from core and run the in-process ExplanationEngine (opensrm-42y.4).
+    # Pattern (b) (audit 42y.16) — engine from 42y.4: ingest worker-emitted
+    # assessments from core and run the in-process ExplanationEngine.
     # `$RUN_WORKERS` rather than `$RUN_BENCH` because the engine lives in
     # nthlayer-workers, not in the bench venv used by `$ASSERTIONS`.
     #

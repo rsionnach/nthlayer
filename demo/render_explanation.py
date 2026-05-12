@@ -32,6 +32,12 @@ from nthlayer_workers.observe.explanation import ExplanationEngine
 from nthlayer_workers.observe.store import MemoryAssessmentStore
 
 
+# Exactly the assessment kinds ExplanationEngine consumes. Documented as a
+# constant so a future engine extension flows here without a magic-tuple
+# search across the helper.
+_ENGINE_INPUT_KINDS = ("slo_status", "drift_signal")
+
+
 async def _populate_store(
     client: CoreAPIClient, service: str, store: MemoryAssessmentStore,
 ) -> None:
@@ -41,7 +47,7 @@ async def _populate_store(
     Duplicate ids inside the store are silently skipped — the store
     rejects re-puts and we don't care about idempotency here.
     """
-    for kind in ("slo_status", "drift_signal"):
+    for kind in _ENGINE_INPUT_KINDS:
         result = await client.get_assessments(
             service=service, kind=kind, limit=50,
         )
@@ -55,6 +61,9 @@ async def _populate_store(
             try:
                 assessment = from_dict(raw)
             except Exception as exc:
+                # Broad catch: from_dict raises KeyError on missing fields
+                # and TypeError/ValueError on type mismatches; both surface
+                # here under fail-open semantics.
                 print(
                     f"  (skip malformed {kind}: {exc.__class__.__name__}: {exc})",
                     file=sys.stderr,
@@ -67,17 +76,21 @@ async def _populate_store(
                 pass
 
 
-async def _main(args: argparse.Namespace) -> None:
+async def _render(core_url: str, service: str) -> None:
+    """Fetch, populate, explain, format. Pure data flow — no argparse coupling."""
     store = MemoryAssessmentStore()
-    async with CoreAPIClient(base_url=args.core_url) as client:
-        await _populate_store(client, args.service, store)
+    async with CoreAPIClient(base_url=core_url) as client:
+        await _populate_store(client, service, store)
 
     engine = ExplanationEngine()
-    explanations = engine.explain_service(args.service, store)
+    explanations = engine.explain_service(service, store)
     if not explanations:
-        # No slo_status yet OR engine produced no rows. Honest signal
-        # to the audience that the breach narrative cannot yet be told.
-        print(f"  (no explanation available for {args.service})")
+        # Narrative line (stdout, audience-facing): explains absence of a
+        # table when no slo_status is in core yet, or the engine produced
+        # no rows. Distinct from the diagnostic lines above which go to
+        # stderr per the module's stdout=narrative / stderr=diagnostic
+        # contract.
+        print(f"  (no explanation available for {service})")
         return
 
     for exp in explanations:
@@ -98,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        asyncio.run(_main(args))
+        asyncio.run(_render(args.core_url, args.service))
     except Exception as exc:
         # Demo helper: a connection error or unexpected payload must
         # not bubble a Python traceback into the demo terminal. Single
