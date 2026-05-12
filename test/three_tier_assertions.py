@@ -243,64 +243,92 @@ async def cmd_render_portfolio(args: argparse.Namespace) -> None:
     rather than invoking observe CLI on demand. The renderer is read-only
     against core's HTTP API.
     """
-    async with CoreAPIClient(base_url=args.core_url) as client:
-        port_result = await client.get_assessments(
-            kind="portfolio_status", limit=1,
-        )
-        if not port_result.ok or not port_result.data:
-            print("  (no portfolio_status assessment available yet)")
-            return
-        portfolio = port_result.data[0]
-        data = portfolio.get("data", {}) or {}
-        services = data.get("services", []) or []
-
-        # Per-service slo_status fetches. Avoids the truncation risk of
-        # a single bulk limit=N query when one noisy service's SLOs
-        # could evict another service's latest reading past the page
-        # boundary. For demo-scale portfolios (≤ tens of services), the
-        # extra HTTP calls cost milliseconds.
-        per_svc_worst: dict[str, float] = {}
-        for s in services:
-            svc = s.get("service") or ""
-            if not svc:
-                continue
-            slo_result = await client.get_assessments(
-                service=svc, kind="slo_status", limit=50,
+    try:
+        async with CoreAPIClient(base_url=args.core_url) as client:
+            port_result = await client.get_assessments(
+                kind="portfolio_status", limit=1,
             )
-            # Assessments are ordered created_at DESC, so the first
-            # occurrence of each slo_name in the response is its latest.
-            seen: set[str] = set()
-            for a in (slo_result.data or []):
-                d = a.get("data", {}) or {}
-                slo_name = d.get("slo_name", "?")
-                if slo_name in seen:
+            if not port_result.ok:
+                print(
+                    f"  (portfolio_status fetch failed: {port_result.error})",
+                    file=sys.stderr,
+                )
+                return
+            if not port_result.data:
+                print("  (no portfolio_status assessment available yet)")
+                return
+            portfolio = port_result.data[0]
+            data = portfolio.get("data", {}) or {}
+            services = data.get("services", []) or []
+
+            # Per-service slo_status fetches. Avoids the truncation risk of
+            # a single bulk limit=N query when one noisy service's SLOs
+            # could evict another service's latest reading past the page
+            # boundary. For demo-scale portfolios (≤ tens of services), the
+            # extra HTTP calls cost milliseconds.
+            per_svc_worst: dict[str, float] = {}
+            for s in services:
+                svc = s.get("service") or ""
+                if not svc:
                     continue
-                seen.add(slo_name)
-                pc = d.get("percent_consumed")
+                slo_result = await client.get_assessments(
+                    service=svc, kind="slo_status", limit=50,
+                )
+                if not slo_result.ok:
+                    # Partial failure: surface to stderr so the empty row
+                    # is distinguishable from "no slo_status yet." The
+                    # render itself continues — one bad service does not
+                    # collapse the whole table.
+                    print(
+                        f"  (slo_status fetch failed for {svc}: {slo_result.error})",
+                        file=sys.stderr,
+                    )
+                    continue
+                # Assessments are ordered created_at DESC, so the first
+                # occurrence of each slo_name in the response is its latest.
+                seen: set[str] = set()
+                for a in (slo_result.data or []):
+                    d = a.get("data", {}) or {}
+                    slo_name = d.get("slo_name", "?")
+                    if slo_name in seen:
+                        continue
+                    seen.add(slo_name)
+                    pc = d.get("percent_consumed")
+                    # Type-guard before max(): a malformed worker emit
+                    # (string "n/a", bool, etc.) would otherwise TypeError
+                    # mid-loop and collapse the whole render.
+                    if not isinstance(pc, (int, float)) or isinstance(pc, bool):
+                        continue
+                    current = per_svc_worst.get(svc)
+                    per_svc_worst[svc] = pc if current is None else max(current, pc)
+
+            for s in sorted(services, key=lambda x: x.get("service", "")):
+                svc = s.get("service", "?")
+                status = s.get("overall_status", "?")
+                slos = s.get("slo_count", 0)
+                pc = per_svc_worst.get(svc)
                 if pc is None:
-                    continue
-                current = per_svc_worst.get(svc)
-                per_svc_worst[svc] = pc if current is None else max(current, pc)
+                    budget_cell = "budget=  N/A"
+                else:
+                    remaining = max(0.0, 100.0 - pc)
+                    budget_cell = f"budget={remaining:>5.1f}%"
+                slo_label = "SLO" if slos == 1 else "SLOs"
+                print(f"  {svc:<16} {status:<10}  {budget_cell}  ({slos} {slo_label})")
 
-        for s in sorted(services, key=lambda x: x.get("service", "")):
-            svc = s.get("service", "?")
-            status = s.get("overall_status", "?")
-            slos = s.get("slo_count", 0)
-            pc = per_svc_worst.get(svc)
-            if pc is None:
-                budget_cell = "budget=  N/A"
-            else:
-                remaining = max(0.0, 100.0 - pc)
-                budget_cell = f"budget={remaining:>5.1f}%"
-            slo_label = "SLO" if slos == 1 else "SLOs"
-            print(f"  {svc:<16} {status:<10}  {budget_cell}  ({slos} {slo_label})")
-
+            print(
+                f"  total: {data.get('total_services', 0)} services "
+                f"({data.get('healthy_count', 0)} healthy / "
+                f"{data.get('warning_count', 0)} warning / "
+                f"{data.get('critical_count', 0)} critical / "
+                f"{data.get('exhausted_count', 0)} exhausted)"
+            )
+    except Exception as exc:
+        # Demo helper: a connection error or unexpected payload must
+        # not bubble a Python traceback into the demo terminal. Single
+        # diagnostic line on stderr; exit 0 so the scenario continues.
         print(
-            f"  total: {data.get('total_services', 0)} services "
-            f"({data.get('healthy_count', 0)} healthy / "
-            f"{data.get('warning_count', 0)} warning / "
-            f"{data.get('critical_count', 0)} critical / "
-            f"{data.get('exhausted_count', 0)} exhausted)"
+            f"  (portfolio render failed: {exc.__class__.__name__}: {exc})",
+            file=sys.stderr,
         )
 
 

@@ -465,6 +465,12 @@ cmd_scenario() {
     # × budget remaining (worst SLO), sourced from the worker-emitted
     # portfolio_status + slo_status assessments. Pattern (b) per the
     # 42y.16 audit — no on-demand CLI invocation.
+    #
+    # `2>/dev/null` is load-bearing: render-portfolio writes diagnostic
+    # notes (slo-fetch failures, unreachable core) to stderr and a clean
+    # table to stdout. Suppressing stderr here keeps the demo terminal
+    # uncluttered for the audience; the helper exits 0 on any failure
+    # so `set -euo pipefail` does not abort the scenario.
     clog "$C_OBSERVE" "observe" "baseline portfolio:"
     $RUN_BENCH python "$ASSERTIONS" render-portfolio --core-url "$CORE_URL" 2>/dev/null \
         | while IFS= read -r line; do clog "$C_OBSERVE" "observe" "$line"; done
