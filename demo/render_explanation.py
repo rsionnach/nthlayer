@@ -16,6 +16,14 @@ to stderr and exits 0. The demo runs under ``set -euo pipefail``;
 aborting on a render hiccup would kill the scenario. Operator
 diagnostics are routed through stderr, demo narrative through stdout.
 
+Partial-data semantics: if one of the two assessment-kind fetches
+(``slo_status`` / ``drift_signal``) fails while the other succeeds,
+the helper proceeds with the partial store. The engine renders
+whatever ``slo_status`` it has; drift causes simply don't get
+enriched. Intentional for a demo (best-effort > silent abort), but
+keep in mind when reading the output — the stderr diagnostic is the
+only signal that enrichment was skipped.
+
 **Do not use in assertions.** This helper's silent-success contract
 would mask real issues if wired into a test.
 """
@@ -48,8 +56,12 @@ async def _populate_store(
     rejects re-puts and we don't care about idempotency here.
     """
     for kind in _ENGINE_INPUT_KINDS:
+        # limit=0 is the canonical "all" sentinel — avoids the
+        # silent-truncation class where a multi-SLO service's latest
+        # readings could fall off the page boundary under steady-state
+        # collect emission.
         result = await client.get_assessments(
-            service=service, kind=kind, limit=50,
+            service=service, kind=kind, limit=0,
         )
         if not result.ok:
             print(
@@ -109,6 +121,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--core-url", default="http://localhost:8000")
     parser.add_argument("--service", required=True)
     args = parser.parse_args(argv)
+
+    # argparse(required=True) only checks presence — an empty string
+    # would pass argparse and then silently fetch the whole portfolio
+    # (CoreAPIClient drops empty-string service from query params),
+    # producing a confused multi-service table under a "service=''"
+    # heading. Reject the empty-string case explicitly.
+    if not args.service.strip():
+        parser.error("--service must be a non-empty service name")
 
     try:
         asyncio.run(_render(args.core_url, args.service))
