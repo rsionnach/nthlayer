@@ -254,27 +254,33 @@ async def cmd_render_portfolio(args: argparse.Namespace) -> None:
         data = portfolio.get("data", {}) or {}
         services = data.get("services", []) or []
 
-        slo_result = await client.get_assessments(
-            kind="slo_status", limit=200,
-        )
-        # Assessments are ordered created_at DESC, so the first time we
-        # see a (service, slo_name) pair holds the latest reading.
-        consumed: dict[tuple[str, str], float | None] = {}
-        for a in (slo_result.data or []):
-            svc = a.get("service") or ""
-            d = a.get("data", {}) or {}
-            slo = d.get("slo_name", "?")
-            key = (svc, slo)
-            if key in consumed:
-                continue
-            consumed[key] = d.get("percent_consumed")
-
+        # Per-service slo_status fetches. Avoids the truncation risk of
+        # a single bulk limit=N query when one noisy service's SLOs
+        # could evict another service's latest reading past the page
+        # boundary. For demo-scale portfolios (≤ tens of services), the
+        # extra HTTP calls cost milliseconds.
         per_svc_worst: dict[str, float] = {}
-        for (svc, _slo), pc in consumed.items():
-            if pc is None:
+        for s in services:
+            svc = s.get("service") or ""
+            if not svc:
                 continue
-            current = per_svc_worst.get(svc)
-            per_svc_worst[svc] = pc if current is None else max(current, pc)
+            slo_result = await client.get_assessments(
+                service=svc, kind="slo_status", limit=50,
+            )
+            # Assessments are ordered created_at DESC, so the first
+            # occurrence of each slo_name in the response is its latest.
+            seen: set[str] = set()
+            for a in (slo_result.data or []):
+                d = a.get("data", {}) or {}
+                slo_name = d.get("slo_name", "?")
+                if slo_name in seen:
+                    continue
+                seen.add(slo_name)
+                pc = d.get("percent_consumed")
+                if pc is None:
+                    continue
+                current = per_svc_worst.get(svc)
+                per_svc_worst[svc] = pc if current is None else max(current, pc)
 
         for s in sorted(services, key=lambda x: x.get("service", "")):
             svc = s.get("service", "?")
