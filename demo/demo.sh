@@ -503,6 +503,20 @@ cmd_scenario() {
 
     # ── Step 4: Budget Explanation ──────────────────────────
     header "Step 4: Budget Explanation"
+    # Anchor the engine's render against a real assessment id so the
+    # audience sees that the human-readable narrative traces back to a
+    # specific record in core (opensrm-42y.7). The latest slo_status
+    # for fraud-detect is whichever SLO last cycled — sufficient as a
+    # "data lives here" pointer; engine itself joins all slo_status +
+    # drift_signal for the service.
+    local slo_anchor
+    slo_anchor=$($RUN_BENCH python "$ASSERTIONS" wait-assessment-kind slo_status \
+        --service fraud-detect --core-url "$CORE_URL" \
+        --timeout 30 --interval 2 2>/dev/null) || true
+    if [[ -n "$slo_anchor" ]]; then
+        eval "$slo_anchor"
+        clog "$C_OBSERVE" "observe" "anchored against slo_status: $ASSESSMENT_ID"
+    fi
     clog "$C_OBSERVE" "observe" "running ExplanationEngine against fraud-detect's slo_status + drift_signal..."
     # Pattern (b) (audit 42y.16) — engine from 42y.4: ingest worker-emitted
     # assessments from core and run the in-process ExplanationEngine.
@@ -609,6 +623,19 @@ cmd_scenario() {
         clog "$C_OBSERVE" "observe" "deploy APPROVED"
     else
         clog "$C_OBSERVE" "observe" "deploy gate inconclusive (exit=$GATE_EXIT)"
+    fi
+
+    # Surface the deploy_gate assessment id the gate just emitted into
+    # core (opensrm-42y.7). The gate CLI's stdout JSON omits the id
+    # (gap also flagged in 42y.5's R5); pulling it from core's assessment
+    # store keeps the change demo-side without modifying workers.
+    local gate_anchor
+    gate_anchor=$($RUN_BENCH python "$ASSERTIONS" wait-assessment-kind deploy_gate \
+        --service payment-api --core-url "$CORE_URL" \
+        --timeout 15 --interval 1 2>/dev/null) || true
+    if [[ -n "$gate_anchor" ]]; then
+        eval "$gate_anchor"
+        clog "$C_OBSERVE" "observe" "deploy_gate assessment: $ASSESSMENT_ID"
     fi
     sleep "$PAUSE"
 
