@@ -515,7 +515,7 @@ cmd_scenario() {
         --timeout 30 --interval 2 2>/dev/null) || true
     if [[ -n "$slo_anchor" ]]; then
         eval "$slo_anchor"
-        clog "$C_OBSERVE" "observe" "anchored against slo_status: $ASSESSMENT_ID"
+        clog "$C_OBSERVE" "observe" "latest slo_status in chain: $ASSESSMENT_ID"
     fi
     clog "$C_OBSERVE" "observe" "running ExplanationEngine against fraud-detect's slo_status + drift_signal..."
     # Pattern (b) (audit 42y.16) — engine from 42y.4: ingest worker-emitted
