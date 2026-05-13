@@ -143,6 +143,8 @@ Repo resolution: `FRONTDOOR_ROOT` = this repo root; `WORKSPACE_ROOT` = `FRONTDOO
 
 `test/three_tier_assertions.py` surface: integration-test subcommands `wait-heartbeat`, `wait-verdict-type`, `wait-assessment-kind`, `wait-case`, `assert-lineage`, `fetch-case-via-bench`, `assert-latency` (all KEY=value-on-stdout for `eval`-capture by `cmd_scenario`); plus the demo-only `render-portfolio` (opensrm-42y.3) which prints the canonical Step 1 portfolio table by joining latest `portfolio_status` + per-service `slo_status` assessments. `render-portfolio` is fail-open with exit 0 on any error — do not reuse in assertions.
 
+Step 4 is rendered by `demo/render_explanation.py` (opensrm-42y.4), a standalone helper invoked via `$RUN_WORKERS` rather than `$RUN_BENCH` because the `ExplanationEngine` it drives lives in `nthlayer-workers` and is not in the bench venv. Same fail-open / stdout=narrative / stderr=diagnostic / not-for-assertions contract as `render-portfolio`. Fetches `slo_status` + `drift_signal` via core's HTTP API into a `MemoryAssessmentStore`, runs `ExplanationEngine.explain_service(service, store)`, formats each `BudgetExplanation` via `nthlayer_common.explanation.format_explanation` table form. Empty-`--service` guarded at the argparse boundary; `limit=0` sentinel on the per-kind fetch prevents silent truncation.
+
 Boot sequence (always-fresh):
 1. `docker compose up -d prometheus` — Prometheus only; Grafana/AlertManager omitted (flaky file-mount, not queried by assertions)
 2. Poll Prometheus `/-/ready` (60s)
