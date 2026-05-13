@@ -614,9 +614,23 @@ cmd_scenario() {
 
     # ── Step 8: Portfolio Health (Post-Incident) ────────────
     header "Step 8: Portfolio Health (Post-Incident)"
-    clog "$C_OBSERVE" "observe" "current SLO statuses post-incident:"
-    curl -fsS "$CORE_URL/assessments?kind=slo_status&limit=20" \
-        | jq -r '.[] | "  \(.service)/\(.data.slo_name // "?"): \(.data.status // "?")"' 2>/dev/null \
+    clog "$C_OBSERVE" "observe" "polling core for post-incident portfolio_status assessment..."
+    # Same renderer as Step 1 (opensrm-42y.3) — pattern (b) per the
+    # 42y.16 audit. The audience sees the table again with the same
+    # shape, this time reflecting cascade damage: fraud-detect
+    # regressed, payment-api's budget exhausted across the service
+    # boundary. Before/after comparison is implicit in the matching
+    # output format.
+    local post_portfolio
+    post_portfolio=$($RUN_BENCH python "$ASSERTIONS" wait-assessment-kind portfolio_status \
+        --core-url "$CORE_URL" --timeout 30 --interval 2 2>/dev/null) \
+        || warn "no portfolio_status assessment in 30s — continuing"
+    if [[ -n "$post_portfolio" ]]; then
+        eval "$post_portfolio"
+        clog "$C_OBSERVE" "observe" "post-incident portfolio assessment: $ASSESSMENT_ID"
+    fi
+    clog "$C_OBSERVE" "observe" "post-incident portfolio:"
+    $RUN_BENCH python "$ASSERTIONS" render-portfolio --core-url "$CORE_URL" 2>/dev/null \
         | while IFS= read -r line; do clog "$C_OBSERVE" "observe" "$line"; done
     echo ""
     clog "$C_OBSERVE" "observe" "fraud-detect model regression cascaded to payment-api. Budget exhausted across service boundary."
