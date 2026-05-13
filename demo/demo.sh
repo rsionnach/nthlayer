@@ -629,7 +629,7 @@ cmd_scenario() {
         eval "$post_portfolio"
         clog "$C_OBSERVE" "observe" "post-incident portfolio assessment: $ASSESSMENT_ID"
     fi
-    clog "$C_OBSERVE" "observe" "post-incident portfolio:"
+    clog "$C_OBSERVE" "observe" "rendering:"
     $RUN_BENCH python "$ASSERTIONS" render-portfolio --core-url "$CORE_URL" 2>/dev/null \
         | while IFS= read -r line; do clog "$C_OBSERVE" "observe" "$line"; done
     echo ""
