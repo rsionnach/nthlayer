@@ -56,12 +56,15 @@ async def _populate_store(
     rejects re-puts and we don't care about idempotency here.
     """
     for kind in _ENGINE_INPUT_KINDS:
-        # limit=0 is the canonical "all" sentinel — avoids the
-        # silent-truncation class where a multi-SLO service's latest
-        # readings could fall off the page boundary under steady-state
-        # collect emission.
+        # Explicit high limit. NB: limit=0 on the core API means literal
+        # "return zero rows", NOT "return all" — surfaced as a real
+        # regression during 42y.9's E2E verification (the engine ran
+        # against an empty store and returned no explanations). limit=200
+        # covers ~40 collect cycles per SLO at the 5s demo interval,
+        # plenty of headroom for the demo scenario's 2-minute window
+        # while keeping the per-service fetch bounded.
         result = await client.get_assessments(
-            service=service, kind=kind, limit=0,
+            service=service, kind=kind, limit=200,
         )
         if not result.ok:
             print(
