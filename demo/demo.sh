@@ -509,6 +509,7 @@ cmd_scenario() {
     # for fraud-detect is whichever SLO last cycled — sufficient as a
     # "data lives here" pointer; engine itself joins all slo_status +
     # drift_signal for the service.
+    clog "$C_OBSERVE" "observe" "polling core for latest fraud-detect slo_status..."
     local slo_anchor
     slo_anchor=$($RUN_BENCH python "$ASSERTIONS" wait-assessment-kind slo_status \
         --service fraud-detect --core-url "$CORE_URL" \
