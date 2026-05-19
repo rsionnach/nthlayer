@@ -20,6 +20,10 @@ Each active component has its own CLAUDE.md:
 - `opensrm/` — OpenSRM specification (no code deps).
 - `nthlayer-common/` — shared library: LLM wrappers, providers, identity resolution, errors, tier definitions, manifest parser, decision records, verdict model.
 
+Planned sibling repo (not yet created, implementation plan written):
+
+- `nthlayer-override-adapter/` — override-event sidecar (opensrm-jmy.7, Wave A): HTTP → gen_ai.override OTel span bridge. Own repo, own release-please, own Dockerfile. Console script: `nthlayer-override-adapter serve`. Depends on `nthlayer-common` overrides foundation (jmy.4 + jmy.11). Implementation plan: [docs/superpowers/plans/2026-05-15-jmy7-override-adapter-sidecar.md](docs/superpowers/plans/2026-05-15-jmy7-override-adapter-sidecar.md).
+
 Separate concern (not in the active count):
 
 - `nthlayer-site/` — marketing/demo site (separate concern; HTML/JS, no Python; no CLAUDE.md yet).
@@ -117,6 +121,8 @@ Current ecosystem specs live in this repo at `docs/specs/`. Architectural design
 - [Core API security audit](docs/superpowers/specs/2026-05-06-core-api-security-audit.md) — P4-SEC.1 audit of nthlayer-core server.py + store.py (opensrm-9uow.1): SQL injection SAFE, error leakage FIXED (`_store_error_response`), input validation ACCEPTABLE, path injection SAFE; known limitations deferred to v2: no auth/CORS/rate-limiting/body-size-limit; related beads: opensrm-9uow.2 (safe-actions), opensrm-9uow.3 (dependencies)
 - [Dependency security audit](docs/superpowers/specs/2026-05-06-dependency-security-audit.md) — P4-SEC.3 pip-audit scan of all five active lockfiles (opensrm-9uow.3): one CVE found (pygments 2.19.2, CVE-2026-4539 via `rich ← instructor/typer`), fixed via `pygments>=2.20.0` transitive pin in `nthlayer-common/pyproject.toml`; all five repos re-locked to pygments 2.20.0; pinning policy (uv.lock = exact, pyproject.toml = bounded ranges) and supply-chain mitigations documented
 - [opensrm-42y epic audit](docs/superpowers/specs/2026-05-11-42y-epic-audit.md) — P1 audit of the "Demo Improvement" epic (opensrm-42y.16): verdicts every open child (STILL VALID / NEEDS REWRITE / OBSOLETE / BLOCKED) against post-RM.7 three-tier architecture; identifies observe console-script retirement, missing React Flow migration spec, and archived DEMO-IMPROVEMENT-SPEC.md as key blockers
+- [Override Adapter Sidecar design](docs/superpowers/specs/2026-05-15-jmy7-override-adapter-sidecar-design.md) — opensrm-jmy.7: new `nthlayer-override-adapter/` repo (Wave A); generic-webhook → gen_ai.override OTel spans; batch with last-in-array-wins duplicate handling; privacy hashing at emission boundary. Follow-ups: jmy.17 (Slack adapter), jmy.18 (OTel consumer in workers/measure)
+- [Override Adapter Sidecar implementation plan](docs/superpowers/plans/2026-05-15-jmy7-override-adapter-sidecar.md) — opensrm-jmy.7 task checklist (Tasks 0–12): bootstrap, config, metrics, emission, routes (canonical/batch/webhook), app, CLI, smoke tests, README/CLAUDE.md, Dockerfile + CI/release. Follow-ups: jmy.17 (Slack adapter), jmy.18 (OTel consumer in workers/measure)
 
 OpenSRM specification (the format itself) lives in [`opensrm`](https://github.com/rsionnach/opensrm).
 
