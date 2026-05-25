@@ -126,11 +126,14 @@ async def test_sidecar_override_binds_to_core_verdict(tmp_path):
     assert data["bindings"]["dec-smoke-1"]["otel"] == "ok", data["bindings"]
 
     # (b) Core's verdict is mutated in real SQLite.
+    # Spec § 7: sidecar applies privacy ONCE; core stores the hashed reviewer.
+    # The default OverridePrivacyConfig hashes the reviewer before sending to core.
+    from nthlayer_common.overrides import hash_reviewer
     v = store.get("dec-smoke-1")
     assert v is not None
     assert v.outcome.status == "overridden"
     assert v.outcome.override is not None
-    assert v.outcome.override.by == "operator-hash"  # pre_redacted=True; no re-hash
+    assert v.outcome.override.by == hash_reviewer("operator-hash")
 
     # (a) Counter incremented by exactly 1.
     after = _counter_value(binding_total, result="success", reason="ok")
@@ -173,5 +176,59 @@ async def test_sidecar_override_handles_unknown_verdict(tmp_path):
 
     after = _counter_value(binding_total, result="failed", reason="verdict_not_found")
     assert after == before + 1.0
+
+    server.set_store(None)
+
+
+@pytest.mark.asyncio
+async def test_plaintext_reviewer_is_hashed_at_sidecar_boundary(tmp_path):
+    """opensrm-jmy.18: spec § 7 — sidecar applies privacy ONCE; core never holds plaintext.
+
+    Regression test for the privacy leak fixed in the cross-cutting review.
+    Posts a clearly-plaintext reviewer through the full sidecar → core path and
+    asserts the stored override.by is hash_reviewer(plaintext), not the plaintext
+    itself. This test FAILS on the pre-fix code (where bind_to_core received the
+    un-masked original event) and PASSES after the fix.
+    """
+    from nthlayer_common.overrides import hash_reviewer
+
+    # 1. Real core with a pending verdict.
+    store = Store(str(tmp_path / "core.db"))
+    store.put(_make_verdict("dec-privacy-1"))
+    server.set_store(store)
+
+    # 2. Real sidecar with default privacy (plaintext_reviewer=False, pre_redacted=False).
+    #    Default config: sidecar MUST hash the reviewer before sending to core.
+    cfg = _build_adapter_config()
+    sidecar_app = build_app(cfg)
+    _wire_asgi_transport(sidecar_app, cfg.core.url)
+
+    # 3. POST with a clearly-plaintext reviewer.
+    with TestClient(sidecar_app, raise_server_exceptions=True) as client:
+        resp = client.post(
+            "/api/v1/overrides",
+            json={
+                "decision_id": "dec-privacy-1",
+                "service": "fraud-detect",
+                "corrected_action": "approve",
+                "reviewer": "alice@example.com",  # PLAINTEXT — sidecar must hash before sending
+                "timestamp": "2026-05-25T10:00:00+00:00",
+            },
+        )
+
+    assert resp.status_code == 201, f"expected 201, got {resp.status_code}: {resp.text}"
+    data = resp.json()
+    assert data["accepted"] == ["dec-privacy-1"]
+    assert data["bindings"]["dec-privacy-1"]["core"] == "ok", data["bindings"]
+
+    # 4. Core must have stored the SHA-256 hash, not the plaintext.
+    v = store.get("dec-privacy-1")
+    expected_hash = hash_reviewer("alice@example.com")
+    assert v.outcome.override.by == expected_hash, (
+        f"Privacy leak: core stored {v.outcome.override.by!r}, "
+        f"expected hash {expected_hash!r}"
+    )
+    # Belt-and-suspenders: the plaintext string must not appear in stored data.
+    assert "alice@example.com" not in v.outcome.override.by
 
     server.set_store(None)
