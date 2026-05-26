@@ -198,6 +198,7 @@ The sidecar's existing response shapes (single, batch, webhook) gain a `bindings
 - `bindings` includes an entry only for accepted decision_ids (rejected / duplicate / error ids never bind).
 - `otel` ∈ `{"ok", "failed"}`. `core` ∈ `{"ok", "failed"}`.
 - `reason` is **core-specific**: present iff `core == "failed"`, omitted when `core == "ok"`. Values: `core_unreachable | verdict_not_found | validation_error | core_timeout | other`. OTel-emission failures do **not** populate `reason` — operators investigating OTel use the existing `override_collector_errors_total` counter and structured logs from the OTel SDK. Decoupling `reason` from OTel keeps the reason set well-typed and avoids a per-transport reason field on every binding.
+- When the sidecar's `app.state.core_client` is absent (deployment misconfiguration), the `bindings` field is **omitted entirely** for that route's response — no per-decision entry is produced. Operators detect this state via the `nthlayer_override_binding_total{result="skipped", reason="no_client"}` counter and the `core_client_absent` WARNING log line, not via the response body. C7's absent-guard intentionally fails soft on the HTTP path so a misconfigured sidecar still accepts overrides for OTel emission; the missing `bindings` field is the visible signal.
 - HTTP status of the sidecar's response is unchanged from today (201 on accepted single, 201 on batch with mixed outcomes). Partial binding failure does **not** alter the HTTP status — the body is the truth source. This preserves the existing client contract and aligns with the Option C selection during brainstorming.
 
 ---
@@ -429,7 +430,7 @@ Lookup dict over branching per the no-regex/no-conditional convention. Unknown s
 
 **`app.py`:** the app factory instantiates a single `CoreAPIClient(base_url=cfg.core.url)` at startup and shares it across requests (matches the existing single OTel-provider pattern). `atexit` hook closes the client alongside the existing OTel `force_flush + shutdown`.
 
-**`metrics.py`:** new Counter `nthlayer_override_binding_total` with labels `result ∈ {success, failed}` and `reason ∈ {ok, core_unreachable, verdict_not_found, validation_error, core_timeout, other}`. 12-series max cardinality per process.
+**`metrics.py`:** new Counter `nthlayer_override_binding_total` with labels `result ∈ {success, failed, skipped}` and `reason ∈ {ok, core_unreachable, verdict_not_found, validation_error, core_timeout, other, no_client}`. 13-series max cardinality per process (12 from success/failed × reasons + 1 from `skipped/no_client`; the `skipped` path fires only when the absent-guard catches a missing `core_client` on `app.state` — diagnostic signal for misconfigured deployments).
 
 ---
 
