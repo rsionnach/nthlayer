@@ -292,7 +292,6 @@ The observe migration (Phases 0-5) is complete. Code was **copied** to observe â
 ## Workflow
 
 Each bead follows the established workflow:
-- `/rule-of-five-planning` before implementation
 - `/rule-of-five-reviews` (4 passes) before closing
 - Feature branch per bead
 - Full test suite as gate
