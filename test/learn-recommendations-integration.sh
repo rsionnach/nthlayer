@@ -264,6 +264,50 @@ assert matching[0].get("type") == "api", f"expected type=api, got {matching[0]}"
 EOF
 echo "✓ Section 7: add_dependency APPLY_CLEAN path"
 
+# 8. add_dependency — ALREADY_APPLIED idempotency
+# Re-run the SAME plan against the now-modified manifest. The apply
+# layer must report skip (not append), and the parsed dep list must
+# be semantically unchanged. Byte-identical comparison would be brittle
+# to ruamel.yaml's serialisation choices; we compare the parsed Python
+# list canonicalised through json.dumps(sort_keys=True) instead.
+
+# Snapshot the dep list semantically BEFORE the idempotent re-run.
+DEPS_BEFORE="$WORK/deps-before.json"
+uv run --directory "$WORKERS_ROOT" python <<EOF > "$DEPS_BEFORE"
+import json, yaml
+from pathlib import Path
+doc = yaml.safe_load(Path("$ADD_DEP_SPECS/payments-api.yaml").read_text())
+print(json.dumps(doc.get("spec", {}).get("dependencies", []), sort_keys=True))
+EOF
+
+# Re-run the SAME plan against the now-modified specs dir.
+APPLY2_JSON="$WORK/apply2.json"
+PATH="$STUB_GH_DIR:$PATH" GIT_CONFIG_GLOBAL=/dev/null \
+  uv run --directory "$WORKERS_ROOT" \
+    python -m nthlayer_workers.learn recommendations \
+      --from "$PLAN_FILE_ADD_DEP" \
+      --apply-to "$ADD_DEP_SPECS" \
+      --json > "$APPLY2_JSON"
+
+# Apply-result assertions: 0 applied, 1 skipped, outcome=already_applied.
+[ "$(jq '.exit_code' "$APPLY2_JSON")" = "0" ] || fail "apply2 exit_code != 0"
+[ "$(jq '.applied | length' "$APPLY2_JSON")" = "0" ] || fail "apply2 applied != 0"
+[ "$(jq '.skipped | length' "$APPLY2_JSON")" = "1" ] || fail "apply2 skipped != 1"
+[ "$(jq -r '.skipped[0].outcome' "$APPLY2_JSON")" = "already_applied" ] || \
+  fail "apply2 skipped[0].outcome != already_applied"
+
+# Semantic manifest comparison: parsed dep list unchanged.
+DEPS_AFTER="$WORK/deps-after.json"
+uv run --directory "$WORKERS_ROOT" python <<EOF > "$DEPS_AFTER"
+import json, yaml
+from pathlib import Path
+doc = yaml.safe_load(Path("$ADD_DEP_SPECS/payments-api.yaml").read_text())
+print(json.dumps(doc.get("spec", {}).get("dependencies", []), sort_keys=True))
+EOF
+
+diff -u "$DEPS_BEFORE" "$DEPS_AFTER" || fail "dep list changed on idempotent re-run"
+echo "✓ Section 8: add_dependency ALREADY_APPLIED idempotency"
+
 echo ""
 echo "All integration assertions passed."
 SUCCESS=1
