@@ -170,21 +170,68 @@ cmd_start_preflight() {
 cmd_start() {
     cmd_start_preflight
 
-    # 0. Reconcile pre-existing state. A previous cmd_start that crashed
-    #    (or was Ctrl-C'd) leaves PID files behind whose processes may
-    #    still be running. Stop them before binding new processes to the
-    #    same ports — otherwise the new fake-services overwrite the old
-    #    PID files (orphaning the originals) and the core port-binding
-    #    later in this function aborts mid-start.
-    if [[ -d "$OUTPUT_DIR" ]]; then
-        info "Reconciling pre-existing PID files in $OUTPUT_DIR ..."
-        for pid_file in "$OUTPUT_DIR"/fake-*.pid "$WORKERS_PID_FILE" "$CORE_PID_FILE" "$OUTPUT_DIR/http-server.pid"; do
-            [[ -f "$pid_file" ]] || continue
-            local name
-            name="$(basename "$pid_file" .pid)"
-            stop_pid_file "$pid_file" "$name"
-        done
+    # 0a. Acquire start lock. Two simultaneous `./demo.sh start` calls
+    #     would otherwise race on PID files, ports 8001-8008 / 8000, and
+    #     docker-compose state. mkdir is atomic on POSIX so it serves as
+    #     a portable mutex without depending on flock(1) (not installed
+    #     on macOS by default). Owner PID is recorded so a stale lock
+    #     from a hard-killed prior shell can be reclaimed.
+    mkdir -p "$OUTPUT_DIR"
+    local lock_dir="$OUTPUT_DIR/.start.lock"
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        local owner_pid
+        owner_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+        if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
+            error "Another ./demo.sh start is already in flight (PID $owner_pid)."
+            error "Wait for it to finish, or kill PID $owner_pid if it appears hung."
+            exit 1
+        fi
+        warn "Removing stale start lock from PID ${owner_pid:-?}"
+        rm -rf "$lock_dir"
+        mkdir "$lock_dir"
     fi
+    echo "$$" > "$lock_dir/pid"
+    # Bake the path into the trap at set-time (double quoted) so the
+    # EXIT handler doesn't need access to lock_dir, which is `local`
+    # and out of scope by the time the script exits.
+    trap "rm -rf '$lock_dir'" EXIT
+
+    # 0b. Refuse to start if any demo-owned process is already alive
+    #     (a prior cmd_start that completed successfully). The
+    #     reconciliation block below handles only stale PID files
+    #     (files whose process has since exited).
+    local -a running=()
+    for pid_file in "$OUTPUT_DIR"/fake-*.pid "$WORKERS_PID_FILE" "$CORE_PID_FILE" "$OUTPUT_DIR/http-server.pid"; do
+        [[ -f "$pid_file" ]] || continue
+        local pid
+        pid="$(cat "$pid_file" 2>/dev/null || true)"
+        [[ -n "$pid" ]] || continue
+        if kill -0 "$pid" 2>/dev/null; then
+            running+=("$(basename "$pid_file" .pid):$pid")
+        fi
+    done
+    if (( ${#running[@]} > 0 )); then
+        error "Demo appears to already be running:"
+        for entry in "${running[@]}"; do
+            error "  ${entry%:*} (PID ${entry#*:})"
+        done
+        error "Run ./demo.sh teardown first to start fresh."
+        exit 1
+    fi
+
+    # 0c. Reconcile pre-existing state. A previous cmd_start that crashed
+    #     (or was Ctrl-C'd) leaves PID files behind whose processes have
+    #     since exited (live ones were caught in 0b above). Clean them up
+    #     before binding new processes — otherwise the new fake-services
+    #     overwrite the old PID files (orphaning the originals) and the
+    #     core port-binding later in this function aborts mid-start.
+    info "Reconciling pre-existing PID files in $OUTPUT_DIR ..."
+    for pid_file in "$OUTPUT_DIR"/fake-*.pid "$WORKERS_PID_FILE" "$CORE_PID_FILE" "$OUTPUT_DIR/http-server.pid"; do
+        [[ -f "$pid_file" ]] || continue
+        local name
+        name="$(basename "$pid_file" .pid)"
+        stop_pid_file "$pid_file" "$name"
+    done
 
     # Port pre-flight (fail fast, before docker compose changes any state)
     if lsof -nP -iTCP:"$CORE_PORT" -sTCP:LISTEN &>/dev/null 2>&1; then
