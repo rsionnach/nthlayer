@@ -274,14 +274,22 @@ echo "✓ Section 7: add_dependency APPLY_CLEAN path"
 # to ruamel.yaml's serialisation choices; we compare the parsed Python
 # list canonicalised through json.dumps(sort_keys=True) instead.
 
-# Snapshot the dep list semantically BEFORE the idempotent re-run.
-DEPS_BEFORE="$WORK/deps-before.json"
-uv run --directory "$WORKERS_ROOT" python <<EOF > "$DEPS_BEFORE"
+# Helper: emit the parsed spec.dependencies list as canonical JSON.
+# Used twice for the BEFORE / AFTER snapshot diff below; canonicalised
+# via sort_keys so the comparison is semantic (dep identity), not
+# textual (insensitive to ruamel.yaml's serialisation choices).
+snapshot_deps() {
+  uv run --directory "$WORKERS_ROOT" python <<EOF > "$1"
 import json, yaml
 from pathlib import Path
 doc = yaml.safe_load(Path("$ADD_DEP_SPECS/payments-api.yaml").read_text())
 print(json.dumps(doc.get("spec", {}).get("dependencies", []), sort_keys=True))
 EOF
+}
+
+# Snapshot the dep list semantically BEFORE the idempotent re-run.
+DEPS_BEFORE="$WORK/deps-before.json"
+snapshot_deps "$DEPS_BEFORE"
 
 # Re-run the SAME plan against the now-modified specs dir.
 APPLY2_JSON="$WORK/apply2.json"
@@ -301,12 +309,7 @@ PATH="$STUB_GH_DIR:$PATH" GIT_CONFIG_GLOBAL=/dev/null \
 
 # Semantic manifest comparison: parsed dep list unchanged.
 DEPS_AFTER="$WORK/deps-after.json"
-uv run --directory "$WORKERS_ROOT" python <<EOF > "$DEPS_AFTER"
-import json, yaml
-from pathlib import Path
-doc = yaml.safe_load(Path("$ADD_DEP_SPECS/payments-api.yaml").read_text())
-print(json.dumps(doc.get("spec", {}).get("dependencies", []), sort_keys=True))
-EOF
+snapshot_deps "$DEPS_AFTER"
 
 diff -u "$DEPS_BEFORE" "$DEPS_AFTER" || fail "dep list changed on idempotent re-run"
 echo "✓ Section 8: add_dependency ALREADY_APPLIED idempotency"
