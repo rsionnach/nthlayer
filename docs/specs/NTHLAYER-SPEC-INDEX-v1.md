@@ -10,9 +10,9 @@
 
 ### Specifications
 
-1. **OPENSRM-CORE-v2.md** — The OpenSRM specification. Declarative format for service reliability. Composes OpenSLO, Backstage, CloudEvents, OpenAPI, AsyncAPI, OTel GenAI semconv. Original contribution: judgment SLOs, reliability contracts, dependencies-with-expected-guarantees. Not tied to NthLayer implementation.
+1. **[OPENSRM-CORE-v2.md](https://github.com/rsionnach/opensrm/blob/main/OPENSRM-CORE-v2.md)** — The OpenSRM specification. Declarative format for service reliability. Composes OpenSLO, Backstage, CloudEvents, OpenAPI, AsyncAPI, OTel GenAI semconv. Original contribution: judgment SLOs, reliability contracts, dependencies-with-expected-guarantees. Not tied to NthLayer implementation.
 
-2. **OPENSRM-RBAC-EXTENSION-v2.md** — Extension to OpenSRM for unified human/agent authorisation. Introduces Principals, Actions, Capability Tokens, Authorisation Policies, preconditions, ChangeFreeze. Implementation uses Rego (via Regorus), Biscuit tokens, optional SPIFFE.
+2. **[OPENSRM-RBAC-EXTENSION-v2.md](https://github.com/rsionnach/opensrm/blob/main/OPENSRM-RBAC-EXTENSION-v2.md)** — Extension to OpenSRM for unified human/agent authorisation. Introduces Principals, Actions, Capability Tokens, Authorisation Policies, preconditions, ChangeFreeze. Implementation uses Rego (via Regorus), Biscuit tokens, optional SPIFFE.
 
 3. **NTHLAYER-SERVE-MODE-v2.1.md** — The runtime pipeline for NthLayer reference implementation. Pull-based, SQLite+WAL shared store, heartbeats, retention, Rekor anchoring, scale-out upgrade path.
 
