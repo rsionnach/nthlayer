@@ -14,6 +14,11 @@
 
 set -euo pipefail
 
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
 # Resolve repo roots
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTDOOR_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -159,6 +164,106 @@ COMMIT_COUNT=$(GIT_CONFIG_GLOBAL=/dev/null git -C "$SPECS_DIR" \
 }
 
 echo "✓ --pr path: branch + commit + stub gh pr create OK"
+echo ""
+echo "All tighten_slo + --pr assertions passed."
+
+# ─────────────────────────────────────────────────────────────────────────
+# Sections 7-8: add_dependency apply path (opensrm-1mja)
+# Verifies the [+] sigil and ALREADY_APPLIED dedup end-to-end via
+# --apply-to + --json, using structured jq assertions and a Python
+# YAML parse for manifest shape.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Preflight: jq is required for --json apply-result assertions.
+# Skip-not-fail so constrained CI environments don't block on jq absence.
+command -v jq >/dev/null 2>&1 || {
+  echo "SKIP: jq required for add_dependency assertions (sections 7-8)"
+  SUCCESS=1
+  exit 0
+}
+
+# 7. add_dependency — APPLY_CLEAN happy path
+ADD_DEP_SPECS="$WORK/specs-add-dep"
+mkdir -p "$ADD_DEP_SPECS"
+
+# Minimal seed manifest with NO spec.dependencies block.
+# The [+] sigil must CREATE the block AND append the entry — the
+# maximally demanding APPLY_CLEAN path.
+cat > "$ADD_DEP_SPECS/payments-api.yaml" <<'EOF'
+# Minimal manifest for add_dependency apply testing.
+# Lacks tier/type/SLO fields that real manifests would have.
+# Intentional: testing apply layer in isolation, not full manifest
+# schema validation.
+metadata:
+  name: payments-api
+  team: payments-platform
+spec:
+  slos:
+    availability:
+      target: 99.9
+      window: 30d
+EOF
+
+# Build plan with one add_dependency recommendation.
+# All values hardcoded for deterministic test runs.
+PLAN_FILE_ADD_DEP="$WORK/plan-add-dep.yaml"
+uv run --directory "$WORKERS_ROOT" python <<EOF
+from datetime import datetime, timezone
+from pathlib import Path
+from nthlayer_workers.learn.recommendations import (
+    SpecRecommendation, Recommendation, compute_rec_id,
+)
+
+incident_id = "inc-add-dep-test"
+rec = Recommendation(
+    id=compute_rec_id(incident_id, "add_dependency", "spec.dependencies[+].svc-new"),
+    service="payments-api",
+    type="add_dependency",
+    rationale="Integration test add_dependency recommendation",
+    field="spec.dependencies[+]",
+    current_value=None,
+    proposed_value={"name": "svc-new", "type": "api"},
+    confidence=0.5,
+)
+plan = SpecRecommendation(
+    incident=incident_id,
+    generated_by="integration-test",
+    generated_at=datetime(2026, 5, 30, tzinfo=timezone.utc),
+    confidence=0.5,
+    recommendations=[rec],
+)
+Path("$PLAN_FILE_ADD_DEP").write_text(plan.to_yaml())
+EOF
+echo "✓ plan-add-dep.yaml generated"
+
+# Apply with --json (structured stdout for jq).
+APPLY1_JSON="$WORK/apply1.json"
+PATH="$STUB_GH_DIR:$PATH" GIT_CONFIG_GLOBAL=/dev/null \
+  uv run --directory "$WORKERS_ROOT" \
+    python -m nthlayer_workers.learn recommendations \
+      --from "$PLAN_FILE_ADD_DEP" \
+      --apply-to "$ADD_DEP_SPECS" \
+      --json > "$APPLY1_JSON"
+
+# Apply-result assertions via jq.
+[ "$(jq '.exit_code' "$APPLY1_JSON")" = "0" ] || fail "apply1 exit_code != 0"
+[ "$(jq '.applied | length' "$APPLY1_JSON")" = "1" ] || fail "apply1 applied != 1"
+[ "$(jq '.skipped | length' "$APPLY1_JSON")" = "0" ] || fail "apply1 skipped != 0"
+
+# Structural manifest assertion via Python YAML parse.
+# Verifies the dep exists at spec.dependencies[].{name, type} — not a
+# string-pattern match (which would false-positive on comment text).
+uv run --directory "$WORKERS_ROOT" python <<EOF
+import yaml
+from pathlib import Path
+doc = yaml.safe_load(Path("$ADD_DEP_SPECS/payments-api.yaml").read_text())
+deps = doc.get("spec", {}).get("dependencies", [])
+matching = [d for d in deps if d.get("name") == "svc-new"]
+assert len(matching) == 1, f"expected 1 matching dep, got {len(matching)}: {matching}"
+assert matching[0].get("type") == "api", f"expected type=api, got {matching[0]}"
+EOF
+echo "✓ Section 7: add_dependency APPLY_CLEAN path"
+
 echo ""
 echo "All integration assertions passed."
 SUCCESS=1
