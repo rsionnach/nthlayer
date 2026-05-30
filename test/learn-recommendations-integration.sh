@@ -176,8 +176,11 @@ echo "All tighten_slo + --pr assertions passed."
 
 # Preflight: jq is required for --json apply-result assertions.
 # Skip-not-fail so constrained CI environments don't block on jq absence.
+# Message goes to stderr so the skip is visible to operators tailing
+# CI logs (a stdout-only message would let a regression in the CI
+# image hide that sections 7-8 stopped running while suite reported pass).
 command -v jq >/dev/null 2>&1 || {
-  echo "SKIP: jq required for add_dependency assertions (sections 7-8)"
+  echo "SKIP: jq required for add_dependency assertions (sections 7-8)" >&2
   SUCCESS=1
   exit 0
 }
