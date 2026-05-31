@@ -130,8 +130,9 @@ OpenSRM specification (the format itself) lives in [`opensrm`](https://github.co
 
 ## Integration testing
 
-Three test surfaces:
+Four test surfaces:
 
+- `test/test_demo_paths.sh` — path-resolution regression guard (opensrm-oey5). Asserts `bash -n demo/demo.sh` passes and that `demo/_paths.sh` resolves `FRONTDOOR_ROOT` to this repo and `WORKSPACE_ROOT` to the parent dir containing `nthlayer-{core,workers,bench,common}`. Runs in <1s, no Docker. CI: `.github/workflows/demo-paths.yml` (push/PR to main).
 - `test/integration-chain.sh` — verdict chain acceptance test (seeded, no Prometheus). See script header.
 - `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness test (real core API + workers + bench-via-API). Boots Docker stack, drives reversal_rate breach via fake-service, asserts verdict chain end-to-end. Sources `_three_tier_lib.sh` for preflight/boot/teardown (270 lines, down from 371). CI integration: `.github/workflows/integration-three-tier.yml` (workflow_dispatch + nightly cron 04:00 UTC, timeout 15 min).
 - `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2). Sources `_three_tier_lib.sh` for preflight/boot/teardown (391 lines, down from 458). See script header.

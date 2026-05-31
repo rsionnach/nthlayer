@@ -18,13 +18,10 @@ set -euo pipefail
 # Paths
 # ---------------------------------------------------------------------------
 
-DEMO_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Front-door root (this repo): hosts test/, demo-output/, specs, scripts.
-FRONTDOOR_ROOT="$(cd "$DEMO_DIR/.." && pwd)"
-# Workspace root: parent of the front-door, where sibling component repos
-# (nthlayer-core/-workers/-bench/-common) are cloned. demo.sh launches
-# those via `uv run --directory`.
-WORKSPACE_ROOT="$(cd "$FRONTDOOR_ROOT/.." && pwd)"
+# Foundational paths factored into _paths.sh so the test rig at
+# test/test_demo_paths.sh (opensrm-oey5) can source them in isolation.
+# Defines: DEMO_DIR, FRONTDOOR_ROOT, WORKSPACE_ROOT.
+source "$(cd "$(dirname "$0")" && pwd)/_paths.sh"
 SITE_DIR="${SITE_DIR:-/Users/robfox/Documents/GitHub/nthlayer-site}"
 TEST_DIR="$FRONTDOOR_ROOT/test"
 OUTPUT_DIR="$FRONTDOOR_ROOT/demo-output"

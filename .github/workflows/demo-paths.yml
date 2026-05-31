@@ -1,0 +1,30 @@
+name: Demo paths
+
+# Regression guard for demo/demo.sh path resolution (opensrm-oey5).
+# Runs in <5s. No Docker, no Python deps. Distinct from the
+# (currently broken) ci.yml — tracked separately for overhaul.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  demo-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Stub sibling component dirs at WORKSPACE_ROOT
+        # The test asserts WORKSPACE_ROOT contains nthlayer-{core,workers,
+        # bench,common}. In CI we only check out nthlayer/ itself; create
+        # empty placeholders at the workspace root so the existence
+        # contract is verified (we're catching path-resolution regressions,
+        # not runtime sibling-repo health — that's integration-three-tier's
+        # job).
+        run: |
+          mkdir -p ../nthlayer-core ../nthlayer-workers ../nthlayer-bench ../nthlayer-common
+
+      - name: Run demo-paths regression test
+        run: bash test/test_demo_paths.sh
