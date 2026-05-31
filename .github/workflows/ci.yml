@@ -1,116 +1,44 @@
 name: CI
 
+# Shell-syntax regression guard for the front-door repo.
+#
+# Post-consolidation this repo hosts no Python code at the root —
+# implementation lives in nthlayer-{common,core,workers,bench,generate}
+# (each with its own CI). The original ci.yml ran ruff/mypy/pytest
+# against src/ tests/ examples/ paths that no longer exist; it failed
+# every push from 2026-04-26 onward until this rewrite (opensrm-0buj).
+#
+# What CI does for the front-door now:
+#   - This workflow: bash -n on every demo/ and test/ shell script.
+#   - .github/workflows/docs.yml: mkdocs build --strict on docs-site/.
+#   - .github/workflows/demo-paths.yml: cmd_start path-resolution test (opensrm-oey5).
+#   - .github/workflows/integration-three-tier.yml: nightly cross-repo smoke.
+#   - .github/workflows/release.yml: meta-v* tag publish to PyPI.
+#
+# Anything Python-shaped is the responsibility of the per-component repo.
+
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
-
-env:
-  # Resolve nthlayer-common from PyPI, not the local path in [tool.uv.sources]
-  UV_NO_SOURCES: "1"
+    branches: [main]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: uv sync --no-sources --extra dev
-
-      - name: Run linting
-        run: uv run ruff check src/ tests/
-
-      - name: Run type checking
-        run: uv run mypy src/
-
-      - name: Run tests
-        run: |
-          uv run pytest tests/ \
-            --ignore=tests/integration/ \
-            -v --tb=short \
-            -x
-
-  lint:
+  shell-syntax:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --no-sources --extra dev
-
-      - name: Run ruff
-        run: uv run ruff check src/ tests/
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --no-sources --extra dev
-
-      - name: Run pip-audit
+      - name: bash -n on demo/ and test/ scripts
         run: |
-          uv pip install pip-audit
-          # Note: --strict removed - some transitive deps have unfixable vulns
-          # Review periodically and update deps when fixes available
-          uv run pip-audit --progress-spinner off || echo "pip-audit found vulnerabilities (non-blocking)"
-
-  self-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install NthLayer
-        run: uv sync --no-sources
-
-      - name: Validate example service specs
-        run: |
-          echo "=== Validating example service specs ==="
-          # Only validate known-good specs (some examples are intentionally incomplete for demos)
-          uv run nthlayer validate-spec examples/services/checkout-service.yaml
-
-      - name: Generate artifacts for example service
-        run: |
-          echo "=== Generating artifacts for checkout-service ==="
-          uv run nthlayer apply examples/services/checkout-service.yaml --lint
-
-      - name: Verify generated artifacts exist
-        run: |
-          echo "=== Checking generated artifacts ==="
-          ls -la generated/checkout-service/
-          test -f generated/checkout-service/dashboard.json
-          test -f generated/checkout-service/alerts.yaml
+          set -e
+          fail=0
+          while IFS= read -r script; do
+            if bash -n "$script"; then
+              echo "  OK    $script"
+            else
+              echo "  FAIL  $script"
+              fail=1
+            fi
+          done < <(find demo test -maxdepth 2 -name '*.sh' -type f | sort)
+          exit "$fail"

@@ -45,7 +45,8 @@ Deprecated standalone repos `nthlayer-observe`, `nthlayer-learn`, `nthlayer-meas
 - `demo/` — runnable cascading-failure scenario, demo orchestrator (`demo.sh`), example OpenSRM specifications
 - `.github/workflows/`:
   - `docs.yml` — docs site build + GitHub Pages deploy
-  - `ci.yml` — front-door CI
+  - `ci.yml` — bash -n syntax check across `demo/` and `test/` *.sh (opensrm-0buj rewrite — replaced the stale ruff/mypy/pytest jobs that were failing every push post-consolidation)
+  - `demo-paths.yml` — `cmd_start` path-resolution regression test (opensrm-oey5)
   - `release.yml` — meta-package release to PyPI (triggered on `meta-v*` tags)
   - `integration-three-tier.yml` — cross-repo three-tier integration test (`workflow_dispatch` + nightly cron)
   - `publish-docker.yml` — Docker image publish
