@@ -177,13 +177,18 @@ cmd_start() {
     #     docker-compose state. The lock is a directory rather than a
     #     flock(1) handle (flock isn't installed on macOS by default).
     #
-    #     Atomicity (m7su R5 findings #1, #2): the lock dir is built in a
-    #     PID-namespaced tmpdir with pid + owner-tag inside, then
-    #     mv(1)-renamed to its final name. mv into the same parent is
-    #     atomic on POSIX, so the lock dir never appears under its
-    #     public name with missing metadata — closing the PID-write race
-    #     and the stale-lock-reclaim TOCTOU that the prior non-atomic
-    #     implementation allowed.
+    #     Atomicity (m7su R5 findings #1, #2): the primitive is plain
+    #     mkdir (shell `mv` into an existing directory moves *into* it
+    #     rather than failing, so an mv-rename dance does not give
+    #     atomicity for directory names — see _start_lock.sh). After
+    #     mkdir succeeds the holder writes pid + owner sequentially;
+    #     a concurrent reader uses _read_lock_state to poll up to
+    #     ~200ms for the metadata to appear. If the poll completes
+    #     with empty metadata AND the lock dir is still present, the
+    #     reader refuses with a manual-cleanup hint rather than
+    #     auto-reclaiming (a slow alive holder is indistinguishable
+    #     from a dead mid-establisher from the outside, so the safer
+    #     default is refuse-don't-destroy — 36es R5 Pass 1).
     #
     #     Owner tag (m7su R5 finding #4): a file called "owner" holds
     #     the literal "demo.sh-start-lock". Stale-lock reclaim treats a
@@ -206,7 +211,7 @@ cmd_start() {
     # Publish lock_dir to the script-global so _demo_cleanup_start_lock
     # (registered next) can find it without depending on local scope.
     # Register the hook BEFORE the acquire attempt so a SIGINT
-    # mid-acquire leaves no orphan tmpdir or lock_dir (m7su R5 #5).
+    # mid-establish leaves no orphan lock_dir (m7su R5 #5).
     _DEMO_START_LOCK_DIR="$lock_dir"
     _demo_register_cleanup _demo_cleanup_start_lock
 

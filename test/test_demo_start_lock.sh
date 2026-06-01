@@ -150,9 +150,14 @@ winners="$(find "$RESULTS" -name 'winner.*' | wc -l | tr -d ' ')"
 losers="$(find "$RESULTS" -name 'loser.*' | wc -l | tr -d ' ')"
 assert_eq "$winners" "1" "exactly one winner out of $N_RACERS racers"
 assert_eq "$losers" "$((N_RACERS - 1))" "the rest are losers"
-# Lock dir should hold the winner's pid + owner; no .tmp.* orphans.
-tmp_orphans="$(find "$SCRATCH/t5" -maxdepth 1 -name '.start.lock.tmp.*' | wc -l | tr -d ' ')"
-assert_eq "$tmp_orphans" "0" "no .tmp.* orphans left behind"
+# Winner's lock dir holds well-formed metadata.
+assert_eq "$(cat "$LOCK/owner" 2>/dev/null || true)" "demo.sh-start-lock" "winner's owner tag is intact"
+winner_pid="$(cat "$LOCK/pid" 2>/dev/null || true)"
+if [[ "$winner_pid" =~ ^[0-9]+$ ]]; then
+    pass "winner's pid file holds an integer ($winner_pid)"
+else
+    fail "winner's pid file does not hold an integer (got '$winner_pid')"
+fi
 rm -rf "$LOCK"
 
 # --------------------------------------------------------------------------
