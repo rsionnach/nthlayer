@@ -222,6 +222,27 @@ cmd_start() {
             error "Wait for it to finish, or kill PID $_LOCK_PID if it appears hung."
             exit 1
         fi
+        # Lock dir exists but the 200ms poll did not surface readable
+        # metadata. Two scenarios produce this state:
+        #   (a) a prior holder mkdir'd then died mid-establish (SIGKILL,
+        #       OOM, power loss between mkdir and the two echos);
+        #   (b) a current holder is alive but scheduler-stalled past
+        #       the 200ms window (heavily-loaded VM / noisy CI runner).
+        # The two are indistinguishable from the outside. Auto-reclaim
+        # would destroy a live lock in case (b), producing concurrent
+        # boots — the very bug this guard exists to prevent. Refuse
+        # with a manual-cleanup hint: false refusal costs the user one
+        # `rm -rf`, false reclaim costs port collisions and corrupted
+        # docker-compose state (36es R5 Pass 1).
+        if [[ -d "$lock_dir" ]] \
+           && { [[ -z "$_LOCK_PID" ]] || [[ -z "$_LOCK_OWNER" ]]; }; then
+            error "Start lock at $lock_dir has incomplete metadata after"
+            error "the establish-window poll (200ms). Either another"
+            error "invocation is initialising right now, or a prior"
+            error "holder was killed mid-setup. Wait a moment and re-run;"
+            error "if the lock persists, remove $lock_dir manually."
+            exit 1
+        fi
         warn "Removing stale start lock from PID ${_LOCK_PID:-?}"
         rm -rf "$lock_dir"
         # Retry. If we lose this race too, a third concurrent invocation

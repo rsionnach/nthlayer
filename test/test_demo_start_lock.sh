@@ -291,6 +291,40 @@ assert_dir_missing "$LOCK" "lock removed by EXIT trap on SIGINT"
 
 # --------------------------------------------------------------------------
 echo
+echo "=== Test 9b: empty-metadata lock is REFUSED (not reclaimed) ==="
+# Pass 1 R5 finding: the bead originally prescribed "reclaim empty-pid
+# locks", but that conflates two indistinguishable scenarios — a
+# crashed mid-establisher (genuinely stale) and a slow alive holder
+# (must not be reclaimed). Caller logic must refuse in that case.
+LOCK="$SCRATCH/t9b/.start.lock"
+mkdir -p "$SCRATCH/t9b"
+mkdir "$LOCK"   # lock dir exists with no metadata — establish window
+(
+    source "$LOCK_LIB"
+    if _acquire_start_lock "$LOCK"; then
+        echo "UNEXPECTED_FIRST_WIN"
+        exit 0
+    fi
+    _read_lock_state "$LOCK"
+    if [[ "$_LOCK_OWNER" == "demo.sh-start-lock" ]] \
+       && [[ -n "$_LOCK_PID" ]] \
+       && kill -0 "$_LOCK_PID" 2>/dev/null; then
+        echo "ALIVE_REFUSAL"
+        exit 0
+    fi
+    if [[ -d "$LOCK" ]] \
+       && { [[ -z "$_LOCK_PID" ]] || [[ -z "$_LOCK_OWNER" ]]; }; then
+        echo "ESTABLISHING_REFUSAL"
+        exit 0
+    fi
+    echo "INCORRECT_RECLAIM"
+) > "$SCRATCH/t9b.out"
+assert_eq "$(cat "$SCRATCH/t9b.out")" "ESTABLISHING_REFUSAL" "empty-metadata lock is refused, not reclaimed"
+assert_dir_exists "$LOCK" "lock dir preserved through refusal path"
+rm -rf "$LOCK"
+
+# --------------------------------------------------------------------------
+echo
 echo "=== Test 10: cleanup recovers half-built lock (SIGINT mid-establish) ==="
 # Simulates SIGINT landing between mkdir and the pid/owner echos.
 # Manually re-creates that state: lock_dir exists, no metadata,
