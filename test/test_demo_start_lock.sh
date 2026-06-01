@@ -362,6 +362,72 @@ rm -rf "$LOCK"
 
 # --------------------------------------------------------------------------
 echo
+echo "=== Test 11: compare-and-rm guard against concurrent stale-reclaim ==="
+# Pass 3 R5: when two reclaimers both decide stale, the slower one's
+# rm could destroy a fresh lock that the faster one just acquired.
+# _compare_and_rm_stale_lock re-reads pid right before rm; the rm is
+# skipped if pid no longer matches the snapshot the caller decided on.
+
+# 11a: pid matches snapshot → rm happens.
+LOCK="$SCRATCH/t11a/.start.lock"
+mkdir -p "$SCRATCH/t11a"
+mkdir "$LOCK"
+echo "99999" > "$LOCK/pid"
+echo "demo.sh-start-lock" > "$LOCK/owner"
+(
+    source "$LOCK_LIB"
+    _compare_and_rm_stale_lock "$LOCK" "99999"
+)
+assert_dir_missing "$LOCK" "compare-and-rm rms when pid still matches the snapshot"
+
+# 11b: pid changed since snapshot → rm is skipped (the fresh holder
+# is preserved).
+LOCK="$SCRATCH/t11b/.start.lock"
+mkdir -p "$SCRATCH/t11b"
+mkdir "$LOCK"
+echo "12345" > "$LOCK/pid"   # fresh holder's pid, different from snapshot
+echo "demo.sh-start-lock" > "$LOCK/owner"
+(
+    source "$LOCK_LIB"
+    _compare_and_rm_stale_lock "$LOCK" "99999"   # we snapshotted 99999
+)
+assert_dir_exists "$LOCK" "compare-and-rm preserves lock when pid changed since snapshot"
+assert_eq "$(cat "$LOCK/pid" 2>/dev/null || true)" "12345" "fresh holder's pid file intact"
+rm -rf "$LOCK"
+
+# 11c: pid file missing entirely (e.g. lock dir was already rm'd by a
+# concurrent reclaimer) → rm is skipped, no harm.
+LOCK="$SCRATCH/t11c/.start.lock"
+mkdir -p "$SCRATCH/t11c"   # lock dir intentionally NOT created
+(
+    source "$LOCK_LIB"
+    _compare_and_rm_stale_lock "$LOCK" "99999"
+)
+assert_dir_missing "$LOCK" "compare-and-rm no-op when lock dir already gone"
+
+# --------------------------------------------------------------------------
+echo
+echo "=== Test 12: trap composition — multiple hooks fire in order ==="
+# Validates the headline claim of the _demo_cleanup registry: hooks
+# compose rather than clobber. Two registered hooks should both run.
+EVIDENCE="$SCRATCH/t12-evidence"
+mkdir -p "$SCRATCH/t12"
+(
+    source "$LOCK_LIB"
+    _hook_a() { echo "A" >> "$EVIDENCE"; }
+    _hook_b() { echo "B" >> "$EVIDENCE"; }
+    _demo_register_cleanup _hook_a
+    _demo_register_cleanup _hook_b
+    # subshell exits; both hooks should fire in registration order
+)
+if [[ -f "$EVIDENCE" ]] && [[ "$(cat "$EVIDENCE")" == $'A\nB' ]]; then
+    pass "two cleanup hooks fired in registration order (A, B)"
+else
+    fail "trap composition broken — evidence: $(cat "$EVIDENCE" 2>/dev/null || echo '<missing>')"
+fi
+
+# --------------------------------------------------------------------------
+echo
 echo "==============================================="
 echo "  Passed: $pass_count"
 echo "  Failed: $fail_count"

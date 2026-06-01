@@ -205,7 +205,15 @@ cmd_start() {
         error "the link. Replace it with a real directory."
         exit 1
     fi
-    mkdir -p "$OUTPUT_DIR"
+    if [[ -e "$OUTPUT_DIR" && ! -d "$OUTPUT_DIR" ]]; then
+        error "$OUTPUT_DIR exists but is not a directory."
+        error "Remove it or set OUTPUT_DIR to a writable path."
+        exit 1
+    fi
+    mkdir -p "$OUTPUT_DIR" 2>/dev/null || {
+        error "Cannot create $OUTPUT_DIR (read-only filesystem? Permission denied?)."
+        exit 1
+    }
     local lock_dir="$OUTPUT_DIR/.start.lock"
 
     # Publish lock_dir to the script-global so _demo_cleanup_start_lock
@@ -249,7 +257,13 @@ cmd_start() {
             exit 1
         fi
         warn "Removing stale start lock from PID ${_LOCK_PID:-?}"
-        rm -rf "$lock_dir"
+        # Compare-and-rm: defense against the concurrent stale-reclaim
+        # race (36es R5 Pass 3). If another reclaimer beat us to the
+        # rm-and-acquire, the pid file now holds a fresh holder's PID,
+        # not the stale one we decided about — skip the rm and let
+        # the retry-acquire below decide whether the new lock is ours
+        # or theirs.
+        _compare_and_rm_stale_lock "$lock_dir" "$_LOCK_PID"
         # Retry. If we lose this race too, a third concurrent invocation
         # won — exit with a clear message rather than aborting silently
         # under set -e.

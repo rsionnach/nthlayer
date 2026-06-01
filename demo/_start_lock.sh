@@ -106,6 +106,31 @@ _acquire_start_lock() {
 }
 
 # ---------------------------------------------------------------------------
+# Compare-and-rm stale lock (concurrent-reclaim race defense)
+# ---------------------------------------------------------------------------
+#
+# Re-reads $lock_dir/pid right before the rm. Rms only if the
+# recorded pid still matches the value the caller observed when it
+# decided "stale". If two reclaimers both decide stale at the same
+# time, the slower one's compare-pid check will see the faster one's
+# fresh-holder pid and refuse the rm — preventing the slower
+# reclaimer from destroying a fresh live lock (36es R5 Pass 3).
+#
+# The remaining window between this cat-and-if and the rm is
+# microseconds; not zero, but small enough to swallow without a
+# heavier primitive. Returns 0 always; the rm is best-effort.
+
+_compare_and_rm_stale_lock() {
+    local lock_dir="$1"
+    local expected_stale_pid="$2"
+    local current_pid_now
+    current_pid_now="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+    if [[ "$current_pid_now" == "$expected_stale_pid" ]]; then
+        rm -rf "$lock_dir"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Read lock state with metadata-establish tolerance
 # ---------------------------------------------------------------------------
 #
