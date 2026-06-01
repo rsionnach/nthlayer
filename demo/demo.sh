@@ -58,6 +58,11 @@ success() { echo "  ✓ $*"; }
 warn()    { echo "  ⚠ $*" >&2; }
 error()   { echo "  ✗ $*" >&2; }
 
+# Start-lock primitives (cleanup registry, atomic acquire, EXIT trap).
+# Factored into _start_lock.sh so test/test_demo_start_lock.sh
+# (opensrm-36es) can source them in isolation.
+source "$DEMO_DIR/_start_lock.sh"
+
 detect_llm_model() {
     # Set NTHLAYER_MODEL from env vars if not already set
     if [[ -n "${NTHLAYER_MODEL:-}" ]]; then
@@ -169,29 +174,65 @@ cmd_start() {
 
     # 0a. Acquire start lock. Two simultaneous `./demo.sh start` calls
     #     would otherwise race on PID files, ports 8001-8008 / 8000, and
-    #     docker-compose state. mkdir is atomic on POSIX so it serves as
-    #     a portable mutex without depending on flock(1) (not installed
-    #     on macOS by default). Owner PID is recorded so a stale lock
-    #     from a hard-killed prior shell can be reclaimed.
+    #     docker-compose state. The lock is a directory rather than a
+    #     flock(1) handle (flock isn't installed on macOS by default).
+    #
+    #     Atomicity (m7su R5 findings #1, #2): the lock dir is built in a
+    #     PID-namespaced tmpdir with pid + owner-tag inside, then
+    #     mv(1)-renamed to its final name. mv into the same parent is
+    #     atomic on POSIX, so the lock dir never appears under its
+    #     public name with missing metadata — closing the PID-write race
+    #     and the stale-lock-reclaim TOCTOU that the prior non-atomic
+    #     implementation allowed.
+    #
+    #     Owner tag (m7su R5 finding #4): a file called "owner" holds
+    #     the literal "demo.sh-start-lock". Stale-lock reclaim treats a
+    #     lock as alive only if BOTH the recorded PID responds to
+    #     kill -0 AND the owner tag matches. This protects against PID
+    #     recycling pointing at an unrelated process after wraparound.
+    #
+    #     Symlink refusal (m7su R5 finding #6): $OUTPUT_DIR must be a
+    #     real directory. The cleanup path uses rm -rf and would follow
+    #     a symbolic link in adversarial conditions.
+    if [[ -L "$OUTPUT_DIR" ]]; then
+        error "$OUTPUT_DIR is a symbolic link. Refusing to start —"
+        error "the lock cleanup path uses rm -rf and could follow"
+        error "the link. Replace it with a real directory."
+        exit 1
+    fi
     mkdir -p "$OUTPUT_DIR"
     local lock_dir="$OUTPUT_DIR/.start.lock"
-    if ! mkdir "$lock_dir" 2>/dev/null; then
-        local owner_pid
-        owner_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
-        if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
-            error "Another ./demo.sh start is already in flight (PID $owner_pid)."
-            error "Wait for it to finish, or kill PID $owner_pid if it appears hung."
+
+    # Publish lock_dir to the script-global so _demo_cleanup_start_lock
+    # (registered next) can find it without depending on local scope.
+    # Register the hook BEFORE the acquire attempt so a SIGINT
+    # mid-acquire leaves no orphan tmpdir or lock_dir (m7su R5 #5).
+    _DEMO_START_LOCK_DIR="$lock_dir"
+    _demo_register_cleanup _demo_cleanup_start_lock
+
+    if ! _acquire_start_lock "$lock_dir"; then
+        # Contended. _read_lock_state polls briefly to tolerate the
+        # window where another holder has mkdir'd but not yet finished
+        # writing pid/owner (m7su R5 #2).
+        _read_lock_state "$lock_dir"
+        if [[ "$_LOCK_OWNER" == "demo.sh-start-lock" ]] \
+           && [[ -n "$_LOCK_PID" ]] \
+           && kill -0 "$_LOCK_PID" 2>/dev/null; then
+            error "Another ./demo.sh start is already in flight (PID $_LOCK_PID)."
+            error "Wait for it to finish, or kill PID $_LOCK_PID if it appears hung."
             exit 1
         fi
-        warn "Removing stale start lock from PID ${owner_pid:-?}"
+        warn "Removing stale start lock from PID ${_LOCK_PID:-?}"
         rm -rf "$lock_dir"
-        mkdir "$lock_dir"
+        # Retry. If we lose this race too, a third concurrent invocation
+        # won — exit with a clear message rather than aborting silently
+        # under set -e.
+        if ! _acquire_start_lock "$lock_dir"; then
+            error "Lost race to reclaim a stale start lock (another"
+            error "concurrent invocation won). Re-run ./demo.sh start."
+            exit 1
+        fi
     fi
-    echo "$$" > "$lock_dir/pid"
-    # Bake the path into the trap at set-time (double quoted) so the
-    # EXIT handler doesn't need access to lock_dir, which is `local`
-    # and out of scope by the time the script exits.
-    trap "rm -rf '$lock_dir'" EXIT
 
     # 0b. Refuse to start if any demo-owned process is already alive
     #     (a prior cmd_start that completed successfully). The

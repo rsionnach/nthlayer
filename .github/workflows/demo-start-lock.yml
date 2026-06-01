@@ -1,0 +1,23 @@
+name: Demo start lock
+
+# Regression guard for demo/_start_lock.sh — the cmd_start
+# concurrent-invocation mutex (opensrm-36es, hardening m7su's basic
+# guard with the 7 IMPORTANT findings from the R5 dry-run).
+#
+# Runs in ~5s. No Docker, no Python deps. Distinct from demo-paths.yml
+# (path resolution) and ci.yml (shell-syntax sweep).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  demo-start-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run demo-start-lock regression test
+        run: bash test/test_demo_start_lock.sh

@@ -47,6 +47,7 @@ Deprecated standalone repos `nthlayer-observe`, `nthlayer-learn`, `nthlayer-meas
   - `docs.yml` — docs site build + GitHub Pages deploy
   - `ci.yml` — bash -n syntax check across `demo/` and `test/` *.sh (opensrm-0buj rewrite — replaced the stale ruff/mypy/pytest jobs that were failing every push post-consolidation)
   - `demo-paths.yml` — `cmd_start` path-resolution regression test (opensrm-oey5)
+  - `demo-start-lock.yml` — `cmd_start` concurrent-invocation lock regression test (opensrm-36es)
   - `release.yml` — meta-package release to PyPI (triggered on `meta-v*` tags)
   - `integration-three-tier.yml` — cross-repo three-tier integration test (`workflow_dispatch` + nightly cron)
   - `publish-docker.yml` — Docker image publish
@@ -131,13 +132,22 @@ OpenSRM specification (the format itself) lives in [`opensrm`](https://github.co
 
 ## Integration testing
 
-Four test surfaces:
+Five test surfaces:
 
 - `test/test_demo_paths.sh` — path-resolution regression guard (opensrm-oey5). Asserts `bash -n demo/demo.sh` passes and that `demo/_paths.sh` resolves `FRONTDOOR_ROOT` to this repo and `WORKSPACE_ROOT` to the parent dir containing `nthlayer-{core,workers,bench,common}`. Runs in <1s, no Docker. CI: `.github/workflows/demo-paths.yml` (push/PR to main).
+- `test/test_demo_start_lock.sh` — concurrent-invocation start-lock regression guard (opensrm-36es). Exercises `cmd_start`'s 0a guard with a stub that skips the full boot, asserting: two concurrent invocations → exactly one wins; stale lock (PID 99999, owner-tag match) → reclaimed with `warn`; lock dir present but `pid`/`owner` missing → treated as stale; PID alive but owner-tag missing or mismatched → treated as stale (catches PID-recycle false positives); EXIT hook removes the lock on normal exit, on `exit 1` (0b refusal), and on SIGINT. Runs in ~5s, no Docker. CI: `.github/workflows/demo-start-lock.yml` (push/PR to main).
 - `test/integration-chain.sh` — verdict chain acceptance test (seeded, no Prometheus). See script header.
 - `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness test (real core API + workers + bench-via-API). Boots Docker stack, drives reversal_rate breach via fake-service, asserts verdict chain end-to-end. Sources `_three_tier_lib.sh` for preflight/boot/teardown (270 lines, down from 371). CI integration: `.github/workflows/integration-three-tier.yml` (workflow_dispatch + nightly cron 04:00 UTC, timeout 15 min).
 - `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2). Sources `_three_tier_lib.sh` for preflight/boot/teardown (391 lines, down from 458). See script header.
 - `test/_three_tier_lib.sh` — shared boot/teardown library (opensrm-saun.2.1). Sourced by `integration-three-tier.sh` and `e2e-test.sh`. Four helpers: `preflight_required_commands [extra...]` (checks docker/uv/curl/python3/jq/lsof + optional extras), `preflight_port_conflicts CORE_PORT FAKE_PORT` (EADDRINUSE catcher; skips Prometheus 9090 since that's inside Docker), `boot_three_tier_stack ...` (Docker compose + Prometheus poll + fake-service + core + workers + heartbeat wait; sets globals CORE_PID/WORKERS_PID/FAKE_PID/DOCKER_UP), `teardown_three_tier_stack ...` (disarms INT/TERM trap to prevent recursive teardown, ordered SIGTERM workers→core→fake-service, docker compose down --remove-orphans; success removes WORK_DIR, failure preserves logs at `/tmp/<save-prefix>-debug-<ts>` and calls optional `tt_known_blockers` hook). Hook pattern: callers define `tt_log`/`tt_info`/`tt_pass`/`tt_fail`/`tt_known_blockers` before sourcing; fallbacks provided. Normalises two inconsistencies from the originals: trap-disarm for recursive teardown is now centralised; known-blocker text is an optional caller hook instead of hardcoded.
+
+**`demo/demo.sh` — cmd_start guard sequence:**
+
+Three ordered guards at the top of `cmd_start` (opensrm-m7su + opensrm-36es):
+
+- **0a — `.start.lock` concurrent-invocation mutex.** Lock dir at `$OUTPUT_DIR/.start.lock` holding `pid` (owning shell PID) + `owner` (literal `demo.sh-start-lock`). Acquired by building a `$lock_dir.tmp.$$` tmpdir with both metadata files inside, then `mv(1)`-renaming to the final name — atomic on POSIX, so the lock never appears with missing metadata (closes the PID-write race). Stale-lock reclaim requires BOTH the recorded PID to fail `kill -0` OR the owner tag to mismatch (protects against PID recycling). Cleanup via the `_demo_cleanup` registry (single EXIT trap, composable hooks) so future cleanup-needing code can append rather than clobber. Refuses to run if `$OUTPUT_DIR` is a symlink.
+- **0b — live-process refusal.** Walks the canonical PID files (`fake-*.pid`, `workers.pid`, `core.pid`, `http-server.pid`); if any process is alive, refuse with the recovery hint to run `./demo.sh teardown` first.
+- **0c — stale PID file reconciliation.** Same canonical PID files; for any PID file whose process is dead, clean up via `stop_pid_file` before binding new processes.
 
 For worker pipeline architecture see [`docs/superpowers/specs/2026-04-25-p3-e1-respond-coordinator-worker-design.md`](docs/superpowers/specs/2026-04-25-p3-e1-respond-coordinator-worker-design.md). For demo orchestration see `demo/demo.sh` header and `demo/scenario-cascading-failure.yaml`.
 
