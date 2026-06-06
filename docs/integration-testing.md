@@ -28,9 +28,8 @@ cross-reference.
   verdict chain end-to-end. Sources `_three_tier_lib.sh` for
   preflight/boot/teardown (270 lines, down from 371). CI integration:
   `.github/workflows/integration-three-tier.yml` (workflow_dispatch +
-  nightly cron 04:00 UTC, timeout 15 min). Replaced the seeded
-  in-process `test/integration-chain.sh` (retired 2026-06-06 per
-  `opensrm-u5dw`).
+  nightly cron 04:00 UTC, timeout 15 min). Supersedes
+  `test/integration-chain.sh` (retired opensrm-u5dw).
 - `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2).
   Sources `_three_tier_lib.sh` for preflight/boot/teardown
   (391 lines, down from 458). See script header.

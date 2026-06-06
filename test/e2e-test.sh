@@ -11,9 +11,9 @@
 # starts core + workers and observes via core's REST API.
 #
 # Sibling tests:
-#   - test/integration-three-tier.sh — minimal CI smoke test (saun.1).
-#     Same boot/teardown pattern; this script is the demo-flavoured 9-step
-#     walk-through with per-step narrative output.
+#   - test/integration-three-tier.sh — canonical E2E ship-readiness test
+#     (saun.1). Same boot/teardown pattern; this script is the
+#     demo-flavoured 9-step walk-through with per-step narrative output.
 #
 # Usage:
 #   ./test/e2e-test.sh [--prometheus-url URL] [--specs-dir DIR]
