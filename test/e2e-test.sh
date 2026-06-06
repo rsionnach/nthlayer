@@ -14,7 +14,6 @@
 #   - test/integration-three-tier.sh — minimal CI smoke test (saun.1).
 #     Same boot/teardown pattern; this script is the demo-flavoured 9-step
 #     walk-through with per-step narrative output.
-#   - test/integration-chain.sh — legacy in-process chain test.
 #
 # Usage:
 #   ./test/e2e-test.sh [--prometheus-url URL] [--specs-dir DIR]

@@ -22,15 +22,15 @@ cross-reference.
   positives); EXIT hook removes the lock on normal exit, on `exit 1`
   (0b refusal), and on SIGINT. Runs in ~5s, no Docker. CI:
   `.github/workflows/demo-start-lock.yml` (push/PR to main).
-- `test/integration-chain.sh` — verdict chain acceptance test
-  (seeded, no Prometheus). See script header.
-- `test/integration-three-tier.sh` — P5.1 three-tier ship-readiness
-  test (real core API + workers + bench-via-API). Boots Docker
-  stack, drives reversal_rate breach via fake-service, asserts
+- `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
+  ship-readiness test (real core API + workers + bench-via-API). Boots
+  Docker stack, drives reversal_rate breach via fake-service, asserts
   verdict chain end-to-end. Sources `_three_tier_lib.sh` for
   preflight/boot/teardown (270 lines, down from 371). CI integration:
   `.github/workflows/integration-three-tier.yml` (workflow_dispatch +
-  nightly cron 04:00 UTC, timeout 15 min).
+  nightly cron 04:00 UTC, timeout 15 min). Replaced the seeded
+  in-process `test/integration-chain.sh` (retired 2026-06-06 per
+  `opensrm-u5dw`).
 - `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2).
   Sources `_three_tier_lib.sh` for preflight/boot/teardown
   (391 lines, down from 458). See script header.
