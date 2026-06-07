@@ -10,10 +10,13 @@ This document defines the single rule for choosing the patch target in `unittest
 
 | Import style in the code under test | Patch target |
 |---|---|
-| `from mod import Name; Name(...)` | `consumer_module.Name` (the consumer's local re-binding) |
-| `import mod; mod.Name(...)` | `mod.Name` (the source) |
+| Module-level `from mod import Name; Name(...)` | `consumer_module.Name` (the consumer's local re-binding) |
+| Module-level `import mod; mod.Name(...)` | `mod.Name` (the source) |
+| Function-body `from mod import Name; Name(...)` inside a `def` | `mod.Name` (the source) — no module-level binding exists |
 
 Confirm the import style per site. Don't assume.
+
+The function-body case looks like the module-level `from` case but resolves differently. A `from x import Name` *inside a function body* binds `Name` as a local variable in each call frame; there is no `consumer_module.Name` at module level to patch. The patch must intercept at `x.Name` so the next `from x import Name` lookup picks up the mock. Patching `consumer_module.Name` in this case silently fails — the name doesn't exist there, so the patch creates an unused attribute and the production import runs unimpeded. Where you see lazy imports (typically used to break circular dependencies or defer expensive imports), patch at the source.
 
 ## Why this rule
 
@@ -67,6 +70,25 @@ Wait — the inventory shows this is patched as `nthlayer_common.slack.httpx.Asy
 Because the consumer did `import httpx` (binding the `httpx` *module* into `slack.py`'s namespace), then attribute-accessed `httpx.AsyncClient`. Python's attribute lookup walks the local `httpx` reference to the module's `AsyncClient`. `patch("nthlayer_common.slack.httpx.AsyncClient")` is patching `AsyncClient` on the local `httpx` module reference — which works because `httpx` is a single object in `sys.modules`. `patch("httpx.AsyncClient")` would also work, and would in fact be cleaner; both succeed because the module reference is shared.
 
 **Convention in this codebase:** patch at the local re-binding (`consumer_module.imported_module.Name`) for `import x; x.Name` sites, because it makes the patch's scope explicit to a reader and matches what we do for `from x import Name` sites. Don't change existing `patch("module.x.Name")` sites to `patch("x.Name")` without reason — both work.
+
+### Function-body `from x import Y`
+
+```python
+# src/nthlayer_generate/cli/apply.py
+def apply_command(...):
+    from nthlayer_generate.providers.prometheus import PrometheusProvider  # ← imported INSIDE the def
+    provider = PrometheusProvider(...)  # ← look up: local frame variable
+```
+
+```python
+# tests/test_cli_apply.py
+with patch("nthlayer_generate.providers.prometheus.PrometheusProvider") as mock_p:
+    apply_command(...)
+```
+
+`apply.py` has no module-level `PrometheusProvider` name — the import only fires when `apply_command` runs. Each call re-imports from `nthlayer_generate.providers.prometheus`, which is the only stable lookup path. Patching `nthlayer_generate.cli.apply.PrometheusProvider` would silently fail: the attribute doesn't exist on `cli.apply` at module level, so the patch creates an unused entry and the production import inside `apply_command` runs unimpeded.
+
+This pattern is common in the generate cohort where modules defer imports to break circular dependencies or avoid loading optional providers at startup. The `providers.{prometheus,grafana,mimir}` re-export shims in nthlayer-generate are all consumed this way.
 
 ## The taxonomy (descriptive labels)
 
@@ -153,7 +175,7 @@ Patches sometimes target names that don't exist in the named module (no `import`
 
 1. **Enumerate.** Run `grep -rEho "patch\(['\"]nthlayer_<pkg>[^'\"]*['\"]" tests/ | sort -u` to list unique targets.
 2. **Classify each target descriptively.** Open the source file at the path implied by the patch target, read imports, and assign A / A-flag / B / C. Record file:line evidence per target. The vxl0 inventory has this done already for the cohort as of 2026-06-07 — use it as the starting point, verify drift before applying.
-3. **Confirm the import style at every consumer site.** For class A patches that look like `module.x.Name`, confirm whether `module` does `from x import Name` (consumer's binding is `Name`) or `import x; x.Name` (consumer's binding is `x`, attribute-accessed at call time). The patch target follows.
+3. **Confirm the import style at every consumer site, including scope.** For class A patches that look like `module.x.Name`, confirm whether `module` does `from x import Name` or `import x; x.Name`. For class C patches, confirm whether the `from nthlayer_*.foo import Name` is at module level or **inside a function body** — function-body imports have no module-level binding, so patch at the source (`nthlayer_*.foo.Name`), not at the consumer (`consumer_module.Name`).
 4. **Verify the patch actually patches.** A patch site that targets a name not present in the named module is the anomaly case above — investigate per the "Stale patches" guidance.
 5. **Apply the universal rule.** Where a site patches at the wrong lookup path (typically: patching at the canonical source when the consumer did `from x import Name`), correct it. Where a site already follows the rule, leave it.
 6. **Where the rule doesn't decide cleanly** (two valid locations, depth-2 attributes, optional-dependency edge cases), apply the corresponding edge-case section above.
