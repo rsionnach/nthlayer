@@ -12,9 +12,9 @@ NthLayer uses several categories of tests, each with different conventions and t
 
 **Integration tests** verify behaviour across multiple modules within a single repo or across repo boundaries without external service dependencies. They mock less than unit tests — typically only at infrastructure boundaries (HTTP clients, databases, external APIs). They run more slowly (seconds rather than milliseconds) and execute on push to main.
 
-**End-to-end tests** verify the full ecosystem flow across multiple components and processes. The canonical example is `test/integration-chain.sh`, which exercises the measure → correlate → respond → learn pipeline. They typically run via shell scripts that orchestrate multiple processes against real (or in-memory) infrastructure. Slow (minutes), run manually before releases or in scheduled CI jobs.
+**End-to-end tests** verify the full ecosystem flow across multiple components and processes. The canonical example is `test/integration-three-tier.sh` in the front-door repo, which orchestrates the three-tier stack (core + workers + bench) against real infrastructure. They typically run via shell scripts that orchestrate multiple processes against real (or in-memory) infrastructure. Slow (minutes), run manually before releases or in scheduled CI jobs.
 
-**Contract tests** verify API boundaries between components. Core's HTTP API as consumed by workers is the primary example. They pin the interface shape so changes are detected explicitly, preventing silent breakage when one component evolves faster than its consumers.
+Cross-component shape agreement (what a previous revision of this document called "contract tests") is enforced in-tree by shared imports from `nthlayer-common` — `Verdict`, `ReliabilityManifest`, `Assessment`, and the shared `serialise.from_dict` / `to_dict` helpers. A separate fixture-based contracts surface is not maintained; round-trip serialisation tests, where they exist, live in `nthlayer-common` itself.
 
 The sections below are organised by category. Some conventions (naming, the lifecycle of failing tests) apply across categories and have their own sections at the end.
 
@@ -26,7 +26,9 @@ The largest test category. Most files in `tests/` are unit tests by default.
 
 ### Organisation
 
-Each repo follows a consistent structure:
+Two layouts are in active use across the ecosystem; pick the one that matches the shape of the repo.
+
+**Flat layout** — one test file per source module, all at the top of `tests/`. Used by `nthlayer-core`, `nthlayer-common`, `nthlayer-bench`, and `nthlayer-generate`:
 
 ```
 <repo>/
@@ -34,12 +36,29 @@ Each repo follows a consistent structure:
 │   ├── module_a.py
 │   └── module_b.py
 └── tests/
-    ├── conftest.py          # Shared fixtures
     ├── test_module_a.py     # One test file per source module
     └── test_module_b.py
 ```
 
-For larger modules, split into a directory:
+**Subpackage-nested layout** — `tests/` mirrors the subpackage structure of `src/`. Used by `nthlayer-workers`, where the five internal modules (observe / measure / correlate / respond / learn) each get their own `tests/<subpackage>/` directory with module-scoped fixtures:
+
+```
+nthlayer-workers/
+├── src/nthlayer_workers/
+│   ├── observe/
+│   ├── measure/
+│   └── ...
+└── tests/
+    ├── observe/
+    │   ├── conftest.py
+    │   └── test_*.py
+    ├── measure/
+    │   ├── conftest.py
+    │   └── test_*.py
+    └── ...
+```
+
+For larger modules in a flat-layout repo, split into a directory:
 
 ```
 tests/
@@ -93,7 +112,16 @@ Skip tests for trivial getters/setters, pass-through wrappers, and constants unl
 
 ### Async tests
 
-All worker module tests are async. Use `pytest.mark.asyncio` and `async def`:
+Async test conventions vary by tier:
+
+- **`nthlayer-workers` (Tier 2)** — module code is async by idiom (cycle loops, concurrent evaluation), so most tests are `async def` and rely on `asyncio_mode = "auto"` to drive them.
+- **`nthlayer-core` (Tier 1)** — Starlette server; tests are async because they drive the live app via `httpx.AsyncClient`, not because the domain code is concurrent.
+- **`nthlayer-bench` (Tier 3)** — Textual TUI; mixed sync/async depending on whether the test exercises render-side logic or app-driver coroutines.
+- **`nthlayer-common`, `nthlayer-generate`** — synchronous unless the unit under test is async.
+
+Under `asyncio_mode = "auto"`, `async def test_*` functions do not need an explicit `@pytest.mark.asyncio` decorator; under default mode they do. The examples below show the decorator-bearing form (which works in both modes); omit the decorator in repos that set `asyncio_mode = "auto"` (currently `nthlayer-workers`, `nthlayer-core`).
+
+Worker-tier pattern (async module under test):
 
 ```python
 @pytest.mark.asyncio
@@ -140,7 +168,13 @@ This pattern (factory function with keyword-only overrides) is the standard. Tes
 
 ### Fixtures
 
-Fixtures live in `conftest.py` at the appropriate scope. Module-level fixtures in `tests/conftest.py`; package-level fixtures in `tests/<package>/conftest.py`.
+Where fixtures are used, they live in `conftest.py` at the appropriate scope — top-level fixtures in `tests/conftest.py`, package-level fixtures in `tests/<package>/conftest.py`. Practice varies across the ecosystem:
+
+- `nthlayer-bench` has a top-level `tests/conftest.py`.
+- `nthlayer-generate` has both a top-level `conftest.py` and a per-subdir `tests/smoke/conftest.py`.
+- `nthlayer-workers` has per-subpackage conftests (`tests/measure/conftest.py`, `tests/correlate/conftest.py`, `tests/respond/conftest.py`) but no top-level one; `tests/observe/` and `tests/learn/` carry their fixtures inline.
+- `nthlayer-common` has only `tests/records/conftest.py`.
+- `nthlayer-core` has **no `conftest.py` anywhere**. The rationale lives in §Reference architecture, below.
 
 Name fixtures by what they represent, not what they do:
 
@@ -162,7 +196,7 @@ Avoid fixtures named `setup_thing`, `make_thing`, `data` — these don't tell th
 
 ## Integration tests
 
-Integration tests verify behaviour across multiple modules within a single repo. They're located under `tests/integration/` per repo.
+Integration tests verify behaviour across multiple modules within a single repo. There is no single prescribed location: `nthlayer-generate` keeps them under `tests/integration/`; most other repos colocate them with unit tests in the same `tests/` (or `tests/<subpackage>/`) tree, distinguishing them by name and content rather than directory. Cross-repo integration tests live in the front-door repo's `nthlayer/test/` directory — see the End-to-end tests section below.
 
 ### When to write integration tests
 
@@ -206,13 +240,13 @@ Avoid integration test names that look like unit test names (`test_<function>_<s
 
 ## End-to-end tests
 
-End-to-end tests verify the full ecosystem flow across multiple components and processes. The canonical example is `test/integration-chain.sh`.
+End-to-end tests verify the full ecosystem flow across multiple components and processes. The canonical example is `test/integration-three-tier.sh` in the front-door repo, which boots core + workers + bench against real infrastructure (Prometheus, Tempo, SQLite). See `docs/integration-testing.md` for the full harness cross-reference.
 
 ### Characteristics
 
 E2E tests differ from unit and integration tests in several ways:
 
-- **Multiple processes.** They orchestrate measure, correlate, respond, learn, and core as separate running processes.
+- **Multiple processes.** They orchestrate the three runtime tiers (core + workers + bench) as separate running processes.
 - **Real (or in-memory) infrastructure.** They use actual SQLite databases, actual HTTP servers, sometimes actual Prometheus instances.
 - **Shell-script driven.** Bash scripts are the primary tool for orchestration, since pytest's process model isn't well-suited to multi-process coordination.
 - **Slow.** A full E2E run takes minutes, not seconds.
@@ -244,43 +278,19 @@ Document each E2E test with a header comment explaining what it verifies and why
 
 ---
 
-## Contract tests
+## Reference architecture
 
-Contract tests verify API boundaries between components. They're located under `tests/contracts/` where applicable.
+`nthlayer-core`'s test pattern is the sanctioned reference for the ecosystem. The pattern is:
 
-### Purpose
+- **Real `Store(tmp_path)`**, not a `MemoryStore` mock — the same SQLite store class the production server uses, backed by a per-test temp directory.
+- **Real `httpx.AsyncClient` against the live Starlette app**, not a hand-rolled request fake or a mocked handler.
+- **Zero own-package mocking** — no `patch("nthlayer_core...")` sites at all.
+- **Zero `conftest.py`** anywhere under `tests/`.
+- **Zero `_helpers.py`** modules — each test file is self-contained, building the small amount of state it needs inline. This is a core-tier discipline; `_helpers.py` is the canonical pattern elsewhere (see §Naming).
 
-When component A produces data consumed by component B, both sides need to agree on the data's shape. Contract tests pin this shape from both directions:
+The rationale (pinned in `nthlayer-core/CLAUDE.md` Hard Rule 8: "Tests use real `Store(tmp_path)`, not a MemoryStore mock — same rule as the rest of the ecosystem. Assertions on structured-data primitives […], not captured response text.") is that an HTTP-server tier benefits from exercising the real serialisation, routing, and store-side validation paths on every test, and the cost is small because `Store(tmp_path)` is cheap to construct.
 
-- **Producer-side.** The contract test asserts that the producer's output matches the agreed shape. If the producer's serialisation changes, the contract test fails before consumers break.
-- **Consumer-side.** The contract test asserts that the consumer correctly parses canonical shapes. If the consumer's parsing logic changes, the contract test fails before producer changes are misinterpreted.
-
-The pair catches breakage early: a producer change that violates the contract fails its own test, not a downstream consumer's test that's harder to debug.
-
-### When to write contract tests
-
-Write contract tests for:
-
-- Cross-component HTTP APIs (core's API as consumed by workers).
-- Persistent data formats (verdict serialisation, assessment serialisation).
-- Cross-version compatibility (when an API needs to remain stable across versions).
-
-Don't write contract tests for purely internal interfaces or interfaces that are only used in one place — unit tests cover those well enough.
-
-### Conventions
-
-Contract tests use canonical fixture data representing the agreed shape. Both producer and consumer test against the same fixtures, so any divergence shows up as a test failure on whichever side broke.
-
-Store contract fixtures in a shared location (e.g., `nthlayer-common/tests/contracts/fixtures/`) so both sides reference the same source of truth.
-
-Name contract tests for the contract being verified:
-
-```python
-def test_quality_breach_verdict_serialisation_matches_v15_contract(): ...
-def test_correlation_snapshot_assessment_serialisation_matches_v15_contract(): ...
-```
-
-When a contract changes, version the fixtures (e.g., `v15/`, `v16/`) and update both sides explicitly. Contract changes are not silent — they require deliberate updates on both sides of the boundary.
+**Scope.** This pattern applies to **HTTP-server-shaped tiers** (like `nthlayer-core`) and to **new** test files in such tiers. It is not a worker/library/TUI pattern: `nthlayer-workers`, `nthlayer-bench`, `nthlayer-common`, and `nthlayer-generate` continue to use conftests, `_helpers.py`, and the async-mock idioms appropriate to their shape. **Existing siblings are not expected to retroactively migrate.** If you are starting a new tier or a new test file against a real-store-plus-HTTP shape, core's layout is the one to copy.
 
 ---
 
@@ -301,7 +311,7 @@ Avoid:
 - `test_works_correctly` — meaningless.
 - `test_case_<n>` — relies on test ordering, which is fragile.
 
-Use `_test_` prefix for helper functions that aren't tests themselves.
+For helpers that aren't tests themselves, the convention is a separate `_helpers.py` module alongside the tests that use it (as in `nthlayer-generate/tests/smoke/_helpers.py`), or — where the helper is a factory or builder shared across a subpackage — a `conftest.py` exposing it as a fixture. Do not name helper *functions* with a `test_` prefix; pytest will collect them as tests.
 
 ---
 
@@ -324,7 +334,19 @@ This applies across all test categories, but the cost of getting it wrong scales
 
 ## CI
 
-Every active repo has a CI workflow (`.github/workflows/ci.yml`) that runs unit and integration tests on push to main and on pull requests. The workflow uses `uv` for dependency management and `ruff` for linting alongside `pytest` for tests.
+Every active repo has a CI workflow under `.github/workflows/` that runs unit and integration tests on push to main and on pull requests. The filename is not uniform across the ecosystem:
+
+| Repo | Workflow file |
+|---|---|
+| `nthlayer-common` | `ci.yml` |
+| `nthlayer-core` | `ci.yml` |
+| `nthlayer-generate` | `ci.yml` |
+| `nthlayer` (front-door) | `ci.yml` (shell `bash -n` only — no Python suite) |
+| `nthlayer-workers` | `test.yml` |
+| `nthlayer-bench` | `test.yml` |
+| `nthlayer-override-adapter` | `test.yml` |
+
+Treat the table above as ground truth and the filename as a per-repo detail rather than a prescription. Each workflow uses `uv` for dependency management and `ruff` for linting alongside `pytest` for tests (front-door excepted — see above).
 
 E2E tests run separately, either manually or in scheduled CI jobs (nightly is typical), since their runtime makes them unsuitable for every-push execution.
 
@@ -336,7 +358,7 @@ E2E test failures get more latitude (the next scheduled run is the typical resol
 
 ## Maintenance
 
-Once a year (or after major architectural shifts), every active repo gets a test suite audit pass. The audit checks for:
+Once a year (or after major architectural shifts), every active Python repo gets a test suite audit pass. (`opensrm` and `nthlayer-site` have no Python suites; the front-door's audit covers its shell scripts and helper modules only.) The audit checks for:
 
 - Tests that no longer test what their name suggests
 - Redundant tests where multiple tests cover the same behaviour from the same angle
