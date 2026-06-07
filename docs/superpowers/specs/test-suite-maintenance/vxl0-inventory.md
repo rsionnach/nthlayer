@@ -8,14 +8,14 @@ Per `opensrm-vxl0` parent guidance: per-site application happens inside the per-
 
 ## Cohort totals
 
-| Repo | Unique targets | Sites | Files | A | A-flag | B | C |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| nthlayer-common | 7 | 44 | 5 | 5 | 1 | 1 | 0 |
-| nthlayer-bench | 4 | 10 | 4 | 1 | 0 | 0 | 3 |
-| nthlayer-workers | 26 | ~105 | 13 | 4 | 1 | 13 | 8 |
-| nthlayer-generate | 109 | 457 | 31 | 14 | 2 | 43 | 50 |
-| nthlayer-core | 0 | 0 | 0 | — | — | — | — |
-| **Total** | **146** | **~616** | **53** | **24** | **4** | **57** | **61** |
+| Repo | Unique targets | Sites | Files | A | A-flag | B | C | Anomaly |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| nthlayer-common | 7 | 44 | 5 | 4 | 1 | 2 | 0 | 0 |
+| nthlayer-bench | 4 | 10 | 4 | 1 | 0 | 0 | 3 | 0 |
+| nthlayer-workers | 25 | 101 | 13 | 4 | 1 | 11 | 8 | 1 |
+| nthlayer-generate | 109 | 457 | 31 | 11 | 2 | 43 | 53 | 0 |
+| nthlayer-core | 0 | 0 | 0 | — | — | — | — | — |
+| **Total** | **145** | **612** | **53** | **20** | **4** | **56** | **64** | **1** |
 
 Counts vs the bead description:
 - Bench was 74/10 in the 2026-06-05 audit; live is 10/4 — suite has been partially cleaned since.
@@ -87,23 +87,23 @@ Files: `tests/observe/{test_slo_collector.py, test_observe_worker.py}`, `tests/m
 |---|---:|---|
 | `nthlayer_workers.measure.telemetry._HAS_OTEL` | 4 | `measure/telemetry.py:18 try: from opentelemetry import trace; _HAS_OTEL = True / except ImportError: _HAS_OTEL = False` |
 
-### Class B (13 targets — own-defined in same module)
+### Class B (11 targets — own-defined in same module)
 
 | Target | Sites | Evidence |
 |---|---:|---|
 | `nthlayer_workers.measure.adapters.prometheus.query_prometheus` | 6 | `measure/adapters/prometheus.py:136 async def query_prometheus(...)` |
 | `nthlayer_workers.observe.dependencies.providers.prometheus.PrometheusDepProvider` | 1 | `observe/dependencies/providers/prometheus.py:112 class PrometheusDepProvider` |
-| `nthlayer_workers.measure.cli._build_evaluator` | tbd | `measure/cli.py:44 def _build_evaluator(...)` |
-| `nthlayer_workers.measure.cli._build_store` | tbd | `measure/cli.py:32 def _build_store(...)` |
-| `nthlayer_workers.measure.cli._build_tracker` | tbd | `measure/cli.py:38 def _build_tracker(...)` |
-| `nthlayer_workers.measure.calibration.loop.OverrideCalibration` | tbd | `measure/calibration/loop.py:31 class OverrideCalibration:` |
-| `nthlayer_workers.correlate.prometheus.fetch_alerts` | tbd | `correlate/prometheus.py:15 async def fetch_alerts(...)` |
-| `nthlayer_workers.correlate.prometheus.fetch_metric_breaches` | tbd | `correlate/prometheus.py:52 async def fetch_metric_breaches(...)` |
-| `nthlayer_workers.correlate.reasoning._call_model` | tbd | `correlate/reasoning.py:109 async def _call_model(...)` |
-| `nthlayer_workers.correlate.reasoning.reason_about_correlations` | tbd | `correlate/reasoning.py:41 async def reason_about_correlations(...)` |
-| `nthlayer_workers.respond.cli._make_coordinator` | tbd | `respond/cli.py:31 def _make_coordinator(...)` |
+| `nthlayer_workers.measure.cli._build_evaluator` | 1 | `measure/cli.py:44 def _build_evaluator(...)` |
+| `nthlayer_workers.measure.cli._build_store` | 4 | `measure/cli.py:32 def _build_store(...)` |
+| `nthlayer_workers.measure.cli._build_tracker` | 1 | `measure/cli.py:38 def _build_tracker(...)` |
+| `nthlayer_workers.measure.calibration.loop.OverrideCalibration` | 1 | `measure/calibration/loop.py:31 class OverrideCalibration:` |
+| `nthlayer_workers.correlate.prometheus.fetch_alerts` | 10 | `correlate/prometheus.py:15 async def fetch_alerts(...)` — patched at source because consumers use function-body lazy imports |
+| `nthlayer_workers.correlate.prometheus.fetch_metric_breaches` | 10 | `correlate/prometheus.py:52 async def fetch_metric_breaches(...)` — same |
+| `nthlayer_workers.correlate.reasoning._call_model` | 4 | `correlate/reasoning.py:109 async def _call_model(...)` |
+| `nthlayer_workers.correlate.reasoning.reason_about_correlations` | 1 | `correlate/reasoning.py:41 async def reason_about_correlations(...)` |
+| `nthlayer_workers.respond.cli._make_coordinator` | 3 | `respond/cli.py:31 def _make_coordinator(...)` |
 
-`tbd` = exact site counts deferred to Phase 2 validation; spot-confirmed each is `def`/`class` in the named module by file-path inspection.
+Total B sites: 42 across 11 targets. Confirmed during Phase 2 validation.
 
 ### Class C (8 targets — bound to other own-module)
 
@@ -120,14 +120,14 @@ Files: `tests/observe/{test_slo_collector.py, test_observe_worker.py}`, `tests/m
 
 ## nthlayer-generate — 109 targets / 457 sites / 31 files
 
-Full per-target table preserved separately. Distribution:
+> **Post-synthesis correction.** The generate explorer agent classified `nthlayer_generate.providers.{prometheus,grafana,mimir}.{PrometheusProvider,GrafanaProvider,MimirRulerProvider}` (16 sites total) as **class A** on the rationale that nthlayer-common is a separately installed PyPI package, therefore "third-party relative to nthlayer_generate". These targets are **re-classified C** here. The shim file (`providers/prometheus.py` etc.) does `from nthlayer_common.providers.X import X` — structurally identical to workers' `observe/slo/collector.py` doing `from nthlayer_common.providers import PrometheusProvider`, which the workers agent classified C. The classification rule is consistent: definition lives outside the consuming module, regardless of PyPI boundary. Validator confirmed the rule's patch target works correctly (the shim's namespace is the consumer's binding) — see [validation report in commit `nthlayer@a2e0f1a`].
 
-- **A** (14 targets): `discovery.client.httpx.get` (20 sites), `integrations.pagerduty.httpx.Client` (4), `config.cli.getpass.getpass` (4), `cli.slo.asyncio.run` (2), `pagerduty.orchestration.RestApiV2Client` (12), `pagerduty.resources.RestApiV2Client` (3), `providers.{prometheus,grafana,mimir}.{PrometheusProvider,GrafanaProvider,MimirRulerProvider}` (10+2+4), `dependencies.providers.etcd.etcd3` (1), `dependencies.providers.zookeeper.{KazooClient, KazooState, NoNodeError}` (1+3+1), `config.loader.Path.home` (5).
+Full per-target table preserved separately. Distribution (post-correction):
+
+- **A** (11 targets): `discovery.client.httpx.get` (20 sites), `integrations.pagerduty.httpx.Client` (4), `config.cli.getpass.getpass` (4), `cli.slo.asyncio.run` (2), `pagerduty.orchestration.RestApiV2Client` (12), `pagerduty.resources.RestApiV2Client` (3), `dependencies.providers.etcd.etcd3` (1), `dependencies.providers.zookeeper.{KazooClient, KazooState, NoNodeError}` (1+3+1), `config.loader.Path.home` (5).
 - **A-flag** (2 targets): `dependencies.providers.etcd.ETCD3_AVAILABLE` (3), `dependencies.providers.zookeeper.KAZOO_AVAILABLE` (3).
 - **B** (43 targets): dominated by `cli.ux.has_gum` (31 sites), `cli.ux._run_gum` (11), `cli.setup._confirm` (8), `loki.generator.extract_dependencies_from_resources` (8), `specs.parser.parse_service_file` (8), plus 38 lower-frequency CLI command / private helper definitions.
-- **C** (50 targets): dominated by `config.cli.get_secret_resolver` (24 sites), `config.cli.{load_config, save_config}` (12 each), `cli.validate_spec.ConftestValidator` (10), `cli.pagerduty.PagerDutyClient` (9), `cli.generate_alerts.generate_alerts_for_service` (9), plus 45 lower-frequency re-imports.
-
-The generate report identified `providers.{prometheus,grafana,mimir}` as **re-export shims** (`# noqa: F401`) — pure backward-compat aliases. Per the universal rule, these patch correctly at the consumer's binding regardless of where the source lives; descriptive class is C (not A as the generate agent originally labeled, since the import is `from nthlayer_common.providers.X import X` — same shape as workers' PrometheusProvider). The shim file's existence doesn't change the lookup mechanics. **Re-labeling these from A to C is the only post-synthesis correction to the generate agent's table.**
+- **C** (53 targets): dominated by `config.cli.get_secret_resolver` (24 sites), `config.cli.{load_config, save_config}` (12 each), `cli.validate_spec.ConftestValidator` (10), `cli.pagerduty.PagerDutyClient` (9), `cli.generate_alerts.generate_alerts_for_service` (9), the 3 re-export shim targets (`providers.{prometheus,grafana,mimir}.*Provider` — 10+2+4 sites; see post-synthesis correction above), plus 45 lower-frequency re-imports.
 
 ## Anomalies
 

@@ -84,7 +84,7 @@ The split-by-concern pattern is preferred when a module's behaviour has clearly 
 
 **Mock at module boundaries.** When testing module logic, mock the dependencies the module imports (CoreAPIClient, external services), not internal helpers within the module under test.
 
-**Patch at the use site's lookup path, not at the canonical source.** Where Python resolves a name at call time depends on how the consuming module imported it: `from x import Name` binds the name into the consumer's namespace; `import x; x.Name` looks the name up on the imported module. Patching the canonical source for a `from`-import leaves the consumer's reference untouched and the test passes having mocked nothing. See [mocking-classification.md](mocking-classification.md) for the rule, the descriptive A/B/C taxonomy, and the application procedure used by the per-repo test-suite cleanups.
+**Patch at the use site's lookup path, not at the canonical source.** Where Python resolves a name at call time depends on how the consuming module imported it: `from x import Name` binds the name into the consumer's namespace; `import x; x.Name` looks the name up on the imported module. Patching the canonical source for a `from`-import leaves the consumer's reference untouched and the test passes having mocked nothing. See [mocking-classification.md](mocking-classification.md) for the rule, the descriptive A/A-flag/B/C taxonomy, and the application procedure used by the per-repo test-suite cleanups.
 
 **Use `unittest.mock.AsyncMock` for async functions.** Don't reach for third-party async-mock libraries; the standard library covers what we need.
 
