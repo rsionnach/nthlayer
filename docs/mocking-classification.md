@@ -4,9 +4,9 @@ This document defines the single rule for choosing the patch target in `unittest
 
 > **Scope.** Every active Python repo with mocking: `nthlayer-common`, `nthlayer-bench`, `nthlayer-workers`, `nthlayer-generate`. `nthlayer-core` is exempt by reference-architecture design (zero `patch()` sites; see [testing.md §Reference architecture](testing.md#reference-architecture)).
 >
-> The rule below governs every API that intercepts attribute lookup at the same point: `unittest.mock.patch(target_string)`, `unittest.mock.patch.object(obj, attr)`, `pytest_mock`'s `mocker.patch(target_string)`, and `pytest.MonkeyPatch.setattr(module, attr, value)`. All four follow the same `where does Python look this name up?` semantics. The `grep` enumeration step in §Application procedure only catches `patch(target_string)` strings — `patch.object` and `monkeypatch.setattr` sites must be enumerated separately if present.
->
-> This discipline is permanent, not bead-scoped. It governs new tests authored after the cohort cleanup completes; the inventory snapshot ([`vxl0-inventory.md`](superpowers/specs/test-suite-maintenance/vxl0-inventory.md)) is point-in-time and may drift, but this rule does not.
+> The rule table below governs **string-target patches**: `unittest.mock.patch(target_string)` and `pytest_mock`'s `mocker.patch(target_string)`. The underlying principle — *patch the name where the consumer looks it up* — also applies to **object-target patches** (`unittest.mock.patch.object(obj, attr)`, `pytest.MonkeyPatch.setattr(obj, attr, value)`), but the table doesn't decide them: the caller supplies the object directly, so the question becomes "is `obj` the consumer's module (correct) or the canonical source (silent failure)?" — same principle, different mechanic. The `grep` enumeration step in §Application procedure only catches `patch(target_string)` strings; `patch.object` and `monkeypatch.setattr(obj, ...)` sites must be enumerated separately if present.
+
+> **Permanence.** This discipline is not bead-scoped. It governs new tests authored after the cohort cleanup completes; the inventory snapshot ([`vxl0-inventory.md`](superpowers/specs/test-suite-maintenance/vxl0-inventory.md)) is point-in-time and may drift, but this rule does not.
 
 ## The rule
 
@@ -15,12 +15,14 @@ This document defines the single rule for choosing the patch target in `unittest
 | Import style in the code under test | Patch target |
 |---|---|
 | Module-level `from mod import Name; Name(...)` | `consumer_module.Name` (the consumer's local re-binding) |
-| Module-level `from mod import Name as alias; alias(...)` | `consumer_module.alias` (the alias is the bound name) |
-| Module-level `import mod; mod.Name(...)` | `mod.Name` (the source) |
-| Module-level `import mod as alias; alias.Name(...)` | `consumer_module.alias.Name` (the alias is the bound module reference) |
+| Module-level `from mod import Name as alias; alias(...)` | `consumer_module.alias` (the alias is a new name in the consumer; the bound callable is the same object as `mod.Name`) |
+| Module-level `import mod; mod.Name(...)` | `mod.Name` (the source) — see "convention" note below |
+| Module-level `import mod as alias; alias.Name(...)` | `mod.Name` (the source) — see "convention" note below |
 | Function-body `from mod import Name; Name(...)` inside a `def` | `mod.Name` (the source) — no module-level binding exists |
 
 Confirm the import style per site. Don't assume.
+
+**Why `import mod` and `import mod as alias` share a row.** `import mod` binds the name `mod` in the consumer to the module object held in `sys.modules["mod"]`. `import mod as alias` binds the name `alias` in the consumer to the **same** module object — there is no separate copy. Patching `mod.Name`, `consumer.mod.Name`, or `consumer.alias.Name` all mutate the same `sys.modules["mod"]` object's `Name` attribute, with identical effect. **Codebase convention** is to patch at the consumer's binding (`consumer.mod.Name` or `consumer.alias.Name`) to make scope explicit, but the canonical source form (`mod.Name`) is mechanically equivalent. This is unlike `from mod import Name`, where the consumer's namespace holds an independent binding distinct from `mod.Name`.
 
 The function-body case looks like the module-level `from` case but resolves differently. A `from x import Name` *inside a function body* binds `Name` as a local variable in each call frame; there is no `consumer_module.Name` at module level to patch. The patch must intercept at `x.Name` so the next `from x import Name` lookup picks up the mock. Patching `consumer_module.Name` in this case **raises `AttributeError` at patch time** — `mock.patch()` refuses to patch attributes that don't exist (silent creation requires `create=True`). The failure is loud, not silent. Where you see lazy imports (used to break circular dependencies or defer expensive imports), patch at the source.
 
@@ -201,10 +203,10 @@ Patches sometimes target names that don't exist in the named module (no `import`
 
 The same rule applies prospectively. Before writing a `patch(...)` call:
 1. Open the source file under test.
-2. Find how it imports or defines the name you intend to mock.
+2. Find how it imports or defines the name you intend to mock. Pay specific attention to (a) whether the import uses `as alias` — the alias is the binding name in the consumer — and (b) whether the import is inside a function body, which has no module-level binding.
 3. Pick the patch target by reading the rule table top to bottom for the matching import style.
 
-The discipline doesn't require a recipe beyond "read the import line first" — but it does require not skipping that step. New tests written against the wrong lookup path will fail with `AttributeError` (function-body case) or silently mock nothing (module-level case). The first is annoying; the second is the failure mode this whole document exists to prevent.
+New tests written against the wrong lookup path will either fail with `AttributeError` (function-body case — loud, annoying) or silently mock nothing (module-level `from x import Name` case — green test, no mock applied). The second is the failure mode this whole document exists to prevent.
 
 ### Enforcement
 

@@ -163,7 +163,7 @@ Full per-target table preserved separately. Distribution (post-correction):
 |---|---|---:|---|
 | `opensrm-fljv` | nthlayer-common | 44 | A-heavy (32/44 sites are httpx/time/trace); 4 B sites in `llm_structured`; no C work. |
 | `opensrm-u71c` | nthlayer-bench | 10 | Single A pattern (`app.httpx.AsyncClient`, 7 sites) + 3 widget C re-binds (1 each). Smallest cohort. |
-| `opensrm-cevd` | nthlayer-workers | ~105 | Mix-heavy: 4 A + 1 A-flag + 13 B + 8 C. PrometheusProvider cross-package C pattern is the cohort archetype. Anomaly #1 (`write_decision_verdict_fn`) belongs here. |
-| `opensrm-in3m` | nthlayer-generate | 457 | Largest by an order of magnitude. C-dominant (50 targets, mostly CLI re-imports from `config.cli`, `cli.setup`). Re-export shims (`providers.{prometheus,grafana,mimir}`) need explicit treatment guidance. |
+| `opensrm-cevd` | nthlayer-workers | 101 | Mix-heavy: 4 A + 1 A-flag + 11 B + 8 C + 1 anomaly. PrometheusProvider cross-package C pattern is the cohort archetype. Anomaly #1 (`write_decision_verdict_fn`) belongs here. |
+| `opensrm-in3m` | nthlayer-generate | 457 | Largest by an order of magnitude. C-dominant (53 targets, mostly CLI re-imports from `config.cli`, `cli.setup`). Re-export shims (`providers.{prometheus,grafana,mimir}`) need explicit treatment guidance per the discipline doc's function-body worked example. |
 
 `nthlayer-core` (0 sites) needs no application bead; the reference-architecture pattern sanctioned in `opensrm-5vuz` already explains why.
