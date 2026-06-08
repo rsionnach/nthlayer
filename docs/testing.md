@@ -72,6 +72,8 @@ tests/
 
 The split-by-concern pattern is preferred when a module's behaviour has clearly distinct categories worth separating.
 
+**Test count alone never warrants a split; topical incoherence does.** A 40-test file covering one module's full API surface (happy path, edge cases, errors, parametrised variants) is coherent — exactly what a healthy suite for a non-trivial module looks like. Split only when the file is two unrelated concerns wearing one filename and a developer looking for tests of concern X has to scroll past concern Y. Auditors should not flag files by `def test_` count; the relevant signal is whether the test names map cleanly to one module/subsystem or whether the file is doing two jobs.
+
 ### Principles
 
 **Test behaviour, not implementation.** Tests describe what the code does from the perspective of a caller, not how it does it internally. A test that breaks when you refactor the implementation but didn't change the behaviour is testing the wrong thing.
