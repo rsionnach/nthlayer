@@ -186,7 +186,11 @@ Patches sometimes target names that don't exist in the named module (no `import`
 1. **Intentional**: the test uses `mock.patch(..., create=True)`, which lets you patch a non-existent name. Legal but unusual; usually a smell that the test is mocking out a name that should exist.
 2. **Stale**: the test was written against an older module shape and never updated.
 
-**Action per site:** check whether the name exists at any of the locations the consumer might look it up. If it doesn't, the test is either using `create=True` (verify intent in the diff) or stale. Then check whether **any assertion in the test body references the mock handle**. A mock that is created and never asserted is vestigial regardless of whether `create=True` is intentional — delete the patch and inspect the test for redundancy. Surfaced anomaly from `opensrm-vxl0` Phase 1: `nthlayer_workers.correlate.cli.write_decision_verdict_fn` (`create=True` patch, no surviving assertion on the mock).
+**Action per site:** check whether the name exists at any of the locations the consumer might look it up. If it doesn't, the test is either using `create=True` (verify intent in the diff) or stale. Then check whether **any assertion in the test body references the mock handle**. A mock that is created and never asserted is vestigial regardless of whether `create=True` is intentional — delete the patch and inspect the test for redundancy.
+
+**Caveat: skipped tests.** Before acting on a vestigial-looking patch, check whether the enclosing test is `@pytest.mark.skip`'d. The discipline applies to runtime lookup; tests that don't run can't have wrong patch targets, and patches inside a skipped block are inert by construction. They are intent-documentation for a deferred code path, and modifying them risks losing semantics nobody is currently exercising. Leave skipped-test patches alone until the test is re-enabled — at which point the patches should be re-evaluated against the rule.
+
+Surfaced anomaly from `opensrm-vxl0` Phase 1: `nthlayer_workers.correlate.cli.write_decision_verdict_fn` (`create=True` patch inside a `@pytest.mark.skip`'d test pending `opensrm-saun.1.2.1`). The patch target doesn't exist in `correlate/cli.py`, but the skip block means the rule does not apply to this site. No action taken in `opensrm-cevd`; flagged for re-evaluation if/when the test re-enables.
 
 ## Application procedure (for per-repo cleanup beads)
 
