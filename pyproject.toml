@@ -1,0 +1,26 @@
+# Front-door Python tooling — config-only, no [project] block.
+#
+# The front-door hosts 5 Python helpers (test/three_tier_assertions.py,
+# test/fake-service.py, test/webhook-receiver.py, demo/render_explanation.py,
+# demo/scenario-runner.py) used by demo and integration orchestration.
+# Implementation packages live in the sibling repos
+# (nthlayer-{common,core,workers,bench,generate,override-adapter}).
+#
+# The ruff config below mirrors the ecosystem floor from
+# nthlayer-common/pyproject.toml. The ruff *version* is pinned at the
+# CI invocation site (`.github/workflows/ci.yml`, `python-lint` job),
+# not here — the front-door has no venv to lock.
+#
+# force-exclude = true makes extend-exclude hold even when ruff is
+# invoked with explicit paths (e.g. `ruff check test/test_jmy18_smoke.py`).
+# test_jmy18_smoke.py is excluded per the nthlayer-frontdoor-audit
+# 2026-06-05 §2 — it's a standalone JMY18 smoke test, not an
+# integration helper.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+force-exclude = true
+extend-exclude = ["test/test_jmy18_smoke.py"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "SIM", "B"]
