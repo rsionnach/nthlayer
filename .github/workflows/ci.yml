@@ -1,21 +1,23 @@
 name: CI
 
-# Shell-syntax regression guard for the front-door repo.
+# CI gates for the front-door repo.
 #
-# Post-consolidation this repo hosts no Python code at the root —
-# implementation lives in nthlayer-{common,core,workers,bench,generate}
-# (each with its own CI). The original ci.yml ran ruff/mypy/pytest
-# against src/ tests/ examples/ paths that no longer exist; it failed
-# every push from 2026-04-26 onward until this rewrite (opensrm-0buj).
+# Post-consolidation this repo hosts only integration- and demo-shaped
+# Python helpers at the root — implementation lives in
+# nthlayer-{common,core,workers,bench,generate} (each with its own CI).
+# The original ci.yml ran ruff/mypy/pytest against src/ tests/ examples/
+# paths that no longer exist; it failed every push from 2026-04-26 onward
+# until this rewrite (opensrm-0buj).
 #
 # What CI does for the front-door now:
-#   - This workflow: bash -n on every demo/ and test/ shell script.
+#   - shell-syntax (this workflow): bash -n on every demo/ and test/ shell script.
+#   - python-lint  (this workflow): ruff check on the 5 root helpers (opensrm-u5dw.1).
 #   - .github/workflows/docs.yml: mkdocs build --strict on docs-site/.
 #   - .github/workflows/demo-paths.yml: cmd_start path-resolution test (opensrm-oey5).
 #   - .github/workflows/integration-three-tier.yml: nightly cross-repo smoke.
 #   - .github/workflows/release.yml: meta-v* tag publish to PyPI.
 #
-# Anything Python-shaped is the responsibility of the per-component repo.
+# Per-component Python testing remains the responsibility of each sibling repo.
 
 on:
   push:
@@ -42,3 +44,14 @@ jobs:
             fi
           done < <(find demo test -maxdepth 2 -name '*.sh' -type f | sort)
           exit "$fail"
+
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: ruff check on test/ and demo/ helpers
+        run: uvx ruff@0.15.15 check test/ demo/
