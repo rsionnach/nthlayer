@@ -57,6 +57,22 @@ cross-reference.
   centralised; known-blocker text is an optional caller hook instead
   of hardcoded.
 
+## Lint
+
+The front-door's 5 Python helpers (`test/three_tier_assertions.py`,
+`test/fake-service.py`, `test/webhook-receiver.py`,
+`demo/render_explanation.py`, `demo/scenario-runner.py`) are linted by
+the `python-lint` job in `.github/workflows/ci.yml` using the ecosystem
+ruff floor (`py311`, `line-length=100`, the same `select` set as
+`nthlayer-common`). Local invocation:
+
+```bash
+uvx ruff@0.15.15 check test/ demo/
+```
+
+`test/test_jmy18_smoke.py` is excluded — it's a standalone JMY18 smoke
+test, not an integration helper.
+
 ## `demo/demo.sh` — `cmd_start` guard sequence
 
 Three ordered guards at the top of `cmd_start` (opensrm-m7su +
