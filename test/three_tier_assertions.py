@@ -21,11 +21,10 @@ from typing import Any, NoReturn
 
 from nthlayer_common.api_client import APIResult, CoreAPIClient
 
-
 # --- helpers ----------------------------------------------------------------
 
 def _now_utc() -> dt.datetime:
-    return dt.datetime.now(tz=dt.timezone.utc)
+    return dt.datetime.now(tz=dt.UTC)
 
 
 def _parse_iso(ts: str) -> dt.datetime:
@@ -368,27 +367,33 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="three_tier_assertions")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("wait-heartbeat"); _add_common(p)
+    p = sub.add_parser("wait-heartbeat")
+    _add_common(p)
     p.add_argument("--component", default=None,
                    help="filter by component name (e.g. observe.collect, measure)")
 
-    p = sub.add_parser("wait-verdict-type"); _add_common(p)
+    p = sub.add_parser("wait-verdict-type")
+    _add_common(p)
     p.add_argument("verdict_type")
     p.add_argument("--service", default=None)
 
-    p = sub.add_parser("wait-assessment-kind"); _add_common(p)
+    p = sub.add_parser("wait-assessment-kind")
+    _add_common(p)
     p.add_argument("kind")
     p.add_argument("--service", default=None)
 
-    p = sub.add_parser("wait-case"); _add_common(p)
+    p = sub.add_parser("wait-case")
+    _add_common(p)
     p.add_argument("--service", default=None)
 
-    p = sub.add_parser("assert-lineage"); _add_common(p, with_poll=False)
+    p = sub.add_parser("assert-lineage")
+    _add_common(p, with_poll=False)
     p.add_argument("child_id")
     p.add_argument("parent_id")
     p.add_argument("--max-hops", type=int, default=None)
 
-    p = sub.add_parser("fetch-case-via-bench"); _add_common(p, with_poll=False)
+    p = sub.add_parser("fetch-case-via-bench")
+    _add_common(p, with_poll=False)
     # Default state matches fetch_case_bench's own default — newly-emitted
     # cases land in "pending" before any operator picks them up.
     p.add_argument("--state", default="pending")

@@ -14,9 +14,8 @@ import json
 import signal
 import sys
 import time
-import urllib.request
 import urllib.error
-from typing import Dict, List, Optional, Union
+import urllib.request
 
 try:
     import yaml
@@ -72,7 +71,7 @@ def phase_banner(name: str, duration: int, index: int) -> str:
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
-def post_json(url: str, payload: Optional[Dict] = None, timeout: int = 5) -> Optional[Dict]:
+def post_json(url: str, payload: dict | None = None, timeout: int = 5) -> dict | None:
     body = json.dumps(payload or {}).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -92,7 +91,7 @@ def post_json(url: str, payload: Optional[Dict] = None, timeout: int = 5) -> Opt
         return None
 
 
-def control_service(base_url: str, port: int, control: Union[str, Dict]) -> None:
+def control_service(base_url: str, port: int, control: str | dict) -> None:
     """Send a control or reset action to a fake service."""
     if control == "reset":
         url = f"{base_url}:{port}/reset"
@@ -118,7 +117,6 @@ def countdown(phase_name: str, duration: int) -> None:
     start = time.monotonic()
     try:
         for elapsed in range(duration):
-            remaining = duration - elapsed
             bar_width = 30
             filled = int(bar_width * elapsed / duration)
             bar = colour("█" * filled, GREEN) + colour("░" * (bar_width - filled), DIM)
@@ -153,7 +151,7 @@ def countdown(phase_name: str, duration: int) -> None:
 # ---------------------------------------------------------------------------
 
 def load_scenario(path: str) -> dict:
-    with open(path, "r") as fh:
+    with open(path) as fh:
         data = yaml.safe_load(fh)
     return data["scenario"]
 

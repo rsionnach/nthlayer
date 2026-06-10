@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import sys
 
 from nthlayer_common.api_client import CoreAPIClient
@@ -38,7 +39,6 @@ from nthlayer_common.explanation import format_explanation
 from nthlayer_workers.observe.assessment import from_dict
 from nthlayer_workers.observe.explanation import ExplanationEngine
 from nthlayer_workers.observe.store import MemoryAssessmentStore
-
 
 # Exactly the assessment kinds ExplanationEngine consumes. Documented as a
 # constant so a future engine extension flows here without a magic-tuple
@@ -84,11 +84,9 @@ async def _populate_store(
                     file=sys.stderr,
                 )
                 continue
-            try:
+            # Duplicate id — same record already staged. Fine.
+            with contextlib.suppress(ValueError):
                 store.put(assessment)
-            except ValueError:
-                # Duplicate id — same record already staged. Fine.
-                pass
 
 
 async def _render(core_url: str, service: str) -> None:
