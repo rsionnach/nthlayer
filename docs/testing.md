@@ -345,12 +345,12 @@ Every active repo has a CI workflow under `.github/workflows/` that runs unit an
 | `nthlayer-common` | `ci.yml` |
 | `nthlayer-core` | `ci.yml` |
 | `nthlayer-generate` | `ci.yml` |
-| `nthlayer` (front-door) | `ci.yml` (shell `bash -n` only — no Python suite) |
+| `nthlayer` (front-door) | `ci.yml` (shell `bash -n` + ruff lint on 5 root helpers; no pytest suite) |
 | `nthlayer-workers` | `test.yml` |
 | `nthlayer-bench` | `test.yml` |
 | `nthlayer-override-adapter` | `test.yml` |
 
-Treat the table above as ground truth and the filename as a per-repo detail rather than a prescription. Each workflow uses `uv` for dependency management and `ruff` for linting alongside `pytest` for tests (front-door excepted — see above).
+Treat the table above as ground truth and the filename as a per-repo detail rather than a prescription. Each workflow uses `uv` for dependency management and `ruff` for linting alongside `pytest` for tests (front-door has no pytest suite at root — see above).
 
 E2E tests run separately, either manually or in scheduled CI jobs (nightly is typical), since their runtime makes them unsuitable for every-push execution.
 
