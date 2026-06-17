@@ -46,6 +46,8 @@ NthLayer spans seven active repositories: this front-door + ecosystem hub plus s
 
 **You want to evaluate NthLayer for your organisation.** Start at [`opensrm`][opensrm] for the architectural model, then read [`nthlayer-generate`'s README][generate] for the build-time experience and walk through the example service definitions there.
 
+**You want to stand up NthLayer's runtime tier on a fresh machine.** Read [`nthlayer-core/docs/deploying.md`](https://github.com/rsionnach/nthlayer-core/blob/main/docs/deploying.md) — eight-step tutorial from `uv tool install` to a verdict round-tripping through the running server, plus reference and Litestream hardening.
+
 **You want to use NthLayer's GitHub Action in your CI pipeline.** This repo's `action.yml` is the entry point — add `uses: rsionnach/nthlayer@v1` (or pin to a specific tag) to your workflow. The action delegates to [`nthlayer-generate`][generate]; see its README for the supported subcommands.
 
 **You want to contribute to a specific component.** Each implementation repo has its own contributor guide, test suite, and CLAUDE.md. Pick the tier or layer relevant to your interest and open a PR there.
