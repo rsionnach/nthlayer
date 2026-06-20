@@ -130,6 +130,21 @@ verified by inspection (correct action version, secret names, token wiring)
 and by confirming the five edited files remain valid YAML with the existing
 `permissions:` intact.
 
+## Addendum — release.yml double-trigger (discovered during rollout)
+
+Enabling auto-fire surfaced a latent defect. `release.yml` in all five
+release-please repos triggered on **both** `release: published` **and**
+`push: tags: v*`. Previously dormant (auto-fire never worked), this now means
+every release spawns **two concurrent publish runs**; the loser fails with
+PyPI `400 File already exists`. Observed live on `nthlayer-core` v1.8.0:
+the `push`-triggered run published, the `release`-triggered run failed.
+
+Fix: keep the canonical `release: [published]` trigger (+ `workflow_dispatch`
+for manual fallback), drop `push: tags: v*`. Applied uniformly to the same
+five repos. `nthlayer-override-adapter`'s `release.yml` uses a different model
+(`push: branches: [main]` + `tags`, no release-please) and is left unchanged —
+out of scope for this release-please fix.
+
 ## Review
 
 Focused single review (proportionate for uniform config): one disciplined
