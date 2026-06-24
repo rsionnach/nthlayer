@@ -32,7 +32,7 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "nthlayer-core==1.6.0",
+    "nthlayer-core==1.8.0",
     "nthlayer-workers==1.6.0",
     "nthlayer-bench==1.6.0",
     "nthlayer-generate==1.1.0",
