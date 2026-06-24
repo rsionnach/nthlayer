@@ -56,7 +56,13 @@ Five repos use release-please and receive the change:
 five, so the edit is uniform.
 
 `nthlayer-override-adapter` has **no** `release-please.yml` (manual tagging) —
-no change; documented here so a future reader does not "fix" a sixth repo.
+no change; documented here so a future reader does not "fix" it.
+
+The front-door **`nthlayer`** repo (meta-package, `meta-v*` tags) IS a sixth
+release-please repo with the same `GITHUB_TOKEN` gate — discovered during
+rollout, deferred to **`opensrm-lt91`** (App install + secrets pending). Its
+`release.yml` is single-trigger (`push: tags: meta-v*`), so the double-trigger
+dedup below does **not** apply there — only the App-token edit.
 
 ## Per-repo workflow change
 
