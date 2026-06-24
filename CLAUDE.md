@@ -246,10 +246,20 @@ pin to `main` by convention. Auto-merge policy in
 patch/minor auto-merge; sibling packages and any major bump require
 review.
 
+`release-please.yml` mints a short-lived GitHub App token
+(`actions/create-github-app-token@v3`, App `nthlayer-release-bot`,
+secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`) and passes it to
+`release-please-action@v4` as `token:`, so release PRs are authored by
+the App identity rather than `GITHUB_TOKEN`. This makes PR CI run
+ungated and lets the `meta-v*` release tag auto-fire `release.yml` — it
+retires the former manual `GITHUB_TOKEN` cascade-block workaround
+(opensrm-l58r / lt91). NOTE: `release.yml` here is single-trigger
+(`push: tags: meta-v*` + `workflow_dispatch`), so the l58r
+double-trigger dedup does **not** apply.
+
 For the full cross-repo release procedure — coordinating per-library
-release-please runs, bumping the meta-package pins, the GITHUB_TOKEN
-cascade-block workaround, and post-release PyPI verification — see
-`docs/release-runbook.md` (added Phase 5).
+release-please runs, bumping the meta-package pins, and post-release
+PyPI verification — see `docs/release-runbook.md` (added Phase 5).
 
 ## Spec + planning references (canonical entry points)
 
