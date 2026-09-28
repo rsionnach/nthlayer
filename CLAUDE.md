@@ -105,7 +105,11 @@ examples, generator-specific scripts.
   - `docs/archived-specs/` — superseded/shipped specs preserved as
     historical record.
   - `docs/superpowers/` — architectural design docs
-    (`plans/` + `specs/`).
+    (`plans/` + `specs/` + `decisions/`). `decisions/` holds durable
+    records of choices and their rejected alternatives; see its
+    `README.md` for the required structure. Spec docs describe the
+    canonical state, decision docs describe the choices that produced
+    it.
   - `docs/testing.md`, `docs/COSTOPTIMISATION.md`,
     `docs/metrics-contract.md` — cross-cutting operational docs.
   - `docs/integration-testing.md` — five-test-surface harness
