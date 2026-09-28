@@ -140,10 +140,46 @@ These are load-bearing — wrong-side mistakes break downstream
 consumers, scramble the release pipeline, or pollute the ecosystem
 hub with implementation drift.
 
-1. **No application code in this repo.** Implementation lives in the
-   per-tier repos. If a change feels like Python source, you are in
-   the wrong repo. The exception is `meta-package/pyproject.toml`,
-   which is dependency-only (no modules).
+1. **No component implementation in this repo.** Implementation lives in
+   the per-tier repos. The test is **who consumes it**:
+
+   | | belongs here | belongs in a component repo |
+   |---|---|---|
+   | consumer | the ecosystem, an operator, or CI | end users, via an installed package |
+   | imported by a component? | never | yes |
+   | ships in a wheel? | no | yes |
+
+   So integration harnesses (`test/`), demo orchestration (`demo/`), and
+   tooling that operates ON the workspace (`scripts/`) belong here, in
+   any language. A module a component imports, or that ships to a user,
+   does not — if you are reaching for `src/`, you are in the wrong repo.
+
+   **AMENDED 2026-09-28 (opensrm-8hn3). This deliberately widens the
+   previous rule, which read:**
+
+   > No application code in this repo. Implementation lives in the
+   > per-tier repos. If a change feels like Python source, you are in
+   > the wrong repo. The exception is `meta-package/pyproject.toml`,
+   > which is dependency-only (no modules).
+
+   That meant no Python outside `meta-package`, and it was intended
+   literally. Two things followed from keeping it: the four Python files
+   already in `test/` (`three_tier_assertions.py`,
+   `webhook-receiver.py`, `fake-service.py`, `test_jmy18_smoke.py`,
+   all linted by `ci.yml`) were drift against it, and workspace tooling
+   had nowhere to live but the ecosystem root — which is not a git repo
+   (rule 5), so anything there is unversioned, untested, and lost with
+   the directory. `eco-worktree.sh` and the r5-lock hooks still sit
+   there for that reason.
+
+   The widening buys version control and CI for tooling whose job is
+   catching silent failure. Judging it worth the cost is a decision, not
+   an observation; recorded here rather than left implicit. Exceptions
+   still named explicitly: `meta-package/pyproject.toml` is
+   dependency-only (no modules), and `scripts/eco_doctor.py`
+   deliberately depends on nothing in the ecosystem — a checker that
+   imported the packages it checks would fail exactly when they are
+   broken.
 
 2. **`action.yml` consumers are external production CI.** Pin the
    action's delegated invocation to a specific `nthlayer-generate`
