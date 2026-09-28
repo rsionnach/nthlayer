@@ -71,14 +71,25 @@ make_sibling() {
     git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
 }
 
-# make_consumer <dir> <name> <declared-range> <locked-sibling-version>
+# make_consumer <dir> <name> <declared-range> <locked-sibling-version> [dep-name] [sibling-path]
+#
+# dep-name / sibling-path default to nthlayer-common / ../nthlayer-common. Every
+# consumer also declares a THIRD-PARTY dep (starlette), because the guard that
+# skips non-path-sourced deps is load-bearing in production — every real member
+# declares starlette/uvicorn/httpx — and was untested without one. Removing that
+# guard raises KeyError only when such a dep exists.
 make_consumer() {
     local dir="$1" name="$2" range="$3" locked="$4"
+    local dep="${5:-nthlayer-common}" spath="${6:-../nthlayer-common}"
+    # uv NORMALISES names when it writes the lock, so a pyproject declaring
+    # nthlayer_common yields a lock entry named nthlayer-common. Defaults to
+    # dep; variant (d) sets it explicitly to exercise that mismatch.
+    local lockname="${7:-$dep}"
     mkdir -p "$dir"
-    printf '[project]\nname = "%s"\nversion = "1.0.0"\ndependencies = [\n    "nthlayer-common%s",\n]\n\n[tool.uv.sources]\nnthlayer-common = { path = "../nthlayer-common", editable = true }\n' \
-        "$name" "$range" > "$dir/pyproject.toml"
-    printf 'version = 1\n\n[[package]]\nname = "nthlayer-common"\nversion = "%s"\nsource = { editable = "../nthlayer-common" }\n' \
-        "$locked" > "$dir/uv.lock"
+    printf '[project]\nname = "%s"\nversion = "1.0.0"\ndependencies = [\n    "%s%s",\n    "starlette>=0.40",\n]\n\n[tool.uv.sources]\n%s = { path = "%s", editable = true }\n' \
+        "$name" "$dep" "$range" "$dep" "$spath" > "$dir/pyproject.toml"
+    printf 'version = 1\n\n[[package]]\nname = "%s"\nversion = "%s"\nsource = { editable = "%s" }\n\n[[package]]\nname = "starlette"\nversion = "0.48.0"\nsource = { registry = "https://pypi.org/simple" }\n' \
+        "$lockname" "$locked" "$spath" > "$dir/uv.lock"
     git -C "$dir" init -q
     git -C "$dir" add -A
     git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
@@ -448,6 +459,74 @@ if ! grep -q "LOCK<FLOOR" <<<"$out"; then
     pass ">=2.1 admits 2.1.0"
 else
     fail "2.1 sorted below 2.1.0 — padding missing: $out"
+fi
+
+# --- Test 16: coverage variants the gate identified -------------------------
+
+echo
+echo "=== Test 16: min-of-ceilings, pre-release, > floor, underscore name ==="
+# Each of these behaviours is correct in the code but was unpinned — the
+# corresponding mutant survived. The reviewer verified each by hand; these
+# assertions stop them regressing silently.
+
+# (a) effective ceiling is the LOWEST declared, mirroring test 14's floor case.
+V="$WORK/v-ceiling"; mkdir -p "$V"
+make_sibling "$V/nthlayer-common" nthlayer-common 2.5.0
+make_consumer "$V/c" c ">=2.0.0,<2.0.0,<3.0.0" 2.5.0
+out="$(cd "$V" && run_doctor)" || true
+if grep -q "ceiling 2.0.0" <<<"$out"; then
+    pass "effective ceiling is the lowest declared (2.0.0, not 3.0.0)"
+else
+    fail "used the highest declared ceiling: $out"
+fi
+
+# (b) a pre-release does not satisfy a floor at its own release.
+V="$WORK/v-prerelease"; mkdir -p "$V"
+make_sibling "$V/nthlayer-common" nthlayer-common 2.1.0
+make_consumer "$V/c" c ">=2.1.0,<3.0.0" 2.1.0rc1
+out="$(cd "$V" && run_doctor)" || true
+if grep -q "LOCK<FLOOR" <<<"$out"; then
+    pass "lock 2.1.0rc1 is below floor 2.1.0"
+else
+    fail "pre-release treated as its own release: $out"
+fi
+
+# (c) an exclusive floor excludes its own boundary.
+V="$WORK/v-exclusive"; mkdir -p "$V"
+make_sibling "$V/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$V/c" c ">2.1.2,<3.0.0" 2.1.2
+out="$(cd "$V" && run_doctor)" || true
+if grep -q "LOCK<FLOOR" <<<"$out"; then
+    pass ">2.1.2 excludes a 2.1.2 lock"
+else
+    fail "exclusive floor treated as inclusive: $out"
+fi
+
+# (d) name normalisation: pyproject says nthlayer_common, the lock says
+#     nthlayer-common — which is what uv actually writes. The assertion has to
+#     DEPEND on the lock being found, so the lock is stale: with canonical()
+#     reduced to identity the lookup misses, no STALE is reported, and this
+#     fails. An earlier version of this variant spelled the dep the same way on
+#     both sides, so normalisation was never needed and the mutant survived.
+V="$WORK/v-canonical"; mkdir -p "$V"
+make_sibling "$V/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$V/c" c ">=2.1.2,<3.0.0" 1.6.0 nthlayer_common ../nthlayer-common nthlayer-common
+out="$(cd "$V" && run_doctor)" || true
+if grep -q "STALE" <<<"$out"; then
+    pass "underscore dep matched against a hyphenated lock entry"
+else
+    fail "separator difference lost the lock entry: $out"
+fi
+
+# (e) a path source pointing nowhere is reported, not skipped.
+V="$WORK/v-missing"; mkdir -p "$V"
+make_sibling "$V/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$V/c" c ">=2.1.2,<3.0.0" 2.1.2 nthlayer-common ../nthlayer-gone
+out="$(cd "$V" && run_doctor)" || true
+if grep -q "SIBLING-MISSING" <<<"$out"; then
+    pass "a path source with no readable pyproject is reported"
+else
+    fail "silently skipped a missing sibling: $out"
 fi
 
 echo
