@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: bash -n on demo/ and test/ scripts
+      - name: bash -n on demo/, test/ and scripts/ shell scripts
         run: |
           set -e
           fail=0
@@ -42,7 +42,7 @@ jobs:
               echo "  FAIL  $script"
               fail=1
             fi
-          done < <(find demo test -maxdepth 2 -name '*.sh' -type f | sort)
+          done < <(find demo test scripts -maxdepth 2 -name '*.sh' -type f | sort)
           exit "$fail"
 
   python-lint:
@@ -53,5 +53,12 @@ jobs:
       - name: install uv
         uses: astral-sh/setup-uv@v6
 
-      - name: ruff check on test/ and demo/ helpers
-        run: uvx ruff@0.15.15 check test/ demo/
+      - name: ruff check on test/, demo/ and scripts/ helpers
+        run: uvx ruff@0.15.15 check test/ demo/ scripts/
+
+      # eco-doctor's own regression test (opensrm-8hn3). Builds synthetic git
+      # fixtures in a temp dir — no network, no Docker, a few seconds. Runs here
+      # rather than as its own workflow because it has no external deps; the
+      # dedicated workflows (demo-paths, demo-start-lock) exist for tests that do.
+      - name: eco-doctor regression test
+        run: bash test/test_eco_doctor.sh
