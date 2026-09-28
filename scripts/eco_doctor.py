@@ -49,11 +49,6 @@ EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
 EXIT_ERROR = 2
 
-# Operators that bound a range from above. "~=" is here on measurement, not
-# reasoning: a compatible-release specifier bounds above in its own right and is
-# never decomposed into ">=" plus "<".
-BOUNDING_OPERATORS = ("<", "<=", "==", "===", "~=")
-
 _SPECIFIER = re.compile(r"(===|==|>=|<=|~=|!=|>|<)\s*(.+)$")
 _REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9._-]+)\s*(.*)$")
 _LOCK_PACKAGE = re.compile(
@@ -68,16 +63,126 @@ def canonical(name: str) -> str:
 
 
 def release_tuple(version: str) -> tuple[int, ...]:
-    """Ordering key for a version's release segment.
+    """Ordering key for a version's release segment, zero-padded to 4 parts.
+
+    Padding matters: without it `2.1` sorts below `2.1.0` because a shorter
+    tuple compares less, so a floor of `>=2.1` would falsely flag a `2.1.0`
+    checkout. A pre-release sorts just below its own release via the marker
+    below, so `2.1.0rc1` does not satisfy `>=2.1.0`.
 
     Stdlib only — ``packaging`` is not guaranteed present, and a tool that
     reports dependency problems should not need a dependency to do it. Epoch is
-    stripped rather than honoured: no sibling has ever used one, and silently
-    mis-ordering is worse than ignoring a case that does not occur.
+    stripped rather than honoured: no sibling has ever used one, and it is
+    recorded here as a known gap rather than silently mis-ordered.
     """
-    v = version.split("+", 1)[0].split("!", 1)[-1]
+    v = version.split("+", 1)[0].split("!", 1)[-1].strip()
     core = re.match(r"\d+(?:\.\d+)*", v)
-    return tuple(int(p) for p in core.group(0).split(".")) if core else ()
+    if not core:
+        return ()
+    parts = [int(p) for p in core.group(0).split(".")]
+    parts += [0] * (4 - len(parts))
+    # Pre-release marker: 0 for a/b/rc, 1 for a final release, so
+    # (2,1,0,0,0) < (2,1,0,0,1).
+    rest = v[core.end():]
+    is_pre = bool(re.match(r"(a|b|c|rc|alpha|beta|pre|preview|dev)", rest))
+    return (*parts, 0 if is_pre else 1)
+
+
+def _bump(version: str, index: int) -> str:
+    """Version with component *index* incremented and the rest truncated.
+
+    Turns a compatible-release or wildcard clause into the exclusive ceiling it
+    actually implies: `~=2.1` -> `3.0`, `~=2.1.2` -> `2.2`, `==2.*` -> `3`.
+    """
+    parts = [int(p) for p in re.findall(r"\d+", version)]
+    parts += [0] * (index + 1 - len(parts))
+    parts = parts[: index + 1]
+    parts[index] += 1
+    return ".".join(str(p) for p in parts)
+
+
+class Bounds:
+    """Effective floor and ceiling implied by a whole specifier set.
+
+    Effective floor is the MAX of the declared floors and the effective ceiling
+    the MIN of the declared ceilings — the intersection, not the extremes. An
+    earlier revision had these reversed, which let `>=1.0,>=2.1.2` be checked
+    against 1.0.
+    """
+
+    def __init__(self) -> None:
+        self.floor: str | None = None
+        self.floor_inclusive = True
+        self.ceiling: str | None = None
+        self.ceiling_inclusive = False
+        self.had_clauses = False
+
+    def add_floor(self, value: str, inclusive: bool) -> None:
+        if self.floor is None or release_tuple(value) > release_tuple(self.floor):
+            self.floor, self.floor_inclusive = value, inclusive
+
+    def add_ceiling(self, value: str, inclusive: bool) -> None:
+        if self.ceiling is None or release_tuple(value) < release_tuple(self.ceiling):
+            self.ceiling, self.ceiling_inclusive = value, inclusive
+
+    def below_floor(self, version: str) -> bool:
+        if self.floor is None:
+            return False
+        v, f = release_tuple(version), release_tuple(self.floor)
+        return v < f if self.floor_inclusive else v <= f
+
+    def above_ceiling(self, version: str) -> bool:
+        if self.ceiling is None:
+            return False
+        v, c = release_tuple(version), release_tuple(self.ceiling)
+        # `<=2.1.2` admits 2.1.2; `<2.1.2` does not. Treating the two alike
+        # produced a false SIBLING>CEILING on an inclusive ceiling.
+        return v > c if self.ceiling_inclusive else v >= c
+
+
+def parse_bounds(spec: str) -> Bounds:
+    """Effective bounds from a PEP 440 specifier set.
+
+    Every operator that constrains from above is converted to an actual ceiling
+    VALUE, not merely a "bounded" flag. An earlier revision recorded `==` and
+    `~=` as bounded-above without a value, so SIBLING>CEILING could never fire
+    for them — a silent pass on the headline check.
+    """
+    bounds = Bounds()
+    clauses = [c.strip() for c in spec.split(",") if c.strip()]
+    bounds.had_clauses = bool(clauses)
+    for clause in clauses:
+        m = _SPECIFIER.match(clause)
+        if not m:
+            continue
+        op, value = m.group(1), m.group(2).strip()
+        if op == ">=":
+            bounds.add_floor(value, inclusive=True)
+        elif op == ">":
+            bounds.add_floor(value, inclusive=False)
+        elif op == "<":
+            bounds.add_ceiling(value, inclusive=False)
+        elif op == "<=":
+            bounds.add_ceiling(value, inclusive=True)
+        elif op == "~=":
+            # ~=X.Y admits X.* ; ~=X.Y.Z admits X.Y.* — drop the last
+            # component and bump the one before it.
+            digits = re.findall(r"\d+", value)
+            bounds.add_floor(value, inclusive=True)
+            if len(digits) >= 2:
+                bounds.add_ceiling(_bump(value, len(digits) - 2), inclusive=False)
+        elif op in ("==", "==="):
+            if value.endswith(".*"):
+                stem = value[:-2]
+                digits = re.findall(r"\d+", stem)
+                bounds.add_floor(stem, inclusive=True)
+                if digits:
+                    bounds.add_ceiling(_bump(stem, len(digits) - 1), inclusive=False)
+            else:
+                bounds.add_floor(value, inclusive=True)
+                bounds.add_ceiling(value, inclusive=True)
+        # "!=" constrains neither bound.
+    return bounds
 
 
 def git(repo: Path, *args: str) -> str | None:
@@ -102,22 +207,66 @@ def discover_repos(workspace: Path) -> list[Path]:
     return sorted(p for p in workspace.iterdir() if (p / ".git").exists())
 
 
-def sibling_versions(repos: list[Path]) -> dict[str, str]:
-    """Canonical name -> version, from each repo's WORKING TREE pyproject."""
-    found: dict[str, str] = {}
+def path_sources(head_pyproject: dict) -> dict[str, str]:
+    """Canonical dep name -> relative path, from ``[tool.uv.sources]``.
+
+    THE AUTHORITATIVE ANSWER to "which directory is this sibling". An earlier
+    revision built one flat name->version map across every discovered
+    directory, which a git worktree silently defeats: CLAUDE.md mandates
+    worktrees named ``<repo>-<slug>``, those sort AFTER ``<repo>``, and the
+    worktree's pyproject therefore overwrote the real checkout's version.
+    Measured on the broken version — a real nthlayer-common at 3.5.0
+    (violating <3.0.0, and disagreeing with the lock) alongside a
+    nthlayer-common-wip worktree at 2.1.2 reported "no drift found", exit 0.
+    Both genuine findings vanished, and this workspace almost always has a
+    worktree on disk.
+    """
+    sources = head_pyproject.get("tool", {}).get("uv", {}).get("sources", {}) or {}
+    resolved: dict[str, str] = {}
+    for name, spec in sources.items():
+        if isinstance(spec, dict) and "path" in spec:
+            resolved[canonical(name)] = str(spec["path"])
+    return resolved
+
+
+def version_at(path: Path) -> str | None:
+    """Version from a checkout's WORKING TREE pyproject, or None."""
+    pj = path / "pyproject.toml"
+    if not pj.is_file():
+        return None
+    try:
+        data = tomllib.loads(pj.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    return data.get("project", {}).get("version")
+
+
+def duplicate_name_findings(repos: list[Path]) -> list[str]:
+    """Report directories that declare the same package name.
+
+    A safety net beneath path_sources(): if two checkouts claim one name, any
+    name-based reasoning anywhere is ambiguous, and saying so is better than
+    picking one. Worktrees are the common cause and are exactly what defeated
+    the earlier flat-map approach.
+    """
+    seen: dict[str, list[str]] = {}
     for repo in repos:
         pj = repo / "pyproject.toml"
         if not pj.is_file():
             continue
         try:
-            data = tomllib.loads(pj.read_text())
+            name = tomllib.loads(pj.read_text()).get("project", {}).get("name")
         except (OSError, tomllib.TOMLDecodeError):
             continue
-        project = data.get("project", {})
-        name, version = project.get("name"), project.get("version")
-        if name and version:
-            found[canonical(name)] = version
-    return found
+        if name:
+            seen.setdefault(canonical(name), []).append(repo.name)
+    out = []
+    for name, dirs in sorted(seen.items()):
+        if len(dirs) > 1:
+            out.append(
+                f"DUPLICATE-NAME   {'(workspace)':28} {name} declared by {', '.join(sorted(dirs))}"
+            )
+    return out
 
 
 def locked_versions(lock_text: str) -> dict[str, str]:
@@ -127,28 +276,7 @@ def locked_versions(lock_text: str) -> dict[str, str]:
     }
 
 
-def parse_clauses(spec: str) -> tuple[list[str], list[str], bool, bool]:
-    """(floors, ceilings, bounded_above, had_any_clause) from a specifier string."""
-    floors: list[str] = []
-    ceilings: list[str] = []
-    bounded_above = False
-    clauses = [c.strip() for c in spec.split(",") if c.strip()]
-    for clause in clauses:
-        m = _SPECIFIER.match(clause)
-        if not m:
-            continue
-        op, value = m.group(1), m.group(2).strip()
-        if op == ">=":
-            floors.append(value)
-        elif op in ("<", "<="):
-            ceilings.append(value)
-            bounded_above = True
-        elif op in BOUNDING_OPERATORS:
-            bounded_above = True
-    return floors, ceilings, bounded_above, bool(clauses)
-
-
-def check_repo(repo: Path, siblings: dict[str, str]) -> list[str]:
+def check_repo(repo: Path) -> list[str]:
     """Findings for one repo, one line each."""
     name = repo.name
     findings: list[str] = []
@@ -164,36 +292,41 @@ def check_repo(repo: Path, siblings: dict[str, str]) -> list[str]:
         return [f"PARSE-ERROR      {name:28} HEAD:pyproject.toml unreadable: {exc}"]
 
     locked = locked_versions(git(repo, "show", "HEAD:uv.lock") or "")
+    sources = path_sources(data)
 
     for raw in data.get("project", {}).get("dependencies", []) or []:
         m = _REQUIREMENT.match(raw)
         if not m:
             continue
         dep = canonical(m.group(1))
-        if dep not in siblings:
-            continue  # third-party: not this tool's business
+        if dep not in sources:
+            continue  # not a path-sourced sibling: not this tool's business
         spec = m.group(2).strip()
-        sib = siblings[dep]
+
+        sibling_dir = (repo / sources[dep]).resolve()
+        sib = version_at(sibling_dir)
+        if sib is None:
+            findings.append(
+                f"SIBLING-MISSING  {name:28} {dep} path source {sources[dep]} has no readable pyproject"
+            )
+            continue
+
         lock_v = locked.get(dep)
-        floors, ceilings, bounded_above, had_clauses = parse_clauses(spec)
+        bounds = parse_bounds(spec)
 
         if lock_v and lock_v != sib:
             findings.append(
                 f"STALE            {name:28} lock has {dep} {lock_v}, checkout is {sib}"
             )
-        if lock_v and floors:
-            lo = min(floors, key=release_tuple)
-            if release_tuple(lock_v) < release_tuple(lo):
-                findings.append(
-                    f"LOCK<FLOOR       {name:28} lock has {dep} {lock_v}, below declared >={lo}"
-                )
-        if ceilings:
-            hi = max(ceilings, key=release_tuple)
-            if release_tuple(sib) >= release_tuple(hi):
-                findings.append(
-                    f"SIBLING>CEILING  {name:28} checkout {dep} {sib} excluded by declared <{hi}"
-                )
-        if had_clauses and not bounded_above:
+        if lock_v and bounds.below_floor(lock_v):
+            findings.append(
+                f"LOCK<FLOOR       {name:28} lock has {dep} {lock_v}, below declared floor {bounds.floor}"
+            )
+        if bounds.above_ceiling(sib):
+            findings.append(
+                f"SIBLING>CEILING  {name:28} checkout {dep} {sib} excluded by declared ceiling {bounds.ceiling}"
+            )
+        if bounds.had_clauses and bounds.ceiling is None:
             findings.append(
                 f"NO-CEILING       {name:28} declares {dep}{spec} with no upper bound"
             )
@@ -250,11 +383,9 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return EXIT_ERROR
 
-    siblings = sibling_versions(repos)
-
-    findings: list[str] = []
+    findings: list[str] = duplicate_name_findings(repos)
     for repo in repos:
-        findings.extend(check_repo(repo, siblings))
+        findings.extend(check_repo(repo))
         if args.fetch:
             findings.extend(check_currency(repo))
 

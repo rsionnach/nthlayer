@@ -287,6 +287,169 @@ else
     fail "expected findings for two repos, got $finding_lines — output: $out"
 fi
 
+# --- Test 9: a worktree must not shadow the real sibling -------------------
+
+echo
+echo "=== Test 9: a sibling worktree does not hide findings ==="
+# THE REGRESSION TEST FOR THIS TOOL'S OWN CRITICAL BUG. The first version built
+# one flat name->version map across every discovered directory. CLAUDE.md
+# mandates worktrees named <repo>-<slug>, which sort AFTER <repo>, so the
+# worktree overwrote the real checkout and both genuine findings vanished with
+# exit 0. This workspace almost always has a worktree on disk, so the detector
+# was defeated in precisely its normal operating conditions.
+SHADOW="$WORK/shadow"
+mkdir -p "$SHADOW"
+make_sibling "$SHADOW/nthlayer-common" nthlayer-common 3.5.0
+# A worktree-shaped duplicate declaring the same package name at a version that
+# would look fine. Sorts after the real one.
+make_sibling "$SHADOW/nthlayer-common-wip" nthlayer-common 2.1.2
+make_consumer "$SHADOW/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+
+rc=0
+out="$(cd "$SHADOW" && run_doctor)" || rc=$?
+if (( rc == FINDINGS_RC )); then
+    pass "worktree present, findings still reported"
+else
+    fail "worktree hid the findings — exited $rc. Output: $out"
+fi
+if grep -q "SIBLING>CEILING" <<<"$out"; then
+    pass "real sibling 3.5.0 still caught against <3.0.0"
+else
+    fail "did not catch the real sibling — the worktree shadowed it: $out"
+fi
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "duplicate package name reported"
+else
+    fail "two dirs declare nthlayer-common and nothing said so: $out"
+fi
+
+# --- Test 10: sibling version comes from the WORKING TREE ------------------
+
+echo
+echo "=== Test 10: the sibling's version is read from its working tree ==="
+# Half of the asymmetry this tool depends on. Both this and test 11 SURVIVED
+# the reviewer's mutation of the source-selection logic, because test 7 only
+# ever dirtied uv.lock — the lock half was pinned and the pyproject half was
+# not.
+WTREE="$WORK/worktree-version"
+mkdir -p "$WTREE"
+make_sibling "$WTREE/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$WTREE/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+# Bump the sibling in the working tree only; HEAD still says 2.1.2.
+printf '[project]\nname = "nthlayer-common"\nversion = "3.5.0"\n' \
+    > "$WTREE/nthlayer-common/pyproject.toml"
+
+rc=0
+out="$(cd "$WTREE" && run_doctor)" || rc=$?
+if grep -q "SIBLING>CEILING" <<<"$out"; then
+    pass "working-tree bump to 3.5.0 caught against <3.0.0"
+else
+    fail "read the sibling from HEAD instead of the working tree: $out"
+fi
+
+# --- Test 11: the declared range comes from HEAD ---------------------------
+
+echo
+echo "=== Test 11: the consumer's declared range is read from HEAD ==="
+# The other half. HEAD is what CI resolves and PyPI publishes, so an
+# uncommitted widening in the working tree must not silence a finding.
+HRANGE="$WORK/head-range"
+mkdir -p "$HRANGE"
+make_sibling "$HRANGE/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$HRANGE/nthlayer-core" nthlayer-core ">=1.5.0,<2.0.0" 1.7.0
+# Locally "fix" the range without committing. HEAD still declares <2.0.0.
+printf '[project]\nname = "nthlayer-core"\nversion = "1.0.0"\ndependencies = [\n    "nthlayer-common>=2.1.2,<3.0.0",\n]\n\n[tool.uv.sources]\nnthlayer-common = { path = "../nthlayer-common", editable = true }\n' \
+    > "$HRANGE/nthlayer-core/pyproject.toml"
+
+rc=0
+out="$(cd "$HRANGE" && run_doctor)" || rc=$?
+if grep -q "SIBLING>CEILING" <<<"$out"; then
+    pass "HEAD's <2.0.0 still evaluated despite an uncommitted widening"
+else
+    fail "read the range from the working tree instead of HEAD: $out"
+fi
+
+# --- Test 12: == and ~= imply a real ceiling -------------------------------
+
+echo
+echo "=== Test 12: == and ~= produce an actual ceiling, not just a flag ==="
+# These recorded "bounded above" without a ceiling VALUE, so SIBLING>CEILING
+# could never fire for them — a silent pass on the headline check.
+spec_index=0
+for spec_case in "==1.6.0" "~=1.6" "===1.6.0"; do
+    # Indexed, not derived from the spec string: stripping punctuation mapped
+    # "==1.6.0" and "===1.6.0" to the same directory, and the second git commit
+    # then had nothing to commit and killed the run under set -e.
+    spec_index=$((spec_index + 1))
+    CASE="$WORK/spec-$spec_index"
+    mkdir -p "$CASE"
+    make_sibling "$CASE/nthlayer-common" nthlayer-common 2.1.2
+    make_consumer "$CASE/nthlayer-core" nthlayer-core "$spec_case" 1.6.0
+    rc=0
+    out="$(cd "$CASE" && run_doctor)" || rc=$?
+    if grep -q "SIBLING>CEILING" <<<"$out"; then
+        pass "$spec_case bounds above and catches a 2.1.2 checkout"
+    else
+        fail "$spec_case did not produce a ceiling — output: $out"
+    fi
+done
+
+# --- Test 13: <= is inclusive ----------------------------------------------
+
+echo
+echo "=== Test 13: <= admits its own boundary ==="
+# Treating <= as < produced a false SIBLING>CEILING exactly at the boundary.
+INCL="$WORK/inclusive"
+mkdir -p "$INCL"
+make_sibling "$INCL/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$INCL/nthlayer-core" nthlayer-core ">=2.0.0,<=2.1.2" 2.1.2
+
+rc=0
+out="$(cd "$INCL" && run_doctor)" || rc=$?
+if ! grep -q "SIBLING>CEILING" <<<"$out"; then
+    pass "<=2.1.2 admits a 2.1.2 checkout"
+else
+    fail "false SIBLING>CEILING on an inclusive ceiling: $out"
+fi
+
+# --- Test 14: effective floor is the MAX of declared floors ----------------
+
+echo
+echo "=== Test 14: the effective floor is the highest declared floor ==="
+# min() and max() were reversed, so >=1.0.0,>=2.1.2 was checked against 1.0.0
+# and a lock at 1.6.0 passed.
+EFF="$WORK/effective"
+mkdir -p "$EFF"
+make_sibling "$EFF/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$EFF/nthlayer-core" nthlayer-core ">=1.0.0,>=2.1.2,<3.0.0" 1.6.0
+
+rc=0
+out="$(cd "$EFF" && run_doctor)" || rc=$?
+if grep -q "LOCK<FLOOR" <<<"$out"; then
+    pass "lock 1.6.0 caught against the effective floor 2.1.2"
+else
+    fail "used the lowest declared floor instead of the highest: $out"
+fi
+
+# --- Test 15: zero-padding — 2.1 and 2.1.0 are the same floor -------------
+
+echo
+echo "=== Test 15: >=2.1 admits a 2.1.0 checkout ==="
+# Without zero-padding a shorter tuple compares less, so >=2.1 would flag a
+# 2.1.0 lock as below floor.
+PAD="$WORK/padding"
+mkdir -p "$PAD"
+make_sibling "$PAD/nthlayer-common" nthlayer-common 2.1.0
+make_consumer "$PAD/nthlayer-core" nthlayer-core ">=2.1,<3.0.0" 2.1.0
+
+rc=0
+out="$(cd "$PAD" && run_doctor)" || rc=$?
+if ! grep -q "LOCK<FLOOR" <<<"$out"; then
+    pass ">=2.1 admits 2.1.0"
+else
+    fail "2.1 sorted below 2.1.0 — padding missing: $out"
+fi
+
 echo
 echo "==============================================="
 echo "  Passed: $pass_count"
