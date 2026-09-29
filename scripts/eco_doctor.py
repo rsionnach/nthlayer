@@ -244,14 +244,42 @@ def version_at(path: Path) -> str | None:
 def repo_identity(repo: Path) -> str:
     """What repository a checkout belongs to, shared by all its worktrees.
 
-    ``git rev-parse --git-common-dir`` resolves to the same absolute path for a
-    repo and every worktree of it — exactly how ``.claude/hooks/r5-lock.sh``
-    keys the supervisor mutex per repo. Falls back to the directory path, so an
-    unreadable repo is treated as distinct rather than silently merged with
-    another.
+    ``git rev-parse --git-common-dir`` resolves to the same location for a repo
+    and every worktree of it — the same key ``.claude/hooks/r5-lock.sh`` uses to
+    make the supervisor mutex per repo rather than per directory.
+
+    NO ``--path-format=absolute``, deliberately. That flag needs git >= 2.31
+    (Ubuntu 20.04 ships 2.25, Debian bullseye 2.30) and ``git rev-parse``
+    ECHOES an unrecognised flag and exits 0 rather than failing:
+
+        $ git rev-parse --bogus-flag=x --git-common-dir
+        --bogus-flag=x
+        .git
+        $ echo $?
+        0
+
+    So on older git the identity became the constant string
+    ``"--path-format=absolute\n.git"`` for every main checkout, merging all
+    distinct repositories into one and silencing genuine duplicates — a false
+    negative, the dangerous direction. And it did not even buy the worktree fix,
+    because a worktree reports its parent's absolute path regardless.
+
+    A bare ``--git-common-dir`` returns ``.git`` for a main checkout and an
+    absolute path for a worktree, so resolving it against *repo* converges both
+    without depending on any git version. The output is validated rather than
+    trusted: one line, and a path that exists.
     """
-    out = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return out.strip() if out and out.strip() else str(repo.resolve())
+    out = git(repo, "rev-parse", "--git-common-dir")
+    if out:
+        lines = [line for line in out.splitlines() if line.strip()]
+        if len(lines) == 1:
+            candidate = (repo / lines[0]).resolve()
+            if candidate.exists():
+                return str(candidate)
+    # Unreadable, or output we do not recognise: treat this checkout as
+    # DISTINCT. A wrong merge silences a real ambiguity; a wrong split reports
+    # one that is easy to dismiss.
+    return str(repo.resolve())
 
 
 def duplicate_name_findings(repos: list[Path]) -> list[str]:
@@ -285,7 +313,12 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
             continue
         # Keyed by repository identity, so a repo and its worktrees collapse to
         # one entry while genuinely separate checkouts stay separate.
-        seen.setdefault(canonical(name), {})[repo_identity(repo)] = repo.name
+        # setdefault, not assignment: last-wins named whichever directory came
+        # last, so a worktree — which declares nothing independently — could be
+        # reported in place of the checkout actually in conflict.
+        seen.setdefault(canonical(name), {}).setdefault(
+            repo_identity(repo), repo.name
+        )
 
     out = []
     for name, by_identity in sorted(seen.items()):

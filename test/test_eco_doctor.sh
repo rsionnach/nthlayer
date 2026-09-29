@@ -322,8 +322,9 @@ echo "=== Test 9: a sibling worktree does not hide findings ==="
 SHADOW="$WORK/shadow"
 mkdir -p "$SHADOW"
 make_sibling "$SHADOW/nthlayer-common" nthlayer-common 3.5.0
-# A worktree-shaped duplicate declaring the same package name at a version that
-# would look fine. Sorts after the real one.
+# A second independent repo declaring the same package name at a version that
+# would look fine, sorting after the real one. NOT a worktree — see
+# make_worktree and test 17 for that case, which must NOT be reported.
 make_sibling "$SHADOW/nthlayer-common-wip" nthlayer-common 2.1.2
 make_consumer "$SHADOW/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
 
@@ -580,6 +581,11 @@ mkdir -p "$DIST"
 make_sibling "$DIST/nthlayer-common" nthlayer-common 2.1.2
 make_sibling "$DIST/nthlayer-common-rival" nthlayer-common 3.5.0
 make_consumer "$DIST/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+# A worktree of the real one MUST be present for the naming assertion below to
+# mean anything: without it every identity appears exactly once and first-wins
+# is indistinguishable from last-wins. The first version of this fixture had no
+# worktree, so the assertion passed against the bug it was written to catch.
+make_worktree "$DIST/nthlayer-common" "$DIST/nthlayer-common-wt"
 
 rc=0
 out="$(cd "$DIST" && run_doctor)" || rc=$?
@@ -587,6 +593,47 @@ if grep -q "DUPLICATE-NAME" <<<"$out"; then
     pass "two independent repos claiming one name still reported"
 else
     fail "the genuine duplicate case was lost: $out"
+fi
+# The finding must name the checkout actually in conflict. Keying last-wins
+# reported whichever directory came last, which could be a worktree that
+# declares nothing of its own.
+# The worktree shares the real repo's identity, so last-wins would name
+# nthlayer-common-wt — which declares nothing of its own — instead of
+# nthlayer-common, the checkout actually in conflict with the rival.
+if grep "DUPLICATE-NAME" <<<"$out" | grep -qv "nthlayer-common-wt"; then
+    pass "names the real conflicting checkout, not the worktree bystander"
+else
+    fail "named a worktree instead of the conflicting checkout: $(grep DUPLICATE-NAME <<<"$out")"
+fi
+
+echo
+echo "=== Test 19: an unreadable repo is treated as distinct, not merged ==="
+# The fallback. A wrong MERGE silences a real ambiguity; a wrong SPLIT reports
+# one that is easy to dismiss.
+#
+# The .git must still EXIST or discover_repos skips the directory entirely and
+# there is no duplicate to find — the first version of this fixture deleted it
+# and the test failed for that reason, not the one intended. Replacing it with
+# an unreadable file keeps the directory discoverable while making rev-parse
+# fail, which is the path under test.
+ORPH="$WORK/orphan"; mkdir -p "$ORPH"
+# BOTH must be unreadable. With only one, a fallback that merged every failure
+# into a single identity would still leave two distinct identities overall and
+# the finding would appear anyway — the first version of this fixture had one
+# and passed against the bug it was written to catch.
+make_sibling "$ORPH/nthlayer-common-broken-a" nthlayer-common 2.1.2
+make_sibling "$ORPH/nthlayer-common-broken-b" nthlayer-common 3.5.0
+for broken in a b; do
+    rm -rf "$ORPH/nthlayer-common-broken-$broken/.git"
+    printf 'not a git directory\n' > "$ORPH/nthlayer-common-broken-$broken/.git"
+done
+make_consumer "$ORPH/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+
+out="$(cd "$ORPH" && run_doctor)" || true
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "an unreadable checkout stays distinct and is still reported"
+else
+    fail "unreadable checkout merged into another identity: $out"
 fi
 
 echo
