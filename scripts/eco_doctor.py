@@ -241,15 +241,38 @@ def version_at(path: Path) -> str | None:
     return data.get("project", {}).get("version")
 
 
-def duplicate_name_findings(repos: list[Path]) -> list[str]:
-    """Report directories that declare the same package name.
+def repo_identity(repo: Path) -> str:
+    """What repository a checkout belongs to, shared by all its worktrees.
 
-    A safety net beneath path_sources(): if two checkouts claim one name, any
-    name-based reasoning anywhere is ambiguous, and saying so is better than
-    picking one. Worktrees are the common cause and are exactly what defeated
-    the earlier flat-map approach.
+    ``git rev-parse --git-common-dir`` resolves to the same absolute path for a
+    repo and every worktree of it — exactly how ``.claude/hooks/r5-lock.sh``
+    keys the supervisor mutex per repo. Falls back to the directory path, so an
+    unreadable repo is treated as distinct rather than silently merged with
+    another.
     """
-    seen: dict[str, list[str]] = {}
+    out = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    return out.strip() if out and out.strip() else str(repo.resolve())
+
+
+def duplicate_name_findings(repos: list[Path]) -> list[str]:
+    """Report DISTINCT repositories that declare the same package name.
+
+    A safety net beneath path_sources(): if two unrelated checkouts claim one
+    name, any name-based reasoning is ambiguous and saying so beats picking one.
+
+    Worktrees are excluded, and that exclusion is the point [opensrm-bnal]. A
+    worktree always declares its parent's ``project.name``, and CLAUDE.md
+    MANDATES sibling worktrees for parallel work — so reporting them made this
+    finding fire on every correct workflow. The /r5-supervise pre-flight
+    (opensrm-px23) classifies DUPLICATE-NAME as blocking, so it then refused
+    every R5 gate in the workspace. Caught on that pre-flight's first real use.
+
+    The net was written beneath NAME-BASED sibling resolution, and the same
+    change that added it replaced that with ``[tool.uv.sources]`` path
+    resolution — so it had been sitting beneath a mechanism that no longer used
+    names at all.
+    """
+    seen: dict[str, dict[str, str]] = {}
     for repo in repos:
         pj = repo / "pyproject.toml"
         if not pj.is_file():
@@ -258,13 +281,18 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
             name = tomllib.loads(pj.read_text()).get("project", {}).get("name")
         except (OSError, tomllib.TOMLDecodeError):
             continue
-        if name:
-            seen.setdefault(canonical(name), []).append(repo.name)
+        if not name:
+            continue
+        # Keyed by repository identity, so a repo and its worktrees collapse to
+        # one entry while genuinely separate checkouts stay separate.
+        seen.setdefault(canonical(name), {})[repo_identity(repo)] = repo.name
+
     out = []
-    for name, dirs in sorted(seen.items()):
-        if len(dirs) > 1:
+    for name, by_identity in sorted(seen.items()):
+        if len(by_identity) > 1:
+            dirs = ", ".join(sorted(by_identity.values()))
             out.append(
-                f"DUPLICATE-NAME   {'(workspace)':28} {name} declared by {', '.join(sorted(dirs))}"
+                f"DUPLICATE-NAME   {'(workspace)':28} {name} declared by {dirs}"
             )
     return out
 

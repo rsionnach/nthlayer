@@ -95,6 +95,17 @@ make_consumer() {
     git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
 }
 
+# make_worktree <existing-repo-dir> <new-worktree-dir>
+#
+# A REAL `git worktree add`, not a second `git init`. That distinction is the
+# whole point of test 17: two independent repos claiming one name is a genuine
+# ambiguity, while one repo checked out twice is the workspace's mandated
+# working mode (.claude/bin/eco-worktree.sh).
+make_worktree() {
+    local parent="$1" dest="$2"
+    git -C "$parent" worktree add -q --detach "$dest" HEAD
+}
+
 run_doctor() {
     # Prints output, returns the exit code without tripping set -e.
     local rc=0
@@ -527,6 +538,55 @@ if grep -q "SIBLING-MISSING" <<<"$out"; then
     pass "a path source with no readable pyproject is reported"
 else
     fail "silently skipped a missing sibling: $out"
+fi
+
+# --- Test 17: a worktree of the same repo is not a duplicate ---------------
+
+echo
+echo "=== Test 17: a git worktree does not trigger DUPLICATE-NAME ==="
+# opensrm-bnal. DUPLICATE-NAME was added as a safety net beneath NAME-BASED
+# sibling resolution, but the same change replaced that with [tool.uv.sources]
+# path resolution — so the net sits beneath a mechanism that no longer uses
+# names. Meanwhile CLAUDE.md MANDATES sibling worktrees, and a worktree always
+# declares its parent's project.name, so the finding fired on every correct
+# workflow and (classified as blocking by the opensrm-px23 pre-flight) refused
+# every R5 gate in the workspace. Found on that pre-flight's first real use.
+WT="$WORK/worktree-dup"
+mkdir -p "$WT"
+make_sibling "$WT/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$WT/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+make_worktree "$WT/nthlayer-common" "$WT/nthlayer-common-wip"
+
+rc=0
+out="$(cd "$WT" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "a worktree of the same repo is not reported as a duplicate"
+else
+    fail "worktree reported as DUPLICATE-NAME — blocks every gate: $out"
+fi
+if (( rc == 0 )); then
+    pass "clean workspace with a worktree present still exits 0"
+else
+    fail "exited $rc with only a worktree present — output: $out"
+fi
+
+echo
+echo "=== Test 18: two DISTINCT repos claiming one name still report ==="
+# The other side. Test 9 already covers the shadowing protection; this asserts
+# the finding survives for the case it was actually written for, so the bnal fix
+# cannot be mistaken for deleting the check.
+DIST="$WORK/distinct-dup"
+mkdir -p "$DIST"
+make_sibling "$DIST/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$DIST/nthlayer-common-rival" nthlayer-common 3.5.0
+make_consumer "$DIST/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+
+rc=0
+out="$(cd "$DIST" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "two independent repos claiming one name still reported"
+else
+    fail "the genuine duplicate case was lost: $out"
 fi
 
 echo
