@@ -267,14 +267,31 @@ def repo_identity(repo: Path) -> str:
     A bare ``--git-common-dir`` returns ``.git`` for a main checkout and an
     absolute path for a worktree, so resolving it against *repo* converges both
     without depending on any git version. The output is validated rather than
-    trusted: one line, and a path that exists.
+    trusted: one line, and a path that is a GIT DIRECTORY.
+
+    ``(candidate / "HEAD").exists()``, not ``candidate.exists()``. Before 2.31,
+    ``--git-common-dir`` inside a linked worktree could print the raw contents of
+    ``.git/worktrees/<name>/commondir``, which is the relative string ``../..``.
+    Resolved against *repo* that is the workspace's PARENT directory — which
+    exists, so a mere existence check accepts it. Two worktrees of two DIFFERENT
+    repos then resolve to the same ancestor and are silently MERGED, so a genuine
+    duplicate goes unreported: the false-negative direction this function's
+    fallback exists to avoid. Requiring a ``HEAD`` beneath the candidate rejects
+    any path that is not a git directory, whatever produced it.
+
+    The one-line check is now SUBSUMED by that: with the flag reinstated the
+    first line is ``--path-format=absolute``, which has no ``HEAD`` beneath it
+    either. Mutating ``len(lines) == 1`` therefore survives the suite by design,
+    and it is kept as defence in depth rather than removed — a git that printed
+    an unexpected second line should not have its first one trusted on the
+    strength of one guard alone.
     """
     out = git(repo, "rev-parse", "--git-common-dir")
     if out:
         lines = [line for line in out.splitlines() if line.strip()]
         if len(lines) == 1:
             candidate = (repo / lines[0]).resolve()
-            if candidate.exists():
+            if (candidate / "HEAD").exists():
                 return str(candidate)
     # Unreadable, or output we do not recognise: treat this checkout as
     # DISTINCT. A wrong merge silences a real ambiguity; a wrong split reports

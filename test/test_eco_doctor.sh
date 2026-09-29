@@ -106,6 +106,81 @@ make_worktree() {
     git -C "$parent" worktree add -q --detach "$dest" HEAD
 }
 
+# --- git shims: reproducing older git, because the suite cannot otherwise ----
+#
+# Two of this bead's hazards only bite on git < 2.31, so on any machine that
+# runs this suite the real git hides them and a reinstated flag or a weakened
+# guard passes unopposed. eco_doctor.py invokes ["git", ...] without a shell, so
+# prepending a shim directory to PATH is enough to substitute an older git for
+# the doctor's own calls while the fixtures are still built by the real one.
+#
+# Each shim is self-checked at its point of use before anything is asserted
+# through it. A shim that quietly stopped reproducing the old behaviour would
+# otherwise turn these tests green for the wrong reason — the fixture-provenance
+# failure this file's header already describes.
+
+# shim_preamble <dir> — an executable `git` in *dir* that knows the real one.
+shim_preamble() {
+    mkdir -p "$1"
+    printf '#!/usr/bin/env bash\n' > "$1/git"
+    printf 'REAL=%q\n' "$(command -v git)" >> "$1/git"
+}
+
+# make_old_git_shim <dir>
+#
+# git < 2.31 does not know `--path-format`, and `git rev-parse` ECHOES an
+# unrecognised argument to stdout and exits 0 rather than failing. Verified
+# against the real git before this shim was written:
+#
+#     $ git -C repo rev-parse --bogus-flag=x --git-common-dir
+#     --bogus-flag=x
+#     .git
+#     $ echo $?
+#     0
+#
+# Echoed before delegating, which is where the real git prints it: the flag
+# precedes --git-common-dir in the call under test.
+make_old_git_shim() {
+    shim_preamble "$1"
+    cat >> "$1/git" <<'SHIM'
+args=(); unknown=()
+for a in "$@"; do
+    case "$a" in
+        --path-format=*) unknown+=("$a") ;;
+        *) args+=("$a") ;;
+    esac
+done
+if (( ${#unknown[@]} )) && [[ " $* " == *" rev-parse "* ]]; then
+    printf '%s\n' "${unknown[@]}"
+fi
+exec "$REAL" "${args[@]}"
+SHIM
+    chmod +x "$1/git"
+}
+
+# make_relative_commondir_shim <dir>
+#
+# Before 2.31, `rev-parse --git-common-dir` inside a linked worktree could print
+# the raw contents of .git/worktrees/<name>/commondir — the relative string
+# `../..` — rather than a path resolved for the caller. Reproduced by reading
+# that file directly. Only the doctor's exact call is intercepted; everything
+# else reaches the real git untouched.
+make_relative_commondir_shim() {
+    shim_preamble "$1"
+    cat >> "$1/git" <<'SHIM'
+if [[ "${1:-}" == -C && "${3:-}" == rev-parse && " $* " == *" --git-common-dir "* \
+      && -f "$2/.git" ]]; then
+    gitdir="$(sed -n 's/^gitdir: //p' "$2/.git")"
+    if [[ -n "$gitdir" && -f "$gitdir/commondir" ]]; then
+        cat "$gitdir/commondir"
+        exit 0
+    fi
+fi
+exec "$REAL" "$@"
+SHIM
+    chmod +x "$1/git"
+}
+
 run_doctor() {
     # Prints output, returns the exit code without tripping set -e.
     local rc=0
@@ -634,6 +709,104 @@ if grep -q "DUPLICATE-NAME" <<<"$out"; then
     pass "an unreadable checkout stays distinct and is still reported"
 else
     fail "unreadable checkout merged into another identity: $out"
+fi
+
+# --- Test 20: the worktree fix must hold on git < 2.31 ---------------------
+
+echo
+echo "=== Test 20: identity survives a git that does not know --path-format ==="
+# opensrm-bnal, round-1 CRITICAL. Reinstating `--path-format=absolute` in
+# repo_identity() survives every other test in this file, because the flag works
+# on git >= 2.31 and that is what any machine running this suite has. The failure
+# is invisible without an older git, so someone tidying the flag back in would
+# meet a green suite — and on the old git the identity collapses to the constant
+# "--path-format=absolute\n.git" for every main checkout, merging all distinct
+# repositories into one and silencing genuine duplicates.
+#
+# Re-runs the fixtures from tests 17 and 18 with an older git substituted for the
+# doctor's calls, so BOTH directions are covered on the version that breaks.
+SHIMBIN="$WORK/oldgit-bin"
+make_old_git_shim "$SHIMBIN"
+
+# Shim self-check FIRST. If the shim does not reproduce the hazard — echoing the
+# unknown flag and still exiting 0 — the two assertions below pass for the wrong
+# reason and prove nothing.
+shim_rc=0
+shim_out="$(PATH="$SHIMBIN:$PATH" git -C "$WT/nthlayer-common" \
+    rev-parse --path-format=absolute --git-common-dir 2>&1)" || shim_rc=$?
+if (( shim_rc == 0 )) && [[ "$(head -1 <<<"$shim_out")" == "--path-format=absolute" ]] \
+   && (( $(wc -l <<<"$shim_out") == 2 )); then
+    pass "shim reproduces pre-2.31 rev-parse: echoes the unknown flag, exits 0"
+else
+    fail "shim does not reproduce pre-2.31 rev-parse (rc=$shim_rc): $shim_out"
+fi
+
+rc=0
+out="$(cd "$WT" && PATH="$SHIMBIN:$PATH" run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
+    pass "on git < 2.31 a worktree is still not a duplicate (exit $rc)"
+else
+    fail "old git reintroduced the bnal bug (exit $rc): $out"
+fi
+
+rc=0
+out="$(cd "$DIST" && PATH="$SHIMBIN:$PATH" run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" \
+   && grep "DUPLICATE-NAME" <<<"$out" | grep -qv "nthlayer-common-wt"; then
+    pass "on git < 2.31 the genuine duplicate is still reported, named correctly"
+else
+    fail "old git lost or misnamed the genuine duplicate (exit $rc): $out"
+fi
+
+# --- Test 21: a bogus-but-existing common-dir must not merge two repos ------
+
+echo
+echo "=== Test 21: a relative --git-common-dir must not merge distinct repos ==="
+# opensrm-bnal. `candidate.exists()` was both untested — when git succeeds the
+# path always exists, so `if True:` survived — and too weak. Before 2.31,
+# --git-common-dir inside a linked worktree could print the raw contents of
+# .git/worktrees/<name>/commondir, the relative string `../..`. Resolved against
+# the checkout that is the workspace's PARENT, which exists, so an existence
+# check accepts it as an identity.
+#
+# Two worktrees of two DIFFERENT repos then land on the same ancestor and are
+# merged, so the duplicate they genuinely are goes unreported — the false
+# negative the fallback exists to prevent. Requiring (candidate / "HEAD") rejects
+# any path that is not a git directory.
+#
+# The parent repos live OUTSIDE the scanned workspace deliberately: with a parent
+# present, its own identity resolves correctly and the name still maps to more
+# than one identity, so the finding appears either way and the fixture proves
+# nothing.
+REL="$WORK/rel-commondir"
+RELPARENTS="$WORK/rel-parents"
+mkdir -p "$REL" "$RELPARENTS"
+make_sibling "$RELPARENTS/upstream-a" nthlayer-common 2.1.2
+make_sibling "$RELPARENTS/upstream-b" nthlayer-common 3.5.0
+make_worktree "$RELPARENTS/upstream-a" "$REL/nthlayer-common-wt-a"
+make_worktree "$RELPARENTS/upstream-b" "$REL/nthlayer-common-wt-b"
+
+RELBIN="$WORK/relgit-bin"
+make_relative_commondir_shim "$RELBIN"
+
+# Shim self-check, and a check that the fixture's own premise holds: the string
+# must be relative, and must resolve to a directory that EXISTS but is NOT a git
+# directory. If either stops being true the assertion below is vacuous.
+probe="$(PATH="$RELBIN:$PATH" git -C "$REL/nthlayer-common-wt-a" \
+    rev-parse --git-common-dir 2>&1)"
+resolved="$(cd "$REL/nthlayer-common-wt-a" && cd "$probe" 2>/dev/null && pwd)"
+if [[ "$probe" == "../.." && -n "$resolved" && ! -e "$resolved/HEAD" ]]; then
+    pass "shim yields a relative common-dir resolving to a non-git directory"
+else
+    fail "fixture premise broken: probe='$probe' resolved='$resolved'"
+fi
+
+rc=0
+out="$(cd "$REL" && PATH="$RELBIN:$PATH" run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "a non-git common-dir is rejected, so the two repos stay distinct"
+else
+    fail "two distinct repos merged on a bogus common-dir, duplicate silenced (exit $rc): $out"
 fi
 
 echo
