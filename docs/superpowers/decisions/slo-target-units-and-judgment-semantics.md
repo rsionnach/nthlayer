@@ -1,9 +1,13 @@
 # Decision: SLO target units, and what `target` means for a judgment SLO
 
-**Status:** PROPOSED — not yet decided. Sections 1 and 2 are recommended for
-ratification; section 3 needs an OpenSRM spec decision before any parser work.
+**Status:** Section 3 DECIDED 2026-09-29 (Rob): option **3c** — error
+magnitudes stop being SLOs in OpenSRM and become a distinct manifest concept.
+Sections 1 and 2 remain recommended and are unblocked by that ruling.
 
-**Date drafted:** 2026-09-28, during opensrm-ocvu.
+**Date drafted:** 2026-09-28, during opensrm-ocvu. Section 3 ratified
+2026-09-29, at which point verifying the type-to-field mapping corrected two
+claims in this document and surfaced one case the ruling does not cleanly
+resolve — see "What 3c actually scopes" below.
 
 **Context:** opensrm-ocvu (v1 and v2 parsers disagree on target units),
 sharpened during opensrm-fxln (measure's judgment breach check). Related:
@@ -96,16 +100,23 @@ From `opensrm/spec/v2/schema.json`. `Ratio` is defined there as
 "description": "Ratio value (0.0 - 1.0), not a percentage"}` — so v2's choice is
 explicit and deliberate, not an oversight.
 
-| v2 target field | schema type | polarity | has a complement? |
+Verified mapping from judgment type to its required target field, extracted
+from the schema's `if`/`then` blocks (2026-09-29):
+
+| judgment type | required target field(s) | polarity | fits a single 0-100 float? |
 |---|---|---|---|
-| `maximum_reversal_rate` | Ratio | max | yes — a rate |
-| `maximum_failure_rate` | Ratio | max | yes — a rate |
-| `maximum_escalation_rate` | Ratio | max | yes — a rate |
-| `desired_outcome_rate` | Ratio | **min** | already a floor |
-| `maximum_drift` | Ratio | max | **no** — an error magnitude |
-| `maximum_variance_from_overall` | Ratio | max | **no** — an error magnitude |
-| `maximum_expected_calibration_error` | Ratio | max | **no** — an error magnitude |
-| `maximum_brier_score` | number (unbounded) | max | **no**, and not a ratio |
+| `reversal_rate` | `maximum_reversal_rate` | max | yes, by complement |
+| `high_confidence_failure` | `maximum_failure_rate` | max | yes, by complement |
+| `escalation` | `maximum_escalation_rate` | max | yes, by complement |
+| `outcomes` | `desired_outcome_rate` | **min** | yes — already a floor, do NOT complement |
+| `audit_sampling` | `audit_completion_rate` (+ optional `audit_backlog_maximum_age`, a Duration) | **min** | **partly** — see below |
+| `segments` | `maximum_variance_from_overall` | max | **no** — error magnitude |
+| `stability` | `maximum_drift` | max | **no** — error magnitude |
+| `calibration` | `maximum_brier_score` **and** `maximum_expected_calibration_error` | max | **no** — two fields, and error magnitudes |
+
+`calibration` is decisive on its own: it requires **two** target values, so it
+cannot fit a single `target` float whatever unit is chosen. That is independent
+of the units argument and would hold even if every other objection vanished.
 
 This table is the actual decision. It rules out both of the options
 `opensrm-ocvu` was filed with:
@@ -114,8 +125,9 @@ This table is the actual decision. It rules out both of the options
   is meaningless; a Brier score has no percentage form. It would require
   inventing semantics the spec does not define — which is how this class of
   defect arrives.
-- **"invert the v2 value"** is wrong for `desired_outcome_rate`, which is already
-  a floor, and meaningless for the four error magnitudes.
+- **"invert the v2 value"** is wrong for `desired_outcome_rate` AND
+  `audit_completion_rate` — both are already floors — and meaningless for the
+  error magnitudes.
 
 ## Decision
 
@@ -146,30 +158,64 @@ of expressing AI quality as a floor on a goodness score.
 v2's `maximum_*_rate` converts as `(1 - rate) * 100`. `desired_outcome_rate` is
 already a floor and converts as `rate * 100` — it must NOT be complemented.
 
-### 3. Judgment ERROR MAGNITUDES — not SLO targets. Needs a spec decision.
+### 3. Judgment ERROR MAGNITUDES — not SLOs. DECIDED: option 3c.
 
-Applies to `calibration`, `segments`, `stability`, and any type whose target is
-`maximum_drift`, `maximum_variance_from_overall`,
-`maximum_expected_calibration_error` or `maximum_brier_score`.
+**Ruling (Rob, 2026-09-29): these stop being SLOs in OpenSRM and become a
+distinct manifest concept.** The largest spec change of the three options, and
+the most honest about what they are.
 
-These are not fractions of good events. They have no complement, no error budget,
-and in every standard surveyed they would not be SLOs at all — they are
-monitored metrics with thresholds. **Forcing them into a single float field with
-one convention is what makes a universal rule impossible.**
+They are not fractions of good events. They have no complement and no error
+budget, and in every standard surveyed they would not be SLOs — they are
+monitored metrics with thresholds. Forcing them into a single float field with
+one convention is what made a universal rule impossible.
 
-This document does not decide their representation, because it is an OpenSRM
-question rather than a parser question. The options, for whoever takes it:
+`calibration` settles it independently of any units argument: it requires
+**two** target values (`maximum_brier_score` and
+`maximum_expected_calibration_error`), so it cannot fit a single `target` float
+however that float is defined.
 
-- **3a.** A separate field — `SLODefinition.threshold` with an explicit unit —
-  leaving `target` to mean only "SLI floor, 0-100". Cleanest semantically;
-  touches every consumer.
-- **3b.** `SLODefinition` carries a `target_kind` discriminator
-  (`sli_floor` / `error_ceiling` / `duration_ceiling`) set by whichever parser
-  produced the value, and consumers dispatch on it. Exactly the shape that
-  worked for `query_kind` in opensrm-fxln: the comparison rule travels with the
-  value. Must have no default — a wrong default here is silent.
-- **3c.** These stop being SLOs in OpenSRM and become a distinct manifest
-  concept. Largest spec change; most honest about what they are.
+The rejected alternatives are kept for the record:
+
+- **3a.** A separate `SLODefinition.threshold` field with an explicit unit.
+  Cleaner than the status quo but still models these as SLO-shaped, which they
+  are not, and still cannot hold calibration's two values.
+- **3b.** A `target_kind` discriminator on `SLODefinition`, the shape that
+  worked for `query_kind` in opensrm-fxln. Rejected for the same reason: it
+  makes the wrong model workable rather than correcting it.
+
+#### What 3c actually scopes
+
+Under the ruling, five judgment types remain SLOs and three leave:
+
+```
+remain (rate targets)   reversal_rate, high_confidence_failure, escalation,
+                        outcomes, audit_sampling*
+leave  (error magnitudes)  segments, stability, calibration
+```
+
+`JUDGMENT_SLO_TYPES` in `nthlayer-common` shrinks accordingly, and this is a
+**breaking v2 spec change** for any manifest using the three departing types.
+It is also now coupled to `opensrm-vrpa`, which is already reconciling that
+vocabulary between the schema and `JUDGMENT_SLO_TYPES` — the two should be
+sequenced together rather than each moving the list independently.
+
+**\* `audit_sampling` is the case this ruling does not cleanly resolve, and it
+needs a decision before implementation.** Its required field
+`audit_completion_rate` is a rate and a floor, so it fits section 2 exactly. But
+it also carries an optional `audit_backlog_maximum_age`, a `Duration` — a second
+dimension that no single `target` float can hold, whether or not it is an error
+magnitude. Three ways out, none obviously right:
+
+- keep `audit_sampling` as an SLO on its completion rate and move
+  `audit_backlog_maximum_age` into the new threshold concept, splitting one
+  declaration across two places;
+- move `audit_sampling` wholesale into the new concept, accepting that a genuine
+  SLI floor lives outside the SLO model;
+- drop the optional duration from the v2 schema if nothing uses it — check first.
+
+This also corrects a claim in the "when this decision unwinds" section below: a
+duration target is not a hypothetical future trigger. `audit_backlog_maximum_age`
+is in the schema today, as an optional property of a judgment target.
 
 ## Canonical alternative — and why it is rejected
 
@@ -210,9 +256,10 @@ That partial state must be recorded on the bead rather than discovered later.
   error budgets. Section 3 should follow it rather than the local choice.
 - **`measure/worker.py` stops assuming 0-100.** Section 2's main incumbent
   argument weakens; re-derive it from the other three.
-- **A judgment type is added whose target is a duration.** `maximum_age` already
-  exists in the v2 schema; if it reaches `SLODefinition.target` it breaks the
-  "0-100 SLI floor" reading immediately, and section 3 becomes urgent.
+- **The duration case is already present, not future.**
+  `audit_backlog_maximum_age` is an optional property of `audit_sampling`'s
+  target today. Section 3's ruling must say where it lives; see "What 3c
+  actually scopes".
 
 ## Cross-references
 
