@@ -188,10 +188,18 @@ The rejected alternatives are kept for the record:
 Under the ruling, five judgment types remain SLOs and three leave:
 
 ```
-remain (rate targets)   reversal_rate, high_confidence_failure, escalation,
-                        outcomes, audit_sampling*
+remain (rate targets)      reversal_rate, high_confidence_failure, escalation,
+                           outcomes, audit_sampling (rate half only*)
 leave  (error magnitudes)  segments, stability, calibration
+                           + audit_sampling's audit_backlog_maximum_age*
 ```
+
+Complement on the way in applies to the three MAXIMA only —
+`reversal_rate`, `high_confidence_failure`, `escalation`. `outcomes`
+(`desired_outcome_rate`) and `audit_sampling` (`audit_completion_rate`) are
+already floors and must be scaled without complementing. Getting that backwards
+is not a loud failure: it yields a plausible number in the right range that
+inverts the constraint.
 
 `JUDGMENT_SLO_TYPES` in `nthlayer-common` shrinks accordingly, and this is a
 **breaking v2 spec change** for any manifest using the three departing types.
@@ -199,19 +207,43 @@ It is also now coupled to `opensrm-vrpa`, which is already reconciling that
 vocabulary between the schema and `JUDGMENT_SLO_TYPES` — the two should be
 sequenced together rather than each moving the list independently.
 
-**\* `audit_sampling` is the case this ruling does not cleanly resolve, and it
-needs a decision before implementation.** Its required field
-`audit_completion_rate` is a rate and a floor, so it fits section 2 exactly. But
-it also carries an optional `audit_backlog_maximum_age`, a `Duration` — a second
-dimension that no single `target` float can hold, whether or not it is an error
-magnitude. Three ways out, none obviously right:
+**\* `audit_sampling` splits. DECIDED 2026-09-29 (Rob).** It is the one type
+that straddles the 3c boundary, and it does so by design rather than by
+accident:
 
-- keep `audit_sampling` as an SLO on its completion rate and move
-  `audit_backlog_maximum_age` into the new threshold concept, splitting one
-  declaration across two places;
-- move `audit_sampling` wholesale into the new concept, accepting that a genuine
-  SLI floor lives outside the SLO model;
-- drop the optional duration from the v2 schema if nothing uses it — check first.
+```
+audit_sampling.target
+  audit_completion_rate        Ratio, a FLOOR  -> stays an SLO (section 2)
+  audit_backlog_maximum_age    Duration        -> moves to the threshold concept
+```
+
+The rate is a genuine SLI floor and belongs with the other five. The age bound
+is a second dimension that no single `target` float can hold, so it moves with
+the error magnitudes — one declaration spanning two concepts.
+
+**Dropping the duration was considered first and rejected on evidence.** The
+instruction was to drop it if nothing used it; nothing in *code* does — zero
+references across all six members' `src/` and `tests/` — but the *specification*
+uses it deliberately in five places:
+
+| location | what it does |
+|---|---|
+| `spec/v2/schema.json:299` | declares it as an optional `Duration` |
+| `spec/v2/examples/judgment-slos/03-audit-sampling.yaml` | worked example sets `24h` |
+| `spec/v2/AUTHORING.md:630` | guidance on how to choose the value |
+| `OPENSRM-CORE-v2.md:314` | core spec, with inline explanation |
+| `nthlayer/docs/specs/NTHLAYER-MEASURE-v1.md:267` | assigns it breach semantics |
+
+MEASURE-v1 is decisive: "If the backlog exceeds the target, **this is itself an
+SLO breach** — the audit infrastructure is under-resourced and the sample isn't
+representative." So `audit_sampling` was specified as two-dimensional — a
+completion rate AND a freshness bound — on purpose. That is exactly why it does
+not fit one float, and deleting it would have removed a designed capability with
+defined semantics plus silently invalidated a worked example the authoring guide
+walks users through.
+
+Unimplemented is not the same as unused. The gap is that no code reads it yet,
+not that nobody wanted it.
 
 This also corrects a claim in the "when this decision unwinds" section below: a
 duration target is not a hypothetical future trigger. `audit_backlog_maximum_age`
@@ -235,7 +267,8 @@ magnitudes are not ratios of good events whichever unit is chosen.
 
 ## What is routed to no-ops
 
-Shipping sections 1 and 2 without section 3 leaves the error-magnitude judgment
+Section 3 is now decided, so this section describes the remaining gap: shipping
+sections 1 and 2 before 3c is IMPLEMENTED leaves the error-magnitude judgment
 types parsing as they do today: a bare `Ratio` in `SLODefinition.target`, with
 `TargetConventionWarning` firing. That is unchanged behaviour, not new breakage,
 but it means:
