@@ -168,9 +168,24 @@ SHIM
 make_relative_commondir_shim() {
     shim_preamble "$1"
     cat >> "$1/git" <<'SHIM'
-if [[ "${1:-}" == -C && "${3:-}" == rev-parse && " $* " == *" --git-common-dir "* \
-      && -f "$2/.git" ]]; then
-    gitdir="$(sed -n 's/^gitdir: //p' "$2/.git")"
+# Matched by SCANNING the arguments, never by position. Keying on `$3 ==
+# rev-parse` would stop intercepting the moment git() gained a global option
+# (--no-pager, -c foo=bar), and the failure mode is that test 21 goes VACUOUS
+# rather than red — the shim would quietly delegate to the real git, the
+# worktrees would resolve correctly, and the assertion would pass no matter what
+# the guard did. The self-check at the point of use probes with a global option
+# inserted for exactly that reason.
+target=""; prev=""; want_revparse=0; want_common=0
+for a in "$@"; do
+    case "$a" in
+        rev-parse)         want_revparse=1 ;;
+        --git-common-dir)  want_common=1 ;;
+    esac
+    [[ "$prev" == -C ]] && target="$a"
+    prev="$a"
+done
+if (( want_revparse && want_common )) && [[ -n "$target" && -f "$target/.git" ]]; then
+    gitdir="$(sed -n 's/^gitdir: //p' "$target/.git")"
     if [[ -n "$gitdir" && -f "$gitdir/commondir" ]]; then
         cat "$gitdir/commondir"
         exit 0
@@ -792,11 +807,25 @@ make_relative_commondir_shim "$RELBIN"
 # Shim self-check, and a check that the fixture's own premise holds: the string
 # must be relative, and must resolve to a directory that EXISTS but is NOT a git
 # directory. If either stops being true the assertion below is vacuous.
-probe="$(PATH="$RELBIN:$PATH" git -C "$REL/nthlayer-common-wt-a" \
-    rev-parse --git-common-dir 2>&1)"
-resolved="$(cd "$REL/nthlayer-common-wt-a" && cd "$probe" 2>/dev/null && pwd)"
+#
+# `|| probe=""` is load-bearing, not defensive noise. Under `set -euo pipefail` a
+# failing command substitution in an ASSIGNMENT aborts the script — verified:
+# `x="$(cd /tmp && cd notadir 2>/dev/null && pwd)"` exits 1 without reaching the
+# next line. Unguarded, a broken premise would kill the suite here, BEFORE the
+# `fail` below that exists to report it, before test 21's real assertion, and
+# before the PASS/FAIL summary. Not a false green, but it turns a deliberate
+# diagnostic into a silent early exit.
+#
+# A GLOBAL OPTION is inserted deliberately. The shim must match by scanning its
+# arguments, not by position: if it keyed on `$3 == rev-parse` it would stop
+# intercepting and delegate to the real git, and the assertion below would pass
+# whatever the guard did.
+probe="$(PATH="$RELBIN:$PATH" git --no-pager -C "$REL/nthlayer-common-wt-a" \
+    rev-parse --git-common-dir 2>&1)" || probe="<git failed: $?>"
+resolved="$(cd "$REL/nthlayer-common-wt-a" && cd "$probe" 2>/dev/null && pwd)" \
+    || resolved=""
 if [[ "$probe" == "../.." && -n "$resolved" && ! -e "$resolved/HEAD" ]]; then
-    pass "shim yields a relative common-dir resolving to a non-git directory"
+    pass "shim intercepts past a global option, yielding a relative common-dir"
 else
     fail "fixture premise broken: probe='$probe' resolved='$resolved'"
 fi
@@ -807,6 +836,113 @@ if grep -q "DUPLICATE-NAME" <<<"$out"; then
     pass "a non-git common-dir is rejected, so the two repos stay distinct"
 else
     fail "two distinct repos merged on a bogus common-dir, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 22: git ASCENDS — a common-dir must belong to the checkout ---------
+
+echo
+echo "=== Test 22: an ancestor's git dir is not this checkout's identity ==="
+# opensrm-bnal, round-3 (correctness pass). `git rev-parse` does not fail for a
+# directory that merely LOOKS like a repo — it ascends. A `.git` that is an empty
+# DIRECTORY (an interrupted clone, a half-finished copy) is not a repository, so
+# rev-parse answers for the nearest ancestor repo and exits 0. Verified:
+#
+#     $ git -C ws/member rev-parse --git-common-dir
+#     ../../.git
+#     $ echo $?
+#     0
+#
+# That path has a HEAD, so the (candidate / "HEAD") guard from test 21 accepts
+# it, and EVERY such member collapses onto the ancestor's identity — a genuine
+# duplicate silenced. Reachable on ANY git version, unlike the relative-commondir
+# case. An invalid `.git` FILE fails cleanly (rc=128), which is why test 19's
+# fixture was already sound and this one needs a directory.
+ANC="$WORK/ancestor"
+mkdir -p "$ANC"
+git -C "$ANC" init -q
+git -C "$ANC" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+ANCWS="$ANC/ws"
+mkdir -p "$ANCWS"
+for half in a b; do
+    mkdir -p "$ANCWS/nthlayer-common-half-$half/.git"
+    printf '[project]\nname = "nthlayer-common"\nversion = "2.1.%s"\n' "$half" \
+        > "$ANCWS/nthlayer-common-half-$half/pyproject.toml"
+done
+
+# Premise check: the ancestor must actually be reachable by ascent, or the
+# assertion below passes because there was nothing to be hijacked by.
+anc_probe="$(git -C "$ANCWS/nthlayer-common-half-a" rev-parse --git-common-dir 2>&1)" \
+    || anc_probe="<git failed: $?>"
+anc_resolved="$(cd "$ANCWS/nthlayer-common-half-a" && cd "$anc_probe" 2>/dev/null && pwd)" \
+    || anc_resolved=""
+if [[ -n "$anc_resolved" && -e "$anc_resolved/HEAD" ]]; then
+    pass "premise holds: rev-parse ascends to a real git dir ('$anc_probe')"
+else
+    fail "premise broken: probe='$anc_probe' resolved='$anc_resolved'"
+fi
+
+rc=0
+out="$(cd "$ANCWS" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "two half-cloned checkouts do not merge onto the ancestor's identity"
+else
+    fail "ancestor identity merged both checkouts, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 23: an ambient GIT_DIR must not redirect the whole scan -----------
+
+echo
+echo "=== Test 23: GIT_DIR in the environment does not hijack the scan ==="
+# GIT_DIR / GIT_COMMON_DIR / GIT_WORK_TREE OVERRIDE `-C`, so one exported by a
+# hook or a wrapper makes every repo answer for the same repository: the same
+# pyproject and the same uv.lock read for all of them. Asserted on a RANGE
+# finding rather than on DUPLICATE-NAME, because the identity cross-check added
+# in test 22 already rejects a hijacked toplevel — the committed-lock reads are
+# where the scrub is the only thing standing in the way.
+#
+# Reuses test 3's stale-lock fixture: with GIT_DIR pointing elsewhere,
+# `git show HEAD:uv.lock` reads the WRONG repo, finds no lock, and the repo drops
+# out of the scan entirely — the workspace reports clean.
+rc=0
+out="$(cd "$STALE" && GIT_DIR="$ANC/.git" run_doctor)" || rc=$?
+if grep -q "STALE" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "an ambient GIT_DIR is scrubbed; the stale lock is still found"
+else
+    fail "GIT_DIR redirected the scan, findings lost (exit $rc): $out"
+fi
+
+# --- Test 24: naming must not depend on how directories sort ----------------
+
+echo
+echo "=== Test 24: a worktree sorting BEFORE its parent is still not named ==="
+# Test 18 proves the finding names the conflicting checkout rather than a
+# worktree bystander, but only because discover_repos() sorts lexicographically
+# and `nthlayer-common-wt` happens to sort after `nthlayer-common`. Nothing
+# enforces that — `git worktree add` accepts any destination, and only
+# eco-worktree.sh's `<repo>-<slug>` convention keeps it true. A worktree named to
+# sort FIRST would be named in place of the parent, reintroducing the round-1
+# defect. Main checkouts are now processed before linked worktrees regardless of
+# name.
+SORT="$WORK/sort-order"
+mkdir -p "$SORT"
+make_sibling "$SORT/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$SORT/nthlayer-common-rival" nthlayer-common 3.5.0
+# "aaa-" sorts before every other entry, so first-wins by sort order would pick
+# this worktree as the representative of the parent's identity.
+make_worktree "$SORT/nthlayer-common" "$SORT/aaa-common-wt"
+
+rc=0
+out="$(cd "$SORT" && run_doctor)" || rc=$?
+dupline="$(grep "DUPLICATE-NAME" <<<"$out" || true)"
+if [[ "$dupline" == *"nthlayer-common,"* || "$dupline" == *" nthlayer-common" ]]; then
+    pass "names the parent checkout even though the worktree sorts first"
+else
+    fail "a first-sorting worktree was named instead of the parent: '$dupline'"
+fi
+if [[ "$dupline" != *"aaa-common-wt"* ]]; then
+    pass "the first-sorting worktree bystander is not named"
+else
+    fail "worktree bystander named: '$dupline'"
 fi
 
 echo

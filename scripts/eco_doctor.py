@@ -37,6 +37,7 @@ clean, while CI resolved the stale committed one.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -186,11 +187,25 @@ def parse_bounds(spec: str) -> Bounds:
 
 
 def git(repo: Path, *args: str) -> str | None:
-    """Run git in *repo*; None if it fails. Never raises."""
+    """Run git in *repo*; None if it fails. Never raises.
+
+    ``GIT_DIR``, ``GIT_COMMON_DIR`` and ``GIT_WORK_TREE`` are scrubbed from the
+    environment. They OVERRIDE ``-C``, so an ambient one — exported by a hook, a
+    wrapper script, or a shell the operator happened to run this from — makes
+    every repo answer for the same repository: identical ``pyproject.toml`` and
+    ``uv.lock`` content read for all of them, and one identity shared by all.
+    Both directions are the silent kind, which is the class of bug this tool
+    exists to catch. It always addresses repos explicitly by path and never
+    wants an ambient one.
+    """
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE")
+    }
     try:
         out = subprocess.run(
             ["git", "-C", str(repo), *args],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, check=False, env=env,
         )
     except OSError:
         return None
@@ -285,7 +300,23 @@ def repo_identity(repo: Path) -> str:
     and it is kept as defence in depth rather than removed — a git that printed
     an unexpected second line should not have its first one trusted on the
     strength of one guard alone.
+
+    THE COMMON-DIR MUST BELONG TO *REPO*, which is why ``--show-toplevel`` is
+    consulted first. git ASCENDS: a directory whose ``.git`` is an empty
+    DIRECTORY — an interrupted clone, a half-finished manual copy — is not a
+    repository, so ``rev-parse`` answers for the nearest ANCESTOR repo and exits
+    0. Verified: it prints ``../../.git``. That path has a ``HEAD``, so the guard
+    below would accept it, and every such member would collapse onto the
+    ancestor's identity — a genuine DUPLICATE-NAME silenced. Unlike the
+    relative-commondir case this needs no old git; it is reachable on any
+    version. (An invalid ``.git`` FILE fails cleanly with rc=128, so that path
+    was already safe.) A ``--show-toplevel`` that is not *repo* means git is
+    describing some other checkout, whatever the reason.
     """
+    top = (git(repo, "rev-parse", "--show-toplevel") or "").strip()
+    if not top or Path(top).resolve() != repo.resolve():
+        return str(repo.resolve())
+
     out = git(repo, "rev-parse", "--git-common-dir")
     if out:
         lines = [line for line in out.splitlines() if line.strip()]
@@ -318,7 +349,15 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
     names at all.
     """
     seen: dict[str, dict[str, str]] = {}
-    for repo in repos:
+    # MAIN CHECKOUTS FIRST, so first-wins below does not depend on how the
+    # directories happen to sort. ``.git`` is a directory in a main checkout and
+    # a FILE in a linked worktree. discover_repos() sorts lexicographically, so
+    # a worktree named to sort before its parent — nothing stops one, only
+    # eco-worktree.sh's `<repo>-<slug>` convention — would otherwise be named in
+    # place of the checkout actually in conflict, reintroducing the defect the
+    # setdefault below was written to fix. Stable sort, so lexicographic order
+    # still holds within each class.
+    for repo in sorted(repos, key=lambda p: not (p / ".git").is_dir()):
         pj = repo / "pyproject.toml"
         if not pj.is_file():
             continue
