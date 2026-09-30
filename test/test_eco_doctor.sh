@@ -977,6 +977,164 @@ else
     fail "worktree bystander named: '$dupline'"
 fi
 
+# --- Test 25: a non-UTF8 pyproject must not kill the scan -------------------
+
+echo
+echo "=== Test 25: an undecodable pyproject does not abort the whole scan ==="
+# opensrm-bnal, edge-cases pass. THE WORST SHAPE THIS TOOL CAN FAIL IN. Both
+# `pj.read_text()` and git()'s `text=True` decode as UTF-8, and an undecodable
+# byte raises UnicodeDecodeError — a ValueError, so neither `except OSError` nor
+# `except TOMLDecodeError` caught it. One latin-1 byte in one pyproject killed
+# the ENTIRE scan with a traceback at exit 1.
+#
+# Exit 1 is also the code for "drift found", and the /r5-supervise pre-flight
+# classifies findings by line PREFIX rather than by exit code — deliberately,
+# see opensrm-px23. A traceback carries no prefix, so the pre-flight read zero
+# blocking findings and PROCEEDED, having scanned nothing at all. A clean record
+# from a check that never ran is precisely what this tool exists to prevent, and
+# what CLAUDE.md calls worse than no gate.
+#
+# A latin-1 author comment or a UTF-16 BOM from a Windows editor is enough.
+U8="$WORK/non-utf8"
+mkdir -p "$U8"
+make_sibling "$U8/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$U8/nthlayer-common-rival" nthlayer-common 3.5.0
+# Stray 0xff in a COMMENT, so the file is still valid TOML once decodable: the
+# name must still be read and the duplicate must still be found, not merely
+# survived.
+printf '[project]\nname = "nthlayer-common"\nversion = "3.5.0"  # \xff\n' \
+    > "$U8/nthlayer-common-rival/pyproject.toml"
+
+rc=0
+out="$(cd "$U8" && run_doctor)" || rc=$?
+if ! grep -qE "Traceback|UnicodeDecodeError" <<<"$out"; then
+    pass "an undecodable pyproject does not traceback"
+else
+    fail "traceback on an undecodable pyproject: $out"
+fi
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "the other findings still print (exit $rc)"
+else
+    fail "findings lost to an undecodable pyproject (exit $rc): $out"
+fi
+
+# The COMMITTED-file path is separate: it decodes inside subprocess.run via
+# git(), not via read_text(), and had the same defect.
+U8C="$WORK/non-utf8-committed"
+mkdir -p "$U8C/nthlayer-core"
+printf '[project]\nname = "nthlayer-core"\nversion = "1.0.0"  # \xff\n' \
+    > "$U8C/nthlayer-core/pyproject.toml"
+git -C "$U8C/nthlayer-core" init -q
+git -C "$U8C/nthlayer-core" add -A
+git -C "$U8C/nthlayer-core" -c user.email=t@t -c user.name=t commit -qm init
+
+# Premise: the byte must actually have reached HEAD, or this asserts nothing
+# about git()'s decode. `git show` is the exact call the doctor makes.
+if git -C "$U8C/nthlayer-core" show HEAD:pyproject.toml 2>/dev/null \
+       | LC_ALL=C grep -q $'\xff'; then
+    pass "premise: the committed blob really is not valid UTF-8"
+else
+    fail "premise broken: the 0xff byte did not reach HEAD"
+fi
+
+rc=0
+out="$(cd "$U8C" && run_doctor)" || rc=$?
+if ! grep -qE "Traceback|UnicodeDecodeError" <<<"$out"; then
+    pass "an undecodable COMMITTED pyproject does not traceback either"
+else
+    fail "traceback via git()'s decode: $out"
+fi
+
+# --- Test 26: a worktree whose parent vanished is still one repo -------------
+
+echo
+echo "=== Test 26: worktrees of a MOVED parent are not a duplicate ==="
+# opensrm-bnal, edge-cases pass. Two worktrees remain in the workspace, their
+# parent repo is moved or deleted. git can resolve neither, so both took the
+# path fallback and were reported as a DUPLICATE-NAME — which is blocking, so it
+# refused every gate in the workspace exactly as the original bug did, AND was
+# untrue: it said two DISTINCT repositories claim one name when they are one
+# repository checked out twice.
+#
+# A worktree's `.git` file records `gitdir: <parent>/.git/worktrees/<name>`,
+# written by git at creation, so the parent is recoverable from the worktree
+# alone. Two worktrees of one parent therefore still agree after the parent is
+# gone. Nothing is dereferenced — the recorded path is only an opaque key.
+MOVED="$WORK/moved-parent"
+MOVEDP="$WORK/moved-parent-upstreams"
+mkdir -p "$MOVED" "$MOVEDP"
+make_sibling "$MOVEDP/upstream" nthlayer-common 2.1.2
+make_worktree "$MOVEDP/upstream" "$MOVED/nthlayer-common-wt-a"
+make_worktree "$MOVEDP/upstream" "$MOVED/nthlayer-common-wt-b"
+
+# Premise: alive, they must already agree — otherwise this test could pass
+# without the parent ever having gone missing.
+rc=0
+out="$(cd "$MOVED" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "premise: with the parent alive the two worktrees agree"
+else
+    fail "premise broken, worktrees disagreed while the parent was alive: $out"
+fi
+
+mv "$MOVEDP/upstream" "$MOVEDP/upstream-moved"
+rc=0
+out="$(cd "$MOVED" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
+    pass "two worktrees of a vanished parent are still one repo (exit $rc)"
+else
+    fail "a moved parent resurrected the blocking false positive (exit $rc): $out"
+fi
+
+# --- Test 27: ...but two vanished parents are still two repos ---------------
+
+echo
+echo "=== Test 27: stale worktrees of DIFFERENT parents still report ==="
+# The other direction, and the reason test 26 cannot be mistaken for deleting
+# the check. Each worktree records its OWN parent, so distinct parents yield
+# distinct keys even though neither path exists any more.
+TWOP="$WORK/two-moved-parents"
+TWOPP="$WORK/two-moved-upstreams"
+mkdir -p "$TWOP" "$TWOPP"
+for up in alpha beta; do
+    make_sibling "$TWOPP/$up" nthlayer-common "2.1.2"
+    make_worktree "$TWOPP/$up" "$TWOP/nthlayer-common-wt-$up"
+    mv "$TWOPP/$up" "$TWOPP/$up-moved"
+done
+
+rc=0
+out="$(cd "$TWOP" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "two vanished parents remain two repositories (exit $rc)"
+else
+    fail "distinct stale parents merged, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 28: a whitespace-only project.name is not a name ------------------
+
+echo
+echo "=== Test 28: a whitespace-only project.name is skipped, not printed ==="
+# `if not name` admitted "   ", which rendered a finding with an empty gap where
+# the package name belongs — unreadable, and indistinguishable from a formatting
+# bug in the tool itself.
+BLANK="$WORK/blank-name"
+mkdir -p "$BLANK"
+for d in one two; do
+    mkdir -p "$BLANK/$d"
+    printf '[project]\nname = "   "\nversion = "1.0.0"\n' > "$BLANK/$d/pyproject.toml"
+    git -C "$BLANK/$d" init -q
+    git -C "$BLANK/$d" add -A
+    git -C "$BLANK/$d" -c user.email=t@t -c user.name=t commit -qm init
+done
+
+rc=0
+out="$(cd "$BLANK" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "a whitespace-only name is skipped rather than printed blank"
+else
+    fail "printed a nameless finding: $(grep DUPLICATE-NAME <<<"$out")"
+fi
+
 echo
 echo "==============================================="
 echo "  Passed: $pass_count"
