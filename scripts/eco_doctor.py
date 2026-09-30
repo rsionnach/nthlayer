@@ -194,7 +194,7 @@ def git(repo: Path, *args: str) -> str | None:
     wrapper script, or a shell the operator happened to run this from — makes
     every repo answer for the same repository: identical ``pyproject.toml`` and
     ``uv.lock`` content read for all of them, and one identity shared by all.
-    Both directions are the silent kind, which is the class of bug this tool
+    Both failure modes are the silent kind, which is the class of bug this tool
     exists to catch. It always addresses repos explicitly by path and never
     wants an ambient one.
     """
@@ -256,15 +256,57 @@ def version_at(path: Path) -> str | None:
     return data.get("project", {}).get("version")
 
 
+def is_main_checkout(repo: Path) -> bool:
+    """True if *repo* is a repository's own checkout rather than a linked worktree.
+
+    ``.git`` is a DIRECTORY in a main checkout and a FILE in a linked worktree.
+
+    Used only to order reporting, never to decide whether a finding fires, which
+    is what makes the one case it gets wrong harmless: a checkout made with
+    ``--separate-git-dir`` also has a ``.git`` file and so reads as a worktree
+    here. repo_identity() still resolves it to its own separate git dir and it
+    still shares one identity with its worktrees, so the most that can change is
+    WHICH of two directory names for the same repository gets printed.
+    """
+    return (repo / ".git").is_dir()
+
+
 def repo_identity(repo: Path) -> str:
     """What repository a checkout belongs to, shared by all its worktrees.
 
+    THE RULE, in the order the code applies it:
+
+      1. ``--show-toplevel`` must resolve to *repo* itself, or give up.
+      2. ``--git-common-dir`` must be a single line.
+      3. Resolved against *repo*, it must be a git directory (a ``HEAD``).
+      4. Otherwise fall back to *repo*'s own path — a deliberate SPLIT.
+
     ``git rev-parse --git-common-dir`` resolves to the same location for a repo
     and every worktree of it — the same key ``.claude/hooks/r5-lock.sh`` uses to
-    make the supervisor mutex per repo rather than per directory.
+    make the supervisor mutex per repo rather than per directory. A bare
+    ``--git-common-dir`` returns ``.git`` for a main checkout and an absolute
+    path for a worktree, so resolving it against *repo* converges both without
+    depending on any git version.
 
-    NO ``--path-format=absolute``, deliberately. That flag needs git >= 2.31
-    (Ubuntu 20.04 ships 2.25, Debian bullseye 2.30) and ``git rev-parse``
+    Step 4 splits rather than merges because the two errors are not symmetrical:
+    a wrong MERGE silences a real ambiguity, a wrong SPLIT reports one that is
+    easy to dismiss. Every guard below therefore falls back, never guesses.
+
+    Steps 1-3 each exist because of a specific way git can hand back something
+    plausible and wrong. In order:
+
+    STEP 1 — git ASCENDS. A directory whose ``.git`` is an empty DIRECTORY (an
+    interrupted clone, a half-finished manual copy) is not a repository, so
+    ``rev-parse`` answers for the nearest ANCESTOR REPO and exits 0. Verified:
+    it prints ``../../.git``. That path has a ``HEAD``, so step 3 would accept
+    it, and every such member would collapse onto the ancestor's identity — a
+    genuine DUPLICATE-NAME silenced. Unlike the step-3 hazard this needs no old
+    git; it is reachable on any version. (An invalid ``.git`` FILE fails cleanly
+    with rc=128, so that path was already safe.) A ``--show-toplevel`` that is
+    not *repo* means git is describing some other checkout, whatever the reason.
+
+    STEP 2 — NO ``--path-format=absolute``, deliberately. That flag needs git
+    >= 2.31 (Ubuntu 20.04 ships 2.25, Debian bullseye 2.30) and ``git rev-parse``
     ECHOES an unrecognised flag and exits 0 rather than failing:
 
         $ git rev-parse --bogus-flag=x --git-common-dir
@@ -275,43 +317,26 @@ def repo_identity(repo: Path) -> str:
 
     So on older git the identity became the constant string
     ``"--path-format=absolute\n.git"`` for every main checkout, merging all
-    distinct repositories into one and silencing genuine duplicates — a false
-    negative, the dangerous direction. And it did not even buy the worktree fix,
-    because a worktree reports its parent's absolute path regardless.
+    distinct repositories into one and silencing genuine duplicates — the
+    false-negative direction. And it did not even buy the worktree fix, because
+    a worktree reports its parent's absolute path regardless.
 
-    A bare ``--git-common-dir`` returns ``.git`` for a main checkout and an
-    absolute path for a worktree, so resolving it against *repo* converges both
-    without depending on any git version. The output is validated rather than
-    trusted: one line, and a path that is a GIT DIRECTORY.
+    This check is now SUBSUMED by step 3: with the flag reinstated the first
+    line is ``--path-format=absolute``, which has no ``HEAD`` beneath it either.
+    Mutating ``len(lines) == 1`` therefore survives the suite by design, and it
+    is kept as defence in depth rather than removed — a git that printed an
+    unexpected second line should not have its first one trusted on the strength
+    of one guard alone.
 
-    ``(candidate / "HEAD").exists()``, not ``candidate.exists()``. Before 2.31,
-    ``--git-common-dir`` inside a linked worktree could print the raw contents of
-    ``.git/worktrees/<name>/commondir``, which is the relative string ``../..``.
-    Resolved against *repo* that is the workspace's PARENT directory — which
-    exists, so a mere existence check accepts it. Two worktrees of two DIFFERENT
-    repos then resolve to the same ancestor and are silently MERGED, so a genuine
-    duplicate goes unreported: the false-negative direction this function's
-    fallback exists to avoid. Requiring a ``HEAD`` beneath the candidate rejects
-    any path that is not a git directory, whatever produced it.
-
-    The one-line check is now SUBSUMED by that: with the flag reinstated the
-    first line is ``--path-format=absolute``, which has no ``HEAD`` beneath it
-    either. Mutating ``len(lines) == 1`` therefore survives the suite by design,
-    and it is kept as defence in depth rather than removed — a git that printed
-    an unexpected second line should not have its first one trusted on the
-    strength of one guard alone.
-
-    THE COMMON-DIR MUST BELONG TO *REPO*, which is why ``--show-toplevel`` is
-    consulted first. git ASCENDS: a directory whose ``.git`` is an empty
-    DIRECTORY — an interrupted clone, a half-finished manual copy — is not a
-    repository, so ``rev-parse`` answers for the nearest ANCESTOR repo and exits
-    0. Verified: it prints ``../../.git``. That path has a ``HEAD``, so the guard
-    below would accept it, and every such member would collapse onto the
-    ancestor's identity — a genuine DUPLICATE-NAME silenced. Unlike the
-    relative-commondir case this needs no old git; it is reachable on any
-    version. (An invalid ``.git`` FILE fails cleanly with rc=128, so that path
-    was already safe.) A ``--show-toplevel`` that is not *repo* means git is
-    describing some other checkout, whatever the reason.
+    STEP 3 — ``(candidate / "HEAD").exists()``, not ``candidate.exists()``.
+    Before 2.31, ``--git-common-dir`` inside a linked worktree could print the
+    raw contents of ``.git/worktrees/<name>/commondir``, which is the relative
+    string ``../..``. Resolved against *repo* that is the workspace's PARENT
+    directory — which exists, so a mere existence check accepts it. Two
+    worktrees of two DIFFERENT repos then resolve to the same shared parent
+    directory and are silently MERGED, so a genuine duplicate goes unreported.
+    Requiring a ``HEAD`` beneath the candidate rejects any path that is not a
+    git directory, whatever produced it.
     """
     top = (git(repo, "rev-parse", "--show-toplevel") or "").strip()
     if not top or Path(top).resolve() != repo.resolve():
@@ -350,14 +375,13 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
     """
     seen: dict[str, dict[str, str]] = {}
     # MAIN CHECKOUTS FIRST, so first-wins below does not depend on how the
-    # directories happen to sort. ``.git`` is a directory in a main checkout and
-    # a FILE in a linked worktree. discover_repos() sorts lexicographically, so
-    # a worktree named to sort before its parent — nothing stops one, only
+    # directories happen to sort. discover_repos() sorts lexicographically, and a
+    # worktree named to sort before its parent — nothing stops one, only
     # eco-worktree.sh's `<repo>-<slug>` convention — would otherwise be named in
     # place of the checkout actually in conflict, reintroducing the defect the
     # setdefault below was written to fix. Stable sort, so lexicographic order
     # still holds within each class.
-    for repo in sorted(repos, key=lambda p: not (p / ".git").is_dir()):
+    for repo in sorted(repos, key=lambda p: not is_main_checkout(p)):
         pj = repo / "pyproject.toml"
         if not pj.is_file():
             continue

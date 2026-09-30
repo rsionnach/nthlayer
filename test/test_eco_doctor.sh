@@ -36,6 +36,27 @@
 #      the detail three hand-rolled versions of this scan got wrong.
 #   8. Findings are one line each and name the repo.
 #
+# Tests 9-16 extend the range arithmetic (worktree shadowing, working-tree vs
+# HEAD provenance for each fact, == / ~= / <= ceilings, max-of-floors,
+# zero-padding, pre-releases, name normalisation).
+#
+# Tests 17-24 are REPOSITORY IDENTITY [opensrm-bnal] — that a repo and its
+# worktrees are one package checked out twice, while two distinct repos claiming
+# one name stay a finding. Each banner names its own hazard; three of them
+# substitute a `git` shim on PATH because the hazard only bites on a git version
+# no machine running this suite has:
+#   17/18. a real worktree is not a duplicate; two `git init` repos still are.
+#   19.    an unreadable checkout splits rather than merging.
+#   20.    both of those still hold on git < 2.31, which does not know
+#          --path-format and ECHOES an unrecognised flag at exit 0.
+#   21.    a relative --git-common-dir resolving to a non-git directory is
+#          rejected, so two worktrees of different repos do not merge.
+#   22.    an ANCESTOR repo's git dir, reached because git ascends out of a
+#          half-cloned directory, is not this checkout's identity.
+#   23.    an ambient GIT_DIR does not redirect the whole scan.
+#   24.    reporting names the main checkout, not a worktree that happens to
+#          sort first.
+#
 # Runs in a few seconds. No Docker, no network, no Python deps.
 
 set -euo pipefail
@@ -98,8 +119,8 @@ make_consumer() {
 # make_worktree <existing-repo-dir> <new-worktree-dir>
 #
 # A REAL `git worktree add`, not a second `git init`. That distinction is the
-# whole point of test 17: two independent repos claiming one name is a genuine
-# ambiguity, while one repo checked out twice is the workspace's mandated
+# whole point of tests 17/18/21/24: two independent repos claiming one name is a
+# genuine ambiguity, while one repo checked out twice is the workspace's mandated
 # working mode (.claude/bin/eco-worktree.sh).
 make_worktree() {
     local parent="$1" dest="$2"
@@ -661,6 +682,8 @@ else
     fail "exited $rc with only a worktree present — output: $out"
 fi
 
+# --- Test 18: two distinct repos claiming one name still report -------------
+
 echo
 echo "=== Test 18: two DISTINCT repos claiming one name still report ==="
 # The other side. Test 9 already covers the shadowing protection; this asserts
@@ -684,9 +707,7 @@ if grep -q "DUPLICATE-NAME" <<<"$out"; then
 else
     fail "the genuine duplicate case was lost: $out"
 fi
-# The finding must name the checkout actually in conflict. Keying last-wins
-# reported whichever directory came last, which could be a worktree that
-# declares nothing of its own.
+# The finding must name the checkout actually in conflict.
 # The worktree shares the real repo's identity, so last-wins would name
 # nthlayer-common-wt — which declares nothing of its own — instead of
 # nthlayer-common, the checkout actually in conflict with the rival.
@@ -695,6 +716,8 @@ if grep "DUPLICATE-NAME" <<<"$out" | grep -qv "nthlayer-common-wt"; then
 else
     fail "named a worktree instead of the conflicting checkout: $(grep DUPLICATE-NAME <<<"$out")"
 fi
+
+# --- Test 19: an unreadable repo is treated as distinct ---------------------
 
 echo
 echo "=== Test 19: an unreadable repo is treated as distinct, not merged ==="
@@ -816,10 +839,9 @@ make_relative_commondir_shim "$RELBIN"
 # before the PASS/FAIL summary. Not a false green, but it turns a deliberate
 # diagnostic into a silent early exit.
 #
-# A GLOBAL OPTION is inserted deliberately. The shim must match by scanning its
-# arguments, not by position: if it keyed on `$3 == rev-parse` it would stop
-# intercepting and delegate to the real git, and the assertion below would pass
-# whatever the guard did.
+# A GLOBAL OPTION is inserted deliberately — see make_relative_commondir_shim
+# for why the shim scans its arguments instead of keying on their position. If
+# the probe stops going through the shim, test 21 passes VACUOUSLY.
 probe="$(PATH="$RELBIN:$PATH" git --no-pager -C "$REL/nthlayer-common-wt-a" \
     rev-parse --git-common-dir 2>&1)" || probe="<git failed: $?>"
 resolved="$(cd "$REL/nthlayer-common-wt-a" && cd "$probe" 2>/dev/null && pwd)" \
