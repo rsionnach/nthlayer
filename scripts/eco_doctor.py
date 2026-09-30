@@ -470,12 +470,18 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
     A safety net beneath path_sources(): if two unrelated checkouts claim one
     name, any name-based reasoning is ambiguous and saying so beats picking one.
 
-    Worktrees are excluded, and that exclusion is the point [opensrm-bnal]. A
-    worktree always declares its parent's ``project.name``, and CLAUDE.md
-    MANDATES sibling worktrees for parallel work — so reporting them made this
-    finding fire on every correct workflow. The /r5-supervise pre-flight
-    (opensrm-px23) classifies DUPLICATE-NAME as blocking, so it then refused
-    every R5 gate in the workspace. Caught on that pre-flight's first real use.
+    Worktrees are COLLAPSED ONTO THEIR PARENT'S IDENTITY, not excluded from the
+    scan [opensrm-bnal]. The distinction is load-bearing: a worktree whose parent
+    lives outside the workspace is still scanned, and can still be the directory
+    a finding names — correctly, because it is the only checkout of that
+    repository present.
+
+    That collapsing is the point. A worktree always declares its parent's
+    ``project.name``, and CLAUDE.md MANDATES sibling worktrees for parallel work
+    — so reporting them made this finding fire on every correct workflow. The
+    /r5-supervise pre-flight (opensrm-px23) classifies DUPLICATE-NAME as
+    blocking, so it then refused every R5 gate in the workspace. Caught on that
+    pre-flight's first real use.
 
     The net was written beneath NAME-BASED sibling resolution, and the same
     change that added it replaced that with ``[tool.uv.sources]`` path

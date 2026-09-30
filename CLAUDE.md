@@ -117,13 +117,38 @@ examples, generator-specific scripts.
   - `docs/release-runbook.md` — operator runbook for the full
     ecosystem-wide release pipeline (Phase 5).
 - `test/` — cross-repo integration test infrastructure (see
-  `docs/integration-testing.md`).
+  `docs/integration-testing.md`). Also `test_eco_doctor.sh`, the
+  regression suite for `scripts/eco_doctor.py`.
+- `scripts/` — tooling that operates ON the workspace, the category
+  hard rule 1 was amended to permit:
+  - `eco_doctor.py` + `eco-doctor.sh` — the dependency-range and
+    sibling-currency drift detector [opensrm-8hn3]. Depends on nothing
+    in the ecosystem, deliberately: a checker that imported the packages
+    it checks would fail exactly when they are broken. The workspace
+    root's `.claude/bin/eco-doctor.sh` is a shim that execs this.
+    Public surface, all 16 module-level functions:
+    - entry point — `main`
+    - discovery / reporting — `discover_repos`, `check_repo`,
+      `check_currency`, `duplicate_name_findings`
+    - repository identity — `repo_identity`, `recorded_common_dir`,
+      `unidentified`, `is_main_checkout`
+    - manifest and lock reading — `path_sources`, `locked_versions`,
+      `version_at`, `canonical`, `git`
+    - range arithmetic — `parse_bounds`, `release_tuple`
+
+    The four identity functions arrived with [opensrm-bnal], which made
+    REPOSITORY identity rather than directory identity the key a
+    duplicate-name finding groups by, so a repo and its worktrees
+    collapse to one entry while genuinely distinct repos claiming one
+    name still report.
 - `demo/` — runnable cascading-failure scenario, `demo.sh`
   orchestrator, example OpenSRM specifications.
 - `.github/workflows/`:
   - `docs.yml` — docs site build + GitHub Pages deploy.
-  - `ci.yml` — `bash -n` syntax check across `demo/` and
-    `test/` *.sh (opensrm-0buj).
+  - `ci.yml` — three steps: `bash -n` across `demo/`, `test/` and
+    `scripts/` *.sh (opensrm-0buj); `ruff check` over the same three
+    directories (opensrm-u5dw.1); and the `test_eco_doctor.sh`
+    regression suite (opensrm-8hn3).
   - `demo-paths.yml` — `cmd_start` path-resolution regression test
     (opensrm-oey5).
   - `demo-start-lock.yml` — `cmd_start` concurrent-invocation lock
