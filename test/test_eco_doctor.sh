@@ -57,6 +57,21 @@
 #   24.    reporting names the main checkout, not a worktree that happens to
 #          sort first.
 #
+# Tests 25-30 are INPUT ROBUSTNESS in the same area, from the edge-cases pass:
+#   25.    an undecodable pyproject does not abort the scan. The worst shape
+#          this tool can fail in: a traceback exits 1, which is also "drift
+#          found", and the pre-flight classifies by line PREFIX — so the gate
+#          read zero blocking findings and proceeded having scanned nothing.
+#   26/27. worktrees of a MOVED parent are still one repository, but two
+#          vanished parents are still two.
+#   28/29. a whitespace-only name is not a name, and a padded name is the same
+#          name — the key must be the TRIMMED value, not merely tested for one.
+#   30.    absolute and relative recorded gitdirs (git >= 2.48 writes relative)
+#          name one parent, so two worktrees of it do not split.
+#
+# Absence assertions are paired with assert_scanned(), because "no finding was
+# reported" is vacuous if a fixture bug left a checkout undiscovered.
+#
 # Runs in a few seconds. No Docker, no network, no Python deps.
 
 set -euo pipefail
@@ -215,6 +230,26 @@ fi
 exec "$REAL" "$@"
 SHIM
     chmod +x "$1/git"
+}
+
+# assert_scanned <output> <n> <label>
+#
+# Pairs with every "no DUPLICATE-NAME" assertion in this file. An ABSENCE is
+# only meaningful if every checkout was actually DISCOVERED: a fixture bug that
+# left one out — a dangling `.git`, a pyproject with no name, a mkdir that never
+# ran — satisfies "no finding was reported" vacuously, and the test passes
+# against the bug it was written to catch. That is the failure shape this whole
+# file exists to guard against, and three of these assertions had it.
+#
+# eco_doctor prints the count ONLY on the clean path, which is precisely when an
+# absence assertion applies.
+assert_scanned() {
+    local out="$1" want="$2" label="$3"
+    if grep -q "$want repo(s) checked" <<<"$out"; then
+        pass "$label: all $want checkouts were scanned"
+    else
+        fail "$label: expected '$want repo(s) checked' — output: $out"
+    fi
 }
 
 run_doctor() {
@@ -676,6 +711,7 @@ if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
 else
     fail "worktree reported as DUPLICATE-NAME — blocks every gate: $out"
 fi
+assert_scanned "$out" 3 "test 17"
 if (( rc == 0 )); then
     pass "clean workspace with a worktree present still exits 0"
 else
@@ -786,6 +822,7 @@ if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
 else
     fail "old git reintroduced the bnal bug (exit $rc): $out"
 fi
+assert_scanned "$out" 3 "test 20 (old git)"
 
 rc=0
 out="$(cd "$DIST" && PATH="$SHIMBIN:$PATH" run_doctor)" || rc=$?
@@ -1076,6 +1113,7 @@ if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
 else
     fail "premise broken, worktrees disagreed while the parent was alive: $out"
 fi
+assert_scanned "$out" 2 "test 26 premise"
 
 mv "$MOVEDP/upstream" "$MOVEDP/upstream-moved"
 rc=0
@@ -1085,6 +1123,7 @@ if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
 else
     fail "a moved parent resurrected the blocking false positive (exit $rc): $out"
 fi
+assert_scanned "$out" 2 "test 26"
 
 # --- Test 27: ...but two vanished parents are still two repos ---------------
 
@@ -1134,6 +1173,7 @@ if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
 else
     fail "printed a nameless finding: $(grep DUPLICATE-NAME <<<"$out")"
 fi
+assert_scanned "$out" 2 "test 28"
 
 # --- Test 29: a padded name is the same name --------------------------------
 
@@ -1163,9 +1203,27 @@ if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
 else
     fail "padding evaded the duplicate check (exit $rc): $out"
 fi
-# The printed name must be the stripped one, or the column has a leading gap.
-if grep -qE "DUPLICATE-NAME .* dup declared by" <<<"$out"; then
-    pass "the printed name is trimmed"
+# The PRINTED name must be the trimmed one too. A LEADING space is
+# indistinguishable from the column padding in the rendered line, so it cannot
+# be asserted here — the collision above is what covers that direction. A
+# TRAILING space is visible, as a double space before "declared by", so it gets
+# its own fixture where both names carry one: without the rebind both still
+# canonicalise to the same key, so the finding fires either way and only the
+# rendering differs. That is what makes this assertion discriminating rather
+# than a restatement of the one above.
+TRAIL="$WORK/trailing-name"
+mkdir -p "$TRAIL"
+for d in one two; do
+    mkdir -p "$TRAIL/$d"
+    printf '[project]\nname = "dup "\nversion = "1.0.0"\n' > "$TRAIL/$d/pyproject.toml"
+    git -C "$TRAIL/$d" init -q
+    git -C "$TRAIL/$d" add -A
+    git -C "$TRAIL/$d" -c user.email=t@t -c user.name=t commit -qm init
+done
+
+out="$(cd "$TRAIL" && run_doctor)" || true
+if ! grep -qE "[[:space:]]{2}declared by" <<<"$out"; then
+    pass "the printed name is trimmed (no double space before 'declared by')"
 else
     fail "printed an untrimmed name: $(grep DUPLICATE-NAME <<<"$out")"
 fi
@@ -1211,6 +1269,7 @@ if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
 else
     fail "mixed gitdir forms split one repo into a blocking duplicate (exit $rc): $out"
 fi
+assert_scanned "$out" 2 "test 30"
 
 echo
 echo "==============================================="
