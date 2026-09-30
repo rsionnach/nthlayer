@@ -1346,6 +1346,34 @@ else
     fail "split on the first segment merged two parents, duplicate silenced (exit $rc): $out"
 fi
 
+# --- Test 32: the duplicate key is CANONICALISED ----------------------------
+
+echo
+echo "=== Test 32: nthlayer_common and nthlayer-common are one name ==="
+# opensrm-bnal, provenance pass (finding N5). canonical() has been in the
+# duplicate key since opensrm-8hn3 — `seen.setdefault(canonical(name), ...)` —
+# but nothing asserted it: mutating the key to the raw `name` stayed GREEN, so
+# two members declaring `nthlayer_common` and `nthlayer-common` would have been
+# reported by nothing at all. Inherited rather than introduced here, but the key
+# expression is one this bead restructured, and an untested line in it is how
+# the whole class of bug in this file starts.
+#
+# PEP 503 makes these the same distribution name, and uv normalises when it
+# writes a lock — which is why test 16 already covers the same equivalence on
+# the DEPENDENCY side. This covers the duplicate-name side.
+CANON="$WORK/canonical-name"
+mkdir -p "$CANON"
+make_sibling "$CANON/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$CANON/nthlayer-common-underscore" nthlayer_common 3.5.0
+
+rc=0
+out="$(cd "$CANON" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "underscore and hyphen spellings collide as one name (exit $rc)"
+else
+    fail "canonicalisation untested, the two spellings did not collide (exit $rc): $out"
+fi
+
 echo
 echo "==============================================="
 echo "  Passed: $pass_count"

@@ -423,10 +423,11 @@ def repo_identity(repo: Path) -> str:
     constantly.
 
     The guard is about what a relative value can resolve TO. ``../..`` — the
-    literal contents of a real ``.git/worktrees/<name>/commondir`` — resolves to
-    an ordinary directory that EXISTS but is not a git dir, and a mere existence
-    check accepts it; two checkouts then collapse onto one shared ancestor and a
-    genuine duplicate goes unreported. Requiring a ``HEAD`` beneath the candidate
+    literal contents of a real ``.git/worktrees/<name>/commondir`` — typically
+    resolves to an ordinary directory that EXISTS but holds no ``HEAD`` (where
+    it lands is layout-dependent), and a mere existence check accepts it; two
+    checkouts then collapse onto one shared ancestor and a genuine duplicate
+    goes unreported. Requiring a ``HEAD`` beneath the candidate
     rejects any path that is not a git directory, whatever produced it.
 
     NO CLAIM is made about which git version emits which form. An earlier
