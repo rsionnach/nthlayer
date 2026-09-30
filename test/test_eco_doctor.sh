@@ -1135,6 +1135,83 @@ else
     fail "printed a nameless finding: $(grep DUPLICATE-NAME <<<"$out")"
 fi
 
+# --- Test 29: a padded name is the same name --------------------------------
+
+echo
+echo "=== Test 29: \" dup \" and \"dup\" are one name, not two ==="
+# opensrm-bnal, edge-cases iteration 2. canonical() collapses [-_.]+ and
+# lowercases; it does NOT trim. The whitespace guard added in test 28 only
+# TESTED name.strip() while the key stayed canonical(name) on the untrimmed
+# string, so "dup" and " dup " keyed differently and a genuine duplicate was
+# silenced. False-negative direction, and reachable from an ordinary hand-edited
+# pyproject.
+PAD="$WORK/padded-name"
+mkdir -p "$PAD"
+for pair in "one:dup" "two: dup "; do
+    d="${pair%%:*}"; n="${pair#*:}"
+    mkdir -p "$PAD/$d"
+    printf '[project]\nname = "%s"\nversion = "1.0.0"\n' "$n" > "$PAD/$d/pyproject.toml"
+    git -C "$PAD/$d" init -q
+    git -C "$PAD/$d" add -A
+    git -C "$PAD/$d" -c user.email=t@t -c user.name=t commit -qm init
+done
+
+rc=0
+out="$(cd "$PAD" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "a padded name still collides with the bare one (exit $rc)"
+else
+    fail "padding evaded the duplicate check (exit $rc): $out"
+fi
+# The printed name must be the stripped one, or the column has a leading gap.
+if grep -qE "DUPLICATE-NAME .* dup declared by" <<<"$out"; then
+    pass "the printed name is trimmed"
+else
+    fail "printed an untrimmed name: $(grep DUPLICATE-NAME <<<"$out")"
+fi
+
+# --- Test 30: absolute and relative recorded gitdirs are one parent ---------
+
+echo
+echo "=== Test 30: mixed absolute/relative gitdir is still one repository ==="
+# opensrm-bnal, edge-cases iteration 2. git >= 2.48 can write a RELATIVE gitdir
+# (worktree.useRelativePaths, --relative-paths). recorded_common_dir() used the
+# recorded string as an opaque key, so one worktree created before that setting
+# and one after DISAGREED about the same parent — splitting them and firing the
+# blocking DUPLICATE-NAME that test 26 exists to prevent. Resolving against the
+# checkout makes both forms comparable.
+#
+# The relative form is written by hand because the local git (2.39) cannot
+# produce it. The string is exactly what git >= 2.48 records, and the absolute
+# sibling is left as git actually wrote it, so only the FORM differs.
+MIX="$WORK/mixed-gitdir"
+MIXP="$WORK/mixed-gitdir-upstream"
+mkdir -p "$MIX" "$MIXP"
+make_sibling "$MIXP/shared" nthlayer-common 2.1.2
+make_worktree "$MIXP/shared" "$MIX/nthlayer-common-wt-abs"
+make_worktree "$MIXP/shared" "$MIX/nthlayer-common-wt-rel"
+printf 'gitdir: ../../mixed-gitdir-upstream/shared/.git/worktrees/nthlayer-common-wt-rel\n' \
+    > "$MIX/nthlayer-common-wt-rel/.git"
+
+# Premise: the two recorded forms must actually DIFFER as strings, or resolution
+# is not what makes this test pass.
+abs_rec="$(sed -n 's/^gitdir: //p' "$MIX/nthlayer-common-wt-abs/.git")"
+rel_rec="$(sed -n 's/^gitdir: //p' "$MIX/nthlayer-common-wt-rel/.git")"
+if [[ "$abs_rec" != "$rel_rec" && "$abs_rec" == /* && "$rel_rec" != /* ]]; then
+    pass "premise: one recorded gitdir is absolute, the other relative"
+else
+    fail "premise broken: abs='$abs_rec' rel='$rel_rec'"
+fi
+
+mv "$MIXP/shared" "$MIXP/shared-moved"
+rc=0
+out="$(cd "$MIX" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
+    pass "absolute and relative gitdirs resolve to one parent (exit $rc)"
+else
+    fail "mixed gitdir forms split one repo into a blocking duplicate (exit $rc): $out"
+fi
+
 echo
 echo "==============================================="
 echo "  Passed: $pass_count"

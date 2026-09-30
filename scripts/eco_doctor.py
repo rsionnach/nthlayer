@@ -206,6 +206,12 @@ def git(repo: Path, *args: str) -> str | None:
     undecodable bytes keeps the text readable enough for tomllib, which either
     parses it or raises ``TOMLDecodeError`` and gets reported as PARSE-ERROR —
     a VISIBLE finding either way, rather than a crash.
+
+    The trade is accepted knowingly: two names differing ONLY in undecodable
+    bytes both become the same U+FFFD string and are reported as one duplicate,
+    a false positive. It is the right way round — the replacement character is
+    visible in the output, mojibake cannot collide with a valid ASCII package
+    name, and the alternative is a traceback that reads as a clean scan.
     """
     env = {
         k: v for k, v in os.environ.items()
@@ -285,10 +291,19 @@ def recorded_common_dir(repo: Path) -> str | None:
     the reason check_repo() stays silent about a missing pyproject rather than
     reporting it.
 
-    This cannot merge distinct repositories. The recorded path is absolute and
-    names one specific parent, so two worktrees made from different parents
-    yield different strings. It is never dereferenced — only used as an opaque
-    key — so it does not matter that the path no longer exists.
+    RESOLVED AGAINST *repo*, not used as a raw string. git >= 2.48 can write a
+    RELATIVE gitdir (``worktree.useRelativePaths``, ``--relative-paths``), so
+    the recorded form is not reliably absolute — and two worktrees of ONE parent
+    then disagree if one was created before that setting and one after, which
+    splits them and fires the blocking false positive this function exists to
+    remove. Resolving makes both forms comparable, and keeps the key in the same
+    shape as the resolved candidate repo_identity() produces on the happy path.
+    The result is never dereferenced, so it does not matter that the path may no
+    longer exist.
+
+    This cannot merge distinct repositories: the resolved path names one
+    specific parent git dir, so two worktrees made from different parents yield
+    different keys.
 
     Returns None for a main checkout (``.git`` is a directory), for a ``.git``
     file that records no ``gitdir:``, and for one that is unreadable.
@@ -307,7 +322,10 @@ def recorded_common_dir(repo: Path) -> str | None:
             # occurrence is the separator even if the parent's own path
             # contains that string.
             if "/worktrees/" in recorded:
-                return recorded.rsplit("/worktrees/", 1)[0]
+                common = recorded.rsplit("/worktrees/", 1)[0]
+                # `repo / common` yields common unchanged when it is already
+                # absolute, so this handles both forms.
+                return str((repo / common).resolve())
             return None
     return None
 
@@ -481,6 +499,12 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
         # formatting bug in the tool.
         if not name or not name.strip():
             continue
+        # REBIND, do not merely test. canonical() collapses [-_.]+ and
+        # lowercases; it does NOT trim. Keying the untrimmed string meant
+        # "dup" and " dup " canonicalised to different keys, so a genuine
+        # duplicate was silenced — the false-negative direction. The stripped
+        # value is also what gets printed, so the column has no leading gap.
+        name = name.strip()
         # Keyed by repository identity, so a repo and its worktrees collapse to
         # one entry while genuinely separate checkouts stay separate.
         # setdefault, not assignment: last-wins named whichever directory came
