@@ -196,11 +196,12 @@ SHIM
 
 # make_relative_commondir_shim <dir>
 #
-# Before 2.31, `rev-parse --git-common-dir` inside a linked worktree could print
-# the raw contents of .git/worktrees/<name>/commondir — the relative string
-# `../..` — rather than a path resolved for the caller. Reproduced by reading
-# that file directly. Only the doctor's exact call is intercepted; everything
-# else reaches the real git untouched.
+# Makes `rev-parse --git-common-dir` return a RELATIVE value inside a linked
+# worktree: the raw contents of .git/worktrees/<name>/commondir, read from that
+# file directly, which on a real repo is `../..`. git documents the output as
+# possibly relative; this shim supplies that form on demand rather than
+# asserting any particular git version ever did. Only the doctor's exact call is
+# intercepted; everything else reaches the real git untouched.
 make_relative_commondir_shim() {
     shim_preamble "$1"
     cat >> "$1/git" <<'SHIM'
@@ -836,18 +837,27 @@ fi
 # --- Test 21: a bogus-but-existing common-dir must not merge two repos ------
 
 echo
-echo "=== Test 21: a relative --git-common-dir must not merge distinct repos ==="
+echo "=== Test 21: a relative common-dir resolving to a non-git dir is rejected ==="
 # opensrm-bnal. `candidate.exists()` was both untested — when git succeeds the
-# path always exists, so `if True:` survived — and too weak. Before 2.31,
-# --git-common-dir inside a linked worktree could print the raw contents of
-# .git/worktrees/<name>/commondir, the relative string `../..`. Resolved against
-# the checkout that is the workspace's PARENT, which exists, so an existence
-# check accepts it as an identity.
+# path always exists, so `if True:` survived — and too weak.
 #
-# Two worktrees of two DIFFERENT repos then land on the same ancestor and are
-# merged, so the duplicate they genuinely are goes unreported — the false
-# negative the fallback exists to prevent. Requiring (candidate / "HEAD") rejects
-# any path that is not a git directory.
+# WHAT THIS PINS, stated precisely, because the provenance pass found the
+# previous wording made a claim nobody can check. `--git-common-dir` is
+# DOCUMENTED as possibly relative, resolved against the cwd, and a real main
+# checkout returns the relative string `.git` on every run — so resolving it
+# against the checkout is right and is exercised for real by tests 17/18/24/26.
+# The open question is only what a relative value may resolve TO. `../..` is the
+# literal contents of a real .git/worktrees/<name>/commondir, read from a real
+# `git worktree add`; resolved against a checkout it is an ordinary directory
+# that EXISTS but holds no HEAD. Two checkouts then collapse onto one shared
+# ancestor and the duplicate they genuinely are goes unreported — the false
+# negative the fallback exists to prevent.
+#
+# NO CLAIM that some git version emits that form inside a linked worktree. The
+# earlier banner said "before 2.31"; no corroboration was found, and the 2016
+# rev-parse series that resembles it concerns the MAIN worktree in a
+# subdirectory. The shim supplies a relative value; the assertion is about how
+# such a value is validated, not about which git produced it.
 #
 # The parent repos live OUTSIDE the scanned workspace deliberately: with a parent
 # present, its own identity resolves correctly and the name still maps to more
@@ -1081,6 +1091,11 @@ if ! grep -qE "Traceback|UnicodeDecodeError" <<<"$out"; then
 else
     fail "traceback via git()'s decode: $out"
 fi
+# git()'s decode is only reached if the repo was actually DISCOVERED. Nesting
+# this fixture one directory deeper left both assertions above passing at 64/64
+# — the premise still held, because the byte really was in HEAD, but nothing
+# ever read it. The premise checks the FIXTURE; this checks the SCAN.
+assert_scanned "$out" 1 "test 25 (committed)"
 
 # --- Test 26: a worktree whose parent vanished is still one repo -------------
 
@@ -1222,6 +1237,16 @@ for d in one two; do
 done
 
 out="$(cd "$TRAIL" && run_doctor)" || true
+# The POSITIVE assertion first, and it is not decoration. A `!grep` over output
+# that contains no finding at all is satisfied trivially — demonstrated by
+# renaming these fixtures apart, which left the check below passing at 64/64
+# while asserting nothing. assert_scanned cannot be used here: this path exits
+# 1, so the "N repo(s) checked" line is never printed.
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "the trailing-space fixture does produce a finding to inspect"
+else
+    fail "no finding produced, so the rendering check below is vacuous: $out"
+fi
 if ! grep -qE "[[:space:]]{2}declared by" <<<"$out"; then
     pass "the printed name is trimmed (no double space before 'declared by')"
 else
@@ -1270,6 +1295,56 @@ else
     fail "mixed gitdir forms split one repo into a blocking duplicate (exit $rc): $out"
 fi
 assert_scanned "$out" 2 "test 30"
+
+# --- Test 31: a parent whose own path contains "/worktrees/" ----------------
+
+echo
+echo "=== Test 31: rsplit, not split, on a parent path containing /worktrees/ ==="
+# opensrm-bnal, provenance pass. recorded_common_dir() splits the recorded
+# gitdir on "/worktrees/" and the comment claims rsplit is deliberate, because
+# git appends exactly one "/worktrees/<name>" and the LAST occurrence is
+# therefore the separator. Mutating rsplit -> split stayed GREEN: no fixture had
+# a parent path containing that string, so the claim was untested and the
+# comment was the only thing asserting it.
+#
+# TWO DIFFERENT parents, both beneath a path containing "/worktrees/". Two
+# worktrees of ONE parent cannot discriminate split from rsplit — they share the
+# same prefix under either, so they agree either way. (Tried that first; the
+# mutation stayed green, which is the mis-targeted kill check this file keeps
+# warning about.) With DISTINCT parents, split() truncates both at the FIRST
+# segment, collapsing them onto the same key and silencing a genuine duplicate —
+# the false-negative direction.
+NESTP="$WORK/worktrees/upstreams"
+NESTWS="$WORK/nested-ws"
+mkdir -p "$NESTP" "$NESTWS"
+for up in alpha beta; do
+    make_sibling "$NESTP/$up/shared" nthlayer-common 2.1.2
+    make_worktree "$NESTP/$up/shared" "$NESTWS/nthlayer-common-wt-$up"
+    # Parent GONE, so identity comes from the recorded string rather than from
+    # git resolving it.
+    mv "$NESTP/$up/shared" "$NESTP/$up/shared-moved"
+done
+
+# Premise, both halves. The recorded gitdir must contain TWO "/worktrees/"
+# segments, and the two recordings must share their FIRST-segment prefix —
+# otherwise split() and rsplit() disagree for some other reason and this test
+# does not pin the separator choice.
+rec_a="$(sed -n 's/^gitdir: //p' "$NESTWS/nthlayer-common-wt-alpha/.git")"
+rec_b="$(sed -n 's/^gitdir: //p' "$NESTWS/nthlayer-common-wt-beta/.git")"
+seg_a="$(grep -o "/worktrees/" <<<"$rec_a" | wc -l | tr -d ' ')"
+if (( seg_a >= 2 )) && [[ "${rec_a%%/worktrees/*}" == "${rec_b%%/worktrees/*}" ]]; then
+    pass "premise: $seg_a '/worktrees/' segments, first-segment prefix shared"
+else
+    fail "premise broken: seg_a=$seg_a a='$rec_a' b='$rec_b'"
+fi
+
+rc=0
+out="$(cd "$NESTWS" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "the LAST /worktrees/ is the separator, so distinct parents stay distinct"
+else
+    fail "split on the first segment merged two parents, duplicate silenced (exit $rc): $out"
+fi
 
 echo
 echo "==============================================="

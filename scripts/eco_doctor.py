@@ -414,14 +414,28 @@ def repo_identity(repo: Path) -> str:
     of one guard alone.
 
     STEP 3 — ``(candidate / "HEAD").exists()``, not ``candidate.exists()``.
-    Before 2.31, ``--git-common-dir`` inside a linked worktree could print the
-    raw contents of ``.git/worktrees/<name>/commondir``, which is the relative
-    string ``../..``. Resolved against *repo* that is the workspace's PARENT
-    directory — which exists, so a mere existence check accepts it. Two
-    worktrees of two DIFFERENT repos then resolve to the same shared parent
-    directory and are silently MERGED, so a genuine duplicate goes unreported.
-    Requiring a ``HEAD`` beneath the candidate rejects any path that is not a
-    git directory, whatever produced it.
+
+    ``--git-common-dir`` is documented as possibly RELATIVE, resolved against
+    the current working directory — which is why ``repo / lines[0]`` is the
+    right expression, since ``git -C repo`` makes *repo* the cwd. That is not
+    hypothetical: a main checkout returns the relative string ``.git`` on every
+    run, so this resolve-then-validate path is exercised against real git output
+    constantly.
+
+    The guard is about what a relative value can resolve TO. ``../..`` — the
+    literal contents of a real ``.git/worktrees/<name>/commondir`` — resolves to
+    an ordinary directory that EXISTS but is not a git dir, and a mere existence
+    check accepts it; two checkouts then collapse onto one shared ancestor and a
+    genuine duplicate goes unreported. Requiring a ``HEAD`` beneath the candidate
+    rejects any path that is not a git directory, whatever produced it.
+
+    NO CLAIM is made about which git version emits which form. An earlier
+    version of this docstring asserted that git < 2.31 printed the raw
+    ``commondir`` contents inside a linked worktree; the provenance pass could
+    find no corroboration for it, and the 2016 rev-parse series that resembles
+    it concerns the MAIN worktree in a subdirectory. The guard stands on the
+    documented "may be relative" contract and on the safe direction of its
+    fallback, not on that story.
 
     ``.resolve()`` follows symlinks, so two directories whose ``.git`` symlinks
     to one git dir merge into a single identity. That is INTENDED, not a gap:
