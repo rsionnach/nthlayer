@@ -36,6 +36,42 @@
 #      the detail three hand-rolled versions of this scan got wrong.
 #   8. Findings are one line each and name the repo.
 #
+# Tests 9-16 extend the range arithmetic (worktree shadowing, working-tree vs
+# HEAD provenance for each fact, == / ~= / <= ceilings, max-of-floors,
+# zero-padding, pre-releases, name normalisation).
+#
+# Tests 17-24 are REPOSITORY IDENTITY [opensrm-bnal] — that a repo and its
+# worktrees are one package checked out twice, while two distinct repos claiming
+# one name stay a finding. Each banner names its own hazard; three of them
+# substitute a `git` shim on PATH because the hazard only bites on a git version
+# no machine running this suite has:
+#   17/18. a real worktree is not a duplicate; two `git init` repos still are.
+#   19.    an unreadable checkout splits rather than merging.
+#   20.    both of those still hold on git < 2.31, which does not know
+#          --path-format and ECHOES an unrecognised flag at exit 0.
+#   21.    a relative --git-common-dir resolving to a non-git directory is
+#          rejected, so two worktrees of different repos do not merge.
+#   22.    an ANCESTOR repo's git dir, reached because git ascends out of a
+#          half-cloned directory, is not this checkout's identity.
+#   23.    an ambient GIT_DIR does not redirect the whole scan.
+#   24.    reporting names the main checkout, not a worktree that happens to
+#          sort first.
+#
+# Tests 25-30 are INPUT ROBUSTNESS in the same area, from the edge-cases pass:
+#   25.    an undecodable pyproject does not abort the scan. The worst shape
+#          this tool can fail in: a traceback exits 1, which is also "drift
+#          found", and the pre-flight classifies by line PREFIX — so the gate
+#          read zero blocking findings and proceeded having scanned nothing.
+#   26/27. worktrees of a MOVED parent are still one repository, but two
+#          vanished parents are still two.
+#   28/29. a whitespace-only name is not a name, and a padded name is the same
+#          name — the key must be the TRIMMED value, not merely tested for one.
+#   30.    absolute and relative recorded gitdirs (git >= 2.48 writes relative)
+#          name one parent, so two worktrees of it do not split.
+#
+# Absence assertions are paired with assert_scanned(), because "no finding was
+# reported" is vacuous if a fixture bug left a checkout undiscovered.
+#
 # Runs in a few seconds. No Docker, no network, no Python deps.
 
 set -euo pipefail
@@ -93,6 +129,128 @@ make_consumer() {
     git -C "$dir" init -q
     git -C "$dir" add -A
     git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
+}
+
+# make_worktree <existing-repo-dir> <new-worktree-dir>
+#
+# A REAL `git worktree add`, not a second `git init`. That distinction is the
+# whole point of tests 17/18/21/24: two independent repos claiming one name is a
+# genuine ambiguity, while one repo checked out twice is the workspace's mandated
+# working mode (.claude/bin/eco-worktree.sh).
+make_worktree() {
+    local parent="$1" dest="$2"
+    git -C "$parent" worktree add -q --detach "$dest" HEAD
+}
+
+# --- git shims: reproducing older git, because the suite cannot otherwise ----
+#
+# Two of this bead's hazards only bite on git < 2.31, so on any machine that
+# runs this suite the real git hides them and a reinstated flag or a weakened
+# guard passes unopposed. eco_doctor.py invokes ["git", ...] without a shell, so
+# prepending a shim directory to PATH is enough to substitute an older git for
+# the doctor's own calls while the fixtures are still built by the real one.
+#
+# Each shim is self-checked at its point of use before anything is asserted
+# through it. A shim that quietly stopped reproducing the old behaviour would
+# otherwise turn these tests green for the wrong reason — the fixture-provenance
+# failure this file's header already describes.
+
+# shim_preamble <dir> — an executable `git` in *dir* that knows the real one.
+shim_preamble() {
+    mkdir -p "$1"
+    printf '#!/usr/bin/env bash\n' > "$1/git"
+    printf 'REAL=%q\n' "$(command -v git)" >> "$1/git"
+}
+
+# make_old_git_shim <dir>
+#
+# git < 2.31 does not know `--path-format`, and `git rev-parse` ECHOES an
+# unrecognised argument to stdout and exits 0 rather than failing. Verified
+# against the real git before this shim was written:
+#
+#     $ git -C repo rev-parse --bogus-flag=x --git-common-dir
+#     --bogus-flag=x
+#     .git
+#     $ echo $?
+#     0
+#
+# Echoed before delegating, which is where the real git prints it: the flag
+# precedes --git-common-dir in the call under test.
+make_old_git_shim() {
+    shim_preamble "$1"
+    cat >> "$1/git" <<'SHIM'
+args=(); unknown=()
+for a in "$@"; do
+    case "$a" in
+        --path-format=*) unknown+=("$a") ;;
+        *) args+=("$a") ;;
+    esac
+done
+if (( ${#unknown[@]} )) && [[ " $* " == *" rev-parse "* ]]; then
+    printf '%s\n' "${unknown[@]}"
+fi
+exec "$REAL" "${args[@]}"
+SHIM
+    chmod +x "$1/git"
+}
+
+# make_relative_commondir_shim <dir>
+#
+# Makes `rev-parse --git-common-dir` return a RELATIVE value inside a linked
+# worktree: the raw contents of .git/worktrees/<name>/commondir, read from that
+# file directly, which on a real repo is `../..`. git documents the output as
+# possibly relative; this shim supplies that form on demand rather than
+# asserting any particular git version ever did. Only the doctor's exact call is
+# intercepted; everything else reaches the real git untouched.
+make_relative_commondir_shim() {
+    shim_preamble "$1"
+    cat >> "$1/git" <<'SHIM'
+# Matched by SCANNING the arguments, never by position. Keying on `$3 ==
+# rev-parse` would stop intercepting the moment git() gained a global option
+# (--no-pager, -c foo=bar), and the failure mode is that test 21 goes VACUOUS
+# rather than red — the shim would quietly delegate to the real git, the
+# worktrees would resolve correctly, and the assertion would pass no matter what
+# the guard did. The self-check at the point of use probes with a global option
+# inserted for exactly that reason.
+target=""; prev=""; want_revparse=0; want_common=0
+for a in "$@"; do
+    case "$a" in
+        rev-parse)         want_revparse=1 ;;
+        --git-common-dir)  want_common=1 ;;
+    esac
+    [[ "$prev" == -C ]] && target="$a"
+    prev="$a"
+done
+if (( want_revparse && want_common )) && [[ -n "$target" && -f "$target/.git" ]]; then
+    gitdir="$(sed -n 's/^gitdir: //p' "$target/.git")"
+    if [[ -n "$gitdir" && -f "$gitdir/commondir" ]]; then
+        cat "$gitdir/commondir"
+        exit 0
+    fi
+fi
+exec "$REAL" "$@"
+SHIM
+    chmod +x "$1/git"
+}
+
+# assert_scanned <output> <n> <label>
+#
+# Pairs with every "no DUPLICATE-NAME" assertion in this file. An ABSENCE is
+# only meaningful if every checkout was actually DISCOVERED: a fixture bug that
+# left one out — a dangling `.git`, a pyproject with no name, a mkdir that never
+# ran — satisfies "no finding was reported" vacuously, and the test passes
+# against the bug it was written to catch. That is the failure shape this whole
+# file exists to guard against, and three of these assertions had it.
+#
+# eco_doctor prints the count ONLY on the clean path, which is precisely when an
+# absence assertion applies.
+assert_scanned() {
+    local out="$1" want="$2" label="$3"
+    if grep -q "$want repo(s) checked" <<<"$out"; then
+        pass "$label: all $want checkouts were scanned"
+    else
+        fail "$label: expected '$want repo(s) checked' — output: $out"
+    fi
 }
 
 run_doctor() {
@@ -311,8 +469,9 @@ echo "=== Test 9: a sibling worktree does not hide findings ==="
 SHADOW="$WORK/shadow"
 mkdir -p "$SHADOW"
 make_sibling "$SHADOW/nthlayer-common" nthlayer-common 3.5.0
-# A worktree-shaped duplicate declaring the same package name at a version that
-# would look fine. Sorts after the real one.
+# A second independent repo declaring the same package name at a version that
+# would look fine, sorting after the real one. NOT a worktree — see
+# make_worktree and test 17 for that case, which must NOT be reported.
 make_sibling "$SHADOW/nthlayer-common-wip" nthlayer-common 2.1.2
 make_consumer "$SHADOW/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
 
@@ -527,6 +686,692 @@ if grep -q "SIBLING-MISSING" <<<"$out"; then
     pass "a path source with no readable pyproject is reported"
 else
     fail "silently skipped a missing sibling: $out"
+fi
+
+# --- Test 17: a worktree of the same repo is not a duplicate ---------------
+
+echo
+echo "=== Test 17: a git worktree does not trigger DUPLICATE-NAME ==="
+# opensrm-bnal. DUPLICATE-NAME was added as a safety net beneath NAME-BASED
+# sibling resolution, but the same change replaced that with [tool.uv.sources]
+# path resolution — so the net sits beneath a mechanism that no longer uses
+# names. Meanwhile CLAUDE.md MANDATES sibling worktrees, and a worktree always
+# declares its parent's project.name, so the finding fired on every correct
+# workflow and (classified as blocking by the opensrm-px23 pre-flight) refused
+# every R5 gate in the workspace. Found on that pre-flight's first real use.
+WT="$WORK/worktree-dup"
+mkdir -p "$WT"
+make_sibling "$WT/nthlayer-common" nthlayer-common 2.1.2
+make_consumer "$WT/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+make_worktree "$WT/nthlayer-common" "$WT/nthlayer-common-wip"
+
+rc=0
+out="$(cd "$WT" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "a worktree of the same repo is not reported as a duplicate"
+else
+    fail "worktree reported as DUPLICATE-NAME — blocks every gate: $out"
+fi
+assert_scanned "$out" 3 "test 17"
+if (( rc == 0 )); then
+    pass "clean workspace with a worktree present still exits 0"
+else
+    fail "exited $rc with only a worktree present — output: $out"
+fi
+
+# --- Test 18: two distinct repos claiming one name still report -------------
+
+echo
+echo "=== Test 18: two DISTINCT repos claiming one name still report ==="
+# The other side. Test 9 already covers the shadowing protection; this asserts
+# the finding survives for the case it was actually written for, so the bnal fix
+# cannot be mistaken for deleting the check.
+DIST="$WORK/distinct-dup"
+mkdir -p "$DIST"
+make_sibling "$DIST/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$DIST/nthlayer-common-rival" nthlayer-common 3.5.0
+make_consumer "$DIST/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+# A worktree of the real one MUST be present for the naming assertion below to
+# mean anything: without it every identity appears exactly once and first-wins
+# is indistinguishable from last-wins. The first version of this fixture had no
+# worktree, so the assertion passed against the bug it was written to catch.
+make_worktree "$DIST/nthlayer-common" "$DIST/nthlayer-common-wt"
+
+rc=0
+out="$(cd "$DIST" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "two independent repos claiming one name still reported"
+else
+    fail "the genuine duplicate case was lost: $out"
+fi
+# The finding must name the checkout actually in conflict.
+# The worktree shares the real repo's identity, so last-wins would name
+# nthlayer-common-wt — which declares nothing of its own — instead of
+# nthlayer-common, the checkout actually in conflict with the rival.
+if grep "DUPLICATE-NAME" <<<"$out" | grep -qv "nthlayer-common-wt"; then
+    pass "names the real conflicting checkout, not the worktree bystander"
+else
+    fail "named a worktree instead of the conflicting checkout: $(grep DUPLICATE-NAME <<<"$out")"
+fi
+
+# --- Test 19: an unreadable repo is treated as distinct ---------------------
+
+echo
+echo "=== Test 19: an unreadable repo is treated as distinct, not merged ==="
+# The fallback. A wrong MERGE silences a real ambiguity; a wrong SPLIT reports
+# one that is easy to dismiss.
+#
+# The .git must still EXIST or discover_repos skips the directory entirely and
+# there is no duplicate to find — the first version of this fixture deleted it
+# and the test failed for that reason, not the one intended. Replacing it with
+# an unreadable file keeps the directory discoverable while making rev-parse
+# fail, which is the path under test.
+ORPH="$WORK/orphan"; mkdir -p "$ORPH"
+# BOTH must be unreadable. With only one, a fallback that merged every failure
+# into a single identity would still leave two distinct identities overall and
+# the finding would appear anyway — the first version of this fixture had one
+# and passed against the bug it was written to catch.
+make_sibling "$ORPH/nthlayer-common-broken-a" nthlayer-common 2.1.2
+make_sibling "$ORPH/nthlayer-common-broken-b" nthlayer-common 3.5.0
+for broken in a b; do
+    rm -rf "$ORPH/nthlayer-common-broken-$broken/.git"
+    printf 'not a git directory\n' > "$ORPH/nthlayer-common-broken-$broken/.git"
+done
+make_consumer "$ORPH/nthlayer-core" nthlayer-core ">=2.1.2,<3.0.0" 2.1.2
+
+out="$(cd "$ORPH" && run_doctor)" || true
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "an unreadable checkout stays distinct and is still reported"
+else
+    fail "unreadable checkout merged into another identity: $out"
+fi
+
+# --- Test 20: the worktree fix must hold on git < 2.31 ---------------------
+
+echo
+echo "=== Test 20: identity survives a git that does not know --path-format ==="
+# opensrm-bnal, round-1 CRITICAL. Reinstating `--path-format=absolute` in
+# repo_identity() survives every other test in this file, because the flag works
+# on git >= 2.31 and that is what any machine running this suite has. The failure
+# is invisible without an older git, so someone tidying the flag back in would
+# meet a green suite — and on the old git the identity collapses to the constant
+# "--path-format=absolute\n.git" for every main checkout, merging all distinct
+# repositories into one and silencing genuine duplicates.
+#
+# Re-runs the fixtures from tests 17 and 18 with an older git substituted for the
+# doctor's calls, so BOTH directions are covered on the version that breaks.
+SHIMBIN="$WORK/oldgit-bin"
+make_old_git_shim "$SHIMBIN"
+
+# Shim self-check FIRST. If the shim does not reproduce the hazard — echoing the
+# unknown flag and still exiting 0 — the two assertions below pass for the wrong
+# reason and prove nothing.
+shim_rc=0
+shim_out="$(PATH="$SHIMBIN:$PATH" git -C "$WT/nthlayer-common" \
+    rev-parse --path-format=absolute --git-common-dir 2>&1)" || shim_rc=$?
+if (( shim_rc == 0 )) && [[ "$(head -1 <<<"$shim_out")" == "--path-format=absolute" ]] \
+   && (( $(wc -l <<<"$shim_out") == 2 )); then
+    pass "shim reproduces pre-2.31 rev-parse: echoes the unknown flag, exits 0"
+else
+    fail "shim does not reproduce pre-2.31 rev-parse (rc=$shim_rc): $shim_out"
+fi
+
+rc=0
+out="$(cd "$WT" && PATH="$SHIMBIN:$PATH" run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
+    pass "on git < 2.31 a worktree is still not a duplicate (exit $rc)"
+else
+    fail "old git reintroduced the bnal bug (exit $rc): $out"
+fi
+assert_scanned "$out" 3 "test 20 (old git)"
+
+rc=0
+out="$(cd "$DIST" && PATH="$SHIMBIN:$PATH" run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" \
+   && grep "DUPLICATE-NAME" <<<"$out" | grep -qv "nthlayer-common-wt"; then
+    pass "on git < 2.31 the genuine duplicate is still reported, named correctly"
+else
+    fail "old git lost or misnamed the genuine duplicate (exit $rc): $out"
+fi
+
+# --- Test 21: a bogus-but-existing common-dir must not merge two repos ------
+
+echo
+echo "=== Test 21: a relative common-dir resolving to a non-git dir is rejected ==="
+# opensrm-bnal. `candidate.exists()` was both untested — when git succeeds the
+# path always exists, so `if True:` survived — and too weak.
+#
+# WHAT THIS PINS, stated precisely, because the provenance pass found the
+# previous wording made a claim nobody can check. `--git-common-dir` is
+# DOCUMENTED as possibly relative, resolved against the cwd, and a real main
+# checkout returns the relative string `.git` on every run — so resolving it
+# against the checkout is right and is exercised for real by tests 17/18/24/26.
+# The open question is only what a relative value may resolve TO. `../..` is the
+# literal contents of a real .git/worktrees/<name>/commondir, read from a real
+# `git worktree add`; resolved against a checkout it is an ordinary directory
+# that EXISTS but holds no HEAD. Two checkouts then collapse onto one shared
+# ancestor and the duplicate they genuinely are goes unreported — the false
+# negative the fallback exists to prevent.
+#
+# NO CLAIM that some git version emits that form inside a linked worktree. The
+# earlier banner said "before 2.31"; no corroboration was found, and the 2016
+# rev-parse series that resembles it concerns the MAIN worktree in a
+# subdirectory. The shim supplies a relative value; the assertion is about how
+# such a value is validated, not about which git produced it.
+#
+# The parent repos live OUTSIDE the scanned workspace deliberately: with a parent
+# present, its own identity resolves correctly and the name still maps to more
+# than one identity, so the finding appears either way and the fixture proves
+# nothing.
+REL="$WORK/rel-commondir"
+RELPARENTS="$WORK/rel-parents"
+mkdir -p "$REL" "$RELPARENTS"
+make_sibling "$RELPARENTS/upstream-a" nthlayer-common 2.1.2
+make_sibling "$RELPARENTS/upstream-b" nthlayer-common 3.5.0
+make_worktree "$RELPARENTS/upstream-a" "$REL/nthlayer-common-wt-a"
+make_worktree "$RELPARENTS/upstream-b" "$REL/nthlayer-common-wt-b"
+
+RELBIN="$WORK/relgit-bin"
+make_relative_commondir_shim "$RELBIN"
+
+# Shim self-check, and a check that the fixture's own premise holds: the string
+# must be relative, and must resolve to a directory that EXISTS but is NOT a git
+# directory. If either stops being true the assertion below is vacuous.
+#
+# `|| probe=""` is load-bearing, not defensive noise. Under `set -euo pipefail` a
+# failing command substitution in an ASSIGNMENT aborts the script — verified:
+# `x="$(cd /tmp && cd notadir 2>/dev/null && pwd)"` exits 1 without reaching the
+# next line. Unguarded, a broken premise would kill the suite here, BEFORE the
+# `fail` below that exists to report it, before test 21's real assertion, and
+# before the PASS/FAIL summary. Not a false green, but it turns a deliberate
+# diagnostic into a silent early exit.
+#
+# A GLOBAL OPTION is inserted deliberately — see make_relative_commondir_shim
+# for why the shim scans its arguments instead of keying on their position. If
+# the probe stops going through the shim, test 21 passes VACUOUSLY.
+probe="$(PATH="$RELBIN:$PATH" git --no-pager -C "$REL/nthlayer-common-wt-a" \
+    rev-parse --git-common-dir 2>&1)" || probe="<git failed: $?>"
+resolved="$(cd "$REL/nthlayer-common-wt-a" && cd "$probe" 2>/dev/null && pwd)" \
+    || resolved=""
+if [[ "$probe" == "../.." && -n "$resolved" && ! -e "$resolved/HEAD" ]]; then
+    pass "shim intercepts past a global option, yielding a relative common-dir"
+else
+    fail "fixture premise broken: probe='$probe' resolved='$resolved'"
+fi
+
+rc=0
+out="$(cd "$REL" && PATH="$RELBIN:$PATH" run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "a non-git common-dir is rejected, so the two repos stay distinct"
+else
+    fail "two distinct repos merged on a bogus common-dir, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 22: git ASCENDS — a common-dir must belong to the checkout ---------
+
+echo
+echo "=== Test 22: an ancestor's git dir is not this checkout's identity ==="
+# opensrm-bnal, round-3 (correctness pass). `git rev-parse` does not fail for a
+# directory that merely LOOKS like a repo — it ascends. A `.git` that is an empty
+# DIRECTORY (an interrupted clone, a half-finished copy) is not a repository, so
+# rev-parse answers for the nearest ancestor repo and exits 0. Verified:
+#
+#     $ git -C ws/member rev-parse --git-common-dir
+#     ../../.git
+#     $ echo $?
+#     0
+#
+# That path has a HEAD, so the (candidate / "HEAD") guard from test 21 accepts
+# it, and EVERY such member collapses onto the ancestor's identity — a genuine
+# duplicate silenced. Reachable on ANY git version, unlike the relative-commondir
+# case. An invalid `.git` FILE fails cleanly (rc=128), which is why test 19's
+# fixture was already sound and this one needs a directory.
+ANC="$WORK/ancestor"
+mkdir -p "$ANC"
+git -C "$ANC" init -q
+git -C "$ANC" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+ANCWS="$ANC/ws"
+mkdir -p "$ANCWS"
+for half in a b; do
+    mkdir -p "$ANCWS/nthlayer-common-half-$half/.git"
+    printf '[project]\nname = "nthlayer-common"\nversion = "2.1.%s"\n' "$half" \
+        > "$ANCWS/nthlayer-common-half-$half/pyproject.toml"
+done
+
+# Premise check: the ancestor must actually be reachable by ascent, or the
+# assertion below passes because there was nothing to be hijacked by.
+anc_probe="$(git -C "$ANCWS/nthlayer-common-half-a" rev-parse --git-common-dir 2>&1)" \
+    || anc_probe="<git failed: $?>"
+anc_resolved="$(cd "$ANCWS/nthlayer-common-half-a" && cd "$anc_probe" 2>/dev/null && pwd)" \
+    || anc_resolved=""
+if [[ -n "$anc_resolved" && -e "$anc_resolved/HEAD" ]]; then
+    pass "premise holds: rev-parse ascends to a real git dir ('$anc_probe')"
+else
+    fail "premise broken: probe='$anc_probe' resolved='$anc_resolved'"
+fi
+
+rc=0
+out="$(cd "$ANCWS" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "two half-cloned checkouts do not merge onto the ancestor's identity"
+else
+    fail "ancestor identity merged both checkouts, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 23: an ambient GIT_DIR must not redirect the whole scan -----------
+
+echo
+echo "=== Test 23: GIT_DIR in the environment does not hijack the scan ==="
+# GIT_DIR / GIT_COMMON_DIR / GIT_WORK_TREE OVERRIDE `-C`, so one exported by a
+# hook or a wrapper makes every repo answer for the same repository: the same
+# pyproject and the same uv.lock read for all of them. Asserted on a RANGE
+# finding rather than on DUPLICATE-NAME, because the identity cross-check added
+# in test 22 already rejects a hijacked toplevel — the committed-lock reads are
+# where the scrub is the only thing standing in the way.
+#
+# Reuses test 3's stale-lock fixture: with GIT_DIR pointing elsewhere,
+# `git show HEAD:uv.lock` reads the WRONG repo, finds no lock, and the repo drops
+# out of the scan entirely — the workspace reports clean.
+#
+# Its OWN decoy repo, not test 22's `$ANC`. Borrowing a fixture across tests
+# means deleting or reordering the earlier one aborts the suite here under
+# `set -euo pipefail` rather than failing this assertion — a fragility of exactly
+# the kind this bead keeps finding.
+DECOY="$WORK/git-dir-decoy"
+mkdir -p "$DECOY"
+git -C "$DECOY" init -q
+git -C "$DECOY" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+
+rc=0
+out="$(cd "$STALE" && GIT_DIR="$DECOY/.git" run_doctor)" || rc=$?
+if grep -q "STALE" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "an ambient GIT_DIR is scrubbed; the stale lock is still found"
+else
+    fail "GIT_DIR redirected the scan, findings lost (exit $rc): $out"
+fi
+
+# --- Test 24: naming must not depend on how directories sort ----------------
+
+echo
+echo "=== Test 24: a worktree sorting BEFORE its parent is still not named ==="
+# Test 18 proves the finding names the conflicting checkout rather than a
+# worktree bystander, but only because discover_repos() sorts lexicographically
+# and `nthlayer-common-wt` happens to sort after `nthlayer-common`. Nothing
+# enforces that — `git worktree add` accepts any destination, and only
+# eco-worktree.sh's `<repo>-<slug>` convention keeps it true. A worktree named to
+# sort FIRST would be named in place of the parent, reintroducing the round-1
+# defect. Main checkouts are now processed before linked worktrees regardless of
+# name.
+SORT="$WORK/sort-order"
+mkdir -p "$SORT"
+make_sibling "$SORT/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$SORT/nthlayer-common-rival" nthlayer-common 3.5.0
+# "aaa-" sorts before every other entry, so first-wins by sort order would pick
+# this worktree as the representative of the parent's identity.
+make_worktree "$SORT/nthlayer-common" "$SORT/aaa-common-wt"
+
+rc=0
+out="$(cd "$SORT" && run_doctor)" || rc=$?
+dupline="$(grep "DUPLICATE-NAME" <<<"$out" || true)"
+if [[ "$dupline" == *"nthlayer-common,"* || "$dupline" == *" nthlayer-common" ]]; then
+    pass "names the parent checkout even though the worktree sorts first"
+else
+    fail "a first-sorting worktree was named instead of the parent: '$dupline'"
+fi
+if [[ "$dupline" != *"aaa-common-wt"* ]]; then
+    pass "the first-sorting worktree bystander is not named"
+else
+    fail "worktree bystander named: '$dupline'"
+fi
+
+# --- Test 25: a non-UTF8 pyproject must not kill the scan -------------------
+
+echo
+echo "=== Test 25: an undecodable pyproject does not abort the whole scan ==="
+# opensrm-bnal, edge-cases pass. THE WORST SHAPE THIS TOOL CAN FAIL IN. Both
+# `pj.read_text()` and git()'s `text=True` decode as UTF-8, and an undecodable
+# byte raises UnicodeDecodeError — a ValueError, so neither `except OSError` nor
+# `except TOMLDecodeError` caught it. One latin-1 byte in one pyproject killed
+# the ENTIRE scan with a traceback at exit 1.
+#
+# Exit 1 is also the code for "drift found", and the /r5-supervise pre-flight
+# classifies findings by line PREFIX rather than by exit code — deliberately,
+# see opensrm-px23. A traceback carries no prefix, so the pre-flight read zero
+# blocking findings and PROCEEDED, having scanned nothing at all. A clean record
+# from a check that never ran is precisely what this tool exists to prevent, and
+# what CLAUDE.md calls worse than no gate.
+#
+# A latin-1 author comment or a UTF-16 BOM from a Windows editor is enough.
+U8="$WORK/non-utf8"
+mkdir -p "$U8"
+make_sibling "$U8/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$U8/nthlayer-common-rival" nthlayer-common 3.5.0
+# Stray 0xff in a COMMENT, so the file is still valid TOML once decodable: the
+# name must still be read and the duplicate must still be found, not merely
+# survived.
+printf '[project]\nname = "nthlayer-common"\nversion = "3.5.0"  # \xff\n' \
+    > "$U8/nthlayer-common-rival/pyproject.toml"
+
+rc=0
+out="$(cd "$U8" && run_doctor)" || rc=$?
+if ! grep -qE "Traceback|UnicodeDecodeError" <<<"$out"; then
+    pass "an undecodable pyproject does not traceback"
+else
+    fail "traceback on an undecodable pyproject: $out"
+fi
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "the other findings still print (exit $rc)"
+else
+    fail "findings lost to an undecodable pyproject (exit $rc): $out"
+fi
+
+# The COMMITTED-file path is separate: it decodes inside subprocess.run via
+# git(), not via read_text(), and had the same defect.
+U8C="$WORK/non-utf8-committed"
+mkdir -p "$U8C/nthlayer-core"
+printf '[project]\nname = "nthlayer-core"\nversion = "1.0.0"  # \xff\n' \
+    > "$U8C/nthlayer-core/pyproject.toml"
+git -C "$U8C/nthlayer-core" init -q
+git -C "$U8C/nthlayer-core" add -A
+git -C "$U8C/nthlayer-core" -c user.email=t@t -c user.name=t commit -qm init
+
+# Premise: the byte must actually have reached HEAD, or this asserts nothing
+# about git()'s decode. `git show` is the exact call the doctor makes.
+if git -C "$U8C/nthlayer-core" show HEAD:pyproject.toml 2>/dev/null \
+       | LC_ALL=C grep -q $'\xff'; then
+    pass "premise: the committed blob really is not valid UTF-8"
+else
+    fail "premise broken: the 0xff byte did not reach HEAD"
+fi
+
+rc=0
+out="$(cd "$U8C" && run_doctor)" || rc=$?
+if ! grep -qE "Traceback|UnicodeDecodeError" <<<"$out"; then
+    pass "an undecodable COMMITTED pyproject does not traceback either"
+else
+    fail "traceback via git()'s decode: $out"
+fi
+# git()'s decode is only reached if the repo was actually DISCOVERED. Nesting
+# this fixture one directory deeper left both assertions above passing at 64/64
+# — the premise still held, because the byte really was in HEAD, but nothing
+# ever read it. The premise checks the FIXTURE; this checks the SCAN.
+assert_scanned "$out" 1 "test 25 (committed)"
+
+# --- Test 26: a worktree whose parent vanished is still one repo -------------
+
+echo
+echo "=== Test 26: worktrees of a MOVED parent are not a duplicate ==="
+# opensrm-bnal, edge-cases pass. Two worktrees remain in the workspace, their
+# parent repo is moved or deleted. git can resolve neither, so both took the
+# path fallback and were reported as a DUPLICATE-NAME — which is blocking, so it
+# refused every gate in the workspace exactly as the original bug did, AND was
+# untrue: it said two DISTINCT repositories claim one name when they are one
+# repository checked out twice.
+#
+# A worktree's `.git` file records `gitdir: <parent>/.git/worktrees/<name>`,
+# written by git at creation, so the parent is recoverable from the worktree
+# alone. Two worktrees of one parent therefore still agree after the parent is
+# gone. Nothing is dereferenced — the recorded path is only an opaque key.
+MOVED="$WORK/moved-parent"
+MOVEDP="$WORK/moved-parent-upstreams"
+mkdir -p "$MOVED" "$MOVEDP"
+make_sibling "$MOVEDP/upstream" nthlayer-common 2.1.2
+make_worktree "$MOVEDP/upstream" "$MOVED/nthlayer-common-wt-a"
+make_worktree "$MOVEDP/upstream" "$MOVED/nthlayer-common-wt-b"
+
+# Premise: alive, they must already agree — otherwise this test could pass
+# without the parent ever having gone missing.
+rc=0
+out="$(cd "$MOVED" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "premise: with the parent alive the two worktrees agree"
+else
+    fail "premise broken, worktrees disagreed while the parent was alive: $out"
+fi
+assert_scanned "$out" 2 "test 26 premise"
+
+mv "$MOVEDP/upstream" "$MOVEDP/upstream-moved"
+rc=0
+out="$(cd "$MOVED" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
+    pass "two worktrees of a vanished parent are still one repo (exit $rc)"
+else
+    fail "a moved parent resurrected the blocking false positive (exit $rc): $out"
+fi
+assert_scanned "$out" 2 "test 26"
+
+# --- Test 27: ...but two vanished parents are still two repos ---------------
+
+echo
+echo "=== Test 27: stale worktrees of DIFFERENT parents still report ==="
+# The other direction, and the reason test 26 cannot be mistaken for deleting
+# the check. Each worktree records its OWN parent, so distinct parents yield
+# distinct keys even though neither path exists any more.
+TWOP="$WORK/two-moved-parents"
+TWOPP="$WORK/two-moved-upstreams"
+mkdir -p "$TWOP" "$TWOPP"
+for up in alpha beta; do
+    make_sibling "$TWOPP/$up" nthlayer-common "2.1.2"
+    make_worktree "$TWOPP/$up" "$TWOP/nthlayer-common-wt-$up"
+    mv "$TWOPP/$up" "$TWOPP/$up-moved"
+done
+
+rc=0
+out="$(cd "$TWOP" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "two vanished parents remain two repositories (exit $rc)"
+else
+    fail "distinct stale parents merged, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 28: a whitespace-only project.name is not a name ------------------
+
+echo
+echo "=== Test 28: a whitespace-only project.name is skipped, not printed ==="
+# `if not name` admitted "   ", which rendered a finding with an empty gap where
+# the package name belongs — unreadable, and indistinguishable from a formatting
+# bug in the tool itself.
+BLANK="$WORK/blank-name"
+mkdir -p "$BLANK"
+for d in one two; do
+    mkdir -p "$BLANK/$d"
+    printf '[project]\nname = "   "\nversion = "1.0.0"\n' > "$BLANK/$d/pyproject.toml"
+    git -C "$BLANK/$d" init -q
+    git -C "$BLANK/$d" add -A
+    git -C "$BLANK/$d" -c user.email=t@t -c user.name=t commit -qm init
+done
+
+rc=0
+out="$(cd "$BLANK" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "a whitespace-only name is skipped rather than printed blank"
+else
+    fail "printed a nameless finding: $(grep DUPLICATE-NAME <<<"$out")"
+fi
+assert_scanned "$out" 2 "test 28"
+
+# --- Test 29: a padded name is the same name --------------------------------
+
+echo
+echo "=== Test 29: \" dup \" and \"dup\" are one name, not two ==="
+# opensrm-bnal, edge-cases iteration 2. canonical() collapses [-_.]+ and
+# lowercases; it does NOT trim. The whitespace guard added in test 28 only
+# TESTED name.strip() while the key stayed canonical(name) on the untrimmed
+# string, so "dup" and " dup " keyed differently and a genuine duplicate was
+# silenced. False-negative direction, and reachable from an ordinary hand-edited
+# pyproject.
+PAD="$WORK/padded-name"
+mkdir -p "$PAD"
+for pair in "one:dup" "two: dup "; do
+    d="${pair%%:*}"; n="${pair#*:}"
+    mkdir -p "$PAD/$d"
+    printf '[project]\nname = "%s"\nversion = "1.0.0"\n' "$n" > "$PAD/$d/pyproject.toml"
+    git -C "$PAD/$d" init -q
+    git -C "$PAD/$d" add -A
+    git -C "$PAD/$d" -c user.email=t@t -c user.name=t commit -qm init
+done
+
+rc=0
+out="$(cd "$PAD" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "a padded name still collides with the bare one (exit $rc)"
+else
+    fail "padding evaded the duplicate check (exit $rc): $out"
+fi
+# The PRINTED name must be the trimmed one too. A LEADING space is
+# indistinguishable from the column padding in the rendered line, so it cannot
+# be asserted here — the collision above is what covers that direction. A
+# TRAILING space is visible, as a double space before "declared by", so it gets
+# its own fixture where both names carry one: without the rebind both still
+# canonicalise to the same key, so the finding fires either way and only the
+# rendering differs. That is what makes this assertion discriminating rather
+# than a restatement of the one above.
+TRAIL="$WORK/trailing-name"
+mkdir -p "$TRAIL"
+for d in one two; do
+    mkdir -p "$TRAIL/$d"
+    printf '[project]\nname = "dup "\nversion = "1.0.0"\n' > "$TRAIL/$d/pyproject.toml"
+    git -C "$TRAIL/$d" init -q
+    git -C "$TRAIL/$d" add -A
+    git -C "$TRAIL/$d" -c user.email=t@t -c user.name=t commit -qm init
+done
+
+out="$(cd "$TRAIL" && run_doctor)" || true
+# The POSITIVE assertion first, and it is not decoration. A `!grep` over output
+# that contains no finding at all is satisfied trivially — demonstrated by
+# renaming these fixtures apart, which left the check below passing at 64/64
+# while asserting nothing. assert_scanned cannot be used here: this path exits
+# 1, so the "N repo(s) checked" line is never printed.
+if grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "the trailing-space fixture does produce a finding to inspect"
+else
+    fail "no finding produced, so the rendering check below is vacuous: $out"
+fi
+if ! grep -qE "[[:space:]]{2}declared by" <<<"$out"; then
+    pass "the printed name is trimmed (no double space before 'declared by')"
+else
+    fail "printed an untrimmed name: $(grep DUPLICATE-NAME <<<"$out")"
+fi
+
+# --- Test 30: absolute and relative recorded gitdirs are one parent ---------
+
+echo
+echo "=== Test 30: mixed absolute/relative gitdir is still one repository ==="
+# opensrm-bnal, edge-cases iteration 2. git >= 2.48 can write a RELATIVE gitdir
+# (worktree.useRelativePaths, --relative-paths). recorded_common_dir() used the
+# recorded string as an opaque key, so one worktree created before that setting
+# and one after DISAGREED about the same parent — splitting them and firing the
+# blocking DUPLICATE-NAME that test 26 exists to prevent. Resolving against the
+# checkout makes both forms comparable.
+#
+# The relative form is written by hand because the local git (2.39) cannot
+# produce it. The string is exactly what git >= 2.48 records, and the absolute
+# sibling is left as git actually wrote it, so only the FORM differs.
+MIX="$WORK/mixed-gitdir"
+MIXP="$WORK/mixed-gitdir-upstream"
+mkdir -p "$MIX" "$MIXP"
+make_sibling "$MIXP/shared" nthlayer-common 2.1.2
+make_worktree "$MIXP/shared" "$MIX/nthlayer-common-wt-abs"
+make_worktree "$MIXP/shared" "$MIX/nthlayer-common-wt-rel"
+printf 'gitdir: ../../mixed-gitdir-upstream/shared/.git/worktrees/nthlayer-common-wt-rel\n' \
+    > "$MIX/nthlayer-common-wt-rel/.git"
+
+# Premise: the two recorded forms must actually DIFFER as strings, or resolution
+# is not what makes this test pass.
+abs_rec="$(sed -n 's/^gitdir: //p' "$MIX/nthlayer-common-wt-abs/.git")"
+rel_rec="$(sed -n 's/^gitdir: //p' "$MIX/nthlayer-common-wt-rel/.git")"
+if [[ "$abs_rec" != "$rel_rec" && "$abs_rec" == /* && "$rel_rec" != /* ]]; then
+    pass "premise: one recorded gitdir is absolute, the other relative"
+else
+    fail "premise broken: abs='$abs_rec' rel='$rel_rec'"
+fi
+
+mv "$MIXP/shared" "$MIXP/shared-moved"
+rc=0
+out="$(cd "$MIX" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == 0 )); then
+    pass "absolute and relative gitdirs resolve to one parent (exit $rc)"
+else
+    fail "mixed gitdir forms split one repo into a blocking duplicate (exit $rc): $out"
+fi
+assert_scanned "$out" 2 "test 30"
+
+# --- Test 31: a parent whose own path contains "/worktrees/" ----------------
+
+echo
+echo "=== Test 31: rsplit, not split, on a parent path containing /worktrees/ ==="
+# opensrm-bnal, provenance pass. recorded_common_dir() splits the recorded
+# gitdir on "/worktrees/" and the comment claims rsplit is deliberate, because
+# git appends exactly one "/worktrees/<name>" and the LAST occurrence is
+# therefore the separator. Mutating rsplit -> split stayed GREEN: no fixture had
+# a parent path containing that string, so the claim was untested and the
+# comment was the only thing asserting it.
+#
+# TWO DIFFERENT parents, both beneath a path containing "/worktrees/". Two
+# worktrees of ONE parent cannot discriminate split from rsplit — they share the
+# same prefix under either, so they agree either way. (Tried that first; the
+# mutation stayed green, which is the mis-targeted kill check this file keeps
+# warning about.) With DISTINCT parents, split() truncates both at the FIRST
+# segment, collapsing them onto the same key and silencing a genuine duplicate —
+# the false-negative direction.
+NESTP="$WORK/worktrees/upstreams"
+NESTWS="$WORK/nested-ws"
+mkdir -p "$NESTP" "$NESTWS"
+for up in alpha beta; do
+    make_sibling "$NESTP/$up/shared" nthlayer-common 2.1.2
+    make_worktree "$NESTP/$up/shared" "$NESTWS/nthlayer-common-wt-$up"
+    # Parent GONE, so identity comes from the recorded string rather than from
+    # git resolving it.
+    mv "$NESTP/$up/shared" "$NESTP/$up/shared-moved"
+done
+
+# Premise, both halves. The recorded gitdir must contain TWO "/worktrees/"
+# segments, and the two recordings must share their FIRST-segment prefix —
+# otherwise split() and rsplit() disagree for some other reason and this test
+# does not pin the separator choice.
+rec_a="$(sed -n 's/^gitdir: //p' "$NESTWS/nthlayer-common-wt-alpha/.git")"
+rec_b="$(sed -n 's/^gitdir: //p' "$NESTWS/nthlayer-common-wt-beta/.git")"
+seg_a="$(grep -o "/worktrees/" <<<"$rec_a" | wc -l | tr -d ' ')"
+if (( seg_a >= 2 )) && [[ "${rec_a%%/worktrees/*}" == "${rec_b%%/worktrees/*}" ]]; then
+    pass "premise: $seg_a '/worktrees/' segments, first-segment prefix shared"
+else
+    fail "premise broken: seg_a=$seg_a a='$rec_a' b='$rec_b'"
+fi
+
+rc=0
+out="$(cd "$NESTWS" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "the LAST /worktrees/ is the separator, so distinct parents stay distinct"
+else
+    fail "split on the first segment merged two parents, duplicate silenced (exit $rc): $out"
+fi
+
+# --- Test 32: the duplicate key is CANONICALISED ----------------------------
+
+echo
+echo "=== Test 32: nthlayer_common and nthlayer-common are one name ==="
+# opensrm-bnal, provenance pass (finding N5). canonical() has been in the
+# duplicate key since opensrm-8hn3 — `seen.setdefault(canonical(name), ...)` —
+# but nothing asserted it: mutating the key to the raw `name` stayed GREEN, so
+# two members declaring `nthlayer_common` and `nthlayer-common` would have been
+# reported by nothing at all. Inherited rather than introduced here, but the key
+# expression is one this bead restructured, and an untested line in it is how
+# the whole class of bug in this file starts.
+#
+# PEP 503 makes these the same distribution name, and uv normalises when it
+# writes a lock — which is why test 16 already covers the same equivalence on
+# the DEPENDENCY side. This covers the duplicate-name side.
+CANON="$WORK/canonical-name"
+mkdir -p "$CANON"
+make_sibling "$CANON/nthlayer-common" nthlayer-common 2.1.2
+make_sibling "$CANON/nthlayer-common-underscore" nthlayer_common 3.5.0
+
+rc=0
+out="$(cd "$CANON" && run_doctor)" || rc=$?
+if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
+    pass "underscore and hyphen spellings collide as one name (exit $rc)"
+else
+    fail "canonicalisation untested, the two spellings did not collide (exit $rc): $out"
 fi
 
 echo

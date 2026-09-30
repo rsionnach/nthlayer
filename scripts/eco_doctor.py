@@ -37,6 +37,7 @@ clean, while CI resolved the stale committed one.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -186,11 +187,41 @@ def parse_bounds(spec: str) -> Bounds:
 
 
 def git(repo: Path, *args: str) -> str | None:
-    """Run git in *repo*; None if it fails. Never raises."""
+    """Run git in *repo*; None if it fails. Never raises.
+
+    ``GIT_DIR``, ``GIT_COMMON_DIR`` and ``GIT_WORK_TREE`` are scrubbed from the
+    environment. They OVERRIDE ``-C``, so an ambient one — exported by a hook, a
+    wrapper script, or a shell the operator happened to run this from — makes
+    every repo answer for the same repository: identical ``pyproject.toml`` and
+    ``uv.lock`` content read for all of them, and one identity shared by all.
+    Both failure modes are the silent kind, which is the class of bug this tool
+    exists to catch. It always addresses repos explicitly by path and never
+    wants an ambient one.
+
+    ``errors="replace"``, because ``text=True`` decodes as UTF-8 and a committed
+    file that is not valid UTF-8 — a latin-1 byte in an author comment, a
+    UTF-16 BOM from Windows — otherwise raises ``UnicodeDecodeError`` from
+    inside ``subprocess.run``. That is a ``ValueError``, so ``except OSError``
+    did not catch it and the whole scan died with a traceback. Replacing the
+    undecodable bytes keeps the text readable enough for tomllib, which either
+    parses it or raises ``TOMLDecodeError`` and gets reported as PARSE-ERROR —
+    a VISIBLE finding either way, rather than a crash.
+
+    The trade is accepted knowingly: two names differing ONLY in undecodable
+    bytes both become the same U+FFFD string and are reported as one duplicate,
+    a false positive. It is the right way round — the replacement character is
+    visible in the output, mojibake cannot collide with a valid ASCII package
+    name, and the alternative is a traceback that reads as a clean scan.
+    """
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE")
+    }
     try:
         out = subprocess.run(
             ["git", "-C", str(repo), *args],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, check=False, env=env,
+            errors="replace",
         )
     except OSError:
         return None
@@ -241,30 +272,275 @@ def version_at(path: Path) -> str | None:
     return data.get("project", {}).get("version")
 
 
-def duplicate_name_findings(repos: list[Path]) -> list[str]:
-    """Report directories that declare the same package name.
+def recorded_common_dir(repo: Path) -> str | None:
+    """A linked worktree's parent git dir, read from its own ``.git`` file.
 
-    A safety net beneath path_sources(): if two checkouts claim one name, any
-    name-based reasoning anywhere is ambiguous, and saying so is better than
-    picking one. Worktrees are the common cause and are exactly what defeated
-    the earlier flat-map approach.
+    Last resort for when git cannot answer at all. A worktree's ``.git`` is a
+    file reading ``gitdir: <parent>/.git/worktrees/<name>``, written by git at
+    creation; everything before ``/worktrees/`` is the parent's common dir —
+    the same string a healthy worktree's ``--git-common-dir`` returns.
+
+    The case this exists for: the parent repo is MOVED or DELETED while two of
+    its worktrees remain in the workspace. git can then resolve neither, both
+    fall to the path fallback, and they are reported as a DUPLICATE-NAME —
+    which is (a) the one finding the opensrm-px23 pre-flight treats as
+    BLOCKING, so it refuses every gate in the workspace exactly as the bug this
+    bead fixes did, and (b) simply untrue: it says two DISTINCT repositories
+    claim one name, when they are one repository checked out twice. A finding
+    that misdescribes what it found trains people to ignore the tool, which is
+    the reason check_repo() stays silent about a missing pyproject rather than
+    reporting it.
+
+    RESOLVED AGAINST *repo*, not used as a raw string. git >= 2.48 can write a
+    RELATIVE gitdir (``worktree.useRelativePaths``, ``--relative-paths``), so
+    the recorded form is not reliably absolute — and two worktrees of ONE parent
+    then disagree if one was created before that setting and one after, which
+    splits them and fires the blocking false positive this function exists to
+    remove. Resolving makes both forms comparable, and keeps the key in the same
+    shape as the resolved candidate repo_identity() produces on the happy path.
+    The result is never dereferenced, so it does not matter that the path may no
+    longer exist.
+
+    This cannot merge distinct repositories: the resolved path names one
+    specific parent git dir, so two worktrees made from different parents yield
+    different keys.
+
+    Returns None for a main checkout (``.git`` is a directory), for a ``.git``
+    file that records no ``gitdir:``, and for one that is unreadable.
     """
-    seen: dict[str, list[str]] = {}
-    for repo in repos:
+    gitfile = repo / ".git"
+    try:
+        if not gitfile.is_file():
+            return None
+        text = gitfile.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("gitdir:"):
+            recorded = line.split(":", 1)[1].strip()
+            # rsplit: git appends exactly one "/worktrees/<name>", so the LAST
+            # occurrence is the separator even if the parent's own path
+            # contains that string.
+            if "/worktrees/" in recorded:
+                common = recorded.rsplit("/worktrees/", 1)[0]
+                # `repo / common` yields common unchanged when it is already
+                # absolute, so this handles both forms.
+                return str((repo / common).resolve())
+            return None
+    return None
+
+
+def unidentified(repo: Path) -> str:
+    """Identity for a checkout git could not describe: recorded, else its path.
+
+    The path fallback is a deliberate SPLIT — a wrong MERGE silences a real
+    ambiguity, a wrong SPLIT reports one that is easy to dismiss — but a
+    worktree whose parent has vanished is not ambiguous at all, and
+    recorded_common_dir() recovers what git itself wrote down.
+    """
+    return recorded_common_dir(repo) or str(repo.resolve())
+
+
+def is_main_checkout(repo: Path) -> bool:
+    """True if *repo* is a repository's own checkout rather than a linked worktree.
+
+    ``.git`` is a DIRECTORY in a main checkout and a FILE in a linked worktree.
+
+    Used only to order reporting, never to decide whether a finding fires, which
+    is what makes the one case it gets wrong harmless: a checkout made with
+    ``--separate-git-dir`` also has a ``.git`` file and so reads as a worktree
+    here. repo_identity() still resolves it to its own separate git dir and it
+    still shares one identity with its worktrees, so the most that can change is
+    WHICH of two directory names for the same repository gets printed.
+    """
+    return (repo / ".git").is_dir()
+
+
+def repo_identity(repo: Path) -> str:
+    """What repository a checkout belongs to, shared by all its worktrees.
+
+    THE RULE, in the order the code applies it:
+
+      1. ``--show-toplevel`` must resolve to *repo* itself, or give up.
+      2. ``--git-common-dir`` must be a single line.
+      3. Resolved against *repo*, it must be a git directory (a ``HEAD``).
+      4. Otherwise fall back to *repo*'s own path — a deliberate SPLIT.
+
+    ``git rev-parse --git-common-dir`` resolves to the same location for a repo
+    and every worktree of it — the same key ``.claude/hooks/r5-lock.sh`` uses to
+    make the supervisor mutex per repo rather than per directory. A bare
+    ``--git-common-dir`` returns ``.git`` for a main checkout and an absolute
+    path for a worktree, so resolving it against *repo* converges both without
+    depending on any git version.
+
+    Step 4 splits rather than merges because the two errors are not symmetrical:
+    a wrong MERGE silences a real ambiguity, a wrong SPLIT reports one that is
+    easy to dismiss. Every guard below therefore falls back, never guesses.
+
+    Steps 1-3 each exist because of a specific way git can hand back something
+    plausible and wrong. In order:
+
+    STEP 1 — git ASCENDS. A directory whose ``.git`` is an empty DIRECTORY (an
+    interrupted clone, a half-finished manual copy) is not a repository, so
+    ``rev-parse`` answers for the nearest ANCESTOR REPO and exits 0. Verified:
+    it prints ``../../.git``. That path has a ``HEAD``, so step 3 would accept
+    it, and every such member would collapse onto the ancestor's identity — a
+    genuine DUPLICATE-NAME silenced. Unlike the step-3 hazard this needs no old
+    git; it is reachable on any version. (An invalid ``.git`` FILE fails cleanly
+    with rc=128, so that path was already safe.) A ``--show-toplevel`` that is
+    not *repo* means git is describing some other checkout, whatever the reason.
+
+    STEP 2 — NO ``--path-format=absolute``, deliberately. That flag needs git
+    >= 2.31 (Ubuntu 20.04 ships 2.25, Debian bullseye 2.30) and ``git rev-parse``
+    ECHOES an unrecognised flag and exits 0 rather than failing:
+
+        $ git rev-parse --bogus-flag=x --git-common-dir
+        --bogus-flag=x
+        .git
+        $ echo $?
+        0
+
+    So on older git the identity became the constant string
+    ``"--path-format=absolute\n.git"`` for every main checkout, merging all
+    distinct repositories into one and silencing genuine duplicates — the
+    false-negative direction. And it did not even buy the worktree fix, because
+    a worktree reports its parent's absolute path regardless.
+
+    This check is now SUBSUMED by step 3: with the flag reinstated the first
+    line is ``--path-format=absolute``, which has no ``HEAD`` beneath it either.
+    Mutating ``len(lines) == 1`` therefore survives the suite by design, and it
+    is kept as defence in depth rather than removed — a git that printed an
+    unexpected second line should not have its first one trusted on the strength
+    of one guard alone.
+
+    STEP 3 — ``(candidate / "HEAD").exists()``, not ``candidate.exists()``.
+
+    ``--git-common-dir`` is documented as possibly RELATIVE, resolved against
+    the current working directory — which is why ``repo / lines[0]`` is the
+    right expression, since ``git -C repo`` makes *repo* the cwd. That is not
+    hypothetical: a main checkout returns the relative string ``.git`` on every
+    run, so this resolve-then-validate path is exercised against real git output
+    constantly.
+
+    The guard is about what a relative value can resolve TO. ``../..`` — the
+    literal contents of a real ``.git/worktrees/<name>/commondir`` — typically
+    resolves to an ordinary directory that EXISTS but holds no ``HEAD`` (where
+    it lands is layout-dependent), and a mere existence check accepts it; two
+    checkouts then collapse onto one shared ancestor and a genuine duplicate
+    goes unreported. Requiring a ``HEAD`` beneath the candidate
+    rejects any path that is not a git directory, whatever produced it.
+
+    NO CLAIM is made about which git version emits which form. An earlier
+    version of this docstring asserted that git < 2.31 printed the raw
+    ``commondir`` contents inside a linked worktree; the provenance pass could
+    find no corroboration for it, and the 2016 rev-parse series that resembles
+    it concerns the MAIN worktree in a subdirectory. The guard stands on the
+    documented "may be relative" contract and on the safe direction of its
+    fallback, not on that story.
+
+    ``.resolve()`` follows symlinks, so two directories whose ``.git`` symlinks
+    to one git dir merge into a single identity. That is INTENDED, not a gap:
+    two checkouts sharing one git directory are one repository by exactly the
+    rule this function implements. It is only reachable by hand-made symlink,
+    and reporting it would require deciding that "same repository" means
+    something other than "same common dir".
+    """
+    top = (git(repo, "rev-parse", "--show-toplevel") or "").strip()
+    if not top or Path(top).resolve() != repo.resolve():
+        return unidentified(repo)
+
+    out = git(repo, "rev-parse", "--git-common-dir")
+    if out:
+        lines = [line for line in out.splitlines() if line.strip()]
+        if len(lines) == 1:
+            candidate = (repo / lines[0]).resolve()
+            if (candidate / "HEAD").exists():
+                return str(candidate)
+    # Unreadable, or output we do not recognise: fall back to what the worktree
+    # itself records, else treat this checkout as DISTINCT. A wrong merge
+    # silences a real ambiguity; a wrong split reports one that is easy to
+    # dismiss — except when the split is itself the blocking false positive
+    # this bead exists to remove, which is what unidentified() handles.
+    return unidentified(repo)
+
+
+def duplicate_name_findings(repos: list[Path]) -> list[str]:
+    """Report DISTINCT repositories that declare the same package name.
+
+    A safety net beneath path_sources(): if two unrelated checkouts claim one
+    name, any name-based reasoning is ambiguous and saying so beats picking one.
+
+    Worktrees are COLLAPSED ONTO THEIR PARENT'S IDENTITY, not excluded from the
+    scan [opensrm-bnal]. The distinction is load-bearing: a worktree whose parent
+    lives outside the workspace is still scanned, and can still be the directory
+    a finding names — correctly, because it is the only checkout of that
+    repository present.
+
+    That collapsing is the point. A worktree always declares its parent's
+    ``project.name``, and CLAUDE.md MANDATES sibling worktrees for parallel work
+    — so reporting them made this finding fire on every correct workflow. The
+    /r5-supervise pre-flight (opensrm-px23) classifies DUPLICATE-NAME as
+    blocking, so it then refused every R5 gate in the workspace. Caught on that
+    pre-flight's first real use.
+
+    The net was written beneath NAME-BASED sibling resolution, and the same
+    change that added it replaced that with ``[tool.uv.sources]`` path
+    resolution — so it had been sitting beneath a mechanism that no longer used
+    names at all.
+    """
+    seen: dict[str, dict[str, str]] = {}
+    # MAIN CHECKOUTS FIRST, so first-wins below does not depend on how the
+    # directories happen to sort. discover_repos() sorts lexicographically, and a
+    # worktree named to sort before its parent — nothing stops one, only
+    # eco-worktree.sh's `<repo>-<slug>` convention — would otherwise be named in
+    # place of the checkout actually in conflict, reintroducing the defect the
+    # setdefault below was written to fix. Stable sort, so lexicographic order
+    # still holds within each class.
+    for repo in sorted(repos, key=lambda p: not is_main_checkout(p)):
         pj = repo / "pyproject.toml"
         if not pj.is_file():
             continue
         try:
-            name = tomllib.loads(pj.read_text()).get("project", {}).get("name")
-        except (OSError, tomllib.TOMLDecodeError):
+            # errors="replace" and UnicodeDecodeError both, for the reason
+            # git() gives: text=True / read_text() decode as UTF-8, and an
+            # undecodable byte raises a ValueError that neither OSError nor
+            # TOMLDecodeError catches. Unguarded, one latin-1 byte in one
+            # pyproject killed the ENTIRE scan with a traceback — and since the
+            # /r5-supervise pre-flight classifies findings by line PREFIX, a
+            # traceback emits no prefix at all, so the gate read zero blocking
+            # findings and proceeded having scanned nothing. A clean record from
+            # a check that never ran is the failure this tool exists to prevent.
+            text = pj.read_text(encoding="utf-8", errors="replace")
+            name = tomllib.loads(text).get("project", {}).get("name")
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
             continue
-        if name:
-            seen.setdefault(canonical(name), []).append(repo.name)
+        # strip(): a whitespace-only name is not a name. `if not name` admitted
+        # "   ", which then rendered a finding with an empty gap where the
+        # package should be — unreadable, and indistinguishable from a
+        # formatting bug in the tool.
+        if not name or not name.strip():
+            continue
+        # REBIND, do not merely test. canonical() collapses [-_.]+ and
+        # lowercases; it does NOT trim. Keying the untrimmed string meant
+        # "dup" and " dup " canonicalised to different keys, so a genuine
+        # duplicate was silenced — the false-negative direction. The stripped
+        # value is also what gets printed, so the column has no leading gap.
+        name = name.strip()
+        # Keyed by repository identity, so a repo and its worktrees collapse to
+        # one entry while genuinely separate checkouts stay separate.
+        # setdefault, not assignment: last-wins named whichever directory came
+        # last, so a worktree — which declares nothing independently — could be
+        # reported in place of the checkout actually in conflict.
+        seen.setdefault(canonical(name), {}).setdefault(
+            repo_identity(repo), repo.name
+        )
+
     out = []
-    for name, dirs in sorted(seen.items()):
-        if len(dirs) > 1:
+    for name, by_identity in sorted(seen.items()):
+        if len(by_identity) > 1:
+            dirs = ", ".join(sorted(by_identity.values()))
             out.append(
-                f"DUPLICATE-NAME   {'(workspace)':28} {name} declared by {', '.join(sorted(dirs))}"
+                f"DUPLICATE-NAME   {'(workspace)':28} {name} declared by {dirs}"
             )
     return out
 
