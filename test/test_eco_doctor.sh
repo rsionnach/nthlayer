@@ -903,8 +903,18 @@ echo "=== Test 23: GIT_DIR in the environment does not hijack the scan ==="
 # Reuses test 3's stale-lock fixture: with GIT_DIR pointing elsewhere,
 # `git show HEAD:uv.lock` reads the WRONG repo, finds no lock, and the repo drops
 # out of the scan entirely — the workspace reports clean.
+#
+# Its OWN decoy repo, not test 22's `$ANC`. Borrowing a fixture across tests
+# means deleting or reordering the earlier one aborts the suite here under
+# `set -euo pipefail` rather than failing this assertion — a fragility of exactly
+# the kind this bead keeps finding.
+DECOY="$WORK/git-dir-decoy"
+mkdir -p "$DECOY"
+git -C "$DECOY" init -q
+git -C "$DECOY" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+
 rc=0
-out="$(cd "$STALE" && GIT_DIR="$ANC/.git" run_doctor)" || rc=$?
+out="$(cd "$STALE" && GIT_DIR="$DECOY/.git" run_doctor)" || rc=$?
 if grep -q "STALE" <<<"$out" && (( rc == FINDINGS_RC )); then
     pass "an ambient GIT_DIR is scrubbed; the stale lock is still found"
 else
