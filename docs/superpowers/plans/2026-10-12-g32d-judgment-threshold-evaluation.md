@@ -856,7 +856,15 @@ _EXAMPLES = sorted(
 
 
 def test_the_threshold_examples_are_present():
-    assert len(_EXAMPLES) >= 3, _EXAMPLES  # all-five-types, segments-two-dimensions, ai-gate
+    # 8 at the time of writing (opensrm main, 2026-10-12): the six in
+    # examples/judgment-thresholds/, service-manifest-full.yaml and
+    # services/ai-gate.yaml. A floor, not an equality: new examples are welcome,
+    # but a glob or filter that silently drops some must fail here.
+    names = {p.relative_to(_SPEC_V2 / "examples").as_posix() for p in _EXAMPLES}
+    assert {"judgment-thresholds/all-five-types.yaml",
+            "judgment-thresholds/segments-two-dimensions.yaml",
+            "services/ai-gate.yaml"} <= names, names
+    assert len(_EXAMPLES) >= 8, names
 
 
 @pytest.mark.parametrize("source", _EXAMPLES, ids=lambda p: p.name)
@@ -1242,6 +1250,15 @@ async def test_calibration_query_selects_declared_bins_and_window():
     await sample(p, "svc", _cal(maximum_brier_score=0.1), now=NOW)
     q = p.query.await_args.args[0]
     assert 'service="svc"' in q and 'bins="10"' in q and 'window="30d"' in q
+
+
+async def test_gauge_query_takes_the_max_across_series():
+    # One series per service/bins/window is the contract; max() is the
+    # conservative fallback when an exporter sends several (e.g. per instance).
+    p = _provider([])
+    await sample(p, "svc", _cal(maximum_expected_calibration_error=0.05, maximum_brier_score=0.1), now=NOW)
+    assert [q.split("{")[0] for q in _queries(p)] == [
+        "max(gen_ai_calibration_ece", "max(gen_ai_calibration_brier"]
 
 
 async def test_mismatched_bins_label_is_no_data():
@@ -1767,6 +1784,14 @@ def test_not_evaluable_gap_does_not_refire():
     assert _run(["breach", "not_evaluable", "breach"]) == [True, False, False]
 
 
+def test_two_within_cycles_do_not_rearm():
+    assert _run(["breach", "within", "within", "breach"]) == [True, False, False, False]
+
+
+def test_three_within_cycles_rearm():
+    assert _run(["breach", "within", "within", "within", "breach"]) == [True, False, False, False, True]
+
+
 def test_flapping_does_not_refire_until_rearmed():
     assert _run(["breach", "within", "breach", "within", "within", "within", "breach"]) == [
         True, False, False, False, False, False, True]
@@ -1932,6 +1957,7 @@ import yaml
 from nthlayer_common.api_client import APIResult
 from nthlayer_common.manifest import threshold_from_v2_entry, threshold_to_v2_entry
 
+from nthlayer_workers.measure.thresholds.state import threshold_key
 from nthlayer_workers.measure.worker import MeasureModule
 
 _CAL = {"type": "calibration", "measurement": {"bins": 10, "window": "30d"},
@@ -2007,9 +2033,10 @@ async def test_same_type_entries_with_different_bounds_are_both_evaluated():
     other = dict(_CAL, bounds={"maximum_expected_calibration_error": 0.2})
     m, prov, a, v = _module([0.1, 0.1], _manifests(("svc", [_CAL, other])))
     await _cycles(m, prov, 1)
-    statuses = sorted(x["data"]["outcome"]["status"] for x in a)
-    assert statuses == ["breach", "within"]
-    assert len({x["data"]["threshold_key"] for x in a}) == 2
+    by_key = {x["data"]["threshold_key"]: x["data"]["outcome"]["status"] for x in a}
+    base = threshold_key("svc", threshold_from_v2_entry(_CAL))
+    # Declared order: the first keeps the bare key, the second gets #1.
+    assert by_key == {base: "breach", f"{base}#1": "within"}
 
 
 async def test_duplicate_entries_emit_once():
@@ -2071,9 +2098,27 @@ async def test_served_shape_drives_a_cycle():
     served = [threshold_to_v2_entry(t) for t in
               (threshold_from_v2_entry(e)
                for e in yaml.safe_load(src.read_text())["spec"]["judgment_threshold"])]
-    m, prov, a, v = _module([0.01] * 10, _manifests(("svc", served)))
+    m, _, a, v = _module([], _manifests(("svc", served)))
+
+    def answer(q):
+        if "_bucket" in q:
+            # 10 latencies: 5 <= 1h, 5 in (1h, 1d]. p50 rank 5 -> exactly 3600
+            # (within 1h); p90 rank 9 -> 3600 + 82800 * 4/5 = 69840 (within 24h).
+            return {"status": "success", "data": {"result": [
+                {"metric": {"le": le}, "value": [0, n]}
+                for le, n in (("3600", "5"), ("86400", "10"), ("+Inf", "10"))]}}
+        return _vector(0.01)  # Brier 0.01 (bound 0.05); retention start 0.01 (decades back)
+
+    prov = _recording_provider(answer)
     await _cycles(m, prov, 1)
-    assert len(a) == len(served)
+    outcomes = {x["data"]["outcome"]["type"]: x["data"]["outcome"] for x in a}
+    assert len(a) == len(served) and set(outcomes) == {t["type"] for t in served}
+    assert {t: o["status"] for t, o in outcomes.items()} == {
+        "segments": "not_evaluable", "stability": "not_evaluable", "audit_backlog": "not_evaluable",
+        "calibration": "within", "feedback_latency": "within"}
+    for t in ("segments", "stability", "audit_backlog"):
+        assert {b["reason"] for b in outcomes[t]["bounds"]} == {"no_data_source"}, t
+    assert v == []
 
 
 # --- Failure containment and delivery (R5 edge-cases) ----------------------
@@ -2128,6 +2173,33 @@ async def test_one_failing_entry_does_not_stop_the_others():
         await _cycles(m, prov, 1)
     assert [x["data"]["outcome"]["type"] for x in a] == ["calibration"]
     assert len(_breaches(v)) == 1
+
+
+async def test_a_raising_entry_is_contained_inside_the_phase():
+    """The phase itself returns the good entry's breach and commits its state:
+    the failure must not escape run_threshold_phase (which would cost this
+    cycle's threshold breaches in governance), not merely spare a sibling."""
+    from nthlayer_workers.measure.thresholds import phase
+
+    real = phase.evaluate_threshold
+
+    def flaky(t, samples):
+        if t.type == "audit_backlog":
+            raise RuntimeError("boom")
+        return real(t, samples)
+
+    backlog = {"type": "audit_backlog", "bounds": {"maximum_age": "24h"}}
+    m, prov, a, v = _module([0.2], _manifests())
+    state, problems = {}, set()
+    with patch("nthlayer_workers.measure.thresholds.phase.evaluate_threshold", side_effect=flaky):
+        breaches = await phase.run_threshold_phase(
+            client=m.client, provider=prov, state=state, seen_problems=problems,
+            manifests=[{"name": "svc", "judgment_thresholds": [backlog, _CAL]}],
+        )
+    good = threshold_key("svc", threshold_from_v2_entry(_CAL))
+    assert [k for k, _svc, _id in breaches] == [good]
+    assert set(state) == {good} and state[good]["last_evaluable"] == "breach"
+    assert any(p.startswith("eval:") for p in problems)
 
 
 async def test_threshold_phase_failure_does_not_stop_slo_phases():
