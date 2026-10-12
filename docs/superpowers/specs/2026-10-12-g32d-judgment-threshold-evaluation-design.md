@@ -150,10 +150,13 @@ evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdO
   bug: only the calibration query string was ever tested);
 - a Prometheus error or timeout → `Missing("no_data", <error>)`; it never
   raises;
-- a 30-day query whose data does not span the window (retention shorter
-  than the window, or the series younger than it) →
-  `Missing("insufficient_window")`, never a partial-window value presented as
-  30 days;
+- a 30-day query that Prometheus cannot answer over the whole window
+  (its retention, `min(prometheus_tsdb_lowest_timestamp_seconds)`, is
+  shorter than the window) → `Missing("insufficient_window")`. A *young
+  series* is measured: CORE §5.5.5 defines p50/p90 over ground truth that
+  arrived in the last 30 days, and for a 3-day-old service that is exactly
+  what the 3 days hold. Unknown retention (Prometheus not scraping itself)
+  measures what it can. (Revised at Checkpoint A, R5 correctness.)
 - segments, stability, audit_backlog → `Missing("no_data_source")` for every
   bound.
 
@@ -168,10 +171,16 @@ Per cycle:
    A parse error logs `threshold_parse_failed` (once per change, not per
    cycle) and skips only that entry.
 3. **Identity key:** `service` + `type` + a content hash of the identifying
-   fields — `metric`, `segment_dimension`, sorted `segment_values`,
-   `probe.frozen_input_set`, measurement `window` / `bins`. Bounds are
-   excluded, so tightening a bound keeps the key. Identical entries share a
-   key: evaluated once, the duplicate logged once per change.
+   fields — the sorted bound *names*, `metric` and its parameter (`source`,
+   `confidence_threshold`, `outcome_signal`), `segment_dimension`, sorted
+   `segment_values`, `probe` (input set and frequency), measurement
+   `window` / `bins`. Bound *values* are excluded, so tightening a bound
+   keeps the key. CORE §5.5 allows several entries of one type, so a key can
+   still be shared: a fully identical entry is evaluated once (the duplicate
+   logged once per change), and any other entry with the same key gets an
+   ordinal `#n` in declared order — every declared bound of every entry is
+   evaluated (E1). (Revised at Checkpoint A: the earlier key merged e.g. a
+   p50 entry and a p90 entry and dropped one.)
 4. Sample (§6), evaluate (§5).
 5. Emit one `judgment_threshold_evaluation` assessment per key per cycle,
    payload `ThresholdOutcome.to_dict()` plus the key and service. This
@@ -194,7 +203,9 @@ Per cycle:
    - leaving `breach` and entering `not_evaluable` raise no verdict;
    - the autonomy ratchet is reached only when `MEASURE_THRESHOLD_AUTONOMY`
      is on; a threshold breach then enters the existing governance phase as a
-     `high`-severity breach, under the same rules as an SLO breach. Turning it
+     `high`-severity breach, under the same rules as an SLO breach — including
+     that an *open* threshold breach keeps counting toward later governance
+     decisions (e.g. it plus a new SLO breach is a multiple-breach case). Turning it
      on does not apply the ratchet to breaches already open.
 7. **Garbage collection:** a key is retired (`threshold_retired`) only when
    its service is present in a successful `/manifests` response and the entry

@@ -22,7 +22,7 @@
 - Re-arm after **3** consecutive `within` cycles.
 - Operator toggle env var: `MEASURE_THRESHOLD_AUTONOMY` (truthy: `1`, `true`, `yes`, `on`, case-insensitive), default off.
 - Assessment kind string: `judgment_threshold_evaluation`.
-- Identity key: `f"{service}:{type}:{sha256(canonical identifying fields)[:12]}"`; identifying fields are `metric`, `segment_dimension`, sorted `segment_values`, `probe.frozen_input_set`, measurement `window`, `bins`; bounds excluded.
+- Identity key: `f"{service}:{type}:{sha256(identifying fields)[:12]}"`, identifying fields = sorted bound NAMES, `metric`, `source`, `confidence_threshold`, `outcome_signal`, `segment_dimension`, sorted `segment_values`, `probe` (input set + frequency), measurement `window`, `bins`; bound VALUES excluded. Identical entries evaluate once; other same-key entries get `#n` ordinals in declared order.
 - Workers worktrees MUST be siblings (`.claude/bin/eco-worktree.sh`), never `claude --worktree` / agent `isolation: worktree`.
 - Tests assert structured data (statuses, dataclass fields, dict keys), never captured log text.
 - Lint floor is frozen; run `uv run ruff check src/ tests/` and check its exit status (do not pipe it).
@@ -66,12 +66,14 @@ the source of truth and this section documents it.
 | segments, stability, audit_backlog | — | no series yet | — | evaluated as not evaluable (`no_data_source`) |
 
 - Calibration gauges carry the `bins` and `window` they were computed with.
-  The evaluator reads only the series whose labels match the manifest's
-  `measurement`; any other series is ignored (`no_data`).
+  The sampler reads only the series whose `bins`/`window` labels equal the
+  manifest's `measurement.bins` / `measurement.window`; any other series is
+  ignored (`no_data`).
 - Feedback latency is observed when ground truth arrives, so the 30-day
-  window is anchored on arrival (CORE §5.5.5). If the histogram's data does
-  not span the full 30 days, the bound is not evaluable
-  (`insufficient_window`), never a partial-window value.
+  window is anchored on arrival (CORE §5.5.5). A young service is measured
+  over the ground truth that has arrived; only when Prometheus's retention
+  (`prometheus_tsdb_lowest_timestamp_seconds`) is shorter than 30 days is the
+  bound not evaluable (`insufficient_window`).
 - `histogram_quantile` interpolates within a bucket: include each declared
   bound (e.g. `3600`, `86400`) among the bucket boundaries.
 - Superseded: the single gauges `gen_ai_calibration_error{service}` and
@@ -663,9 +665,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from nthlayer_common.manifest.parser.v2 import parse_opensrm_v2
 from nthlayer_common.manifest.evaluation import Missing, Samples, evaluate_threshold
 from nthlayer_common.manifest.models import JudgmentThreshold, ThresholdMeasurement
+from nthlayer_common.manifest.parser.v2 import threshold_from_v2_entry
 
 
 def _seg(limit=0.05, values=("eu", "us")):
@@ -712,19 +714,26 @@ def test_duplicate_segment_value_evaluated_once():
 
 
 _SPEC_V2 = Path(__file__).resolve().parents[2] / "opensrm" / "spec" / "v2"
-_EXAMPLES = [
-    _SPEC_V2 / "examples" / "judgment-thresholds" / "all-five-types.yaml",
-    _SPEC_V2 / "examples" / "judgment-thresholds" / "segments-two-dimensions.yaml",
-]
+# Every shipped example that declares judgment thresholds (spec §9: every one).
+_EXAMPLES = sorted(
+    p for p in (_SPEC_V2 / "examples").rglob("*.yaml")
+    if "judgment_threshold" in (yaml.safe_load(p.read_text()) or {}).get("spec", {})
+) if _SPEC_V2.is_dir() else []
+
+
+def test_the_threshold_examples_are_present():
+    assert len(_EXAMPLES) >= 3, _EXAMPLES  # all-five-types, segments-two-dimensions, ai-gate
 
 
 @pytest.mark.parametrize("source", _EXAMPLES, ids=lambda p: p.name)
 def test_every_spec_example_threshold_evaluates(source):
     """Every threshold the spec ships is evaluable: all-within when each
     measured value equals its bound (E1: equal is within), all-breach just
-    above it, all-not_evaluable when nothing is measured."""
-    assert source.is_file(), f"spec example missing: {source}"
-    for t in parse_opensrm_v2(yaml.safe_load(source.read_text())).judgment_thresholds:
+    above it, all-not_evaluable when nothing is measured. Entries are parsed
+    one by one (threshold_from_v2_entry), so a manifest that does not parse
+    whole for unrelated reasons (ai-gate.yaml, opensrm-a742) still counts."""
+    entries = yaml.safe_load(source.read_text())["spec"]["judgment_threshold"]
+    for t in (threshold_from_v2_entry(e) for e in entries):
         at, above, none = _samples_at(t, 0.0), _samples_at(t, 1e-6), Samples()
         assert evaluate_threshold(t, at).status == "within", t
         assert evaluate_threshold(t, above).status == "breach", t
@@ -744,7 +753,6 @@ def _samples_at(t, delta):
     return Samples(bounds=vals)
 ```
 
-If `parse_opensrm_v2` needs an ai-gate service with a `tier` label, wrap the example the same way `tests/test_threshold_from_v2_entry.py::_shell` does (copy that helper verbatim rather than importing it).
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -776,10 +784,10 @@ def _evaluate_segments(threshold: JudgmentThreshold, samples: Samples) -> Thresh
         results.append(SegmentResult(value, status, measured, reason))
     status = combine(s.status for s in results)
     evaluated = [s.measured for s in results if s.measured is not None]
-    bound_result = BoundResult(
-        bound, status, max(evaluated) if evaluated else None, limit,
-        None if evaluated else (results[0].reason if results else "no_data"),
+    reason = None if status != "not_evaluable" else next(
+        (x.reason for x in results if x.reason), "no_data"
     )
+    bound_result = BoundResult(bound, status, max(evaluated) if evaluated else None, limit, reason)
     return ThresholdOutcome("segments", status, (bound_result,), tuple(results))
 ```
 
@@ -799,7 +807,7 @@ git -C nthlayer-common commit -m "feat(manifest): evaluate segments thresholds p
 
 **Files:**
 - Modify: `nthlayer-common/src/nthlayer_common/manifest/__init__.py` (imports + `__all__`)
-- Modify: `nthlayer-common/src/nthlayer_common/cloudevents.py:496-509` (`ASSESSMENT_KINDS`)
+- Modify: `nthlayer-common/src/nthlayer_common/cloudevents.py:35-48` (`ASSESSMENT_KINDS`)
 - Modify: `nthlayer-common/docs/upgrading-5.0.md`, `nthlayer-common/docs/architecture.md`, `nthlayer-common/CLAUDE.md` (hard rule 1 thresholds bullet)
 - Test: `nthlayer-common/tests/test_threshold_evaluation_public.py`
 
@@ -986,11 +994,11 @@ git commit -m "fix(measure): error magnitudes never reach SLO breach code (opens
 These tests feed realistic Prometheus response JSON and assert which bound
 each value lands on - not just the query string (the gap that hid g32d)."""
 
-import math
 from unittest.mock import AsyncMock
 
 import pytest
 from nthlayer_common.manifest import JudgmentThreshold, Missing, ThresholdMeasurement
+from nthlayer_common.manifest.models import ProbeConfig
 
 from nthlayer_workers.measure.thresholds.sampler import sample
 
@@ -1050,27 +1058,54 @@ def _lat():
     return JudgmentThreshold("feedback_latency", {"maximum_p50": "1h", "maximum_p90": "1d"})
 
 
-def _covered(start):
-    return ("timestamp(", _vector(start))
+def _retention(start):
+    # Prometheus's own oldest-sample timestamp (seconds).
+    return ("prometheus_tsdb_lowest_timestamp_seconds", _vector(start))
 
 
 async def test_latency_quantiles_land_on_p50_and_p90():
-    p = _provider([_covered(NOW - 31 * DAY), ("histogram_quantile(0.5", _vector(1200)),
+    p = _provider([_retention(NOW - 31 * DAY), ("histogram_quantile(0.5", _vector(1200)),
                    ("histogram_quantile(0.9", _vector(50000))])
     s = await sample(p, "svc", _lat(), now=NOW)
     assert s.bounds == {"maximum_p50": 1200.0, "maximum_p90": 50000.0}
 
 
 async def test_nan_quantile_is_no_data():
-    p = _provider([_covered(NOW - 31 * DAY), ("histogram_quantile", _vector("NaN"))])
+    p = _provider([_retention(NOW - 31 * DAY), ("histogram_quantile", _vector("NaN"))])
     s = await sample(p, "svc", _lat(), now=NOW)
     assert all(isinstance(v, Missing) and v.reason == "no_data" for v in s.bounds.values())
 
 
-async def test_short_history_is_insufficient_window():
-    p = _provider([_covered(NOW - 3 * DAY), ("histogram_quantile", _vector(10))])
+async def test_short_retention_is_insufficient_window():
+    # Prometheus keeps only 3 days: it cannot see the 30-day window.
+    p = _provider([_retention(NOW - 3 * DAY), ("histogram_quantile", _vector(10))])
     s = await sample(p, "svc", _lat(), now=NOW)
     assert {v.reason for v in s.bounds.values()} == {"insufficient_window"}
+
+
+async def test_young_series_is_measured():
+    # CORE §5.5.5: p50/p90 over ground truth that ARRIVED in the last 30 days.
+    # A service that started 3 days ago has exactly that quantity; only a
+    # Prometheus that cannot see 30 days back makes it unmeasurable.
+    p = _provider([_retention(NOW - 90 * DAY), ("histogram_quantile(0.5", _vector(10)),
+                   ("histogram_quantile(0.9", _vector(20))])
+    s = await sample(p, "svc", _lat(), now=NOW)
+    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 20.0}
+
+
+async def test_unknown_retention_still_measures():
+    # prometheus_tsdb_lowest_timestamp_seconds not scraped: retention unknown,
+    # so measure what Prometheus returns rather than hide the bound.
+    p = _provider([("histogram_quantile(0.5", _vector(10)), ("histogram_quantile(0.9", _vector(20))])
+    s = await sample(p, "svc", _lat(), now=NOW)
+    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 20.0}
+
+
+async def test_quantile_is_aggregated_across_instances():
+    p = _provider([])
+    await sample(p, "svc", _lat(), now=NOW)
+    qs = [c.args[0] for c in p.query.await_args_list]
+    assert any(q.startswith("histogram_quantile(0.5, sum by (le)") for q in qs)
 
 
 async def test_prometheus_error_is_no_data_and_does_not_raise():
@@ -1095,7 +1130,7 @@ async def test_unsourced_types_are_no_data_source(t, bounds, measurement):
     p.query.assert_not_awaited()
 ```
 
-Add a stability case to the parametrize list with `ThresholdMeasurement(probe=ProbeConfig("s3://p", "daily"))` and bound `{"maximum_drift": 0.02}` (import `ProbeConfig` from `nthlayer_common.manifest.models`).
+Add a stability case to the parametrize list: `("stability", {"maximum_drift": 0.02}, ThresholdMeasurement(probe=ProbeConfig("s3://p", "daily")))`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1128,10 +1163,12 @@ from nthlayer_common.manifest import (
     duration_seconds,
 )
 
-# A subquery step of 1h: the window counts as covered when the earliest sample
-# in it is no more than one step after the window's start.
-_COVERAGE_STEP = "1h"
-_COVERAGE_SLACK_SECONDS = 3600.0
+# CORE §5.5.5 defines p50/p90 over ground truth that arrived in the last 30
+# days, so a young series is measurable. Only a Prometheus whose retention is
+# shorter than the window cannot see it: that is insufficient_window. Unknown
+# retention (Prometheus not scraping itself) measures what it can.
+_RETENTION_QUERY = "min(prometheus_tsdb_lowest_timestamp_seconds)"
+_RETENTION_SLACK_SECONDS = 3600.0
 
 
 def _scalar(resp: dict[str, Any]) -> float | None:
@@ -1158,13 +1195,6 @@ def _quantile_query(s: ThresholdSeries, service: str) -> str:
     )
 
 
-def _coverage_query(metric: str, service: str) -> str:
-    return (
-        f'min_over_time(timestamp({metric}_count{{service="{service}"}})'
-        f"[{FEEDBACK_LATENCY_WINDOW}:{_COVERAGE_STEP}])"
-    )
-
-
 async def _value(provider: Any, query: str) -> float | Missing:
     try:
         v = _scalar(await provider.query(query))
@@ -1187,7 +1217,7 @@ async def sample(
                                for b in threshold.bounds})
     now = _time.time() if now is None else now
     out: dict[str, float | Missing] = {}
-    coverage: dict[str, float | Missing] = {}
+    retention: float | Missing | None = None  # queried once, on first histogram bound
     for bound in threshold.bounds:
         s = series.get(bound)
         if s is None:
@@ -1196,15 +1226,12 @@ async def sample(
         if s.kind == "gauge":
             out[bound] = await _value(provider, _gauge_query(s, service, threshold))
             continue
-        if s.metric not in coverage:
-            coverage[s.metric] = await _value(provider, _coverage_query(s.metric, service))
-        earliest = coverage[s.metric]
-        if isinstance(earliest, Missing):
-            out[bound] = earliest
-            continue
-        if now - earliest < duration_seconds(FEEDBACK_LATENCY_WINDOW) - _COVERAGE_SLACK_SECONDS:
+        if retention is None:
+            retention = await _value(provider, _RETENTION_QUERY)
+        window = duration_seconds(FEEDBACK_LATENCY_WINDOW)
+        if not isinstance(retention, Missing) and now - retention < window - _RETENTION_SLACK_SECONDS:
             out[bound] = Missing("insufficient_window",
-                                 f"data starts {(now - earliest) / 86400:.1f}d ago")
+                                 f"Prometheus retention starts {(now - retention) / 86400:.1f}d ago")
             continue
         out[bound] = await _value(provider, _quantile_query(s, service))
     return Samples(bounds=out)
@@ -1273,6 +1300,24 @@ def test_identical_entries_share_a_key():
     assert threshold_key("svc", _seg(["eu"])) == threshold_key("svc", _seg(["eu"]))
 
 
+def test_entries_bounding_different_quantiles_get_different_keys():
+    # CORE §5.5: several entries of one type are allowed; a p50 entry and a
+    # p90 entry must both be evaluated.
+    p50 = JudgmentThreshold("feedback_latency", {"maximum_p50": "1h"})
+    p90 = JudgmentThreshold("feedback_latency", {"maximum_p90": "1d"})
+    assert threshold_key("svc", p50) != threshold_key("svc", p90)
+
+
+def test_metric_parameters_change_the_key():
+    a = JudgmentThreshold("segments", {"maximum_variance_from_overall": 0.05},
+                          ThresholdMeasurement(metric="reversal_rate", source="lineage", segment_dimension="r",
+                                               segment_values=["eu"], window="30d"))
+    b = JudgmentThreshold("segments", {"maximum_variance_from_overall": 0.05},
+                          ThresholdMeasurement(metric="reversal_rate", source="downstream_signal",
+                                               segment_dimension="r", segment_values=["eu"], window="30d"))
+    assert threshold_key("svc", a) != threshold_key("svc", b)
+
+
 def _run(statuses):
     st, fired = KeyState(), []
     for s in statuses:
@@ -1333,14 +1378,22 @@ REARM_WITHIN_CYCLES = 3
 
 
 def threshold_key(service: str, t: JudgmentThreshold) -> str:
-    """service:type:hash of the identifying fields. Bounds are excluded, so
-    tightening a bound keeps the key; segment order is irrelevant."""
+    """service:type:hash of what identifies the entry: its measurement fields,
+    the metric's parameters, and the NAMES of its bounds. Bound VALUES are
+    excluded, so tightening a bound keeps the key; segment order is irrelevant.
+    Two entries can still share a key (same names, different values): the
+    phase deduplicates identical entries and gives the rest an ordinal."""
     m = t.measurement
+    signal = m.outcome_signal
     ident = {
+        "bounds": sorted(t.bounds),
         "metric": m.metric,
+        "source": m.source,
+        "confidence_threshold": m.confidence_threshold,
+        "outcome_signal": [signal.source, signal.window] if signal else None,
         "segment_dimension": m.segment_dimension,
         "segment_values": sorted(m.segment_values),
-        "frozen_input_set": m.probe.frozen_input_set if m.probe else None,
+        "probe": [m.probe.frozen_input_set, m.probe.frequency] if m.probe else None,
         "window": m.window,
         "bins": m.bins,
     }
@@ -1392,6 +1445,7 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
 **Files:**
 - Create: `nthlayer-workers/src/nthlayer_workers/measure/thresholds/phase.py`
 - Modify: `nthlayer-workers/src/nthlayer_workers/measure/worker.py` (`__post_init__`, `restore_state`, `process_cycle`, `get_state`)
+- Modify: `nthlayer-workers/.github/workflows/test.yml` (check out opensrm as a sibling)
 - Test: `nthlayer-workers/tests/measure/thresholds/test_phase.py`
 
 **Interfaces:**
@@ -1406,11 +1460,9 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
 import yaml
 from nthlayer_common.api_client import APIResult
-from nthlayer_common.manifest import threshold_to_v2_entry
-from nthlayer_common.manifest.parser.v2 import parse_opensrm_v2
+from nthlayer_common.manifest import threshold_from_v2_entry, threshold_to_v2_entry
 
 from nthlayer_workers.measure.worker import MeasureModule
 
@@ -1482,6 +1534,15 @@ async def test_not_evaluable_is_reported_but_never_breaches():
     assert _breaches(v) == []
 
 
+async def test_same_type_entries_with_different_bounds_are_both_evaluated():
+    other = dict(_CAL, bounds={"maximum_expected_calibration_error": 0.2})
+    m, prov, a, v = _module([0.1, 0.1], _manifests(("svc", [_CAL, other])))
+    await _cycles(m, prov, 1)
+    statuses = sorted(x["data"]["outcome"]["status"] for x in a)
+    assert statuses == ["breach", "within"]
+    assert len({x["data"]["threshold_key"] for x in a}) == 2
+
+
 async def test_duplicate_entries_emit_once():
     m, prov, a, v = _module([0.2], _manifests(("svc", [_CAL, dict(_CAL)])))
     await _cycles(m, prov, 1)
@@ -1539,13 +1600,14 @@ async def test_served_shape_drives_a_cycle():
     src = _SPEC_V2 / "examples" / "judgment-thresholds" / "all-five-types.yaml"
     assert src.is_file(), src
     served = [threshold_to_v2_entry(t) for t in
-              parse_opensrm_v2(yaml.safe_load(src.read_text())).judgment_thresholds]
+              (threshold_from_v2_entry(e)
+               for e in yaml.safe_load(src.read_text())["spec"]["judgment_threshold"])]
     m, prov, a, v = _module([0.01] * 10, _manifests(("svc", served)))
     await _cycles(m, prov, 1)
     assert len(a) == len(served)
 ```
 
-Check the `parents[N]` depth for `tests/measure/thresholds/` against the repo layout (workers is `<eco>/nthlayer-workers/tests/measure/thresholds/test_phase.py` → `parents[4]` is `<eco>`); assert `src.is_file()` so a wrong depth fails loudly. If `parse_opensrm_v2` needs a service wrapper, copy `_shell` from nthlayer-common's `tests/test_threshold_from_v2_entry.py`.
+Check the `parents[N]` depth for `tests/measure/thresholds/` against the repo layout (workers is `<eco>/nthlayer-workers/tests/measure/thresholds/test_phase.py` → `parents[4]` is `<eco>`); assert `src.is_file()` so a wrong depth fails loudly.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1565,7 +1627,12 @@ from typing import Any
 
 import structlog
 from nthlayer_common.cloudevents import wrap_assessment, wrap_verdict
-from nthlayer_common.manifest import OpenSRMV2ParseError, evaluate_threshold, threshold_from_v2_entry
+from nthlayer_common.manifest import (
+    OpenSRMV2ParseError,
+    evaluate_threshold,
+    threshold_from_v2_entry,
+    threshold_to_v2_entry,
+)
 
 from nthlayer_workers.measure.thresholds.sampler import sample
 from nthlayer_workers.measure.thresholds.state import KeyState, advance, threshold_key
@@ -1591,6 +1658,7 @@ async def run_threshold_phase(
     new_breaches: list[tuple[str, str, str]] = []
     present_services: set[str] = set()
     live_keys: set[str] = set()
+    by_base: dict[str, list[dict]] = {}
     for i, m in enumerate(manifests):
         service = m.get("name")
         if not service:
@@ -1604,10 +1672,16 @@ async def run_threshold_phase(
                 _log_once(seen_problems, f"parse:{service}:{item!r}", "threshold_parse_failed",
                           service=service, where=where, error=str(exc))
                 continue
-            key = threshold_key(service, t)
-            if key in live_keys:
-                _log_once(seen_problems, f"dup:{key}", "threshold_duplicate", service=service, key=key)
+            base = threshold_key(service, t)
+            canonical = threshold_to_v2_entry(t)
+            same_base = by_base.setdefault(base, [])
+            if canonical in same_base:  # an identical entry: evaluate once
+                _log_once(seen_problems, f"dup:{base}", "threshold_duplicate", service=service, key=base)
                 continue
+            # Same identity but different bound values: a distinct entry, kept
+            # apart by its ordinal among such entries (declared order).
+            key = base if not same_base else f"{base}#{len(same_base)}"
+            same_base.append(canonical)
             live_keys.add(key)
             outcome = evaluate_threshold(t, await sample(provider, service, t))
             assessment_id = f"jte-{service}-{t.type}-{uuid.uuid4().hex[:8]}"
@@ -1658,6 +1732,19 @@ async def run_threshold_phase(
 ```
 
   and import `run_threshold_phase` from `nthlayer_workers.measure.thresholds.phase`. The early `return` on `not result.ok` already guarantees "core unreachable touches nothing"; change `if not result.ok or not result.data:` only if `[]` must still retire state (it should not: an empty list is treated as "no services present", so leave the early return).
+
+- [ ] **Step 4b: Let CI see the spec.** `test_served_shape_drives_a_cycle` reads `../opensrm`, which workers CI does not check out today. In `.github/workflows/test.yml`, after "Checkout nthlayer-common (sibling)", add:
+
+```yaml
+      # The served-shape test reads the spec's examples from ../opensrm
+      # (opensrm-g32d). Floats on opensrm main, like nthlayer-common's CI:
+      # a spec commit can turn this red with no change here.
+      - name: Checkout opensrm (sibling, for spec examples)
+        uses: actions/checkout@v7
+        with:
+          repository: rsionnach/opensrm
+          path: opensrm
+```
 
 - [ ] **Step 5: Run the phase tests, the full suite, and lint**
 
@@ -1758,22 +1845,61 @@ def _env_flag(name: str) -> bool:
 Add to `MeasureModule`: `threshold_autonomy: bool = field(default_factory=lambda: _env_flag("MEASURE_THRESHOLD_AUTONOMY"))` (import `os`, `field`). In Phase 3, before building `breaching_services`, when `self.threshold_autonomy` is true:
 
 ```python
+            governed_threshold_keys: list[str] = []
             if self.threshold_autonomy:
-                for key, svc, breach_id in threshold_breaches:
-                    current_status[key] = "breach"          # a breaching key for governance
+                # Open threshold breaches count toward governance every cycle,
+                # exactly as an open SLO breach stays in current_status - so a
+                # later SLO breach sees "multiple breaches" (spec: same rules).
+                for key, st in self._threshold_state.items():
+                    if st.get("last_evaluable") == "breach" and self._breach_decisions.get(key):
+                        current_status[key] = "breach"
+                        governed_threshold_keys.append(key)
+                # New threshold breaches this cycle enter as new high breaches.
+                for key, _svc, breach_id in threshold_breaches:
+                    current_status[key] = "breach"
                     new_breaches.append(key)
                     breach_verdict_ids[key] = breach_id
                     self._breach_severities[key] = "high"
+                    governed_threshold_keys.append(key)
 ```
 
-and after Phase 3 (before the carry-forward loop) remove those threshold keys from `current_status` so `_slo_status` stays SLO-only:
+and after Phase 3 (before the carry-forward loop) remove them from `current_status` so `_slo_status` stays SLO-only:
 
 ```python
-            for key, _svc, _bid in threshold_breaches:
+            for key in governed_threshold_keys:
                 current_status.pop(key, None)
 ```
 
-Threshold keys are `service:type:hash` (three parts), so `key.split(":", 1)[0]` in Phase 3 still yields the service. Recovery cleanup of `_breach_decisions` for threshold keys: when a threshold key's state shows `last_evaluable == "within"`, pop it from `_breach_decisions` and `_breach_severities` (add this after the existing recovered-SLO cleanup).
+Threshold keys are `service:type:hash` (three parts), so `key.split(":", 1)[0]` in Phase 3 still yields the service. Cleanup of governance memory for threshold keys, after the existing recovered-SLO cleanup: pop a threshold key from `_breach_decisions` and `_breach_severities` when its state's `last_evaluable == "within"` or when the key is no longer in `_threshold_state` (retired).
+
+Add to the Step 1 tests:
+
+```python
+async def test_open_threshold_breach_counts_in_later_governance(monkeypatch):
+    """An open threshold breach plus a later SLO breach is a multiple-breach
+    case (advisor floor), as two SLO breaches would be."""
+    m, prov, verdicts = _setup(monkeypatch, "1")
+    await _cycle(m, prov)                     # threshold breach -> limited_autonomous
+    m.client.get_manifests = AsyncMock(return_value=APIResult(ok=True, status_code=200, data=[
+        {"name": "svc", "type": "ai-gate", "judgment_thresholds": [_CAL], "slos": [
+            {"name": "rr", "target": 98.5, "judgment_type": "reversal_rate", "window": "30d",
+             "indicator_query": "q"}]}]))
+    # A mild SLO breach (98.0 < 98.5 target; 33% budget consumption = low), so
+    # the advisor floor below comes from the breach COUNT, not from severity.
+    prov.get_sli_value = AsyncMock(return_value=0.98)
+    await _cycle(m, prov)
+    assert m._autonomy_levels["svc"] == "advisor"    # multiple breaches, none critical
+
+
+async def test_retired_threshold_leaves_no_governance_memory(monkeypatch):
+    m, prov, verdicts = _setup(monkeypatch, "1")
+    await _cycle(m, prov)
+    m.client.get_manifests = AsyncMock(return_value=APIResult(ok=True, status_code=200, data=[
+        {"name": "svc", "type": "ai-gate", "slos": [], "judgment_thresholds": []}]))
+    await _cycle(m, prov)
+    assert not any(":calibration:" in k for k in m._breach_decisions)
+    assert not any(":calibration:" in k for k in m._breach_severities)
+```
 
 - [ ] **Step 4: Run the toggle tests, full suite, lint**
 

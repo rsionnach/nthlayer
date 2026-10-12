@@ -91,12 +91,14 @@ the source of truth and this section documents it.
 | segments, stability, audit_backlog | — | no series yet | — | evaluated as not evaluable (`no_data_source`) |
 
 - Calibration gauges carry the `bins` and `window` they were computed with.
-  The evaluator reads only the series whose labels match the manifest's
-  `measurement`; any other series is ignored (`no_data`).
+  The sampler reads only the series whose `bins`/`window` labels equal the
+  manifest's `measurement.bins` / `measurement.window`; any other series is
+  ignored (`no_data`).
 - Feedback latency is observed when ground truth arrives, so the 30-day
-  window is anchored on arrival (CORE §5.5.5). If the histogram's data does
-  not span the full 30 days, the bound is not evaluable
-  (`insufficient_window`), never a partial-window value.
+  window is anchored on arrival (CORE §5.5.5). A young service is measured
+  over the ground truth that has arrived; only when Prometheus's retention
+  (`prometheus_tsdb_lowest_timestamp_seconds`) is shorter than 30 days is the
+  bound not evaluable (`insufficient_window`).
 - `histogram_quantile` interpolates within a bucket: include each declared
   bound (e.g. `3600`, `86400`) among the bucket boundaries.
 - Superseded: the single gauges `gen_ai_calibration_error{service}` and
