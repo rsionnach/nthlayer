@@ -18,6 +18,10 @@
 - E2: Duration limits compared in seconds via `nthlayer_common.manifest.duration_seconds`.
 - E3: missing data → `not_evaluable` with a reason in `{"no_data_source", "no_data", "insufficient_window"}`; never `within`.
 - E4: breach > not_evaluable > within, across bounds and across segments.
+- A lower bound `AtLeast(v)` (the true value is strictly greater than `v`) breaches iff `v >= limit`; otherwise it is `not_evaluable("no_data")`. It is what a histogram quantile in the `+Inf` bucket yields: the sampler computes quantiles from bucket counts itself and never uses PromQL `histogram_quantile`, which reports such a quantile as the largest finite `le` (and so as `within`).
+- PromQL label values are always escaped (`\` → `\\`, `"` → `\"`, newline → `\n`) via the sampler's `_label`.
+- Operator switch `MEASURE_RETENTION_CHECK` (default ON; `off`/`false`/`0`, case-insensitive, disable it) controls the Prometheus retention check. Like `MEASURE_THRESHOLD_AUTONOMY` it is read once, when `MeasureModule` is constructed.
+- One threshold never affects another, and the threshold phase never stops the SLO phases: per-entry and whole-phase exceptions are logged and contained.
 - Threshold `quality_breach` severity is the string `"high"` (downstream knows only `low | high | critical`).
 - Re-arm after **3** consecutive `within` cycles.
 - Operator toggle env var: `MEASURE_THRESHOLD_AUTONOMY` (truthy: `1`, `true`, `yes`, `on`, case-insensitive), default off.
@@ -30,10 +34,13 @@
 ## Review Focus
 
 1. A Prometheus series that exists with *other* `bins`/`window` labels → the bound is `not_evaluable("no_data")`, never evaluated against the wrong computation. Pinned in Task 9 (`test_mismatched_bins_label_is_no_data`).
-2. `histogram_quantile` returning `NaN` (no observations in the window) → `not_evaluable("no_data")`, not a float comparison against NaN (which is always False → silently `within`). Pinned in Task 9 (`test_nan_quantile_is_no_data`) and Task 4 (`test_non_finite_sample_is_not_evaluable`).
+2. A histogram with no observations in the window (or no `+Inf` bucket), or a `NaN` gauge → `not_evaluable("no_data")`, not a float comparison against NaN (which is always False → silently `within`). Pinned in Task 9 (`test_unmeasurable_histogram_is_no_data`, `test_nan_gauge_is_no_data`) and Task 4 (`test_non_finite_sample_is_not_evaluable`).
 3. A manifest with two identical threshold entries → evaluated once, one assessment, one verdict. Pinned in Task 10 (`test_identical_entries_share_a_key`) and Task 11 (`test_duplicate_entries_emit_once`).
 4. A segment value listed twice in `segment_values` → one `SegmentResult`. Pinned in Task 5 (`test_duplicate_segment_value_evaluated_once`).
 5. Core returns `/manifests` ok but with a service that has no `judgment_thresholds` key at all (older core) → that service contributes no thresholds and does not crash or retire state of other services. Pinned in Task 11 (`test_service_without_thresholds_key_is_ignored`).
+6. A latency quantile beyond the largest finite bucket boundary (rank in the `+Inf` bucket) → a lower bound, never that boundary as a value: buckets `[…, 3600, 86400, +Inf]` with most mass in `+Inf` and a `1d` bound → `breach`; a top boundary below the bound (OTel's default 10000s vs `1d`) → `not_evaluable`. Pinned in Task 9 (`test_latency_beyond_a_1d_top_bucket_breaches_a_1d_bound`, `test_latency_beyond_a_top_bucket_below_the_bound_is_not_evaluable`) and Task 4 (`test_lower_bound_breaches_only_when_it_reaches_the_limit`).
+7. A `quality_breach` verdict that core does not accept leaves the key's state unchanged, so the next cycle raises it again. Pinned in Task 11 (`test_failed_breach_verdict_refires_next_cycle`).
+8. Corrupt restored state (`threshold_state` of `None`, a non-dict entry, wrong-typed fields) → the cycle runs and SLO breaches are still detected. Pinned in Task 10 (`test_from_dict_tolerates_a_corrupt_restored_state`) and Task 11 (`test_corrupt_restored_state_does_not_stop_the_cycle`).
 
 ---
 
@@ -62,21 +69,25 @@ evaluable.
 
 In the queries, `S` is the service name (the manifest's `metadata.name`),
 `B` is the threshold's `measurement.bins` and `W` its `measurement.window`.
+Label values are the manifest's literal strings (`bins="10"`,
+`window="30d"`, not `30 days` or `720h`), escaped for PromQL (`\` → `\\`,
+`"` → `\"`, newline → `\n`).
 
 | Threshold | Bound | Series | Labels | Query |
 |---|---|---|---|---|
 | calibration | `maximum_expected_calibration_error` | `gen_ai_calibration_ece` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_ece{service="S",bins="B",window="W"})` |
 | calibration | `maximum_brier_score` | `gen_ai_calibration_brier` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_brier{service="S",bins="B",window="W"})` |
-| feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram) | `service` | `histogram_quantile(0.5, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
-| feedback_latency | `maximum_p90` | same histogram | `service` | `histogram_quantile(0.9, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
+| feedback_latency | `maximum_p50`, `maximum_p90` | `gen_ai_feedback_latency_seconds` (histogram) | `service` | `sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d]))` — one query; p50 and p90 are computed by the sampler from the bucket counts |
 | segments, stability, audit_backlog | — | no series yet | — | none sent; evaluated as not evaluable (`no_data_source`) |
 
 A bound that cannot be measured is reported as not evaluable, with one of
 these reasons:
 
 - `no_data` — the series is absent, its labels do not match (e.g. other
-  `bins`/`window`), the query errored or timed out, or the value is not
-  finite (`NaN`, `±Inf`).
+  `bins`/`window`), the query errored or timed out, the value is not
+  finite (`NaN`, `±Inf`), the histogram has no `+Inf` bucket or no
+  observations in the window, or the quantile lies beyond the largest finite
+  bucket boundary and that boundary is below the bound (see below).
 - `insufficient_window` — Prometheus's retention is shorter than the 30-day
   window.
 - `no_data_source` — no series is defined for this threshold type yet.
@@ -86,23 +97,42 @@ Rules:
 - Calibration gauges carry the `bins` and `window` they were computed with.
   The sampler reads only the series whose `bins`/`window` labels equal the
   manifest's `measurement.bins` / `measurement.window`; any other series is
-  ignored (`no_data`).
-- `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus
-  histogram, i.e. with `_bucket` (and `_count` / `_sum`) series; the query
-  reads `_bucket`.
+  ignored (`no_data`). Export exactly one series per
+  `service`/`bins`/`window`; if several match (e.g. one per instance), the
+  query's `max()` takes the worst, a conservative fallback rather than a
+  supported shape.
+- `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus classic
+  histogram, i.e. with `_bucket` (including `le="+Inf"`) and `_count` /
+  `_sum` series; the query reads `_bucket`.
+- The histogram MUST have a finite bucket boundary strictly greater than
+  every declared bound (e.g. a `1d` bound needs a boundary above `86400`;
+  OpenTelemetry's default top boundary, `10000`, is not enough). Quantiles
+  are computed with Prometheus's classic bucket-interpolation algorithm, with
+  one difference: a quantile beyond the largest finite boundary (its rank
+  falls in the `+Inf` bucket) is reported as a lower bound, not as that
+  boundary. It is a breach if that boundary already reaches the bound,
+  otherwise not evaluable (`no_data`). PromQL's `histogram_quantile` would
+  return the boundary itself and so read such a latency as within.
+- Interpolation is linear within a bucket: include each declared bound
+  (e.g. `3600`, `86400`) among the bucket boundaries.
 - Feedback latency is observed when ground truth arrives, so the 30-day
   window is anchored on arrival (CORE §5.5.5). A young service is measured
   over the ground truth that has arrived; only when Prometheus's retention
-  (`min(prometheus_tsdb_lowest_timestamp_seconds)`) is shorter than 30 days
-  is the bound not evaluable (`insufficient_window`). When retention is
-  unknown (Prometheus does not scrape itself), the sampler measures what
-  Prometheus returns.
-- `histogram_quantile` interpolates within a bucket: include each declared
-  bound (e.g. `3600`, `86400`) among the bucket boundaries.
+  (`min(prometheus_tsdb_lowest_timestamp_seconds)`, queried once per cycle)
+  is shorter than 30 days is the bound not evaluable
+  (`insufficient_window`). When retention is unknown (Prometheus does not
+  scrape itself), the sampler measures what Prometheus returns.
+- `MEASURE_RETENTION_CHECK` (nthlayer-workers; default on, `off` / `false` /
+  `0` disable it, read at startup) turns the retention check off. Turn it off
+  when the queried endpoint is not the TSDB that metric describes — Thanos
+  sidecar, Mimir, Cortex: there, the local head's lowest timestamp says
+  nothing about what the query path can see, and would wrongly report
+  `insufficient_window`.
 - Superseded: the single gauges `gen_ai_calibration_error{service}` and
   `gen_ai_feedback_latency_seconds{service}` are no longer read. The
-  histogram above reuses the latter's base name; a plain gauge of that name
-  is not read.
+  histogram above reuses the latter's base name, so an exporter cannot
+  register both: cut over from the gauge to the histogram in one release. A
+  plain gauge of that name is not read.
 ```
 
 - [ ] **Step 2: In the interim judgment-SLO query table, mark the calibration and feedback_latency rows "superseded — now judgment thresholds, see 'Judgment threshold metrics'".**
@@ -218,7 +248,10 @@ FEEDBACK_LATENCY_WINDOW = "30d"
 class ThresholdSeries:
     """One bound's series. ``labels`` are the labels a sampler must match
     (``bins``/``window`` take the manifest's measurement values); ``quantile``
-    is set only for a ``histogram_quantile`` series."""
+    is set only for a ``histogram_quantile`` series: a quantile of a classic
+    histogram, which the sampler computes from the ``_bucket`` counts (it
+    does not send PromQL's histogram_quantile, which hides a quantile in the
+    +Inf bucket)."""
 
     metric: str
     kind: Literal["gauge", "histogram_quantile"]
@@ -276,7 +309,8 @@ git -C nthlayer-common commit -m "feat(manifest): THRESHOLD_SERIES, the judgment
   - `Status = Literal["within", "breach", "not_evaluable"]`
   - `MissingReason = Literal["no_data_source", "no_data", "insufficient_window"]`
   - `Missing(reason: MissingReason, detail: str = "")` — frozen dataclass
-  - `Samples(bounds: Mapping[str, float | Missing] = {}, overall: float | Missing | None = None, segments: Mapping[str, float | Missing] = {})` — frozen dataclass (use `field(default_factory=dict)`)
+  - `AtLeast(value: float)` — frozen dataclass: a lower bound, the true value is strictly greater than `value`; rejects a non-finite `value` (`ValueError`). A sampler returns it for a histogram quantile in the `+Inf` bucket.
+  - `Samples(bounds: Mapping[str, float | Missing | AtLeast] = {}, overall: float | Missing | None = None, segments: Mapping[str, float | Missing] = {})` — frozen dataclass (use `field(default_factory=dict)`)
   - `BoundResult(bound: str, status: Status, measured: float | None, limit: float | str, reason: str | None)` — frozen
   - `SegmentResult(segment: str, status: Status, measured: float | None, reason: str | None)` — frozen
   - `ThresholdOutcome(type: str, status: Status, bounds: tuple[BoundResult, ...], segments: tuple[SegmentResult, ...] = ())` — frozen, with `to_dict() -> dict[str, Any]` and `@classmethod from_dict(d) -> ThresholdOutcome`
@@ -290,6 +324,7 @@ git -C nthlayer-common commit -m "feat(manifest): THRESHOLD_SERIES, the judgment
 import pytest
 
 from nthlayer_common.manifest.evaluation import (
+    AtLeast,
     BoundResult,
     Missing,
     SegmentResult,
@@ -357,6 +392,12 @@ def test_to_dict_is_json_serialisable_and_shaped():
 def test_missing_rejects_an_unknown_reason():
     with pytest.raises(ValueError):
         Missing("because")
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_lower_bound_must_be_finite(bad):
+    with pytest.raises(ValueError):
+        AtLeast(bad)
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -377,6 +418,7 @@ assessment payload.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
@@ -403,16 +445,31 @@ class Missing:
 
 
 @dataclass(frozen=True)
+class AtLeast:
+    """A lower bound: the true value is strictly greater than ``value``.
+
+    What a classic Prometheus histogram yields when a quantile falls in the
+    ``+Inf`` bucket: the value lies beyond the largest finite boundary, which
+    PromQL's histogram_quantile would report as the value itself."""
+
+    value: float
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.value):
+            raise ValueError(f"AtLeast.value must be finite, got {self.value!r}")
+
+
+@dataclass(frozen=True)
 class Samples:
     """The raw measurements for one threshold.
 
     ``bounds`` maps a bound name to its measured value for every type except
-    segments. For segments, ``overall`` is the overall rate and ``segments``
-    maps each listed segment value to its rate; the evaluator computes the
-    variance itself (CORE §5.5.1).
+    segments; a value may be a lower bound (``AtLeast``). For segments,
+    ``overall`` is the overall rate and ``segments`` maps each listed segment
+    value to its rate; the evaluator computes the variance itself (CORE §5.5.1).
     """
 
-    bounds: Mapping[str, float | Missing] = field(default_factory=dict)
+    bounds: Mapping[str, float | Missing | AtLeast] = field(default_factory=dict)
     overall: float | Missing | None = None
     segments: Mapping[str, float | Missing] = field(default_factory=dict)
 
@@ -499,8 +556,9 @@ git -C nthlayer-common commit -m "feat(manifest): threshold outcome model and as
 - Test: `nthlayer-common/tests/test_evaluate_threshold.py`
 
 **Interfaces:**
-- Consumes: Task 3's types; `THRESHOLD_BOUNDS`, `DURATION`, `duration_seconds` from `nthlayer_common.manifest.thresholds`; `JudgmentThreshold`, `ThresholdMeasurement` from `nthlayer_common.manifest.models`.
-- Produces: `evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome`. Raises `ValueError` for a type not in `THRESHOLD_BOUNDS`.
+- Consumes: Task 3's types (incl. `Missing`, `AtLeast`, `Samples`); `THRESHOLD_BOUNDS`, `DURATION`, `duration_seconds` from `nthlayer_common.manifest.thresholds`; `JudgmentThreshold`, `ThresholdMeasurement` from `nthlayer_common.manifest.models`.
+- Produces: `evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome`. Raises `ValueError` (never `KeyError`) for a type not in `THRESHOLD_BOUNDS` or a bound that type does not define (parsed thresholds never have one; hand-built ones can). A sample `AtLeast(v)` is a `breach` with `measured=v`, `reason="lower_bound"` when `v >= limit` (the true value is > v ≥ limit), else `not_evaluable` with reason `no_data`.
+- Also produces the helpers Task 5 consumes: `_limit_value(threshold_type, bound, limit) -> float` (raises `ValueError` for an undefined bound) and `_decide(measured, limit) -> (status, measured, reason)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -512,7 +570,7 @@ import math
 
 import pytest
 
-from nthlayer_common.manifest.evaluation import Missing, Samples, evaluate_threshold
+from nthlayer_common.manifest.evaluation import AtLeast, Missing, Samples, evaluate_threshold
 from nthlayer_common.manifest.models import JudgmentThreshold, ThresholdMeasurement
 
 
@@ -601,6 +659,29 @@ def test_every_declared_bound_is_evaluated_and_only_those():
 def test_unknown_type_raises():
     with pytest.raises(ValueError):
         evaluate_threshold(JudgmentThreshold("vibes", {"x": 1.0}), Samples())
+
+
+def test_unknown_bound_for_the_type_raises_value_error():
+    # Hand-built (the parsers reject it): a ValueError, not a KeyError.
+    with pytest.raises(ValueError):
+        evaluate_threshold(_cal(maximum_p50="1h"), Samples())
+
+
+# A lower bound: what a histogram quantile in the +Inf bucket yields --------
+
+@pytest.mark.parametrize("lower,limit,expected", [
+    # The true value is > 86400 = 1d: a breach.
+    (86400.0, "1d", ("breach", 86400.0, "lower_bound")),
+    # > 3600 = 1h, equal at the boundary: still strictly above the limit.
+    (3600.0, "1h", ("breach", 3600.0, "lower_bound")),
+    # > 10000 (OTel's default top bucket) says nothing about a 1d limit.
+    (10000.0, "1d", ("not_evaluable", None, "no_data")),
+])
+def test_lower_bound_breaches_only_when_it_reaches_the_limit(lower, limit, expected):
+    o = evaluate_threshold(_lat(maximum_p90=limit), Samples(bounds={"maximum_p90": AtLeast(lower)}))
+    b = o.bounds[0]
+    assert (b.status, b.measured, b.reason) == expected
+    assert o.status == expected[0]
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -611,24 +692,37 @@ Expected: FAIL — `ImportError: cannot import name 'evaluate_threshold'`
 - [ ] **Step 3: Implement (append to evaluation.py)**
 
 ```python
-import math
-
 from nthlayer_common.manifest.models import JudgmentThreshold
 from nthlayer_common.manifest.thresholds import DURATION, THRESHOLD_BOUNDS, duration_seconds
 
 
 def _limit_value(threshold_type: str, bound: str, limit: float | str) -> float:
-    if THRESHOLD_BOUNDS[threshold_type][bound] == DURATION:
+    kinds = THRESHOLD_BOUNDS[threshold_type]
+    if bound not in kinds:
+        # Parsed thresholds never get here (parse_bounds rejects it); a
+        # hand-built one gets a ValueError, not a KeyError.
+        raise ValueError(f"{threshold_type} has no bound {bound!r}; expected one of {sorted(kinds)}")
+    if kinds[bound] == DURATION:
         return duration_seconds(limit)  # type: ignore[arg-type]
     return float(limit)
 
 
-def _decide(measured: float | Missing | None, limit: float) -> tuple[Status, float | None, str | None]:
-    """E1 for one measured value; E3 for a missing or non-finite one."""
+def _decide(
+    measured: float | Missing | AtLeast | None, limit: float
+) -> tuple[Status, float | None, str | None]:
+    """E1 for one measured value; E3 for a missing or non-finite one.
+
+    A lower bound (AtLeast) breaches when it already reaches the limit: the
+    true value is strictly greater than it, so strictly greater than the
+    limit. Below the limit it decides nothing, so it is not evaluable."""
     if measured is None:
         return "not_evaluable", None, "no_data"
     if isinstance(measured, Missing):
         return "not_evaluable", None, measured.reason
+    if isinstance(measured, AtLeast):
+        if measured.value >= limit:
+            return "breach", measured.value, "lower_bound"
+        return "not_evaluable", None, "no_data"
     if not math.isfinite(measured):
         return "not_evaluable", None, "no_data"
     return ("breach" if measured > limit else "within"), measured, None
@@ -636,7 +730,8 @@ def _decide(measured: float | Missing | None, limit: float) -> tuple[Status, flo
 
 def evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome:
     """Apply CORE §5.5.6 E1-E4 to one threshold. Pure; raises ValueError for
-    a type that is not a judgment threshold type."""
+    a type that is not a judgment threshold type, a bound that type does not
+    define, or a segments threshold without exactly one bound."""
     t = threshold.type
     if t not in THRESHOLD_BOUNDS:
         raise ValueError(f"not a judgment threshold type: {t!r}")
@@ -656,7 +751,7 @@ def _evaluate_segments(threshold: JudgmentThreshold, samples: Samples) -> Thresh
     raise NotImplementedError("segments: Task 5")
 ```
 
-Move the new imports to the top of the module with the existing ones (ruff `I`).
+Move the new imports to the top of the module with the existing ones (ruff `I`; `math` is already imported there by Task 3).
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -677,8 +772,8 @@ git -C nthlayer-common commit -m "feat(manifest): evaluate_threshold E1-E4 for b
 - Test: `nthlayer-common/tests/test_evaluate_threshold_segments.py`
 
 **Interfaces:**
-- Consumes: Task 4's `_decide`, `combine`.
-- Produces: segments evaluation. `ThresholdOutcome.segments` has one `SegmentResult` per distinct listed segment value, in declared order; the single bound's `BoundResult.measured` is the largest evaluated variance (or `None` when none evaluated), its status the E4 combination of the segments.
+- Consumes: Task 4's `_decide`, `_limit_value` (raises `ValueError` for a bound the type does not define), Task 3's `combine`.
+- Produces: segments evaluation. Raises `ValueError` when a (hand-built) segments threshold does not have exactly one bound. `ThresholdOutcome.segments` has one `SegmentResult` per distinct listed segment value, in declared order; the single bound's `BoundResult.measured` is the largest evaluated variance (or `None` when none evaluated), its status the E4 combination of the segments.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -738,6 +833,20 @@ def test_duplicate_segment_value_evaluated_once():
     assert [s.segment for s in o.segments] == ["eu", "us"]
 
 
+@pytest.mark.parametrize("bounds", [
+    {},
+    {"maximum_variance_from_overall": 0.05, "maximum_drift": 0.1},
+    {"maximum_drift": 0.1},  # one bound, but not a segments bound
+])
+def test_segments_without_exactly_its_one_bound_raises_value_error(bounds):
+    # Hand-built (the parsers reject all three).
+    t = JudgmentThreshold("segments", bounds,
+                          ThresholdMeasurement(metric="escalation", segment_dimension="region",
+                                               segment_values=["eu"], window="30d"))
+    with pytest.raises(ValueError):
+        evaluate_threshold(t, Samples(overall=0.1, segments={"eu": 0.1}))
+
+
 _SPEC_V2 = Path(__file__).resolve().parents[2] / "opensrm" / "spec" / "v2"
 # Every shipped example that declares judgment thresholds (spec §9: every one).
 _EXAMPLES = sorted(
@@ -790,8 +899,10 @@ Expected: FAIL — `NotImplementedError: segments: Task 5`
 def _evaluate_segments(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome:
     """CORE §5.5.1: each listed segment's rate is compared with the overall
     rate; the bound caps |segment - overall| in either direction."""
-    (bound, limit), = threshold.bounds.items()
-    limit_v = float(limit)
+    if len(threshold.bounds) != 1:
+        raise ValueError(f"a segments threshold has exactly one bound, got {sorted(threshold.bounds)}")
+    ((bound, limit),) = threshold.bounds.items()
+    limit_v = _limit_value("segments", bound, limit)
     overall = samples.overall
     results: list[SegmentResult] = []
     for value in dict.fromkeys(threshold.measurement.segment_values):  # distinct, in order
@@ -800,11 +911,7 @@ def _evaluate_segments(threshold: JudgmentThreshold, samples: Samples) -> Thresh
             results.append(SegmentResult(value, "not_evaluable", None, reason))
             continue
         rate = samples.segments.get(value)
-        variance: float | Missing | None
-        if rate is None or isinstance(rate, Missing):
-            variance = rate
-        else:
-            variance = abs(rate - overall)
+        variance = rate if rate is None or isinstance(rate, Missing) else abs(rate - overall)
         status, measured, reason = _decide(variance, limit_v)
         results.append(SegmentResult(value, status, measured, reason))
     status = combine(s.status for s in results)
@@ -837,7 +944,7 @@ git -C nthlayer-common commit -m "feat(manifest): evaluate segments thresholds p
 - Test: `nthlayer-common/tests/test_threshold_evaluation_public.py`
 
 **Interfaces:**
-- Produces: public names `evaluate_threshold`, `ThresholdOutcome`, `BoundResult`, `SegmentResult`, `Samples`, `Missing`, `THRESHOLD_SERIES`, `ThresholdSeries`, `FEEDBACK_LATENCY_WINDOW` from `nthlayer_common.manifest`; `"judgment_threshold_evaluation" in ASSESSMENT_KINDS`.
+- Produces: public names `evaluate_threshold`, `ThresholdOutcome`, `BoundResult`, `SegmentResult`, `Samples`, `Missing`, `AtLeast`, `THRESHOLD_SERIES`, `ThresholdSeries`, `FEEDBACK_LATENCY_WINDOW` from `nthlayer_common.manifest`; `"judgment_threshold_evaluation" in ASSESSMENT_KINDS`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -846,7 +953,8 @@ import nthlayer_common.manifest as manifest
 from nthlayer_common.cloudevents import ASSESSMENT_KINDS, _ce_type_for_assessment
 
 _PUBLIC = ["evaluate_threshold", "ThresholdOutcome", "BoundResult", "SegmentResult",
-           "Samples", "Missing", "THRESHOLD_SERIES", "ThresholdSeries", "FEEDBACK_LATENCY_WINDOW"]
+           "Samples", "Missing", "AtLeast", "THRESHOLD_SERIES", "ThresholdSeries",
+           "FEEDBACK_LATENCY_WINDOW"]
 
 
 def test_evaluation_api_is_public():
@@ -869,10 +977,10 @@ Expected: FAIL
 
 - [ ] **Step 3: Implement**
   - In `manifest/__init__.py` add
-    `from nthlayer_common.manifest.evaluation import BoundResult, Missing, Samples, SegmentResult, ThresholdOutcome, evaluate_threshold`
-    and `from nthlayer_common.manifest.threshold_series import FEEDBACK_LATENCY_WINDOW, THRESHOLD_SERIES, ThresholdSeries`, and add all nine names to `__all__` (keep its existing ordering style).
+    `from nthlayer_common.manifest.evaluation import AtLeast, BoundResult, Missing, Samples, SegmentResult, ThresholdOutcome, evaluate_threshold`
+    and `from nthlayer_common.manifest.threshold_series import FEEDBACK_LATENCY_WINDOW, THRESHOLD_SERIES, ThresholdSeries`, and add all ten names to `__all__` (keep its existing ordering style).
   - In `cloudevents.py` add `"judgment_threshold_evaluation",` to `ASSESSMENT_KINDS` directly after `"judgment_slo_evaluation",`.
-  - `docs/upgrading-5.0.md`: add a "**New in 5.2.0:**" bullet to "What consumers must change": evaluate thresholds with `evaluate_threshold(threshold, Samples(...))` (pure; consumers supply measurements per `THRESHOLD_SERIES`), emit `ThresholdOutcome.to_dict()` as a `judgment_threshold_evaluation` assessment.
+  - `docs/upgrading-5.0.md`: add a "**New in 5.2.0:**" bullet to "What consumers must change": evaluate thresholds with `evaluate_threshold(threshold, Samples(...))` (pure; consumers supply measurements per `THRESHOLD_SERIES`), emit `ThresholdOutcome.to_dict()` as a `judgment_threshold_evaluation` assessment; a sampler that can only bound a value from below (a histogram quantile in the `+Inf` bucket) supplies `AtLeast(v)`, which breaches iff `v >= limit`.
   - `docs/architecture.md` and `CLAUDE.md` hard rule 1: name `manifest/evaluation.py` (E1–E4) and `manifest/threshold_series.py` (metric contract) beside `manifest/thresholds.py`.
 
 - [ ] **Step 4: Run the full suite and lint**
@@ -1042,8 +1150,14 @@ git commit -m "fix(measure): error magnitudes never reach SLO breach code (opens
 - Test: `nthlayer-workers/tests/measure/thresholds/test_sampler.py` (+ an empty `tests/measure/thresholds/__init__.py`: the test tree is a package — `tests/measure/__init__.py` exists)
 
 **Interfaces:**
-- Consumes: `THRESHOLD_SERIES`, `FEEDBACK_LATENCY_WINDOW`, `Samples`, `Missing`, `JudgmentThreshold`, `duration_seconds` from `nthlayer_common.manifest`; `PrometheusProvider.query(query: str) -> dict` (raises `PrometheusProviderError` / httpx errors).
-- Produces: `async def sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None) -> Samples`. Never raises.
+- Consumes: `THRESHOLD_SERIES`, `FEEDBACK_LATENCY_WINDOW`, `Samples`, `Missing`, `AtLeast`, `JudgmentThreshold`, `ThresholdSeries`, `duration_seconds` from `nthlayer_common.manifest` (and `evaluate_threshold` in the tests); `PrometheusProvider.query(query: str) -> dict` (raises `PrometheusProviderError` / httpx errors).
+- Produces (all in `nthlayer_workers.measure.thresholds.sampler`):
+  - `async def sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None, retention: float | Missing | None = None, retention_check: bool = True) -> Samples` — never raises. `retention` is `fetch_retention`'s result, passed in so a cycle queries it once; `None` fetches it inside `sample` when a bound needs it. `retention_check=False` (the `MEASURE_RETENTION_CHECK=off` switch, wired in Task 11) sends no retention query and measures.
+  - `async def fetch_retention(provider) -> float | Missing` — Prometheus's oldest-sample timestamp; `Missing("no_data")` when unknown. Never raises.
+  - `def needs_retention(threshold: JudgmentThreshold) -> bool` — whether sampling it checks retention (it has a `histogram_quantile` bound).
+  - `def _quantile(q: float, buckets: list[tuple[float, float]]) -> float | AtLeast | None` — Prometheus's classic `bucketQuantile` over `(le, cumulative count)` pairs, except a rank in the `+Inf` bucket returns `AtLeast(largest finite le)`; `None` = nothing to measure.
+  - `def _label(value: str) -> str` — PromQL label-value escaping.
+- Feedback latency sends ONE query per threshold, `sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d]))`, and computes every declared quantile from it. `histogram_quantile` is never sent: it reports a rank in the `+Inf` bucket as the largest finite `le`, so a latency far beyond the top bucket reads as `within`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1053,16 +1167,24 @@ git commit -m "fix(measure): error magnitudes never reach SLO breach code (opens
 These tests feed realistic Prometheus response JSON and assert which bound
 each value lands on - not just the query string (the gap that hid g32d)."""
 
+import math
 from unittest.mock import AsyncMock
 
 import pytest
-from nthlayer_common.manifest import JudgmentThreshold, Missing, ThresholdMeasurement
+from nthlayer_common.manifest import (
+    AtLeast,
+    JudgmentThreshold,
+    Missing,
+    ThresholdMeasurement,
+    evaluate_threshold,
+)
 from nthlayer_common.manifest.models import ProbeConfig
 
-from nthlayer_workers.measure.thresholds.sampler import sample
+from nthlayer_workers.measure.thresholds.sampler import _quantile, fetch_retention, sample
 
 NOW = 1_800_000_000.0
 DAY = 86400.0
+INF = math.inf
 
 
 def _vector(value):
@@ -1070,11 +1192,20 @@ def _vector(value):
             "result": [{"metric": {}, "value": [NOW, str(value)]}]}}
 
 
+def _buckets(*pairs):
+    """A `sum by (le) (increase(..._bucket[30d]))` response: one sample per
+    bucket, cumulative counts, `le` formatted as Prometheus writes it."""
+    return {"status": "success", "data": {"resultType": "vector", "result": [
+        {"metric": {"le": le}, "value": [NOW, str(count)]} for le, count in pairs]}}
+
+
 _EMPTY = {"status": "success", "data": {"resultType": "vector", "result": []}}
 
 # A needle for _provider that matches every query ("" is a substring of any
 # string): use it to make every query answer the same way.
 _ANY = ""
+# The feedback-latency query reads the histogram's buckets.
+_BUCKETS = "gen_ai_feedback_latency_seconds_bucket"
 
 
 def _provider(responses):
@@ -1090,6 +1221,10 @@ def _provider(responses):
     p = AsyncMock()
     p.query = AsyncMock(side_effect=query)
     return p
+
+
+def _queries(p):
+    return [c.args[0] for c in p.query.await_args_list]
 
 
 def _cal(**bounds):
@@ -1116,10 +1251,17 @@ async def test_mismatched_bins_label_is_no_data():
     s = await sample(p, "svc", _cal(maximum_brier_score=0.1), now=NOW)
     v = s.bounds["maximum_brier_score"]
     assert isinstance(v, Missing) and v.reason == "no_data"
+    assert 'bins="10"' in v.detail and 'window="30d"' in v.detail  # names what it looked for
 
 
-def _lat():
-    return JudgmentThreshold("feedback_latency", {"maximum_p50": "1h", "maximum_p90": "1d"})
+async def test_label_values_are_escaped():
+    p = _provider([])
+    await sample(p, 'we"ird\\svc', _cal(maximum_brier_score=0.1), now=NOW)
+    assert 'service="we\\"ird\\\\svc"' in p.query.await_args.args[0]
+
+
+def _lat(p50="1h", p90="1d"):
+    return JudgmentThreshold("feedback_latency", {"maximum_p50": p50, "maximum_p90": p90})
 
 
 def _retention(start):
@@ -1127,49 +1269,137 @@ def _retention(start):
     return ("prometheus_tsdb_lowest_timestamp_seconds", _vector(start))
 
 
+_OLD = _retention(NOW - 31 * DAY)
+
+
+# Prometheus's bucketQuantile, worked by hand (rank = q * total; first bucket
+# whose cumulative count >= rank; linear between its lower and upper le).
+@pytest.mark.parametrize("q,buckets,expected", [
+    # total 10. q.5: rank 5 -> le=10 (count 5), lower 0: 0 + 10 * 5/5 = 10.
+    (0.5, [(10, 5), (100, 10), (INF, 10)], 10.0),
+    # q.9: rank 9 -> le=100: 10 + (100 - 10) * (9 - 5)/(10 - 5) = 82.
+    (0.9, [(10, 5), (100, 10), (INF, 10)], 82.0),
+    # total 100. q.5: rank 50 -> le=86400: 3600 + 82800 * (50 - 40)/(90 - 40) = 20160.
+    (0.5, [(3600, 40), (86400, 90), (INF, 100)], 20160.0),
+    # q.9: rank 90 lands exactly on le=86400's count: 3600 + 82800 * 50/50 = 86400.
+    (0.9, [(3600, 40), (86400, 90), (INF, 100)], 86400.0),
+    # rank 50 > 20 = every finite count: the +Inf bucket -> a lower bound.
+    (0.5, [(3600, 10), (86400, 20), (INF, 100)], AtLeast(86400.0)),
+    # Unsorted input, and a duplicate le (10 and 10.0) summed, as Prometheus does.
+    (0.5, [(INF, 10), (100, 10), (10, 2), (10.0, 3)], 10.0),
+    # Non-monotonic counts are repaired (le=100 -> 5): rank 9 is past every finite bucket.
+    (0.9, [(10, 5), (100, 4), (INF, 10)], AtLeast(100.0)),
+    # Nothing to measure: no observations, no +Inf bucket, no finite bucket.
+    (0.5, [(10, 0), (INF, 0)], None),
+    (0.5, [(10, 5), (100, 10)], None),
+    (0.5, [(INF, 5)], None),
+])
+def test_quantile_is_prometheus_bucket_quantile(q, buckets, expected):
+    assert _quantile(q, buckets) == expected
+
+
 async def test_latency_quantiles_land_on_p50_and_p90():
-    p = _provider([_retention(NOW - 31 * DAY), ("histogram_quantile(0.5", _vector(1200)),
-                   ("histogram_quantile(0.9", _vector(50000))])
+    # total 100: p50 rank 50 -> 3600 + 82800 * (50 - 40)/50 = 20160;
+    # p90 rank 90 -> exactly 86400.
+    p = _provider([_OLD, (_BUCKETS, _buckets(("3600", 40), ("86400", 90), ("+Inf", 100)))])
     s = await sample(p, "svc", _lat(), now=NOW)
-    assert s.bounds == {"maximum_p50": 1200.0, "maximum_p90": 50000.0}
+    assert s.bounds == {"maximum_p50": 20160.0, "maximum_p90": 86400.0}
 
 
-async def test_nan_quantile_is_no_data():
-    p = _provider([_retention(NOW - 31 * DAY), ("histogram_quantile", _vector("NaN"))])
+async def test_one_bucket_query_serves_both_quantiles():
+    p = _provider([_OLD, (_BUCKETS, _buckets(("10", 5), ("+Inf", 10)))])
+    await sample(p, "svc", _lat(), now=NOW)
+    bucket_queries = [q for q in _queries(p) if _BUCKETS in q]
+    assert bucket_queries == [
+        'sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="svc"}[30d]))'
+    ]
+    assert not any("histogram_quantile" in q for q in _queries(p))
+
+
+async def test_quantile_beyond_the_top_bucket_is_a_lower_bound():
+    # Most ground truth arrives after more than a day: the rank falls in +Inf.
+    p = _provider([_OLD, (_BUCKETS, _buckets(("3600", 5), ("86400", 10), ("+Inf", 100)))])
+    s = await sample(p, "svc", _lat(), now=NOW)
+    assert s.bounds == {"maximum_p50": AtLeast(86400.0), "maximum_p90": AtLeast(86400.0)}
+
+
+async def test_latency_beyond_a_1d_top_bucket_breaches_a_1d_bound():
+    """End to end through evaluate_threshold: histogram_quantile would report
+    86400 here, equal to the bound and so within. The true p90 is above it."""
+    p = _provider([_OLD, (_BUCKETS, _buckets(("60", 1), ("3600", 5), ("86400", 10), ("+Inf", 100)))])
+    t = _lat(p50="1d", p90="1d")
+    o = evaluate_threshold(t, await sample(p, "svc", t, now=NOW))
+    assert o.status == "breach"
+    assert [(b.status, b.measured, b.reason) for b in o.bounds] == [
+        ("breach", 86400.0, "lower_bound"), ("breach", 86400.0, "lower_bound")]
+
+
+async def test_latency_beyond_a_top_bucket_below_the_bound_is_not_evaluable():
+    # OTel's default top boundary is 10000s (< 1d): "more than 10000s" says
+    # nothing about a 1d bound.
+    p = _provider([_OLD, (_BUCKETS, _buckets(("5000", 1), ("10000", 2), ("+Inf", 10)))])
+    t = _lat(p50="1d", p90="1d")
+    o = evaluate_threshold(t, await sample(p, "svc", t, now=NOW))
+    assert [(b.status, b.reason) for b in o.bounds] == [("not_evaluable", "no_data")] * 2
+
+
+@pytest.mark.parametrize("response", [
+    _buckets(("10", 0), ("+Inf", 0)),       # no ground truth arrived in 30d
+    _buckets(("10", 5), ("100", 10)),       # no +Inf bucket: not a histogram
+    _EMPTY,                                 # no series at all
+])
+async def test_unmeasurable_histogram_is_no_data(response):
+    p = _provider([_OLD, (_BUCKETS, response)])
     s = await sample(p, "svc", _lat(), now=NOW)
     assert all(isinstance(v, Missing) and v.reason == "no_data" for v in s.bounds.values())
 
 
+async def test_no_bucket_series_names_the_selector():
+    p = _provider([_OLD])
+    s = await sample(p, "svc", _lat(), now=NOW)
+    assert 'service="svc"' in s.bounds["maximum_p50"].detail
+
+
 async def test_short_retention_is_insufficient_window():
     # Prometheus keeps only 3 days: it cannot see the 30-day window.
-    p = _provider([_retention(NOW - 3 * DAY), ("histogram_quantile", _vector(10))])
+    p = _provider([_retention(NOW - 3 * DAY), (_BUCKETS, _buckets(("10", 5), ("+Inf", 10)))])
     s = await sample(p, "svc", _lat(), now=NOW)
     assert {v.reason for v in s.bounds.values()} == {"insufficient_window"}
+    assert not any(_BUCKETS in q for q in _queries(p))
 
 
 async def test_young_series_is_measured():
     # CORE §5.5.5: p50/p90 over ground truth that ARRIVED in the last 30 days.
     # A service that started 3 days ago has exactly that quantity; only a
     # Prometheus that cannot see 30 days back makes it unmeasurable.
-    p = _provider([_retention(NOW - 90 * DAY), ("histogram_quantile(0.5", _vector(10)),
-                   ("histogram_quantile(0.9", _vector(20))])
+    p = _provider([_retention(NOW - 90 * DAY), (_BUCKETS, _buckets(("10", 5), ("100", 10), ("+Inf", 10)))])
     s = await sample(p, "svc", _lat(), now=NOW)
-    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 20.0}
+    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 82.0}
 
 
 async def test_unknown_retention_still_measures():
     # prometheus_tsdb_lowest_timestamp_seconds not scraped: retention unknown,
     # so measure what Prometheus returns rather than hide the bound.
-    p = _provider([("histogram_quantile(0.5", _vector(10)), ("histogram_quantile(0.9", _vector(20))])
+    p = _provider([(_BUCKETS, _buckets(("10", 5), ("100", 10), ("+Inf", 10)))])
     s = await sample(p, "svc", _lat(), now=NOW)
-    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 20.0}
+    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 82.0}
 
 
-async def test_quantile_is_aggregated_across_instances():
-    p = _provider([])
-    await sample(p, "svc", _lat(), now=NOW)
-    qs = [c.args[0] for c in p.query.await_args_list]
-    assert any(q.startswith("histogram_quantile(0.5, sum by (le)") for q in qs)
+async def test_retention_check_off_sends_no_retention_query():
+    # MEASURE_RETENTION_CHECK=off (Thanos sidecar / Mimir / Cortex, where the
+    # metric does not describe what the query path can see).
+    p = _provider([_retention(NOW - 3 * DAY), (_BUCKETS, _buckets(("10", 5), ("100", 10), ("+Inf", 10)))])
+    s = await sample(p, "svc", _lat(), now=NOW, retention_check=False)
+    assert s.bounds == {"maximum_p50": 10.0, "maximum_p90": 82.0}
+    assert not any("prometheus_tsdb" in q for q in _queries(p))
+
+
+async def test_prefetched_retention_is_used_not_requeried():
+    p = _provider([_retention(NOW - 90 * DAY)])
+    short = await fetch_retention(_provider([_retention(NOW - 3 * DAY)]))
+    s = await sample(p, "svc", _lat(), now=NOW, retention=short)
+    assert {v.reason for v in s.bounds.values()} == {"insufficient_window"}
+    assert not any("prometheus_tsdb" in q for q in _queries(p))
 
 
 async def test_prometheus_error_is_no_data_and_does_not_raise():
@@ -1177,6 +1407,12 @@ async def test_prometheus_error_is_no_data_and_does_not_raise():
     s = await sample(p, "svc", _cal(maximum_brier_score=0.1), now=NOW)
     v = s.bounds["maximum_brier_score"]
     assert v.reason == "no_data" and "connection refused" in v.detail
+
+
+async def test_nan_gauge_is_no_data():
+    p = _provider([(_ANY, _vector("NaN"))])
+    s = await sample(p, "svc", _cal(maximum_brier_score=0.1), now=NOW)
+    assert s.bounds["maximum_brier_score"].reason == "no_data"
 
 
 @pytest.mark.parametrize("t,bounds,measurement", [
@@ -1207,8 +1443,13 @@ Expected: FAIL — `ModuleNotFoundError`
 """Prometheus sampler for judgment thresholds (opensrm-g32d).
 
 Builds queries from nthlayer_common's THRESHOLD_SERIES and maps each result to
-the bound it measures. Never computes spec semantics (the evaluator does) and
-never raises: any failure becomes a Missing sample (CORE §5.5.6 E3).
+the bound it measures. Never decides a bound (the evaluator does) and never
+raises: any failure becomes a Missing sample (CORE §5.5.6 E3).
+
+Histogram quantiles are computed here from the bucket counts rather than by
+PromQL's histogram_quantile, which reports a quantile in the +Inf bucket as
+the largest finite boundary - a value far beyond the top bucket would read as
+that boundary and so as within. _quantile reports it as AtLeast(boundary).
 """
 
 from __future__ import annotations
@@ -1220,6 +1461,7 @@ from typing import Any
 from nthlayer_common.manifest import (
     FEEDBACK_LATENCY_WINDOW,
     THRESHOLD_SERIES,
+    AtLeast,
     JudgmentThreshold,
     Missing,
     Samples,
@@ -1235,8 +1477,25 @@ _RETENTION_QUERY = "min(prometheus_tsdb_lowest_timestamp_seconds)"
 _RETENTION_SLACK_SECONDS = 3600.0
 
 
-def _scalar(resp: dict[str, Any]) -> float | None:
-    result = resp.get("data", {}).get("result", [])
+def _label(value: str) -> str:
+    """A PromQL double-quoted label value: escape backslash, quote, newline."""
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _selector(labels: dict[str, str]) -> str:
+    return ",".join(f'{name}="{_label(value)}"' for name, value in labels.items())
+
+
+def _result(resp: Any) -> list[Any]:
+    if not isinstance(resp, dict):
+        return []
+    data = resp.get("data")
+    result = data.get("result") if isinstance(data, dict) else None
+    return result if isinstance(result, list) else []
+
+
+def _scalar(resp: Any) -> float | None:
+    result = _result(resp)
     if not result:
         return None
     try:
@@ -1245,59 +1504,160 @@ def _scalar(resp: dict[str, Any]) -> float | None:
         return None
 
 
-def _gauge_query(s: ThresholdSeries, service: str, t: JudgmentThreshold) -> str:
-    m = t.measurement
-    values = {"service": service, "bins": str(m.bins), "window": str(m.window)}
-    matchers = ",".join(f'{label}="{values[label]}"' for label in s.labels)
-    return f"max({s.metric}{{{matchers}}})"
+def _buckets(resp: Any) -> list[tuple[float, float]]:
+    """(le, cumulative count) pairs from a `sum by (le)` vector; entries
+    without a parseable ``le`` or a finite count are dropped."""
+    out = []
+    for r in _result(resp):
+        try:
+            le = float(r["metric"]["le"])  # Prometheus writes the last one "+Inf"
+            count = float(r["value"][1])
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+        if not math.isnan(le) and math.isfinite(count):
+            out.append((le, count))
+    return out
 
 
-def _quantile_query(s: ThresholdSeries, service: str) -> str:
-    return (
-        f"histogram_quantile({s.quantile}, sum by (le) "
-        f'(increase({s.metric}_bucket{{service="{service}"}}[{FEEDBACK_LATENCY_WINDOW}])))'
-    )
+def _quantile(q: float, buckets: list[tuple[float, float]]) -> float | AtLeast | None:
+    """Prometheus's classic-histogram bucketQuantile, except that a rank in
+    the +Inf bucket is AtLeast(largest finite le) instead of that le.
+
+    None when there is nothing to measure: no +Inf bucket, no finite bucket,
+    or no observations. Duplicate ``le`` values are summed and the counts made
+    monotonic, as Prometheus does."""
+    merged: dict[float, float] = {}
+    for le, count in buckets:
+        merged[le] = merged.get(le, 0.0) + count
+    ordered = sorted(merged.items())
+    if len(ordered) < 2 or ordered[-1][0] != math.inf:
+        return None
+    cumulative: list[tuple[float, float]] = []
+    running = 0.0
+    for le, count in ordered:
+        running = max(running, count)
+        cumulative.append((le, running))
+    total = cumulative[-1][1]
+    if total <= 0:
+        return None
+    rank = q * total
+    b = next(i for i, (_, count) in enumerate(cumulative) if count >= rank)
+    if b == len(cumulative) - 1:
+        return AtLeast(cumulative[-2][0])
+    upper, count = cumulative[b]
+    if b == 0 and upper <= 0:
+        return upper
+    lower, below = cumulative[b - 1] if b > 0 else (0.0, 0.0)
+    return lower + (upper - lower) * (rank - below) / (count - below)
 
 
-async def _value(provider: Any, query: str) -> float | Missing:
+async def _query(provider: Any, query: str) -> Any:
+    """The response, or Missing("no_data") carrying the error. Never raises."""
     try:
-        v = _scalar(await provider.query(query))
-    except Exception as exc:  # noqa: BLE001 - a sampler never raises (E3)
+        return await provider.query(query)
+    except Exception as exc:  # a sampler never raises (E3)
         return Missing("no_data", f"{type(exc).__name__}: {exc}")
+
+
+async def fetch_retention(provider: Any) -> float | Missing:
+    """Prometheus's oldest-sample timestamp (seconds), or Missing when it is
+    unknown. One query; the threshold phase calls it once per cycle."""
+    resp = await _query(provider, _RETENTION_QUERY)
+    if isinstance(resp, Missing):
+        return resp
+    v = _scalar(resp)
     if v is None or not math.isfinite(v):
-        return Missing("no_data", "no series" if v is None else "non-finite value")
+        return Missing("no_data", "retention unknown")
     return v
 
 
+def needs_retention(threshold: JudgmentThreshold) -> bool:
+    """Whether sampling *threshold* checks Prometheus's retention."""
+    series = THRESHOLD_SERIES.get(threshold.type, {})
+    return any(
+        series[b].kind == "histogram_quantile" for b in threshold.bounds if b in series
+    )
+
+
+async def _gauge(provider: Any, s: ThresholdSeries, service: str, t: JudgmentThreshold) -> float | Missing:
+    m = t.measurement
+    available = {"service": service, "bins": str(m.bins), "window": str(m.window)}
+    selector = _selector({label: available[label] for label in s.labels})
+    resp = await _query(provider, f"max({s.metric}{{{selector}}})")
+    if isinstance(resp, Missing):
+        return resp
+    v = _scalar(resp)
+    if v is None:
+        return Missing("no_data", f"no {s.metric} series with {selector}")
+    if not math.isfinite(v):
+        return Missing("no_data", "non-finite value")
+    return v
+
+
+async def _histogram(
+    provider: Any, metric: str, quantiles: dict[str, float], service: str
+) -> dict[str, float | AtLeast | Missing]:
+    """Every quantile of one histogram, from ONE bucket query."""
+    selector = _selector({"service": service})
+    resp = await _query(
+        provider,
+        f"sum by (le) (increase({metric}_bucket{{{selector}}}[{FEEDBACK_LATENCY_WINDOW}]))",
+    )
+    if isinstance(resp, Missing):
+        return dict.fromkeys(quantiles, resp)
+    buckets = _buckets(resp)
+    if not buckets:
+        return dict.fromkeys(quantiles, Missing("no_data", f"no {metric}_bucket series with {selector}"))
+    out: dict[str, float | AtLeast | Missing] = {}
+    for bound, q in quantiles.items():
+        v = _quantile(q, buckets)
+        out[bound] = Missing("no_data", "no observations in the window, or no +Inf bucket") if v is None else v
+    return out
+
+
 async def sample(
-    provider: Any, service: str, threshold: JudgmentThreshold, *, now: float | None = None
+    provider: Any,
+    service: str,
+    threshold: JudgmentThreshold,
+    *,
+    now: float | None = None,
+    retention: float | Missing | None = None,
+    retention_check: bool = True,
 ) -> Samples:
-    """The raw measurements for *threshold* on *service*. Never raises."""
+    """The raw measurements for *threshold* on *service*. Never raises.
+
+    *retention* is fetch_retention's result, passed in so a cycle queries it
+    once; None fetches it here if a bound needs it. retention_check=False
+    (MEASURE_RETENTION_CHECK=off) skips the check and measures what
+    Prometheus returns."""
     series = THRESHOLD_SERIES.get(threshold.type, {})
     if threshold.type == "segments":
         return Samples(overall=Missing("no_data_source", "no segments series yet"))
     if not series:
         return Samples(bounds={b: Missing("no_data_source", f"no {threshold.type} series yet")
                                for b in threshold.bounds})
-    now = _time.time() if now is None else now
-    out: dict[str, float | Missing] = {}
-    retention: float | Missing | None = None  # queried once, on first histogram bound
+    out: dict[str, float | AtLeast | Missing] = {}
+    histograms: dict[str, dict[str, float]] = {}  # metric -> {bound: quantile}
     for bound in threshold.bounds:
         s = series.get(bound)
         if s is None:
             out[bound] = Missing("no_data_source", f"no series for {bound}")
-            continue
-        if s.kind == "gauge":
-            out[bound] = await _value(provider, _gauge_query(s, service, threshold))
-            continue
+        elif s.kind == "gauge":
+            out[bound] = await _gauge(provider, s, service, threshold)
+        else:
+            histograms.setdefault(s.metric, {})[bound] = s.quantile  # type: ignore[assignment]
+    if histograms and retention_check:
         if retention is None:
-            retention = await _value(provider, _RETENTION_QUERY)
+            retention = await fetch_retention(provider)
+        now = _time.time() if now is None else now
         window = duration_seconds(FEEDBACK_LATENCY_WINDOW)
         if not isinstance(retention, Missing) and now - retention < window - _RETENTION_SLACK_SECONDS:
-            out[bound] = Missing("insufficient_window",
-                                 f"Prometheus retention starts {(now - retention) / 86400:.1f}d ago")
-            continue
-        out[bound] = await _value(provider, _quantile_query(s, service))
+            short = Missing("insufficient_window",
+                            f"Prometheus retention starts {(now - retention) / 86400:.1f}d ago")
+            out.update({b: short for qs in histograms.values() for b in qs})
+            histograms = {}
+    for metric, quantiles in histograms.items():
+        out.update(await _histogram(provider, metric, quantiles, service))
     return Samples(bounds=out)
 ```
 
@@ -1323,12 +1683,13 @@ git commit -m "feat(measure): Prometheus sampler for judgment thresholds (opensr
 - Produces:
   - `REARM_WITHIN_CYCLES = 3`
   - `threshold_key(service: str, t: JudgmentThreshold) -> str`
-  - `@dataclass KeyState(last_evaluable: str | None = None, armed: bool = True, within_streak: int = 0)` with `to_dict()` / `from_dict()`
+  - `@dataclass KeyState(last_evaluable: str | None = None, armed: bool = True, within_streak: int = 0)` with `to_dict()` / `from_dict(d: Any)`. `from_dict` never raises: restored `component_state` is untrusted, so a non-dict, or a field of the wrong type or value (`last_evaluable` not `"within"`/`"breach"`, `armed` not a `bool`, `within_streak` not a non-negative `int`), takes the default for that field.
   - `advance(state: KeyState, status: str) -> tuple[KeyState, bool]` — returns the new state and whether a `quality_breach` fires.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
+import pytest
 from nthlayer_common.manifest import JudgmentThreshold, ThresholdMeasurement
 
 from nthlayer_workers.measure.thresholds.state import (
@@ -1415,6 +1776,19 @@ def test_within_then_breach_fires():
 def test_state_round_trip():
     st, _ = advance(KeyState(), "breach")
     assert KeyState.from_dict(st.to_dict()) == st
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (None, KeyState()),
+    ("garbage", KeyState()),
+    ({"last_evaluable": 7, "armed": "no", "within_streak": "x"}, KeyState()),
+    ({"last_evaluable": "breach", "armed": 0, "within_streak": True}, KeyState("breach", True, 0)),
+    ({"last_evaluable": "breach", "armed": False, "within_streak": -2}, KeyState("breach", False, 0)),
+    ({"last_evaluable": "within", "armed": False, "within_streak": 2, "service": "svc"},
+     KeyState("within", False, 2)),
+])
+def test_from_dict_tolerates_a_corrupt_restored_state(raw, expected):
+    assert KeyState.from_dict(raw) == expected
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -1475,8 +1849,19 @@ class KeyState:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> KeyState:
-        return cls(**{k: d[k] for k in ("last_evaluable", "armed", "within_streak") if k in d})
+    def from_dict(cls, d: Any) -> KeyState:
+        """Read a persisted state. Restored component_state is not trusted: a
+        non-dict, or a field of the wrong type, takes the default (armed, no
+        streak), so a corrupt entry can re-raise a breach but never silences
+        one."""
+        if not isinstance(d, dict):
+            return cls()
+        last, armed, streak = d.get("last_evaluable"), d.get("armed"), d.get("within_streak")
+        return cls(
+            last_evaluable=last if last in ("within", "breach") else None,
+            armed=armed if isinstance(armed, bool) else True,
+            within_streak=streak if type(streak) is int and streak >= 0 else 0,
+        )
 
 
 def advance(state: KeyState, status: str) -> tuple[KeyState, bool]:
@@ -1508,18 +1893,21 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
 
 **Files:**
 - Create: `nthlayer-workers/src/nthlayer_workers/measure/thresholds/phase.py`
-- Modify: `nthlayer-workers/src/nthlayer_workers/measure/worker.py` (`__post_init__`, `restore_state`, `process_cycle`, `get_state`)
+- Modify: `nthlayer-workers/src/nthlayer_workers/measure/worker.py` (imports, a module-level `_env_flag_default_on`, a `retention_check` field, `__post_init__`, `restore_state`, `process_cycle`, `get_state`)
 - Modify: `nthlayer-workers/.github/workflows/test.yml` (check out opensrm as a sibling)
 - Test: `nthlayer-workers/tests/measure/thresholds/test_phase.py`
 
 **Interfaces:**
 - Consumes:
-  - `sample` (Task 9); `threshold_key`, `KeyState`, `advance` (Task 10);
-  - from `nthlayer_common.manifest`: `evaluate_threshold`, `threshold_from_v2_entry(entry, where: str = ...) -> JudgmentThreshold`, `threshold_to_v2_entry(t) -> dict`, `OpenSRMV2ParseError`;
+  - from `nthlayer_workers.measure.thresholds.sampler` (Task 9): `sample(provider, service, threshold, *, now=None, retention: float | Missing | None = None, retention_check: bool = True) -> Samples` (never raises; `retention=None` fetches it inside), `fetch_retention(provider) -> float | Missing` (never raises), `needs_retention(threshold) -> bool`;
+  - from `nthlayer_workers.measure.thresholds.state` (Task 10): `threshold_key`, `advance`, `KeyState` (`KeyState.from_dict(d: Any)` never raises: a non-dict or wrong-typed field takes the default);
+  - from `nthlayer_common.manifest`: `JudgmentThreshold`, `Missing`, `evaluate_threshold`, `threshold_from_v2_entry(entry, where: str = ...) -> JudgmentThreshold`, `threshold_to_v2_entry(t) -> dict`, `OpenSRMV2ParseError`;
   - from `nthlayer_common.cloudevents`: `wrap_assessment(assessment: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` and `wrap_verdict(verdict: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` — each wraps the dict in a CloudEvents envelope whose `data` is the original dict;
   - `CoreAPIClient` (`nthlayer_common.api_client`, `MeasureModule.client`): `await client.get_manifests() -> APIResult`, `await client.submit_assessment(envelope: dict) -> APIResult`, `await client.submit_verdict(envelope: dict) -> APIResult`; `APIResult(ok: bool, status_code: int, data=None, error=None, detail=None)` — check `ok` before using `data`.
-- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str]) -> list[tuple[str, str, str]]` — mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. `MeasureModule` gains:
-  - `self._threshold_state` — persisted under state key `threshold_state` (`get_state` / `restore_state`);
+  - existing `MeasureModule` (`measure/worker.py`): dataclass fields `client`, `prometheus_url`, `eval_concurrency: int = 5` (copied to `self._eval_concurrency` in `__post_init__`; the SLO phase already uses it for its `asyncio.Semaphore`); `restore_state(state)` returns early on a falsy `state`; `process_cycle` returns early unless `/manifests` is ok, then opens `provider = PrometheusProvider(...)` and runs, inside one `try … finally: await provider.aclose()`, Phase 1 (SLO evaluation, ending in `await asyncio.gather(...)`), Phase 2 (SLO breach transitions, starting `new_breaches = _detect_transitions(...)`), Phase 3 (governance).
+- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True) -> list[tuple[str, str, str]]` — evaluates entries concurrently (at most `eval_concurrency` at a time), queries retention at most once (only if `retention_check` and an entry needs it), mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. An entry that raises is logged once (`threshold_eval_failed`) and skipped. `state[key]` changes only when the entry's breach verdict (if one fires) was accepted (`ok`), so a rejected verdict is raised again next cycle. `MeasureModule` gains:
+  - `retention_check: bool` — dataclass field, default from `MEASURE_RETENTION_CHECK` via `_env_flag_default_on` (read at construction; `off`/`false`/`0`, any case, disable it);
+  - `self._threshold_state` — persisted under state key `threshold_state` (`get_state` / `restore_state`; restore drops a non-dict value and non-dict entries);
   - `self._threshold_problems: set[str]` — the once-per-change log memory; in-memory only, NOT persisted (after a restart each problem is logged once more).
 
 - [ ] **Step 1: Write the failing tests** (pattern: `tests/measure/test_measure_worker.py` — `AsyncMock` client, patched `PrometheusProvider`)
@@ -1527,9 +1915,11 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
 ```python
 """Threshold phase of MeasureModule (opensrm-g32d)."""
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 import yaml
 from nthlayer_common.api_client import APIResult
 from nthlayer_common.manifest import threshold_from_v2_entry, threshold_to_v2_entry
@@ -1551,8 +1941,8 @@ def _vector(v):
     return {"status": "success", "data": {"result": [{"metric": {}, "value": [0, str(v)]}]}}
 
 
-def _module(prom_values, manifests):
-    """prom_values: list of ECE values returned on successive cycles."""
+def _module(prom_values, manifests, **module_kw):
+    """prom_values: list of ECE values returned on successive queries."""
     client = AsyncMock()
     client.get_manifests = AsyncMock(side_effect=manifests if isinstance(manifests, list) else None,
                                      return_value=None if isinstance(manifests, list) else manifests)
@@ -1564,7 +1954,8 @@ def _module(prom_values, manifests):
     prov = AsyncMock()
     prov.query = AsyncMock(side_effect=[_vector(v) for v in prom_values])
     prov.aclose = AsyncMock()
-    return MeasureModule(client=client, prometheus_url="http://prom:9090"), prov, assessments, verdicts
+    module = MeasureModule(client=client, prometheus_url="http://prom:9090", **module_kw)
+    return module, prov, assessments, verdicts
 
 
 def _breaches(verdicts):
@@ -1675,6 +2066,130 @@ async def test_served_shape_drives_a_cycle():
     m, prov, a, v = _module([0.01] * 10, _manifests(("svc", served)))
     await _cycles(m, prov, 1)
     assert len(a) == len(served)
+
+
+# --- Failure containment and delivery (R5 edge-cases) ----------------------
+
+_RR_SLO = {"name": "rr", "target": 98.5, "judgment_type": "reversal_rate", "window": "30d",
+           "indicator_query": "q"}
+_LAT = {"type": "feedback_latency", "bounds": {"maximum_p50": "1h"}}
+_EMPTY = {"status": "success", "data": {"result": []}}
+
+
+def _with_slo_breach(m, prov):
+    """svc also declares an SLO that breaches (98.0 < 98.5)."""
+    m.client.get_manifests = AsyncMock(return_value=APIResult(ok=True, status_code=200, data=[
+        {"name": "svc", "type": "ai-gate", "slos": [_RR_SLO], "judgment_thresholds": [_CAL]}]))
+    prov.get_sli_value = AsyncMock(return_value=0.98)
+
+
+def _slo_breaches(verdicts):
+    return [x["data"].get("slo_name") for x in _breaches(verdicts) if "slo_name" in x["data"]]
+
+
+async def test_failed_breach_verdict_refires_next_cycle():
+    m, prov, a, v = _module([0.2, 0.2, 0.2], _manifests(("svc", [_CAL])))
+    answers = [APIResult(ok=False, status_code=503), APIResult(ok=True, status_code=201, data={}),
+               APIResult(ok=True, status_code=201, data={})]
+    m.client.submit_verdict = AsyncMock(side_effect=lambda env: (v.append(env["data"]), answers.pop(0))[1])
+    await _cycles(m, prov, 3)
+    # cycle 1 rejected -> state unchanged; cycle 2 raises it again; cycle 3 nothing new.
+    assert len(_breaches(v)) == 2
+
+
+async def test_failed_assessment_still_raises_the_verdict():
+    m, prov, a, v = _module([0.2], _manifests(("svc", [_CAL])))
+    m.client.submit_assessment = AsyncMock(return_value=APIResult(ok=False, status_code=503))
+    await _cycles(m, prov, 1)
+    assert len(_breaches(v)) == 1
+
+
+async def test_one_failing_entry_does_not_stop_the_others():
+    from nthlayer_workers.measure.thresholds import phase
+
+    real = phase.evaluate_threshold
+
+    def flaky(t, samples):
+        if t.type == "audit_backlog":
+            raise RuntimeError("boom")
+        return real(t, samples)
+
+    backlog = {"type": "audit_backlog", "bounds": {"maximum_age": "24h"}}
+    m, prov, a, v = _module([0.2], _manifests(("svc", [backlog, _CAL])))
+    with patch("nthlayer_workers.measure.thresholds.phase.evaluate_threshold", side_effect=flaky):
+        await _cycles(m, prov, 1)
+    assert [x["data"]["outcome"]["type"] for x in a] == ["calibration"]
+    assert len(_breaches(v)) == 1
+
+
+async def test_threshold_phase_failure_does_not_stop_slo_phases():
+    m, prov, a, v = _module([], _manifests(("svc", [_CAL])))
+    _with_slo_breach(m, prov)
+    with patch("nthlayer_workers.measure.worker.run_threshold_phase",
+               AsyncMock(side_effect=RuntimeError("boom"))):
+        await _cycles(m, prov, 1)
+    assert _slo_breaches(v) == ["rr"]
+
+
+@pytest.mark.parametrize("threshold_state", [
+    None,
+    "garbage",
+    {"svc:calibration:abc": "not-a-dict"},
+    {"svc:calibration:abc": {"last_evaluable": 7, "armed": "yes", "within_streak": "x", "service": "svc"}},
+])
+async def test_corrupt_restored_state_does_not_stop_the_cycle(threshold_state):
+    m, prov, a, v = _module([0.2], _manifests(("svc", [_CAL])))
+    _with_slo_breach(m, prov)
+    await m.restore_state({"slo_status": {}, "threshold_state": threshold_state})
+    await _cycles(m, prov, 1)
+    assert _slo_breaches(v) == ["rr"]
+    assert any(x["data"].get("threshold_type") == "calibration" for x in _breaches(v))
+    assert all(isinstance(st, dict) for st in m._threshold_state.values())
+
+
+def _recording_provider(answer):
+    prov = AsyncMock()
+    prov.seen = []
+
+    async def query(q, time=None):
+        prov.seen.append(q)
+        return answer(q)
+
+    prov.query = AsyncMock(side_effect=query)
+    prov.aclose = AsyncMock()
+    return prov
+
+
+@pytest.mark.parametrize("env,expected", [(None, 1), ("on", 1), ("off", 0), ("FALSE", 0), ("0", 0)])
+async def test_retention_is_queried_once_per_cycle_unless_switched_off(monkeypatch, env, expected):
+    if env is None:
+        monkeypatch.delenv("MEASURE_RETENTION_CHECK", raising=False)
+    else:
+        monkeypatch.setenv("MEASURE_RETENTION_CHECK", env)
+    m, _, a, v = _module([], _manifests(("a", [_LAT]), ("b", [_LAT])))  # reads the env
+    prov = _recording_provider(lambda q: _EMPTY)
+    await _cycles(m, prov, 1)
+    assert sum("prometheus_tsdb_lowest_timestamp_seconds" in q for q in prov.seen) == expected
+    assert len(a) == 2
+
+
+async def test_entries_are_evaluated_concurrently_up_to_eval_concurrency():
+    active = peak = 0
+
+    async def slow(q, time=None):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return _vector(0.01)
+
+    m, _, a, v = _module([], _manifests(*[(f"s{i}", [_CAL]) for i in range(6)]), eval_concurrency=2)
+    prov = AsyncMock()
+    prov.query = AsyncMock(side_effect=slow)
+    prov.aclose = AsyncMock()
+    await _cycles(m, prov, 1)
+    assert len(a) == 6 and peak == 2
 ```
 
 Check the `parents[N]` depth for `tests/measure/thresholds/` against the repo layout (workers is `<eco>/nthlayer-workers/tests/measure/thresholds/test_phase.py` → `parents[4]` is `<eco>`); assert `src.is_file()` so a wrong depth fails loudly.
@@ -1691,6 +2206,7 @@ Expected: FAIL (no threshold assessments emitted)
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -1698,18 +2214,22 @@ from typing import Any
 import structlog
 from nthlayer_common.cloudevents import wrap_assessment, wrap_verdict
 from nthlayer_common.manifest import (
+    JudgmentThreshold,
+    Missing,
     OpenSRMV2ParseError,
     evaluate_threshold,
     threshold_from_v2_entry,
     threshold_to_v2_entry,
 )
 
-from nthlayer_workers.measure.thresholds.sampler import sample
+from nthlayer_workers.measure.thresholds.sampler import fetch_retention, needs_retention, sample
 from nthlayer_workers.measure.thresholds.state import KeyState, advance, threshold_key
 
 logger = structlog.get_logger()
 
 THRESHOLD_BREACH_SEVERITY = "high"
+
+_Entry = tuple[str, str, JudgmentThreshold]  # (key, service, threshold)
 
 
 def _log_once(seen: set[str], token: str, event: str, **kw: Any) -> None:
@@ -1718,22 +2238,18 @@ def _log_once(seen: set[str], token: str, event: str, **kw: Any) -> None:
         logger.warning(event, **kw)
 
 
-async def run_threshold_phase(
-    *, client: Any, provider: Any, manifests: list[dict], state: dict[str, dict],
-    seen_problems: set[str],
-) -> list[tuple[str, str, str]]:
-    """Evaluate every served threshold; mutate *state*; return new breaches as
-    (key, service, breach_verdict_id). Caller guarantees *manifests* came from a
-    successful /manifests response."""
-    new_breaches: list[tuple[str, str, str]] = []
-    present_services: set[str] = set()
-    live_keys: set[str] = set()
+def _entries(manifests: list[dict], seen_problems: set[str]) -> tuple[set[str], list[_Entry]]:
+    """Parse and key every served threshold: (services present, entries).
+    Identical entries are kept once; same-key entries with other bound
+    values get a #n ordinal in declared order."""
+    present: set[str] = set()
+    entries: list[_Entry] = []
     by_base: dict[str, list[dict]] = {}
     for i, m in enumerate(manifests):
         service = m.get("name")
         if not service:
             continue
-        present_services.add(service)
+        present.add(service)
         for j, item in enumerate(m.get("judgment_thresholds") or []):
             where = f"/manifests[{i}].judgment_thresholds[{j}]"
             try:
@@ -1748,60 +2264,149 @@ async def run_threshold_phase(
             if canonical in same_base:  # an identical entry: evaluate once
                 _log_once(seen_problems, f"dup:{base}", "threshold_duplicate", service=service, key=base)
                 continue
-            # Same identity but different bound values: a distinct entry, kept
-            # apart by its ordinal among such entries (declared order).
             key = base if not same_base else f"{base}#{len(same_base)}"
             same_base.append(canonical)
-            live_keys.add(key)
-            outcome = evaluate_threshold(t, await sample(provider, service, t))
-            assessment_id = f"jte-{service}-{t.type}-{uuid.uuid4().hex[:8]}"
-            assessment = {
-                "id": assessment_id,
-                "created_at": datetime.now(UTC).isoformat(),
-                "kind": "judgment_threshold_evaluation",
-                "service": service,
-                "data": {"threshold_key": key, "outcome": outcome.to_dict()},
-            }
-            result = await client.submit_assessment(wrap_assessment(assessment, component="measure"))
-            if not result.ok:
-                logger.warning("threshold_assessment_submit_failed", service=service, key=key)
-            new_state, fire = advance(KeyState.from_dict(state.get(key, {})), outcome.status)
-            state[key] = {**new_state.to_dict(), "service": service}
-            if fire:
-                breach_id = f"vrd-tbreach-{service}-{t.type}-{uuid.uuid4().hex[:8]}"
-                verdict = {
-                    "id": breach_id,
-                    "created_at": datetime.now(UTC).isoformat(),
-                    "type": "quality_breach",
-                    "service": service,
-                    "parent_ids": [assessment_id],
-                    "data": {"threshold_key": key, "threshold_type": t.type,
-                             "severity": THRESHOLD_BREACH_SEVERITY, "outcome": outcome.to_dict()},
-                }
-                await client.submit_verdict(wrap_verdict(verdict, component="measure"))
-                new_breaches.append((key, service, breach_id))
+            entries.append((key, service, t))
+    return present, entries
+
+
+async def _evaluate(
+    *, client: Any, provider: Any, key: str, service: str, t: JudgmentThreshold,
+    state: dict[str, dict], retention: float | Missing | None, retention_check: bool,
+) -> tuple[str, str, str] | None:
+    """Sample, evaluate, report one entry; returns its new breach, if any.
+    state[key] changes only once everything this cycle owes is delivered."""
+    outcome = evaluate_threshold(
+        t, await sample(provider, service, t, retention=retention, retention_check=retention_check)
+    )
+    assessment_id = f"jte-{service}-{t.type}-{uuid.uuid4().hex[:8]}"
+    assessment = {
+        "id": assessment_id,
+        "created_at": datetime.now(UTC).isoformat(),
+        "kind": "judgment_threshold_evaluation",
+        "service": service,
+        "data": {"threshold_key": key, "outcome": outcome.to_dict()},
+    }
+    result = await client.submit_assessment(wrap_assessment(assessment, component="measure"))
+    if not result.ok:
+        # Evaluation continues: a breach still raises its verdict, whose
+        # parent_ids then name an assessment core did not store.
+        logger.warning("threshold_assessment_submit_failed", service=service, key=key,
+                       assessment_id=assessment_id, status_code=result.status_code)
+    new_state, fire = advance(KeyState.from_dict(state.get(key)), outcome.status)
+    breach: tuple[str, str, str] | None = None
+    if fire:
+        breach_id = f"vrd-tbreach-{service}-{t.type}-{uuid.uuid4().hex[:8]}"
+        verdict = {
+            "id": breach_id,
+            "created_at": datetime.now(UTC).isoformat(),
+            "type": "quality_breach",
+            "service": service,
+            "parent_ids": [assessment_id],
+            "data": {"threshold_key": key, "threshold_type": t.type,
+                     "severity": THRESHOLD_BREACH_SEVERITY, "outcome": outcome.to_dict()},
+        }
+        sent = await client.submit_verdict(wrap_verdict(verdict, component="measure"))
+        if not sent.ok:
+            # Keep the previous state, so the next cycle sees the same
+            # transition and raises the verdict again.
+            logger.warning("threshold_breach_submit_failed", service=service, key=key,
+                           status_code=sent.status_code)
+            return None
+        breach = (key, service, breach_id)
+    state[key] = {**new_state.to_dict(), "service": service}
+    return breach
+
+
+async def run_threshold_phase(
+    *, client: Any, provider: Any, manifests: list[dict], state: dict[str, dict],
+    seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True,
+) -> list[tuple[str, str, str]]:
+    """Evaluate every served threshold; mutate *state*; return new breaches as
+    (key, service, breach_verdict_id). Caller guarantees *manifests* came from a
+    successful /manifests response. Entries are evaluated concurrently, at most
+    *eval_concurrency* at a time; one that raises is logged and skipped."""
+    present_services, entries = _entries(manifests, seen_problems)
+    # Prometheus's retention, queried once per cycle and only if needed.
+    retention: float | Missing | None = None
+    if retention_check and any(needs_retention(t) for _, _, t in entries):
+        retention = await fetch_retention(provider)
+    sem = asyncio.Semaphore(eval_concurrency)
+    new_breaches: list[tuple[str, str, str]] = []
+
+    async def one(key: str, service: str, t: JudgmentThreshold) -> None:
+        async with sem:
+            try:
+                breach = await _evaluate(client=client, provider=provider, key=key, service=service,
+                                         t=t, state=state, retention=retention,
+                                         retention_check=retention_check)
+            except Exception as exc:  # one bad threshold affects only itself
+                _log_once(seen_problems, f"eval:{key}:{type(exc).__name__}", "threshold_eval_failed",
+                          service=service, key=key, error=f"{type(exc).__name__}: {exc}")
+                return
+        if breach is not None:
+            new_breaches.append(breach)
+
+    await asyncio.gather(*(one(*e) for e in entries))
     # Retire only keys of services present in this (successful) response.
+    live_keys = {key for key, _, _ in entries}
     for key in [k for k, v in state.items() if v.get("service") in present_services and k not in live_keys]:
         del state[key]
         logger.info("threshold_retired", key=key)
     return new_breaches
 ```
 
-- [ ] **Step 4: Wire it into `MeasureModule`**
-  - `__post_init__`: add `self._threshold_state: dict[str, dict] = {}` and `self._threshold_problems: set[str] = set()`.
-  - `restore_state`: `self._threshold_state = state.get("threshold_state", {})`.
-  - `get_state`: add `"threshold_state": self._threshold_state`.
-  - `process_cycle`: after the existing Phase 1 SLO evaluation (still inside the `try`, before Phase 3 governance), add:
+- [ ] **Step 4: Wire it into `MeasureModule`** (`measure/worker.py`)
+  - Imports: `import os`; `from dataclasses import dataclass, field`; `from nthlayer_workers.measure.thresholds.phase import run_threshold_phase`.
+  - Module-level helper (above the class):
 
 ```python
-            # Threshold phase (opensrm-g32d): manifests is from a successful response.
-            threshold_breaches = await run_threshold_phase(
-                client=self.client, provider=provider, manifests=manifests,
-                state=self._threshold_state, seen_problems=self._threshold_problems,
-            )
+def _env_flag_default_on(name: str) -> bool:
+    """A default-on operator switch: only off / false / 0 (any case) disable it."""
+    return os.environ.get(name, "").strip().lower() not in ("off", "false", "0")
 ```
 
-  and import `run_threshold_phase` from `nthlayer_workers.measure.thresholds.phase`. `provider` and `manifests` are the existing locals of `process_cycle` (the `PrometheusProvider` it opens and `result.data`). Do not change the existing early return (`if not result.ok or not result.data: return`).
+  - Dataclass field, after `eval_concurrency`:
+
+```python
+    # Read once, at construction: changing it needs a restart (opensrm-g32d).
+    retention_check: bool = field(
+        default_factory=lambda: _env_flag_default_on("MEASURE_RETENTION_CHECK")
+    )
+```
+
+  - `__post_init__`: add `self._threshold_state: dict[str, dict] = {}` and `self._threshold_problems: set[str] = set()`.
+  - `restore_state` (restored component_state is untrusted; `KeyState.from_dict` handles wrong-typed fields):
+
+```python
+        raw = state.get("threshold_state")
+        self._threshold_state = (
+            {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, dict)}
+            if isinstance(raw, dict) else {}
+        )
+```
+
+  - `get_state`: add `"threshold_state": self._threshold_state`.
+  - `process_cycle`: directly after Phase 1's `await asyncio.gather(...)` and before Phase 2 (`new_breaches = _detect_transitions(...)`), still inside the `try`, add:
+
+```python
+            # Threshold phase (opensrm-g32d): manifests is from a successful
+            # response. It must never stop Phases 2-3: on failure, log and go
+            # on with no threshold breaches this cycle.
+            try:
+                threshold_breaches = await run_threshold_phase(
+                    client=self.client, provider=provider, manifests=manifests,
+                    state=self._threshold_state, seen_problems=self._threshold_problems,
+                    eval_concurrency=self._eval_concurrency, retention_check=self.retention_check,
+                )
+            except Exception as exc:
+                logger.warning("threshold_phase_failed", error=f"{type(exc).__name__}: {exc}")
+                threshold_breaches = []
+            if threshold_breaches:
+                logger.info("threshold_breaches", count=len(threshold_breaches))
+```
+
+  `provider` and `manifests` are the existing locals of `process_cycle` (the `PrometheusProvider` it opens and `result.data`). Do not change the existing early return (`if not result.ok or not result.data: return`). The `threshold_breaches` local is read by Task 12's governance block; the `logger.info` keeps it read (ruff `F841`) until then.
 
 - [ ] **Step 4b: Let CI see the spec.** `test_served_shape_drives_a_cycle` reads `../opensrm`, which workers CI does not check out today. In `.github/workflows/test.yml`, after "Checkout nthlayer-common (sibling)", add:
 
@@ -1835,7 +2440,7 @@ git commit -m "feat(measure): evaluate judgment thresholds each cycle (opensrm-g
 - Test: `nthlayer-workers/tests/measure/thresholds/test_autonomy_toggle.py`
 
 **Interfaces:**
-- Consumes, from Task 11: the local `threshold_breaches: list[tuple[str, str, str]]` (`(key, service, breach_verdict_id)` for each threshold that fired a `quality_breach` this cycle), which Task 11 sets in `process_cycle` after Phase 1; and `self._threshold_state: dict[str, dict]` (threshold key → `KeyState.to_dict()` plus `"service"`; `last_evaluable` is `"within"`, `"breach"` or `None`). Threshold keys look like `service:type:hash` (optionally `#n`), so `key.split(":", 1)[0]` is the service, as for SLO keys.
+- Consumes, from Task 11: the local `threshold_breaches: list[tuple[str, str, str]]` (`(key, service, breach_verdict_id)` for each threshold whose `quality_breach` verdict core accepted this cycle; `[]` when the threshold phase raised), which Task 11 sets in `process_cycle` between Phase 1 and Phase 2; the module-level `_env_flag_default_on` helper and the `os` / `dataclasses.field` imports Task 11 added to `measure/worker.py`; and `self._threshold_state: dict[str, dict]` (threshold key → `KeyState.to_dict()` plus `"service"`; `last_evaluable` is `"within"`, `"breach"` or `None`). Threshold keys look like `service:type:hash` (optionally `#n`), so `key.split(":", 1)[0]` is the service, as for SLO keys.
 - Consumes, existing `MeasureModule` internals in `measure/worker.py` (read `process_cycle` before editing):
   - `current_status: dict[str, str]` — `process_cycle` local filled in Phase 1: SLO key (`service:slo_name`) → `"healthy"` / `"breach"`. Phase 3 groups its `"breach"` keys by service into `breaching_services`; at the end of the cycle it becomes `self._slo_status` (after a carry-forward loop that copies keys from the previous `_slo_status` missing this cycle).
   - `new_breaches: list[str]` — Phase 2 local: keys that transitioned to breach this cycle. Phase 3 acts only on a service that has at least one key in it.
@@ -1951,6 +2556,17 @@ async def test_retired_threshold_leaves_no_governance_memory(monkeypatch):
     await _cycle(m, prov)
     assert not any(":calibration:" in k for k in m._breach_decisions)
     assert not any(":calibration:" in k for k in m._breach_severities)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (None, set()), ("svc:calibration:abc", set()), ({"k": 1}, set()),
+    (["svc:calibration:abc", 7], {"svc:calibration:abc"}),
+])
+async def test_corrupt_threshold_governed_is_coerced(monkeypatch, raw, expected):
+    m, prov, verdicts = _setup(monkeypatch, "1")
+    await m.restore_state({"slo_status": {}, "threshold_governed": raw})
+    assert m._threshold_governed == expected
+    await _cycle(m, prov)  # and the cycle still runs
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -1960,20 +2576,28 @@ Expected: FAIL — `test_on_feeds_the_ratchet_as_a_high_breach`
 
 - [ ] **Step 3: Implement** — in `measure/worker.py`, in this order:
 
-1. **Toggle field.** Add a module-level helper (import `os`):
+1. **Toggle field.** Add a module-level helper beside Task 11's `_env_flag_default_on` (`os` and `field` are already imported):
 
 ```python
 def _env_flag(name: str) -> bool:
+    """A default-off operator switch: 1 / true / yes / on (any case) enable it."""
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 ```
 
-   and a dataclass field on `MeasureModule` (import `field` from `dataclasses`):
+   and a dataclass field on `MeasureModule`, after `retention_check` (read once, at construction):
    `threshold_autonomy: bool = field(default_factory=lambda: _env_flag("MEASURE_THRESHOLD_AUTONOMY"))`.
 
 2. **`_threshold_governed`** — the set of governance keys that are threshold keys, so cleanup never touches SLO keys:
    - `__post_init__`: `self._threshold_governed: set[str] = set()`;
    - `get_state`: add `"threshold_governed": sorted(self._threshold_governed)`;
-   - `restore_state`: `self._threshold_governed = set(state.get("threshold_governed", []))`.
+   - `restore_state` (untrusted, like `threshold_state`; a non-list becomes empty):
+
+```python
+        raw_governed = state.get("threshold_governed")
+        self._threshold_governed = (
+            {k for k in raw_governed if isinstance(k, str)} if isinstance(raw_governed, list) else set()
+        )
+```
 
 3. **Re-inject block** — in `process_cycle`, immediately after the Phase 2 loop (`for slo_key in new_breaches: ...`) ends and before Phase 3 builds `breaching_services`:
 
@@ -2033,9 +2657,12 @@ git commit -m "feat(measure): MEASURE_THRESHOLD_AUTONOMY lets threshold breaches
 - Modify: `nthlayer-workers/CLAUDE.md` (hard rule 7 and the measure description)
 - Create: `nthlayer-workers/docs/upgrading-3.0.md` (workers is at 2.0.1 in `.release-please-manifest.json`, and this release is the next major, 3.0.0; `docs/` holds only `architecture.md` today, so this is the first upgrade note)
 
-- [ ] **Step 1: Update CLAUDE.md hard rule 7** to state: severity is deterministic, no LLM; the five judgment SLO types use budget consumption; every judgment-threshold breach is `high` (thresholds are not SLOs — decision 3c); threshold breaches reach the autonomy ratchet only with `MEASURE_THRESHOLD_AUTONOMY` on.
+- [ ] **Step 1: Update CLAUDE.md hard rule 7** to state: severity is deterministic, no LLM; the five judgment SLO types use budget consumption; every judgment-threshold breach is `high` (thresholds are not SLOs — decision 3c); threshold breaches reach the autonomy ratchet only with `MEASURE_THRESHOLD_AUTONOMY` on. In the measure description, name `MEASURE_RETENTION_CHECK` beside it.
 
-- [ ] **Step 2: Write the upgrade note** (`docs/upgrading-3.0.md`) covering: common 5.2 pin; calibration/segments/stability under `judgment_slo` now fail to load (move them to `spec.judgment_threshold`); thresholds are evaluated from core ≥3.0's `/manifests`; new assessment kind; the `MEASURE_THRESHOLD_AUTONOMY` toggle; the metric contract (link the front door's `docs/metrics-contract.md`).
+- [ ] **Step 2: Write the upgrade note** (`docs/upgrading-3.0.md`) covering: common 5.2 pin; calibration/segments/stability under `judgment_slo` now fail to load (move them to `spec.judgment_threshold`); thresholds are evaluated from core ≥3.0's `/manifests`; new assessment kind; the metric contract (link the front door's `docs/metrics-contract.md`), calling out that `gen_ai_feedback_latency_seconds` is now a histogram sharing the old gauge's base name (an exporter cannot register both: cut over in one release) and that its buckets need a finite boundary strictly above every declared bound (OTel's default top, 10000s, is below `1d`; a quantile beyond the top boundary is reported as a lower bound); and the two operator switches:
+  - `MEASURE_THRESHOLD_AUTONOMY` (default off) — threshold breaches feed the autonomy ratchet;
+  - `MEASURE_RETENTION_CHECK` (default on; `off`/`false`/`0` disable) — set it **off** behind Thanos sidecar, Mimir or Cortex, where `prometheus_tsdb_lowest_timestamp_seconds` describes a local TSDB, not what the query path can see, and would wrongly report `insufficient_window`;
+  - both are read once at startup: restart the worker to change them.
 
 - [ ] **Step 3: Commit**
 

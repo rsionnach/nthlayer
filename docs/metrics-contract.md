@@ -87,21 +87,25 @@ evaluable.
 
 In the queries, `S` is the service name (the manifest's `metadata.name`),
 `B` is the threshold's `measurement.bins` and `W` its `measurement.window`.
+Label values are the manifest's literal strings (`bins="10"`,
+`window="30d"`, not `30 days` or `720h`), escaped for PromQL (`\` → `\\`,
+`"` → `\"`, newline → `\n`).
 
 | Threshold | Bound | Series | Labels | Query |
 |---|---|---|---|---|
 | calibration | `maximum_expected_calibration_error` | `gen_ai_calibration_ece` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_ece{service="S",bins="B",window="W"})` |
 | calibration | `maximum_brier_score` | `gen_ai_calibration_brier` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_brier{service="S",bins="B",window="W"})` |
-| feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram) | `service` | `histogram_quantile(0.5, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
-| feedback_latency | `maximum_p90` | same histogram | `service` | `histogram_quantile(0.9, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
+| feedback_latency | `maximum_p50`, `maximum_p90` | `gen_ai_feedback_latency_seconds` (histogram) | `service` | `sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d]))` — one query; p50 and p90 are computed by the sampler from the bucket counts |
 | segments, stability, audit_backlog | — | no series yet | — | none sent; evaluated as not evaluable (`no_data_source`) |
 
 A bound that cannot be measured is reported as not evaluable, with one of
 these reasons:
 
 - `no_data` — the series is absent, its labels do not match (e.g. other
-  `bins`/`window`), the query errored or timed out, or the value is not
-  finite (`NaN`, `±Inf`).
+  `bins`/`window`), the query errored or timed out, the value is not
+  finite (`NaN`, `±Inf`), the histogram has no `+Inf` bucket or no
+  observations in the window, or the quantile lies beyond the largest finite
+  bucket boundary and that boundary is below the bound (see below).
 - `insufficient_window` — Prometheus's retention is shorter than the 30-day
   window.
 - `no_data_source` — no series is defined for this threshold type yet.
@@ -111,23 +115,42 @@ Rules:
 - Calibration gauges carry the `bins` and `window` they were computed with.
   The sampler reads only the series whose `bins`/`window` labels equal the
   manifest's `measurement.bins` / `measurement.window`; any other series is
-  ignored (`no_data`).
-- `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus
-  histogram, i.e. with `_bucket` (and `_count` / `_sum`) series; the query
-  reads `_bucket`.
+  ignored (`no_data`). Export exactly one series per
+  `service`/`bins`/`window`; if several match (e.g. one per instance), the
+  query's `max()` takes the worst, a conservative fallback rather than a
+  supported shape.
+- `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus classic
+  histogram, i.e. with `_bucket` (including `le="+Inf"`) and `_count` /
+  `_sum` series; the query reads `_bucket`.
+- The histogram MUST have a finite bucket boundary strictly greater than
+  every declared bound (e.g. a `1d` bound needs a boundary above `86400`;
+  OpenTelemetry's default top boundary, `10000`, is not enough). Quantiles
+  are computed with Prometheus's classic bucket-interpolation algorithm, with
+  one difference: a quantile beyond the largest finite boundary (its rank
+  falls in the `+Inf` bucket) is reported as a lower bound, not as that
+  boundary. It is a breach if that boundary already reaches the bound,
+  otherwise not evaluable (`no_data`). PromQL's `histogram_quantile` would
+  return the boundary itself and so read such a latency as within.
+- Interpolation is linear within a bucket: include each declared bound
+  (e.g. `3600`, `86400`) among the bucket boundaries.
 - Feedback latency is observed when ground truth arrives, so the 30-day
   window is anchored on arrival (CORE §5.5.5). A young service is measured
   over the ground truth that has arrived; only when Prometheus's retention
-  (`min(prometheus_tsdb_lowest_timestamp_seconds)`) is shorter than 30 days
-  is the bound not evaluable (`insufficient_window`). When retention is
-  unknown (Prometheus does not scrape itself), the sampler measures what
-  Prometheus returns.
-- `histogram_quantile` interpolates within a bucket: include each declared
-  bound (e.g. `3600`, `86400`) among the bucket boundaries.
+  (`min(prometheus_tsdb_lowest_timestamp_seconds)`, queried once per cycle)
+  is shorter than 30 days is the bound not evaluable
+  (`insufficient_window`). When retention is unknown (Prometheus does not
+  scrape itself), the sampler measures what Prometheus returns.
+- `MEASURE_RETENTION_CHECK` (nthlayer-workers; default on, `off` / `false` /
+  `0` disable it, read at startup) turns the retention check off. Turn it off
+  when the queried endpoint is not the TSDB that metric describes — Thanos
+  sidecar, Mimir, Cortex: there, the local head's lowest timestamp says
+  nothing about what the query path can see, and would wrongly report
+  `insufficient_window`.
 - Superseded: the single gauges `gen_ai_calibration_error{service}` and
   `gen_ai_feedback_latency_seconds{service}` are no longer read. The
-  histogram above reuses the latter's base name; a plain gauge of that name
-  is not read.
+  histogram above reuses the latter's base name, so an exporter cannot
+  register both: cut over from the gauge to the histogram in one release. A
+  plain gauge of that name is not read.
 
 ## Labels Contract
 

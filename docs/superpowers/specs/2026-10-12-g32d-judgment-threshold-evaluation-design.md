@@ -75,6 +75,7 @@ Three repos, released shared-first, each R5-gated:
      `THRESHOLD_SERIES`, returns samples (§6);
    - a threshold phase in `MeasureModule.process_cycle` (§7);
    - operator toggle `MEASURE_THRESHOLD_AUTONOMY` (default off);
+   - operator switch `MEASURE_RETENTION_CHECK` (default on; §6);
    - CLAUDE.md hard rule 7 updated (thresholds are not SLOs).
 
 The evaluator receives **what the spec says is measured** and derives the
@@ -91,8 +92,8 @@ front door's `metrics-contract.md`.
 |---|---|---|---|
 | calibration | `maximum_expected_calibration_error` | `gen_ai_calibration_ece` (gauge) | `service`, `bins`, `window` |
 | calibration | `maximum_brier_score` | `gen_ai_calibration_brier` (gauge) | `service`, `bins`, `window` |
-| feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram), `histogram_quantile(0.5, …)` over its `_bucket` series, 30d | `service` |
-| feedback_latency | `maximum_p90` | same histogram, `histogram_quantile(0.9, …)` | `service` |
+| feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram): its 0.5 quantile over the `_bucket` series' 30d increase | `service` |
+| feedback_latency | `maximum_p90` | same histogram, 0.9 quantile, from the same bucket query | `service` |
 
 Rules:
 
@@ -102,14 +103,28 @@ Rules:
   other parameters is never used.
 - Feedback latency is observed at ground-truth arrival, so the 30-day window
   is anchored on arrival (CORE §5.5.5).
-- Histogram bucket boundaries should include the declared bounds, because
-  `histogram_quantile` interpolates within a bucket. This is guidance; the
-  evaluator cannot detect it.
+- The histogram MUST have a finite bucket boundary strictly greater than
+  every declared bound. Quantiles are computed by the sampler from the
+  bucket counts with Prometheus's classic bucket-interpolation algorithm,
+  except that a quantile beyond the largest finite boundary (its rank falls
+  in the `+Inf` bucket) is reported as a **lower bound**, `AtLeast(boundary)`:
+  a breach if that boundary already reaches the bound, otherwise not
+  evaluable (`no_data`). PromQL's `histogram_quantile` is not used: it returns
+  the largest finite boundary for such a quantile, so a latency far above
+  the top bucket (OpenTelemetry's default top boundary is 10000s, below a
+  `1d` bound) would read as within.
+- Bucket boundaries should include the declared bounds, because
+  interpolation within a bucket is linear. This is guidance; the evaluator
+  cannot detect it.
+- Label values are the manifest's literal strings, escaped for PromQL.
+  Exactly one series per `service`/`bins`/`window` is expected; the query's
+  `max()` over several is a conservative fallback, not a supported shape.
 - The single gauges `gen_ai_calibration_error{service}` and
   `gen_ai_feedback_latency_seconds{service}` are documented as superseded.
   The latter's base name is reused by the histogram above, which must be
-  exposed as a histogram (`_bucket`, `_count`, `_sum` series); a plain gauge
-  of that name is not read.
+  exposed as a histogram (`_bucket` including `le="+Inf"`, `_count`, `_sum`
+  series); a plain gauge of that name is not read. Sharing the base name
+  means an exporter cannot register both: it cuts over in one release.
 - segments, stability, audit_backlog: no series yet (`no_data_source`).
 
 ## 5. Evaluator and outcome model (nthlayer-common 5.2)
@@ -121,7 +136,8 @@ Status = Literal["within", "breach", "not_evaluable"]
 MissingReason = Literal["no_data_source", "no_data", "insufficient_window"]
 
 Missing(reason: MissingReason, detail: str = "")      # rejects an unknown reason
-Samples(bounds: Mapping[str, float | Missing] = {},   # every type except segments: bound -> value
+AtLeast(value: float)                                 # a lower bound: true value > value; finite
+Samples(bounds: Mapping[str, float | Missing | AtLeast] = {},  # every type except segments: bound -> value
         overall: float | Missing | None = None,       # segments: the overall rate
         segments: Mapping[str, float | Missing] = {}) # segments: segment value -> its rate
 
@@ -135,10 +151,15 @@ evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdO
 ```
 
 A bound absent from `samples.bounds` (or a segment absent from
-`samples.segments`) is treated as `Missing("no_data")`.
+`samples.segments`) is treated as `Missing("no_data")`. A hand-built
+threshold with a bound its type does not define, or a segments threshold
+without exactly one bound, raises `ValueError` (the parsers reject both).
 
 - **E1:** breach iff `measured > limit`; equal is within. Holds for a limit
-  of 0.
+  of 0. A lower bound `AtLeast(v)` means the measured value is strictly
+  greater than `v`: it is a breach (measured `v`, reason `lower_bound`) iff
+  `v >= limit`; otherwise it decides nothing and is `not_evaluable`
+  (`no_data`).
 - **E2:** duration limits and measured durations are compared in seconds via
   `duration_seconds`.
 - **E3:** a `Missing` sample makes that bound (or segment) `not_evaluable`,
@@ -156,16 +177,23 @@ A bound absent from `samples.bounds` (or a segment absent from
 
 ## 6. Sampler (workers)
 
-`async sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None) -> Samples`
+`async sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None, retention: float | Missing | None = None, retention_check: bool = True) -> Samples`
 (`provider` is a `PrometheusProvider`; `now` defaults to the current time
-and exists so tests can fix it):
+and exists so tests can fix it; `retention` is the cycle's one
+`fetch_retention` result, `None` meaning fetch it here):
 
 - builds each query from `THRESHOLD_SERIES` and the threshold's
-  `measurement`;
+  `measurement`, escaping label values (`\`, `"`, newline);
+- feedback latency: ONE query per threshold,
+  `sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d]))`;
+  every declared quantile is computed from that bucket vector (§4), a rank in
+  the `+Inf` bucket giving `AtLeast(largest finite le)`; no `+Inf` bucket or
+  no observations → `Missing("no_data")`;
 - maps each Prometheus result to its bound; tests assert the mapping from
   realistic response JSON, not just the query string (the gap that hid this
   bug: only the calibration query string was ever tested);
-- an empty result or a non-finite value → `Missing("no_data")`;
+- an empty result or a non-finite value → `Missing("no_data")`, whose detail
+  names the labels looked for (e.g. `bins`/`window`);
 - a Prometheus error or timeout → `Missing("no_data", <error>)`; it never
   raises;
 - a 30-day query that Prometheus cannot answer over the whole window
@@ -174,7 +202,11 @@ and exists so tests can fix it):
   series* is measured: CORE §5.5.5 defines p50/p90 over ground truth that
   arrived in the last 30 days, and for a 3-day-old service that is exactly
   what the 3 days hold. Unknown retention (Prometheus not scraping itself)
-  measures what it can.
+  measures what it can. Retention is queried once per cycle (the phase
+  passes it into `sample`), and the operator switch
+  `MEASURE_RETENTION_CHECK` (default on; `off`/`false`/`0` disable, read at
+  startup) skips it: behind Thanos sidecar, Mimir or Cortex that metric
+  describes a local TSDB, not what the query path can see.
 - segments → `Samples(overall=Missing("no_data_source"))`, which the
   evaluator turns into every listed segment `not_evaluable`;
 - stability, audit_backlog → every declared bound
@@ -206,7 +238,10 @@ Per cycle:
      declared order (`<key>#1`, `<key>#2`).
 
    So every declared bound of every distinct entry is evaluated (E1).
-4. Sample (§6), evaluate (§5).
+4. Sample (§6), evaluate (§5). Entries are evaluated concurrently, at most
+   `MeasureModule.eval_concurrency` at a time. An entry that raises is logged
+   once (`threshold_eval_failed`) and skipped; if the whole phase raises,
+   the cycle logs it and runs the SLO phases with no threshold breaches.
 5. Emit one `judgment_threshold_evaluation` assessment per key per cycle,
    payload `ThresholdOutcome.to_dict()` plus the key and service. This
    includes `not_evaluable` entries (E3 requires reporting; the reason code
@@ -226,6 +261,14 @@ Per cycle:
      every quality_breach as high), so no new severity value is introduced;
      graded severity belongs to the ratchet-configuration bead;
    - leaving `breach` and entering `not_evaluable` raise no verdict;
+   - a key's new state is committed only once its breach verdict (if one
+     fires) is accepted by core; a rejected verdict leaves the state as it
+     was, so the next cycle raises it again. A rejected assessment is logged
+     and does not stop evaluation (the verdict's `parent_ids` then name an
+     assessment core did not store);
+   - restored state is untrusted: a non-dict `threshold_state` or entry is
+     dropped, and a wrong-typed field takes its default (armed, no streak) —
+     a corrupt entry can re-raise a breach, never silence one;
    - the autonomy ratchet is reached only when `MEASURE_THRESHOLD_AUTONOMY`
      is on; a threshold breach then enters the existing governance phase as a
      `high`-severity breach, under the same rules as an SLO breach — including
@@ -270,13 +313,21 @@ nthlayer-workers:
 - sampler: realistic Prometheus response JSON → correct bound; mismatched
   `bins`/`window` labels → `no_data`; error/timeout → `no_data`, no raise;
   short retention → `insufficient_window`; unsourced types →
-  `no_data_source`;
+  `no_data_source`; hand-computed bucket quantiles (interpolation, a rank on
+  a boundary, unsorted / duplicate / non-monotonic buckets); a rank in
+  `+Inf` → lower bound, and buckets `[…, 3600, 86400, +Inf]` with most mass
+  in `+Inf` against a `1d` bound → breach end to end; a label value
+  containing `"` is escaped; `MEASURE_RETENTION_CHECK` off sends no
+  retention query;
 - cycle (real `Store`): one `quality_breach` per breach transition;
   `breach → not_evaluable → breach` raises once; flapping does not re-raise
   before 3 within cycles; absent service keeps state; removed entry retires;
   core unreachable touches nothing; a parse failure isolates one entry;
   restart does not re-raise; toggle off → no ratchet, on → ratchet; identity
-  stable under segment reordering and bound changes;
+  stable under segment reordering and bound changes; a rejected breach
+  verdict re-raises next cycle; one raising entry, or a raising phase, does
+  not stop the others or the SLO phases; corrupt restored state still runs
+  the cycle; retention queried once per cycle;
 - end to end: a high ECE breaches the ECE bound and only that bound;
 - served-shape: a fixture built with `threshold_to_v2_entry` from the spec
   examples (exactly what core 3.0 serves) drives a cycle;
