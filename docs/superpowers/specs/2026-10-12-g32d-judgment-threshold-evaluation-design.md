@@ -188,7 +188,8 @@ and exists so tests can fix it; `retention` is the cycle's one
   `sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d]))`;
   every declared quantile is computed from that bucket vector (§4), a rank in
   the `+Inf` bucket giving `AtLeast(largest finite le)`; no `+Inf` bucket or
-  no observations → `Missing("no_data")`;
+  no observations (or a degenerate bucket set: a zero-width rank, an `le` of
+  `-Inf` as the top finite boundary) → `Missing("no_data")`;
 - maps each Prometheus result to its bound; tests assert the mapping from
   realistic response JSON, not just the query string (the gap that hid this
   bug: only the calibration query string was ever tested);
@@ -266,9 +267,12 @@ Per cycle:
      was, so the next cycle raises it again. A rejected assessment is logged
      and does not stop evaluation (the verdict's `parent_ids` then name an
      assessment core did not store);
-   - restored state is untrusted: a non-dict `threshold_state` or entry is
-     dropped, and a wrong-typed field takes its default (armed, no streak) —
-     a corrupt entry can re-raise a breach, never silence one;
+   - restored state is untrusted: a non-dict `threshold_state`, a non-dict
+     entry, or an entry whose `service` is not a string is dropped, and a
+     wrong-typed field takes its default (armed, no streak) — a corrupt entry
+     can re-raise a breach, never silence one. Likewise a `/manifests` item
+     that is not an object, or whose `name` is not a non-empty string, is
+     skipped (logged once), never raised out of the phase;
    - the autonomy ratchet is reached only when `MEASURE_THRESHOLD_AUTONOMY`
      is on; a threshold breach then enters the existing governance phase as a
      `high`-severity breach, under the same rules as an SLO breach — including

@@ -1155,7 +1155,7 @@ git commit -m "fix(measure): error magnitudes never reach SLO breach code (opens
   - `async def sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None, retention: float | Missing | None = None, retention_check: bool = True) -> Samples` — never raises. `retention` is `fetch_retention`'s result, passed in so a cycle queries it once; `None` fetches it inside `sample` when a bound needs it. `retention_check=False` (the `MEASURE_RETENTION_CHECK=off` switch, wired in Task 11) sends no retention query and measures.
   - `async def fetch_retention(provider) -> float | Missing` — Prometheus's oldest-sample timestamp; `Missing("no_data")` when unknown. Never raises.
   - `def needs_retention(threshold: JudgmentThreshold) -> bool` — whether sampling it checks retention (it has a `histogram_quantile` bound).
-  - `def _quantile(q: float, buckets: list[tuple[float, float]]) -> float | AtLeast | None` — Prometheus's classic `bucketQuantile` over `(le, cumulative count)` pairs, except a rank in the `+Inf` bucket returns `AtLeast(largest finite le)`; `None` = nothing to measure.
+  - `def _quantile(q: float, buckets: list[tuple[float, float]]) -> float | AtLeast | None` — Prometheus's classic `bucketQuantile` over `(le, cumulative count)` pairs, except a rank in the `+Inf` bucket returns `AtLeast(largest finite le)`; `None` = nothing to measure (no `+Inf` bucket, no finite bucket, no observations, a zero-width rank such as `q=0` over an empty first bucket, or a largest non-`+Inf` `le` of `-Inf`). Never raises.
   - `def _label(value: str) -> str` — PromQL label-value escaping.
 - Feedback latency sends ONE query per threshold, `sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d]))`, and computes every declared quantile from it. `histogram_quantile` is never sent: it reports a rank in the `+Inf` bucket as the largest finite `le`, so a latency far beyond the top bucket reads as `within`.
 
@@ -1293,6 +1293,10 @@ _OLD = _retention(NOW - 31 * DAY)
     (0.5, [(10, 0), (INF, 0)], None),
     (0.5, [(10, 5), (100, 10)], None),
     (0.5, [(INF, 5)], None),
+    # q=0 with an empty first bucket: Prometheus divides 0/0 (NaN), not a value.
+    (0.0, [(10, 0), (100, 5), (INF, 5)], None),
+    # le="-Inf" is the largest finite-side boundary: no finite lower bound exists.
+    (0.5, [(-INF, 1), (INF, 10)], None),
 ])
 def test_quantile_is_prometheus_bucket_quantile(q, buckets, expected):
     assert _quantile(q, buckets) == expected
@@ -1543,11 +1547,15 @@ def _quantile(q: float, buckets: list[tuple[float, float]]) -> float | AtLeast |
     rank = q * total
     b = next(i for i, (_, count) in enumerate(cumulative) if count >= rank)
     if b == len(cumulative) - 1:
-        return AtLeast(cumulative[-2][0])
+        top = cumulative[-2][0]
+        # le="-Inf" as the only finite-side bucket bounds nothing.
+        return AtLeast(top) if math.isfinite(top) else None
     upper, count = cumulative[b]
     if b == 0 and upper <= 0:
         return upper
     lower, below = cumulative[b - 1] if b > 0 else (0.0, 0.0)
+    if count - below <= 0:  # q=0 over an empty first bucket (Prometheus: NaN)
+        return None
     return lower + (upper - lower) * (rank - below) / (count - below)
 
 
@@ -1905,9 +1913,9 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
   - from `nthlayer_common.cloudevents`: `wrap_assessment(assessment: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` and `wrap_verdict(verdict: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` — each wraps the dict in a CloudEvents envelope whose `data` is the original dict;
   - `CoreAPIClient` (`nthlayer_common.api_client`, `MeasureModule.client`): `await client.get_manifests() -> APIResult`, `await client.submit_assessment(envelope: dict) -> APIResult`, `await client.submit_verdict(envelope: dict) -> APIResult`; `APIResult(ok: bool, status_code: int, data=None, error=None, detail=None)` — check `ok` before using `data`.
   - existing `MeasureModule` (`measure/worker.py`): dataclass fields `client`, `prometheus_url`, `eval_concurrency: int = 5` (copied to `self._eval_concurrency` in `__post_init__`; the SLO phase already uses it for its `asyncio.Semaphore`); `restore_state(state)` returns early on a falsy `state`; `process_cycle` returns early unless `/manifests` is ok, then opens `provider = PrometheusProvider(...)` and runs, inside one `try … finally: await provider.aclose()`, Phase 1 (SLO evaluation, ending in `await asyncio.gather(...)`), Phase 2 (SLO breach transitions, starting `new_breaches = _detect_transitions(...)`), Phase 3 (governance).
-- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True) -> list[tuple[str, str, str]]` — evaluates entries concurrently (at most `eval_concurrency` at a time), queries retention at most once (only if `retention_check` and an entry needs it), mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. An entry that raises is logged once (`threshold_eval_failed`) and skipped. `state[key]` changes only when the entry's breach verdict (if one fires) was accepted (`ok`), so a rejected verdict is raised again next cycle. `MeasureModule` gains:
+- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True) -> list[tuple[str, str, str]]` — evaluates entries concurrently (at most `eval_concurrency` at a time), queries retention at most once (only if `retention_check` and an entry needs it), mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. An entry that raises is logged once (`threshold_eval_failed`) and skipped; a manifest that is not a dict or whose `"name"` is not a non-empty `str` is logged once (`threshold_manifest_skipped`) and skipped; a state entry whose `"service"` is not a `str` is dropped. `state[key]` changes only when the entry's breach verdict (if one fires) was accepted (`ok`), so a rejected verdict is raised again next cycle. `MeasureModule` gains:
   - `retention_check: bool` — dataclass field, default from `MEASURE_RETENTION_CHECK` via `_env_flag_default_on` (read at construction; `off`/`false`/`0`, any case, disable it);
-  - `self._threshold_state` — persisted under state key `threshold_state` (`get_state` / `restore_state`; restore drops a non-dict value and non-dict entries);
+  - `self._threshold_state` — persisted under state key `threshold_state` (`get_state` / `restore_state`; restore drops a non-dict value, non-dict entries and entries whose `"service"` is not a `str`);
   - `self._threshold_problems: set[str]` — the once-per-change log memory; in-memory only, NOT persisted (after a restart each problem is logged once more).
 
 - [ ] **Step 1: Write the failing tests** (pattern: `tests/measure/test_measure_worker.py` — `AsyncMock` client, patched `PrometheusProvider`)
@@ -2136,6 +2144,8 @@ async def test_threshold_phase_failure_does_not_stop_slo_phases():
     "garbage",
     {"svc:calibration:abc": "not-a-dict"},
     {"svc:calibration:abc": {"last_evaluable": 7, "armed": "yes", "within_streak": "x", "service": "svc"}},
+    {"svc:calibration:abc": {"last_evaluable": "breach", "service": ["svc"]}},  # unhashable service
+    {"svc:calibration:abc": {"last_evaluable": "breach"}},                      # no service
 ])
 async def test_corrupt_restored_state_does_not_stop_the_cycle(threshold_state):
     m, prov, a, v = _module([0.2], _manifests(("svc", [_CAL])))
@@ -2144,7 +2154,36 @@ async def test_corrupt_restored_state_does_not_stop_the_cycle(threshold_state):
     await _cycles(m, prov, 1)
     assert _slo_breaches(v) == ["rr"]
     assert any(x["data"].get("threshold_type") == "calibration" for x in _breaches(v))
-    assert all(isinstance(st, dict) for st in m._threshold_state.values())
+    assert all(isinstance(st, dict) and isinstance(st.get("service"), str)
+               for st in m._threshold_state.values())
+    assert "svc:calibration:abc" not in m._threshold_state
+
+
+async def test_non_conforming_state_entry_is_dropped_by_the_phase():
+    # Injected after restore (restore_state already filters it): the phase
+    # itself must not raise on it, and must drop it.
+    m, prov, a, v = _module([0.2], _manifests(("svc", [_CAL])))
+    m._threshold_state = {"bad": {"service": ["svc"]}}
+    await _cycles(m, prov, 1)
+    assert "bad" not in m._threshold_state
+    assert len(_breaches(v)) == 1
+
+
+@pytest.mark.parametrize("bad", ["not-a-dict", None, {"name": ["svc"]}, {"name": ""}, {"type": "ai-gate"}])
+async def test_malformed_manifest_is_skipped(bad):
+    # Called directly: MeasureModule's existing SLO phase reads the same list
+    # and is outside this bead; the threshold phase must not raise on it.
+    from nthlayer_workers.measure.thresholds.phase import run_threshold_phase
+
+    m, prov, a, v = _module([0.2], _manifests())
+    problems: set[str] = set()
+    breaches = await run_threshold_phase(
+        client=m.client, provider=prov, state={}, seen_problems=problems,
+        manifests=[bad, {"name": "svc", "type": "ai-gate", "slos": [], "judgment_thresholds": [_CAL]}],
+    )
+    assert [x["data"]["outcome"]["type"] for x in a] == ["calibration"]
+    assert len(breaches) == 1
+    assert any(p.startswith("manifest:0:") for p in problems)
 
 
 def _recording_provider(answer):
@@ -2246,8 +2285,10 @@ def _entries(manifests: list[dict], seen_problems: set[str]) -> tuple[set[str], 
     entries: list[_Entry] = []
     by_base: dict[str, list[dict]] = {}
     for i, m in enumerate(manifests):
-        service = m.get("name")
-        if not service:
+        service = m.get("name") if isinstance(m, dict) else None
+        if not isinstance(service, str) or not service:
+            _log_once(seen_problems, f"manifest:{i}:{type(m).__name__}", "threshold_manifest_skipped",
+                      where=f"/manifests[{i}]")
             continue
         present.add(service)
         for j, item in enumerate(m.get("judgment_thresholds") or []):
@@ -2350,7 +2391,11 @@ async def run_threshold_phase(
     await asyncio.gather(*(one(*e) for e in entries))
     # Retire only keys of services present in this (successful) response.
     live_keys = {key for key, _, _ in entries}
-    for key in [k for k, v in state.items() if v.get("service") in present_services and k not in live_keys]:
+    # An entry without a str service (corrupt state) can never match a
+    # manifest: drop it rather than let it fail every cycle.
+    for key in [k for k, v in state.items()
+                if not isinstance(v.get("service"), str)
+                or (v["service"] in present_services and k not in live_keys)]:
         del state[key]
         logger.info("threshold_retired", key=key)
     return new_breaches
@@ -2381,7 +2426,8 @@ def _env_flag_default_on(name: str) -> bool:
 ```python
         raw = state.get("threshold_state")
         self._threshold_state = (
-            {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, dict)}
+            {k: v for k, v in raw.items()
+             if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("service"), str)}
             if isinstance(raw, dict) else {}
         )
 ```
