@@ -186,12 +186,16 @@ Per cycle:
      after 3 consecutive `within` cycles. So `breach → not_evaluable →
      breach` raises once, and flapping at the bound does not re-raise until
      the value has stayed within for 3 cycles;
-   - the verdict is `quality_breach`, severity `medium` for every threshold
-     breach (graded severity belongs to the ratchet-configuration bead),
-     referencing the assessment;
+   - the verdict is `quality_breach`, severity `high` for every threshold
+     breach, referencing the assessment. Downstream knows only
+     `low | high | critical` (bench toasts on high/critical; correlate treats
+     every quality_breach as high), so no new severity value is introduced;
+     graded severity belongs to the ratchet-configuration bead;
    - leaving `breach` and entering `not_evaluable` raise no verdict;
    - the autonomy ratchet is reached only when `MEASURE_THRESHOLD_AUTONOMY`
-     is on. Turning it on does not apply the ratchet to breaches already open.
+     is on; a threshold breach then enters the existing governance phase as a
+     `high`-severity breach, under the same rules as an SLO breach. Turning it
+     on does not apply the ratchet to breaches already open.
 7. **Garbage collection:** a key is retired (`threshold_retired`) only when
    its service is present in a successful `/manifests` response and the entry
    is gone. An absent service keeps its state (core skips manifests it fails
