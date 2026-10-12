@@ -81,9 +81,11 @@ Judgment thresholds (OPENSRM-CORE-v2 §5.5) are bounds on error magnitudes,
 evaluated by nthlayer-workers per §5.5.6. The bound → series table below is
 defined in code as `nthlayer_common.manifest.THRESHOLD_SERIES`; that table is
 the source of truth and this section documents it. Each threshold is
-evaluated every measure cycle and the result is emitted as a
-`judgment_threshold_evaluation` assessment, including when it is not
-evaluable.
+evaluated every `MEASURE_THRESHOLD_INTERVAL` seconds (default 900, so the
+series are queried at most that often) and the result is emitted as a
+`judgment_threshold_evaluation` assessment — including when it is not
+evaluable — on first sight, when its status or reasons change, and at least
+every `MEASURE_THRESHOLD_HEARTBEAT` seconds (default 3600).
 
 In the queries, `S` is the service name (the manifest's `metadata.name`),
 `B` is the threshold's `measurement.bins` and `W` its `measurement.window`.
@@ -121,7 +123,10 @@ Rules:
   supported shape.
 - `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus classic
   histogram, i.e. with `_bucket` (including `le="+Inf"`) and `_count` /
-  `_sum` series; the query reads `_bucket`.
+  `_sum` series; the query reads `_bucket`. Prometheus native
+  (sparse) histograms have no `_bucket` series and are not supported: the
+  bound reads as not evaluable (`no_data`). Expose classic buckets (alone or
+  alongside native ones).
 - The histogram MUST have a finite bucket boundary strictly greater than
   every declared bound (e.g. a `1d` bound needs a boundary above `86400`;
   OpenTelemetry's default top boundary, `10000`, is not enough). Quantiles

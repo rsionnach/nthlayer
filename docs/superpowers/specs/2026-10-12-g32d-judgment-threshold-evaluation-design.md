@@ -76,6 +76,8 @@ Three repos, released shared-first, each R5-gated:
    - a threshold phase in `MeasureModule.process_cycle` (§7);
    - operator toggle `MEASURE_THRESHOLD_AUTONOMY` (default off);
    - operator switch `MEASURE_RETENTION_CHECK` (default on; §6);
+   - threshold cadence `MEASURE_THRESHOLD_INTERVAL` (default 900s) and
+     emission heartbeat `MEASURE_THRESHOLD_HEARTBEAT` (default 3600s) (§7);
    - CLAUDE.md hard rule 7 updated (thresholds are not SLOs).
 
 The evaluator receives **what the spec says is measured** and derives the
@@ -179,7 +181,7 @@ without exactly one bound, raises `ValueError` (the parsers reject both).
 
 `async sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None, retention: float | Missing | None = None, retention_check: bool = True) -> Samples`
 (`provider` is a `PrometheusProvider`; `now` defaults to the current time
-and exists so tests can fix it; `retention` is the cycle's one
+and exists so tests can fix it; `retention` is the threshold run's one
 `fetch_retention` result, `None` meaning fetch it here):
 
 - builds each query from `THRESHOLD_SERIES` and the threshold's
@@ -203,7 +205,7 @@ and exists so tests can fix it; `retention` is the cycle's one
   series* is measured: CORE §5.5.5 defines p50/p90 over ground truth that
   arrived in the last 30 days, and for a 3-day-old service that is exactly
   what the 3 days hold. Unknown retention (Prometheus not scraping itself)
-  measures what it can. Retention is queried once per cycle (the phase
+  measures what it can. Retention is queried once per threshold run (the phase
   passes it into `sample`), and the operator switch
   `MEASURE_RETENTION_CHECK` (default on; `off`/`false`/`0` disable, read at
   startup) skips it: behind Thanos sidecar, Mimir or Cortex that metric
@@ -215,7 +217,18 @@ and exists so tests can fix it; `retention` is the cycle's one
 
 ## 7. Worker loop: data flow, state, errors
 
-Per cycle:
+**Cadence.** The threshold phase has its own interval,
+`MEASURE_THRESHOLD_INTERVAL` (seconds, default 900): a measure cycle runs it
+only when that long has passed since the last threshold run (persisted as
+`threshold_last_run`), on the first cycle after start, or when the clock has
+gone back. Calibration and 30-day latency quantiles move slowly; evaluating
+them every measure cycle only multiplies queries and assessments. Open
+threshold breaches still reach governance on every measure cycle (from the
+persisted per-key state), threshold run or not. `MEASURE_THRESHOLD_INTERVAL`
+and `MEASURE_THRESHOLD_HEARTBEAT` are read at startup; a value that is not a
+number, negative or non-finite falls back to the default with a log.
+
+Per threshold run:
 
 1. `GET /manifests`. If the call fails, the whole threshold phase is skipped
    for this cycle: no assessments, no state change, no garbage collection.
@@ -231,31 +244,51 @@ Per cycle:
    keeps the key, and a p50 entry and a p90 entry get different keys. CORE
    §5.5 allows several entries of one type, so two entries of one service
    can still share a key (same identifying fields, different bound values).
-   Within one service, in declared order:
-   - the first entry with a given key keeps the bare key;
-   - a later entry identical to one already seen (same canonical v2 form) is
+   Within one service:
+   - an entry identical to one already seen (same canonical v2 form) is
      not evaluated again; the duplicate is logged once per change;
-   - each later non-identical entry with that key gets `#1`, `#2`, … in
-     declared order (`<key>#1`, `<key>#2`).
+   - a key with exactly one distinct entry is used bare;
+   - when a key has more than one distinct entry, EVERY such entry's key
+     becomes `<key>~<sha256(json.dumps(sorted bound items))[:8]>`.
+
+   The key depends on the entry, never on its position: reordering the
+   manifest moves no state between entries. Adding or removing a
+   same-identity sibling changes the keys (bare ↔ suffixed), so those
+   entries start with fresh state and may re-raise an open breach — the
+   safe direction. (The rejected alternative, `#n` ordinals in declared
+   order, silently swapped state between entries when they were reordered.)
 
    So every declared bound of every distinct entry is evaluated (E1).
 4. Sample (§6), evaluate (§5). Entries are evaluated concurrently, at most
    `MeasureModule.eval_concurrency` at a time. An entry that raises is logged
    once (`threshold_eval_failed`) and skipped; if the whole phase raises,
    the cycle logs it and runs the SLO phases with no threshold breaches.
-5. Emit one `judgment_threshold_evaluation` assessment per key per cycle,
-   payload `ThresholdOutcome.to_dict()` plus the key and service. This
+5. Emit a `judgment_threshold_evaluation` assessment, payload
+   `ThresholdOutcome.to_dict()` plus the key and service, when the outcome
+   changes, not every run. Per key the state keeps `last_signature` — the
+   outcome without measured values (type, combined status, per-bound
+   `(bound, status, reason)`, per-segment `(segment, status, reason)`) as a
+   sorted JSON string — and `last_emitted_at`. The assessment is emitted on
+   first sight, when the signature differs, when `MEASURE_THRESHOLD_HEARTBEAT`
+   (seconds, default 3600) has passed since the last emission, and whenever a
+   breach fires (its verdict references that run's assessment). This
    includes `not_evaluable` entries (E3 requires reporting; the reason code
-   lets dashboards filter `no_data_source`).
+   lets dashboards filter `no_data_source`). A rejected assessment is not
+   recorded as emitted, so the next run emits again.
 6. **Transitions** (`component_state`, per key):
    - `last_evaluable` — the last `within` or `breach`; `not_evaluable` never
      changes it;
-   - `within_streak` — consecutive `within` cycles since the last breach;
+   - `within_since` — when the current run of `within` began; `breach`
+     clears it, `not_evaluable` neither starts nor ends it;
    - a verdict fires when the status is `breach`, `last_evaluable` is not
      `breach`, and the key is armed. A key is armed initially and re-arms
-     after 3 consecutive `within` cycles. So `breach → not_evaluable →
-     breach` raises once, and flapping at the bound does not re-raise until
-     the value has stayed within for 3 cycles;
+     once it has been `within` for 3 threshold intervals
+     (`now - within_since >= 3 × MEASURE_THRESHOLD_INTERVAL`), a duration
+     rather than a count, so it does not depend on how often the phase ran.
+     So `breach → not_evaluable → breach` raises once, and flapping at the
+     bound does not re-raise until the value has stayed within for 3
+     intervals. State written before this field (`within_streak`) reads as
+     no within run;
    - the verdict is `quality_breach`, severity `high` for every threshold
      breach, referencing the assessment. Downstream knows only
      `low | high | critical` (bench toasts on high/critical; correlate treats
@@ -264,7 +297,7 @@ Per cycle:
    - leaving `breach` and entering `not_evaluable` raise no verdict;
    - a key's new state is committed only once its breach verdict (if one
      fires) is accepted by core; a rejected verdict leaves the state as it
-     was, so the next cycle raises it again. A rejected assessment is logged
+     was, so the next threshold run raises it again. A rejected assessment is logged
      and does not stop evaluation (the verdict's `parent_ids` then name an
      assessment core did not store);
    - restored state is untrusted: a non-dict `threshold_state`, a non-dict
@@ -325,13 +358,17 @@ nthlayer-workers:
   retention query;
 - cycle (real `Store`): one `quality_breach` per breach transition;
   `breach → not_evaluable → breach` raises once; flapping does not re-raise
-  before 3 within cycles; absent service keeps state; removed entry retires;
+  before 3 intervals within (a duration); absent service keeps state; removed entry retires;
   core unreachable touches nothing; a parse failure isolates one entry;
   restart does not re-raise; toggle off → no ratchet, on → ratchet; identity
   stable under segment reordering and bound changes; a rejected breach
   verdict re-raises next cycle; one raising entry, or a raising phase, does
   not stop the others or the SLO phases; corrupt restored state still runs
-  the cycle; retention queried once per cycle;
+  the cycle; retention queried once per threshold run; two measure cycles
+  inside the interval run the phase once while an open threshold breach still
+  counts in governance; an unchanged outcome is re-emitted only on the
+  heartbeat, a changed one at once, a firing breach always emits; same-identity
+  entries get `~<digest>` keys that survive reordering;
 - end to end: a high ECE breaches the ECE bound and only that bound;
 - served-shape: a fixture built with `threshold_to_v2_entry` from the spec
   examples (exactly what core 3.0 serves) drives a cycle;
