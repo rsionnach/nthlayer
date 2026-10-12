@@ -29,7 +29,7 @@ jobs:
   shell-syntax:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: bash -n on demo/, test/ and scripts/ shell scripts
         run: |
@@ -48,7 +48,7 @@ jobs:
   python-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: install uv
         uses: astral-sh/setup-uv@v6
