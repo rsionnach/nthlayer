@@ -1870,7 +1870,18 @@ and after Phase 3 (before the carry-forward loop) remove them from `current_stat
                 current_status.pop(key, None)
 ```
 
-Threshold keys are `service:type:hash` (three parts), so `key.split(":", 1)[0]` in Phase 3 still yields the service. Cleanup of governance memory for threshold keys, after the existing recovered-SLO cleanup: pop a threshold key from `_breach_decisions` and `_breach_severities` when its state's `last_evaluable == "within"` or when the key is no longer in `_threshold_state` (retired).
+Threshold keys are `service:type:hash` (three parts), so `key.split(":", 1)[0]` in Phase 3 still yields the service.
+
+Track which governance keys are threshold keys: add `self._threshold_governed: set[str] = set()` in `__post_init__`, persist it in `get_state` as `"threshold_governed": sorted(self._threshold_governed)` and restore it in `restore_state` (`set(state.get("threshold_governed", []))`). Add every key in `governed_threshold_keys` to it. After the existing recovered-SLO cleanup, run the threshold cleanup over THAT SET ONLY (never over all `_breach_decisions` keys, which also hold SLO keys):
+
+```python
+            for key in list(self._threshold_governed):
+                st = self._threshold_state.get(key)
+                if st is None or st.get("last_evaluable") == "within":   # retired or recovered
+                    self._breach_decisions.pop(key, None)
+                    self._breach_severities.pop(key, None)
+                    self._threshold_governed.discard(key)
+```
 
 Add to the Step 1 tests:
 
@@ -1879,7 +1890,10 @@ async def test_open_threshold_breach_counts_in_later_governance(monkeypatch):
     """An open threshold breach plus a later SLO breach is a multiple-breach
     case (advisor floor), as two SLO breaches would be."""
     m, prov, verdicts = _setup(monkeypatch, "1")
-    await _cycle(m, prov)                     # threshold breach -> limited_autonomous
+    await _cycle(m, prov)                     # threshold breach decided (open)
+    # Reset the level so the outcome separates the two behaviours:
+    # with re-injection 2 breaches -> advisor floor; without, 1 low breach -> autonomous.
+    m._autonomy_levels["svc"] = "fully_autonomous"
     m.client.get_manifests = AsyncMock(return_value=APIResult(ok=True, status_code=200, data=[
         {"name": "svc", "type": "ai-gate", "judgment_thresholds": [_CAL], "slos": [
             {"name": "rr", "target": 98.5, "judgment_type": "reversal_rate", "window": "30d",
@@ -1889,6 +1903,22 @@ async def test_open_threshold_breach_counts_in_later_governance(monkeypatch):
     prov.get_sli_value = AsyncMock(return_value=0.98)
     await _cycle(m, prov)
     assert m._autonomy_levels["svc"] == "advisor"    # multiple breaches, none critical
+    last_change = [v for v in verdicts if v["type"] == "autonomy_change"][-1]
+    assert last_change["data"]["breaching_slo_count"] == 2
+
+
+async def test_open_slo_breach_keeps_its_governance_memory(monkeypatch):
+    """Threshold cleanup must touch only threshold keys: an open SLO breach's
+    decision survives a cycle with the toggle on."""
+    m, prov, verdicts = _setup(monkeypatch, "1")
+    m.client.get_manifests = AsyncMock(return_value=APIResult(ok=True, status_code=200, data=[
+        {"name": "svc", "type": "ai-gate", "judgment_thresholds": [], "slos": [
+            {"name": "rr", "target": 98.5, "judgment_type": "reversal_rate", "window": "30d",
+             "indicator_query": "q"}]}]))
+    prov.get_sli_value = AsyncMock(return_value=0.98)
+    await _cycle(m, prov)
+    await _cycle(m, prov)
+    assert m._breach_decisions.get("svc:rr", {}).get("decided")
 
 
 async def test_retired_threshold_leaves_no_governance_memory(monkeypatch):
