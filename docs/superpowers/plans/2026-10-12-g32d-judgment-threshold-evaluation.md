@@ -25,7 +25,7 @@
 - Identity key: `f"{service}:{type}:{sha256(identifying fields)[:12]}"`, identifying fields = sorted bound NAMES, `metric`, `source`, `confidence_threshold`, `outcome_signal`, `segment_dimension`, sorted `segment_values`, `probe` (input set + frequency), measurement `window`, `bins`; bound VALUES excluded. Identical entries evaluate once; other same-key entries get `#n` ordinals in declared order.
 - Workers worktrees MUST be siblings (`.claude/bin/eco-worktree.sh`), never `claude --worktree` / agent `isolation: worktree`.
 - Tests assert structured data (statuses, dataclass fields, dict keys), never captured log text.
-- Lint floor is frozen; run `uv run ruff check src/ tests/` and check its exit status (do not pipe it).
+- Lint floor is frozen (the ruff `select` set in each repo's `pyproject.toml` is fixed — do not change it and add no per-file ignores or `noqa` beyond those the plan's code shows; nthlayer-workers CLAUDE.md hard rule 12); run `uv run ruff check src/ tests/` and check its exit status (do not pipe it).
 
 ## Review Focus
 
@@ -55,29 +55,54 @@
 Judgment thresholds (OPENSRM-CORE-v2 §5.5) are bounds on error magnitudes,
 evaluated by nthlayer-workers per §5.5.6. The bound → series table below is
 defined in code as `nthlayer_common.manifest.THRESHOLD_SERIES`; that table is
-the source of truth and this section documents it.
+the source of truth and this section documents it. Each threshold is
+evaluated every measure cycle and the result is emitted as a
+`judgment_threshold_evaluation` assessment, including when it is not
+evaluable.
+
+In the queries, `S` is the service name (the manifest's `metadata.name`),
+`B` is the threshold's `measurement.bins` and `W` its `measurement.window`.
 
 | Threshold | Bound | Series | Labels | Query |
 |---|---|---|---|---|
 | calibration | `maximum_expected_calibration_error` | `gen_ai_calibration_ece` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_ece{service="S",bins="B",window="W"})` |
 | calibration | `maximum_brier_score` | `gen_ai_calibration_brier` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_brier{service="S",bins="B",window="W"})` |
 | feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram) | `service` | `histogram_quantile(0.5, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
-| feedback_latency | `maximum_p90` | same histogram | `service` | `histogram_quantile(0.9, …)` |
-| segments, stability, audit_backlog | — | no series yet | — | evaluated as not evaluable (`no_data_source`) |
+| feedback_latency | `maximum_p90` | same histogram | `service` | `histogram_quantile(0.9, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
+| segments, stability, audit_backlog | — | no series yet | — | none sent; evaluated as not evaluable (`no_data_source`) |
+
+A bound that cannot be measured is reported as not evaluable, with one of
+these reasons:
+
+- `no_data` — the series is absent, its labels do not match (e.g. other
+  `bins`/`window`), the query errored or timed out, or the value is not
+  finite (`NaN`, `±Inf`).
+- `insufficient_window` — Prometheus's retention is shorter than the 30-day
+  window.
+- `no_data_source` — no series is defined for this threshold type yet.
+
+Rules:
 
 - Calibration gauges carry the `bins` and `window` they were computed with.
   The sampler reads only the series whose `bins`/`window` labels equal the
   manifest's `measurement.bins` / `measurement.window`; any other series is
   ignored (`no_data`).
+- `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus
+  histogram, i.e. with `_bucket` (and `_count` / `_sum`) series; the query
+  reads `_bucket`.
 - Feedback latency is observed when ground truth arrives, so the 30-day
   window is anchored on arrival (CORE §5.5.5). A young service is measured
   over the ground truth that has arrived; only when Prometheus's retention
-  (`prometheus_tsdb_lowest_timestamp_seconds`) is shorter than 30 days is the
-  bound not evaluable (`insufficient_window`).
+  (`min(prometheus_tsdb_lowest_timestamp_seconds)`) is shorter than 30 days
+  is the bound not evaluable (`insufficient_window`). When retention is
+  unknown (Prometheus does not scrape itself), the sampler measures what
+  Prometheus returns.
 - `histogram_quantile` interpolates within a bucket: include each declared
   bound (e.g. `3600`, `86400`) among the bucket boundaries.
 - Superseded: the single gauges `gen_ai_calibration_error{service}` and
-  `gen_ai_feedback_latency_seconds{service}` are no longer read.
+  `gen_ai_feedback_latency_seconds{service}` are no longer read. The
+  histogram above reuses the latter's base name; a plain gauge of that name
+  is not read.
 ```
 
 - [ ] **Step 2: In the interim judgment-SLO query table, mark the calibration and feedback_latency rows "superseded — now judgment thresholds, see 'Judgment threshold metrics'".**
@@ -665,9 +690,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from nthlayer_common.manifest import threshold_from_v2_entry
 from nthlayer_common.manifest.evaluation import Missing, Samples, evaluate_threshold
 from nthlayer_common.manifest.models import JudgmentThreshold, ThresholdMeasurement
-from nthlayer_common.manifest.parser.v2 import threshold_from_v2_entry
 
 
 def _seg(limit=0.05, values=("eu", "us")):
@@ -883,7 +908,35 @@ git -C nthlayer-common commit -m "feat(manifest): public threshold evaluation AP
 Run: `cd nthlayer-workers && git status --short && uv run pytest -q -o addopts= 2>&1 | tail -3`
 Expected: `uv.lock` may already show the sibling relock; 4 failed (2 in `tests/test_dependency_declarations.py`, `test_a_calibration_slo_is_loaded_and_evaluated`, `test_a_miscalibrated_service_breaches`). Tasks 7–8 fix all four.
 
-- [ ] **Step 2: Port the exact-ceiling guard** — append `test_declared_ceiling_is_exactly_the_next_major` verbatim from `nthlayer-core/tests/test_dependency_declarations.py` (the block starting `@pytest.mark.parametrize("name", SIBLINGS)` above that function). Its docstring's example must read "`<N+2.0.0` while N.x is under test" (major-agnostic).
+- [ ] **Step 2: Port the exact-ceiling guard** — append this test (ported from `nthlayer-core/tests/test_dependency_declarations.py`, docstring made major-agnostic) to the end of `nthlayer-workers/tests/test_dependency_declarations.py`. Everything it uses (`pytest`, `version`, `Version`, `_siblings`, `SIBLINGS`) is already defined or imported in that file.
+
+```python
+@pytest.mark.parametrize("name", SIBLINGS)
+def test_declared_ceiling_is_exactly_the_next_major(name):
+    """The ceiling must exclude the first release of the NEXT major, and nothing more.
+
+    test_declared_range_has_an_upper_bound only asks that SOME bound exists, so
+    `<N+2.0.0` while N.x is under test passes it (measured: suite stays green) and
+    admits all of major N+1, which nothing here has run. Mirror image of the floor
+    test: the floor admits nothing below the tested version, this admits nothing
+    above its major. Like the floor, it must be bumped deliberately when the
+    sibling's major advances.
+    """
+    specifier = _siblings()[name].specifier
+    installed = Version(version(name))
+
+    ceilings = [s.version for s in specifier if s.operator == "<"]
+    assert len(ceilings) == 1, (
+        f"'{name}{specifier}' declares {len(ceilings)} '<' bounds; this guard "
+        f"reads exactly one"
+    )
+    expected = Version(f"{installed.major + 1}.0.0")
+    assert Version(ceilings[0]) == expected, (
+        f"{name} ceiling is declared '<{ceilings[0]}' but the installed version "
+        f"is {installed}, so the ceiling must be '<{expected}'. A wider ceiling "
+        f"publishes a major nothing here has run."
+    )
+```
 
 - [ ] **Step 3: Change the pin** to `"nthlayer-common>=5.2.0,<6.0.0",` and add above it:
 
@@ -939,10 +992,12 @@ def test_a_calibration_judgment_slo_is_a_load_failure(tmp_path):
     (tmp_path / "m.yaml").write_text(_CALIBRATION_MANIFEST)
     loaded = load_specs(tmp_path)
     assert loaded.slos == []
-    assert len(loaded.parse_failures) == 1
+    assert loaded.parse_failures == 1
 ```
 
-Use the module's existing `_CALIBRATION_MANIFEST` fixture and its existing `load_specs` import; if `load_specs` returns a different structure, assert on its actual fields for "no SLOs" and "one parse failure" (read `observe/slo/spec_loader.py` / `measure/adapters/prometheus.py:87`).
+`load_specs` (`measure/adapters/prometheus.py:87`) returns `LoadedSpecs(slos: list[SLODefinition], parse_failures: int)` — `parse_failures` is a COUNT of files that failed to load, not a list. `_CALIBRATION_MANIFEST` (a v2 manifest with `judgment_type: calibration` under `judgment_slo`) and the `load_specs` import already exist in `tests/measure/test_prometheus.py`; keep the fixture and its comment ("Shared by the pair below…") updated to say it now pins a load failure.
+
+Also delete `test_judgment_query_builder_calibration_window_agnostic` (it indexes `_JUDGMENT_SLO_QUERIES["calibration"]`, which Step 3 removes).
 
 In `tests/measure/test_measure_worker.py`, replace the stability / segments / calibration `classify_severity` tests with:
 
@@ -960,7 +1015,11 @@ Run: `cd nthlayer-workers && uv run pytest -q -o addopts= tests/measure/test_pro
 Expected: `test_error_magnitudes_have_no_slo_query` FAILS (calibration still present)
 
 - [ ] **Step 3: Implement**
-  - Delete the `"calibration"` and `"feedback_latency"` entries from `_JUDGMENT_SLO_QUERIES` and `_JUDGMENT_QUERY_KINDS`, the comment block about `feedback_latency` being unreachable, and any breach branch for query kind `"judgment_duration"` that is now unreachable (and `_target_seconds` if only that branch used it).
+  - In `measure/adapters/prometheus.py`:
+    - delete the `"calibration"` and `"feedback_latency"` entries from `_JUDGMENT_SLO_QUERIES` (~line 181) and from `_JUDGMENT_QUERY_KINDS` (~line 201), together with the `# Unreachable today: feedback_latency …` comment block above the `"feedback_latency": "judgment_duration"` entry;
+    - delete the `elif slo.query_kind == "judgment_duration":` branch in `evaluate_slos` (~line 432: its comment `# Seconds, and lower is better…` and `raw_breach = current_value > slo.target`) — no remaining builder produces that kind;
+    - **keep `_target_seconds`**: it is also called by the `"latency_seconds"` branch (~line 442) and tested directly by `test_duration_units_are_matched_leniently` and `test_a_non_string_unit_warns_rather_than_aborting_the_cycle`;
+    - update the comment above `_JUDGMENT_SLO_QUERIES` (drop the sentence about `_window` on calibration/feedback_latency) and the builder counts in two comments: in `_query_for`, "Only 4 of the 8 JUDGMENT_SLO_TYPES have a builder" → 2 of the 8; in `evaluate_slos`, "4 of the 8 JUDGMENT_SLO_TYPES have no builder" → 6 of the 8.
   - In `measure/worker.py` delete the `stability`, `segments` and `calibration` branches of `classify_severity` and the functions `_classify_variance` and `_classify_calibration`.
 
 - [ ] **Step 4: Run the full suite and lint**
@@ -980,7 +1039,7 @@ git commit -m "fix(measure): error magnitudes never reach SLO breach code (opens
 **Files:**
 - Create: `nthlayer-workers/src/nthlayer_workers/measure/thresholds/__init__.py` (empty docstring module)
 - Create: `nthlayer-workers/src/nthlayer_workers/measure/thresholds/sampler.py`
-- Test: `nthlayer-workers/tests/measure/thresholds/test_sampler.py` (+ empty `__init__.py` if the test tree uses packages)
+- Test: `nthlayer-workers/tests/measure/thresholds/test_sampler.py` (+ an empty `tests/measure/thresholds/__init__.py`: the test tree is a package — `tests/measure/__init__.py` exists)
 
 **Interfaces:**
 - Consumes: `THRESHOLD_SERIES`, `FEEDBACK_LATENCY_WINDOW`, `Samples`, `Missing`, `JudgmentThreshold`, `duration_seconds` from `nthlayer_common.manifest`; `PrometheusProvider.query(query: str) -> dict` (raises `PrometheusProviderError` / httpx errors).
@@ -1012,6 +1071,10 @@ def _vector(value):
 
 
 _EMPTY = {"status": "success", "data": {"resultType": "vector", "result": []}}
+
+# A needle for _provider that matches every query ("" is a substring of any
+# string): use it to make every query answer the same way.
+_ANY = ""
 
 
 def _provider(responses):
@@ -1051,7 +1114,8 @@ async def test_mismatched_bins_label_is_no_data():
     # returns an empty vector.
     p = _provider([('bins="15"', _vector(0.9))])
     s = await sample(p, "svc", _cal(maximum_brier_score=0.1), now=NOW)
-    assert s.bounds["maximum_brier_score"] == Missing("no_data", s.bounds["maximum_brier_score"].detail)
+    v = s.bounds["maximum_brier_score"]
+    assert isinstance(v, Missing) and v.reason == "no_data"
 
 
 def _lat():
@@ -1109,7 +1173,7 @@ async def test_quantile_is_aggregated_across_instances():
 
 
 async def test_prometheus_error_is_no_data_and_does_not_raise():
-    p = _provider([("", RuntimeError("connection refused"))])
+    p = _provider([(_ANY, RuntimeError("connection refused"))])
     s = await sample(p, "svc", _cal(maximum_brier_score=0.1), now=NOW)
     v = s.bounds["maximum_brier_score"]
     assert v.reason == "no_data" and "connection refused" in v.detail
@@ -1118,6 +1182,8 @@ async def test_prometheus_error_is_no_data_and_does_not_raise():
 @pytest.mark.parametrize("t,bounds,measurement", [
     ("segments", {"maximum_variance_from_overall": 0.05},
      ThresholdMeasurement(metric="escalation", segment_dimension="region", segment_values=["eu"], window="30d")),
+    ("stability", {"maximum_drift": 0.02},
+     ThresholdMeasurement(probe=ProbeConfig("s3://p", "daily"))),
     ("audit_backlog", {"maximum_age": "24h"}, ThresholdMeasurement()),
 ])
 async def test_unsourced_types_are_no_data_source(t, bounds, measurement):
@@ -1129,8 +1195,6 @@ async def test_unsourced_types_are_no_data_source(t, bounds, measurement):
         assert {v.reason for v in s.bounds.values()} == {"no_data_source"}
     p.query.assert_not_awaited()
 ```
-
-Add a stability case to the parametrize list: `("stability", {"maximum_drift": 0.02}, ThresholdMeasurement(probe=ProbeConfig("s3://p", "daily")))`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1449,8 +1513,14 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
 - Test: `nthlayer-workers/tests/measure/thresholds/test_phase.py`
 
 **Interfaces:**
-- Consumes: `sample` (Task 9), `threshold_key`, `KeyState`, `advance` (Task 10), `evaluate_threshold`, `threshold_from_v2_entry`, `OpenSRMV2ParseError` from `nthlayer_common.manifest`, `wrap_assessment`, `wrap_verdict` from `nthlayer_common.cloudevents`.
-- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str]) -> list[tuple[str, str, str]]` — mutates `state` (key → `KeyState.to_dict()`), returns new breaches as `(key, service, breach_verdict_id)`. `MeasureModule` gains state key `threshold_state` (and `threshold_problems`, the once-per-change log memory).
+- Consumes:
+  - `sample` (Task 9); `threshold_key`, `KeyState`, `advance` (Task 10);
+  - from `nthlayer_common.manifest`: `evaluate_threshold`, `threshold_from_v2_entry(entry, where: str = ...) -> JudgmentThreshold`, `threshold_to_v2_entry(t) -> dict`, `OpenSRMV2ParseError`;
+  - from `nthlayer_common.cloudevents`: `wrap_assessment(assessment: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` and `wrap_verdict(verdict: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` — each wraps the dict in a CloudEvents envelope whose `data` is the original dict;
+  - `CoreAPIClient` (`nthlayer_common.api_client`, `MeasureModule.client`): `await client.get_manifests() -> APIResult`, `await client.submit_assessment(envelope: dict) -> APIResult`, `await client.submit_verdict(envelope: dict) -> APIResult`; `APIResult(ok: bool, status_code: int, data=None, error=None, detail=None)` — check `ok` before using `data`.
+- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str]) -> list[tuple[str, str, str]]` — mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. `MeasureModule` gains:
+  - `self._threshold_state` — persisted under state key `threshold_state` (`get_state` / `restore_state`);
+  - `self._threshold_problems: set[str]` — the once-per-change log memory; in-memory only, NOT persisted (after a restart each problem is logged once more).
 
 - [ ] **Step 1: Write the failing tests** (pattern: `tests/measure/test_measure_worker.py` — `AsyncMock` client, patched `PrometheusProvider`)
 
@@ -1731,7 +1801,7 @@ async def run_threshold_phase(
             )
 ```
 
-  and import `run_threshold_phase` from `nthlayer_workers.measure.thresholds.phase`. The early `return` on `not result.ok` already guarantees "core unreachable touches nothing"; change `if not result.ok or not result.data:` only if `[]` must still retire state (it should not: an empty list is treated as "no services present", so leave the early return).
+  and import `run_threshold_phase` from `nthlayer_workers.measure.thresholds.phase`. `provider` and `manifests` are the existing locals of `process_cycle` (the `PrometheusProvider` it opens and `result.data`). Do not change the existing early return (`if not result.ok or not result.data: return`).
 
 - [ ] **Step 4b: Let CI see the spec.** `test_served_shape_drives_a_cycle` reads `../opensrm`, which workers CI does not check out today. In `.github/workflows/test.yml`, after "Checkout nthlayer-common (sibling)", add:
 
@@ -1761,12 +1831,20 @@ git commit -m "feat(measure): evaluate judgment thresholds each cycle (opensrm-g
 ### Task 12: Operator toggle — threshold breaches feed the autonomy ratchet
 
 **Files:**
-- Modify: `nthlayer-workers/src/nthlayer_workers/measure/worker.py` (field + Phase 3)
+- Modify: `nthlayer-workers/src/nthlayer_workers/measure/worker.py` (field, `__post_init__`, `get_state`, `restore_state`, `process_cycle` Phase 3)
 - Test: `nthlayer-workers/tests/measure/thresholds/test_autonomy_toggle.py`
 
 **Interfaces:**
-- Consumes: `threshold_breaches` from Task 11.
-- Produces: `MeasureModule.threshold_autonomy: bool` (default from `MEASURE_THRESHOLD_AUTONOMY`); when true, each new threshold breach enters Phase 3 governance as a breaching key with severity `"high"`.
+- Consumes, from Task 11: the local `threshold_breaches: list[tuple[str, str, str]]` (`(key, service, breach_verdict_id)` for each threshold that fired a `quality_breach` this cycle), which Task 11 sets in `process_cycle` after Phase 1; and `self._threshold_state: dict[str, dict]` (threshold key → `KeyState.to_dict()` plus `"service"`; `last_evaluable` is `"within"`, `"breach"` or `None`). Threshold keys look like `service:type:hash` (optionally `#n`), so `key.split(":", 1)[0]` is the service, as for SLO keys.
+- Consumes, existing `MeasureModule` internals in `measure/worker.py` (read `process_cycle` before editing):
+  - `current_status: dict[str, str]` — `process_cycle` local filled in Phase 1: SLO key (`service:slo_name`) → `"healthy"` / `"breach"`. Phase 3 groups its `"breach"` keys by service into `breaching_services`; at the end of the cycle it becomes `self._slo_status` (after a carry-forward loop that copies keys from the previous `_slo_status` missing this cycle).
+  - `new_breaches: list[str]` — Phase 2 local: keys that transitioned to breach this cycle. Phase 3 acts only on a service that has at least one key in it.
+  - `breach_verdict_ids: dict[str, str]` — Phase 2 local: key → its `quality_breach` verdict id; Phase 3 uses them as the `autonomy_change` verdict's `parent_ids`.
+  - `self._breach_severities: dict[str, str]` — key → `"low"` / `"high"` / `"critical"`; read by `_compute_governance`.
+  - `self._breach_decisions: dict[str, dict]` — key → `{"decided": True, "decided_at": ..., "autonomy_action": ...}` once Phase 3 has governed it; a decided key is not governed again; the existing "recovered-SLO cleanup" loop after Phase 3 deletes entries whose `current_status` is `"healthy"`.
+  - `self._autonomy_levels: dict[str, str]` — service → level on `AUTONOMY_LADDER` (absent means `"fully_autonomous"`); a one-way ratchet.
+  - `self._compute_governance(service, breaching_keys) -> (action, steps)` — more than one breaching key → floor `advisor` (`observer` if any is `critical`); a single key → drop by its severity (`high` = 2 steps).
+- Produces: `MeasureModule.threshold_autonomy: bool` (default from `MEASURE_THRESHOLD_AUTONOMY`); when true, each new threshold breach enters Phase 3 governance as a breaching key with severity `"high"`, and an open (decided) threshold breach keeps counting in later cycles' governance. `MeasureModule` gains `self._threshold_governed: set[str]`, persisted under state key `threshold_governed`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1828,64 +1906,8 @@ async def test_enabling_later_does_not_ratchet_an_open_breach(monkeypatch):
     m.threshold_autonomy = True
     await _cycle(m, prov)
     assert [v for v in verdicts if v["type"] == "autonomy_change"] == []
-```
 
-- [ ] **Step 2: Run to verify it fails**
 
-Run: `cd nthlayer-workers && uv run pytest -q -o addopts= tests/measure/thresholds/test_autonomy_toggle.py`
-Expected: FAIL — `test_on_feeds_the_ratchet_as_a_high_breach`
-
-- [ ] **Step 3: Implement**
-
-```python
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
-```
-
-Add to `MeasureModule`: `threshold_autonomy: bool = field(default_factory=lambda: _env_flag("MEASURE_THRESHOLD_AUTONOMY"))` (import `os`, `field`). In Phase 3, before building `breaching_services`, when `self.threshold_autonomy` is true:
-
-```python
-            governed_threshold_keys: list[str] = []
-            if self.threshold_autonomy:
-                # Open threshold breaches count toward governance every cycle,
-                # exactly as an open SLO breach stays in current_status - so a
-                # later SLO breach sees "multiple breaches" (spec: same rules).
-                for key, st in self._threshold_state.items():
-                    if st.get("last_evaluable") == "breach" and self._breach_decisions.get(key):
-                        current_status[key] = "breach"
-                        governed_threshold_keys.append(key)
-                # New threshold breaches this cycle enter as new high breaches.
-                for key, _svc, breach_id in threshold_breaches:
-                    current_status[key] = "breach"
-                    new_breaches.append(key)
-                    breach_verdict_ids[key] = breach_id
-                    self._breach_severities[key] = "high"
-                    governed_threshold_keys.append(key)
-```
-
-and after Phase 3 (before the carry-forward loop) remove them from `current_status` so `_slo_status` stays SLO-only:
-
-```python
-            for key in governed_threshold_keys:
-                current_status.pop(key, None)
-```
-
-Threshold keys are `service:type:hash` (three parts), so `key.split(":", 1)[0]` in Phase 3 still yields the service.
-
-Track which governance keys are threshold keys: add `self._threshold_governed: set[str] = set()` in `__post_init__`, persist it in `get_state` as `"threshold_governed": sorted(self._threshold_governed)` and restore it in `restore_state` (`set(state.get("threshold_governed", []))`). Add every key in `governed_threshold_keys` to it. After the existing recovered-SLO cleanup, run the threshold cleanup over THAT SET ONLY (never over all `_breach_decisions` keys, which also hold SLO keys):
-
-```python
-            for key in list(self._threshold_governed):
-                st = self._threshold_state.get(key)
-                if st is None or st.get("last_evaluable") == "within":   # retired or recovered
-                    self._breach_decisions.pop(key, None)
-                    self._breach_severities.pop(key, None)
-                    self._threshold_governed.discard(key)
-```
-
-Add to the Step 1 tests:
-
-```python
 async def test_open_threshold_breach_counts_in_later_governance(monkeypatch):
     """An open threshold breach plus a later SLO breach is a multiple-breach
     case (advisor floor), as two SLO breaches would be."""
@@ -1931,6 +1953,68 @@ async def test_retired_threshold_leaves_no_governance_memory(monkeypatch):
     assert not any(":calibration:" in k for k in m._breach_severities)
 ```
 
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd nthlayer-workers && uv run pytest -q -o addopts= tests/measure/thresholds/test_autonomy_toggle.py`
+Expected: FAIL — `test_on_feeds_the_ratchet_as_a_high_breach`
+
+- [ ] **Step 3: Implement** — in `measure/worker.py`, in this order:
+
+1. **Toggle field.** Add a module-level helper (import `os`):
+
+```python
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+```
+
+   and a dataclass field on `MeasureModule` (import `field` from `dataclasses`):
+   `threshold_autonomy: bool = field(default_factory=lambda: _env_flag("MEASURE_THRESHOLD_AUTONOMY"))`.
+
+2. **`_threshold_governed`** — the set of governance keys that are threshold keys, so cleanup never touches SLO keys:
+   - `__post_init__`: `self._threshold_governed: set[str] = set()`;
+   - `get_state`: add `"threshold_governed": sorted(self._threshold_governed)`;
+   - `restore_state`: `self._threshold_governed = set(state.get("threshold_governed", []))`.
+
+3. **Re-inject block** — in `process_cycle`, immediately after the Phase 2 loop (`for slo_key in new_breaches: ...`) ends and before Phase 3 builds `breaching_services`:
+
+```python
+            governed_threshold_keys: list[str] = []
+            if self.threshold_autonomy:
+                # Open threshold breaches count toward governance every cycle,
+                # exactly as an open SLO breach stays in current_status - so a
+                # later SLO breach sees "multiple breaches" (spec: same rules).
+                for key, st in self._threshold_state.items():
+                    if st.get("last_evaluable") == "breach" and self._breach_decisions.get(key):
+                        current_status[key] = "breach"
+                        governed_threshold_keys.append(key)
+                # New threshold breaches this cycle enter as new high breaches.
+                for key, _svc, breach_id in threshold_breaches:
+                    current_status[key] = "breach"
+                    new_breaches.append(key)
+                    breach_verdict_ids[key] = breach_id
+                    self._breach_severities[key] = "high"
+                    governed_threshold_keys.append(key)
+            self._threshold_governed.update(governed_threshold_keys)
+```
+
+4. **Cleanup block** — directly after the existing recovered-SLO cleanup loop (`for slo_key in list(self._breach_decisions): if current_status.get(slo_key) == "healthy": ...`). It iterates `_threshold_governed` ONLY, never all `_breach_decisions` keys (which also hold SLO keys):
+
+```python
+            for key in list(self._threshold_governed):
+                st = self._threshold_state.get(key)
+                if st is None or st.get("last_evaluable") == "within":   # retired or recovered
+                    self._breach_decisions.pop(key, None)
+                    self._breach_severities.pop(key, None)
+                    self._threshold_governed.discard(key)
+```
+
+5. **Pop block** — directly after the cleanup block and before the carry-forward loop (`for key, status in self._slo_status.items(): ...`), so `_slo_status` stays SLO-only:
+
+```python
+            for key in governed_threshold_keys:
+                current_status.pop(key, None)
+```
+
 - [ ] **Step 4: Run the toggle tests, full suite, lint**
 
 Run: `cd nthlayer-workers && uv run pytest -q -o addopts= ; uv run ruff check src/ tests/; echo ruff=$?`
@@ -1947,11 +2031,11 @@ git commit -m "feat(measure): MEASURE_THRESHOLD_AUTONOMY lets threshold breaches
 
 **Files:**
 - Modify: `nthlayer-workers/CLAUDE.md` (hard rule 7 and the measure description)
-- Create or modify: `nthlayer-workers/docs/upgrading-3.0.md` (or the repo's existing upgrade-notes location; check `ls nthlayer-workers/docs`)
+- Create: `nthlayer-workers/docs/upgrading-3.0.md` (workers is at 2.0.1 in `.release-please-manifest.json`, and this release is the next major, 3.0.0; `docs/` holds only `architecture.md` today, so this is the first upgrade note)
 
 - [ ] **Step 1: Update CLAUDE.md hard rule 7** to state: severity is deterministic, no LLM; the five judgment SLO types use budget consumption; every judgment-threshold breach is `high` (thresholds are not SLOs — decision 3c); threshold breaches reach the autonomy ratchet only with `MEASURE_THRESHOLD_AUTONOMY` on.
 
-- [ ] **Step 2: Write the upgrade note** covering: common 5.2 pin; calibration/segments/stability under `judgment_slo` now fail to load (move them to `spec.judgment_threshold`); thresholds are evaluated from core ≥3.0's `/manifests`; new assessment kind; the `MEASURE_THRESHOLD_AUTONOMY` toggle; the metric contract (link the front door's `docs/metrics-contract.md`).
+- [ ] **Step 2: Write the upgrade note** (`docs/upgrading-3.0.md`) covering: common 5.2 pin; calibration/segments/stability under `judgment_slo` now fail to load (move them to `spec.judgment_threshold`); thresholds are evaluated from core ≥3.0's `/manifests`; new assessment kind; the `MEASURE_THRESHOLD_AUTONOMY` toggle; the metric contract (link the front door's `docs/metrics-contract.md`).
 
 - [ ] **Step 3: Commit**
 

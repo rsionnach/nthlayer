@@ -80,29 +80,54 @@ slo:error_budget:ratio{service="fraud-detect", slo="availability"}
 Judgment thresholds (OPENSRM-CORE-v2 §5.5) are bounds on error magnitudes,
 evaluated by nthlayer-workers per §5.5.6. The bound → series table below is
 defined in code as `nthlayer_common.manifest.THRESHOLD_SERIES`; that table is
-the source of truth and this section documents it.
+the source of truth and this section documents it. Each threshold is
+evaluated every measure cycle and the result is emitted as a
+`judgment_threshold_evaluation` assessment, including when it is not
+evaluable.
+
+In the queries, `S` is the service name (the manifest's `metadata.name`),
+`B` is the threshold's `measurement.bins` and `W` its `measurement.window`.
 
 | Threshold | Bound | Series | Labels | Query |
 |---|---|---|---|---|
 | calibration | `maximum_expected_calibration_error` | `gen_ai_calibration_ece` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_ece{service="S",bins="B",window="W"})` |
 | calibration | `maximum_brier_score` | `gen_ai_calibration_brier` (gauge) | `service`, `bins`, `window` | `max(gen_ai_calibration_brier{service="S",bins="B",window="W"})` |
 | feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram) | `service` | `histogram_quantile(0.5, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
-| feedback_latency | `maximum_p90` | same histogram | `service` | `histogram_quantile(0.9, …)` |
-| segments, stability, audit_backlog | — | no series yet | — | evaluated as not evaluable (`no_data_source`) |
+| feedback_latency | `maximum_p90` | same histogram | `service` | `histogram_quantile(0.9, sum by (le) (increase(gen_ai_feedback_latency_seconds_bucket{service="S"}[30d])))` |
+| segments, stability, audit_backlog | — | no series yet | — | none sent; evaluated as not evaluable (`no_data_source`) |
+
+A bound that cannot be measured is reported as not evaluable, with one of
+these reasons:
+
+- `no_data` — the series is absent, its labels do not match (e.g. other
+  `bins`/`window`), the query errored or timed out, or the value is not
+  finite (`NaN`, `±Inf`).
+- `insufficient_window` — Prometheus's retention is shorter than the 30-day
+  window.
+- `no_data_source` — no series is defined for this threshold type yet.
+
+Rules:
 
 - Calibration gauges carry the `bins` and `window` they were computed with.
   The sampler reads only the series whose `bins`/`window` labels equal the
   manifest's `measurement.bins` / `measurement.window`; any other series is
   ignored (`no_data`).
+- `gen_ai_feedback_latency_seconds` must be exposed as a Prometheus
+  histogram, i.e. with `_bucket` (and `_count` / `_sum`) series; the query
+  reads `_bucket`.
 - Feedback latency is observed when ground truth arrives, so the 30-day
   window is anchored on arrival (CORE §5.5.5). A young service is measured
   over the ground truth that has arrived; only when Prometheus's retention
-  (`prometheus_tsdb_lowest_timestamp_seconds`) is shorter than 30 days is the
-  bound not evaluable (`insufficient_window`).
+  (`min(prometheus_tsdb_lowest_timestamp_seconds)`) is shorter than 30 days
+  is the bound not evaluable (`insufficient_window`). When retention is
+  unknown (Prometheus does not scrape itself), the sampler measures what
+  Prometheus returns.
 - `histogram_quantile` interpolates within a bucket: include each declared
   bound (e.g. `3600`, `86400`) among the bucket boundaries.
 - Superseded: the single gauges `gen_ai_calibration_error{service}` and
-  `gen_ai_feedback_latency_seconds{service}` are no longer read.
+  `gen_ai_feedback_latency_seconds{service}` are no longer read. The
+  histogram above reuses the latter's base name; a plain gauge of that name
+  is not read.
 
 ## Labels Contract
 

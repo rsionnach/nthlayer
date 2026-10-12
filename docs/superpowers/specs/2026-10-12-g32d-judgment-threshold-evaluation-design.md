@@ -91,7 +91,7 @@ front door's `metrics-contract.md`.
 |---|---|---|---|
 | calibration | `maximum_expected_calibration_error` | `gen_ai_calibration_ece` (gauge) | `service`, `bins`, `window` |
 | calibration | `maximum_brier_score` | `gen_ai_calibration_brier` (gauge) | `service`, `bins`, `window` |
-| feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds_bucket` (histogram), `histogram_quantile(0.5, …)` over 30d | `service` |
+| feedback_latency | `maximum_p50` | `gen_ai_feedback_latency_seconds` (histogram), `histogram_quantile(0.5, …)` over its `_bucket` series, 30d | `service` |
 | feedback_latency | `maximum_p90` | same histogram, `histogram_quantile(0.9, …)` | `service` |
 
 Rules:
@@ -105,35 +105,50 @@ Rules:
 - Histogram bucket boundaries should include the declared bounds, because
   `histogram_quantile` interpolates within a bucket. This is guidance; the
   evaluator cannot detect it.
-- The single gauges `gen_ai_calibration_error` and
-  `gen_ai_feedback_latency_seconds` are documented as superseded.
+- The single gauges `gen_ai_calibration_error{service}` and
+  `gen_ai_feedback_latency_seconds{service}` are documented as superseded.
+  The latter's base name is reused by the histogram above, which must be
+  exposed as a histogram (`_bucket`, `_count`, `_sum` series); a plain gauge
+  of that name is not read.
 - segments, stability, audit_backlog: no series yet (`no_data_source`).
 
 ## 5. Evaluator and outcome model (nthlayer-common 5.2)
 
+All types are frozen dataclasses in `nthlayer_common.manifest.evaluation`:
+
 ```python
-Missing(reason: Literal["no_data_source", "no_data", "insufficient_window"], detail: str = "")
-Samples = Mapping[str, float | Missing]          # keyed by bound; segments: see below
+Status = Literal["within", "breach", "not_evaluable"]
+MissingReason = Literal["no_data_source", "no_data", "insufficient_window"]
+
+Missing(reason: MissingReason, detail: str = "")      # rejects an unknown reason
+Samples(bounds: Mapping[str, float | Missing] = {},   # every type except segments: bound -> value
+        overall: float | Missing | None = None,       # segments: the overall rate
+        segments: Mapping[str, float | Missing] = {}) # segments: segment value -> its rate
 
 BoundResult(bound: str, status: Status, measured: float | None, limit: float | str, reason: str | None)
 SegmentResult(segment: str, status: Status, measured: float | None, reason: str | None)
 ThresholdOutcome(type: str, status: Status, bounds: tuple[BoundResult, ...],
-                 segments: tuple[SegmentResult, ...] = ())
-Status = Literal["within", "breach", "not_evaluable"]
+                 segments: tuple[SegmentResult, ...] = ())   # + to_dict() / from_dict()
 
+combine(statuses: Iterable[Status]) -> Status         # E4; empty -> "not_evaluable"
 evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome
 ```
+
+A bound absent from `samples.bounds` (or a segment absent from
+`samples.segments`) is treated as `Missing("no_data")`.
 
 - **E1:** breach iff `measured > limit`; equal is within. Holds for a limit
   of 0.
 - **E2:** duration limits and measured durations are compared in seconds via
   `duration_seconds`.
 - **E3:** a `Missing` sample makes that bound (or segment) `not_evaluable`,
-  carrying the reason. For segments the samples carry `overall` and one value
-  per listed segment value; each segment is decided independently, and a
-  missing overall makes every segment `not_evaluable`. For `metric: outcomes`
-  a segment whose population has no elapsed outcome window is
-  `not_evaluable` (CORE §5.5.1); the sampler reports it as `no_data`.
+  carrying the reason; so does a non-finite value (`NaN`, `±inf`), with reason
+  `no_data`. For segments the samples carry `overall` and one rate per listed
+  segment value; each segment is decided independently, and a missing overall
+  makes every segment `not_evaluable` with the overall's reason. For
+  `metric: outcomes` a segment whose population has no elapsed outcome
+  window is `not_evaluable` (CORE §5.5.1); the sampler reports it as
+  `no_data`.
 - **E4:** the entry's status combines bounds (and segments) with breach >
   not_evaluable > within.
 - `ThresholdOutcome.to_dict()` / `from_dict()` define the assessment payload;
@@ -141,13 +156,16 @@ evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdO
 
 ## 6. Sampler (workers)
 
-`sample(service: str, threshold: JudgmentThreshold) -> Samples`:
+`async sample(provider, service: str, threshold: JudgmentThreshold, *, now: float | None = None) -> Samples`
+(`provider` is a `PrometheusProvider`; `now` defaults to the current time
+and exists so tests can fix it):
 
 - builds each query from `THRESHOLD_SERIES` and the threshold's
   `measurement`;
 - maps each Prometheus result to its bound; tests assert the mapping from
   realistic response JSON, not just the query string (the gap that hid this
   bug: only the calibration query string was ever tested);
+- an empty result or a non-finite value → `Missing("no_data")`;
 - a Prometheus error or timeout → `Missing("no_data", <error>)`; it never
   raises;
 - a 30-day query that Prometheus cannot answer over the whole window
@@ -156,9 +174,11 @@ evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdO
   series* is measured: CORE §5.5.5 defines p50/p90 over ground truth that
   arrived in the last 30 days, and for a 3-day-old service that is exactly
   what the 3 days hold. Unknown retention (Prometheus not scraping itself)
-  measures what it can. (Revised at Checkpoint A, R5 correctness.)
-- segments, stability, audit_backlog → `Missing("no_data_source")` for every
-  bound.
+  measures what it can.
+- segments → `Samples(overall=Missing("no_data_source"))`, which the
+  evaluator turns into every listed segment `not_evaluable`;
+- stability, audit_backlog → every declared bound
+  `Missing("no_data_source")`. No query is sent for any of the three.
 
 ## 7. Worker loop: data flow, state, errors
 
@@ -175,12 +195,17 @@ Per cycle:
    `confidence_threshold`, `outcome_signal`), `segment_dimension`, sorted
    `segment_values`, `probe` (input set and frequency), measurement
    `window` / `bins`. Bound *values* are excluded, so tightening a bound
-   keeps the key. CORE §5.5 allows several entries of one type, so a key can
-   still be shared: a fully identical entry is evaluated once (the duplicate
-   logged once per change), and any other entry with the same key gets an
-   ordinal `#n` in declared order — every declared bound of every entry is
-   evaluated (E1). (Revised at Checkpoint A: the earlier key merged e.g. a
-   p50 entry and a p90 entry and dropped one.)
+   keeps the key, and a p50 entry and a p90 entry get different keys. CORE
+   §5.5 allows several entries of one type, so two entries of one service
+   can still share a key (same identifying fields, different bound values).
+   Within one service, in declared order:
+   - the first entry with a given key keeps the bare key;
+   - a later entry identical to one already seen (same canonical v2 form) is
+     not evaluated again; the duplicate is logged once per change;
+   - each later non-identical entry with that key gets `#1`, `#2`, … in
+     declared order (`<key>#1`, `<key>#2`).
+
+   So every declared bound of every distinct entry is evaluated (E1).
 4. Sample (§6), evaluate (§5).
 5. Emit one `judgment_threshold_evaluation` assessment per key per cycle,
    payload `ThresholdOutcome.to_dict()` plus the key and service. This
@@ -223,7 +248,8 @@ into `within`; nothing raises out of the cycle; state lives in
 3. nthlayer-workers **major**: the pin moves from common 3.x to 5.2, which
    brings 4.0's and 5.0's manifest rejections to workers — a v2 manifest with
    calibration under `judgment_slo` now fails to parse in the CLI path.
-   BREAKING CHANGE footer and an upgrade note in workers' docs.
+   BREAKING CHANGE footer and an upgrade note in workers' docs
+   (`docs/upgrading-3.0.md`; workers is at 2.0.1, so the major is 3.0.0).
 
 ## 9. Testing
 
