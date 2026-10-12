@@ -1913,7 +1913,7 @@ git commit -m "feat(measure): threshold identity key and breach re-arm state (op
   - from `nthlayer_common.cloudevents`: `wrap_assessment(assessment: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` and `wrap_verdict(verdict: dict, *, component: str = "unknown", deployment_id: str | None = None) -> dict` — each wraps the dict in a CloudEvents envelope whose `data` is the original dict;
   - `CoreAPIClient` (`nthlayer_common.api_client`, `MeasureModule.client`): `await client.get_manifests() -> APIResult`, `await client.submit_assessment(envelope: dict) -> APIResult`, `await client.submit_verdict(envelope: dict) -> APIResult`; `APIResult(ok: bool, status_code: int, data=None, error=None, detail=None)` — check `ok` before using `data`.
   - existing `MeasureModule` (`measure/worker.py`): dataclass fields `client`, `prometheus_url`, `eval_concurrency: int = 5` (copied to `self._eval_concurrency` in `__post_init__`; the SLO phase already uses it for its `asyncio.Semaphore`); `restore_state(state)` returns early on a falsy `state`; `process_cycle` returns early unless `/manifests` is ok, then opens `provider = PrometheusProvider(...)` and runs, inside one `try … finally: await provider.aclose()`, Phase 1 (SLO evaluation, ending in `await asyncio.gather(...)`), Phase 2 (SLO breach transitions, starting `new_breaches = _detect_transitions(...)`), Phase 3 (governance).
-- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True) -> list[tuple[str, str, str]]` — evaluates entries concurrently (at most `eval_concurrency` at a time), queries retention at most once (only if `retention_check` and an entry needs it), mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. An entry that raises is logged once (`threshold_eval_failed`) and skipped; a manifest that is not a dict or whose `"name"` is not a non-empty `str` is logged once (`threshold_manifest_skipped`) and skipped; a state entry whose `"service"` is not a `str` is dropped. `state[key]` changes only when the entry's breach verdict (if one fires) was accepted (`ok`), so a rejected verdict is raised again next cycle. `MeasureModule` gains:
+- Produces: `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True) -> list[tuple[str, str, str]]` — evaluates entries concurrently (at most `eval_concurrency` at a time), queries retention at most once (only if `retention_check` and an entry needs it), mutates `state` (key → `KeyState.to_dict()` plus `"service"`), returns new breaches as `(key, service, breach_verdict_id)`. An entry that raises is logged once (`threshold_eval_failed`) and skipped; a manifest that is not a dict, whose `"name"` is not a non-empty `str`, or whose `"judgment_thresholds"` is neither absent/`None` nor a list is logged once (`threshold_manifest_skipped`) and skipped (its service is not treated as present, so its state is not retired); a state entry whose `"service"` is not a `str` is dropped. `state[key]` changes only when the entry's breach verdict (if one fires) was accepted (`ok`), so a rejected verdict is raised again next cycle. `MeasureModule` gains:
   - `retention_check: bool` — dataclass field, default from `MEASURE_RETENTION_CHECK` via `_env_flag_default_on` (read at construction; `off`/`false`/`0`, any case, disable it);
   - `self._threshold_state` — persisted under state key `threshold_state` (`get_state` / `restore_state`; restore drops a non-dict value, non-dict entries and entries whose `"service"` is not a `str`);
   - `self._threshold_problems: set[str]` — the once-per-change log memory; in-memory only, NOT persisted (after a restart each problem is logged once more).
@@ -2186,6 +2186,21 @@ async def test_malformed_manifest_is_skipped(bad):
     assert any(p.startswith("manifest:0:") for p in problems)
 
 
+@pytest.mark.parametrize("items", [5, True, "x", {"a": 1}])
+async def test_non_list_thresholds_are_skipped_and_keep_state(items):
+    from nthlayer_workers.measure.thresholds.phase import run_threshold_phase
+
+    m, prov, a, v = _module([0.2], _manifests())
+    state = {"bad:calibration:abc": {"last_evaluable": "breach", "service": "bad"}}
+    breaches = await run_threshold_phase(
+        client=m.client, provider=prov, state=state, seen_problems=set(),
+        manifests=[{"name": "bad", "judgment_thresholds": items},
+                   {"name": "svc", "judgment_thresholds": [_CAL]}],
+    )
+    assert len(breaches) == 1
+    assert "bad:calibration:abc" in state  # not retired on a malformed response
+
+
 def _recording_provider(answer):
     prov = AsyncMock()
     prov.seen = []
@@ -2290,8 +2305,16 @@ def _entries(manifests: list[dict], seen_problems: set[str]) -> tuple[set[str], 
             _log_once(seen_problems, f"manifest:{i}:{type(m).__name__}", "threshold_manifest_skipped",
                       where=f"/manifests[{i}]")
             continue
+        items = m.get("judgment_thresholds")
+        if items is None:  # an older core serves no key: no thresholds
+            items = []
+        if not isinstance(items, list):
+            # Not marked present: a malformed response must not retire state.
+            _log_once(seen_problems, f"thresholds:{service}:{type(items).__name__}",
+                      "threshold_manifest_skipped", where=f"/manifests[{i}].judgment_thresholds")
+            continue
         present.add(service)
-        for j, item in enumerate(m.get("judgment_thresholds") or []):
+        for j, item in enumerate(items):
             where = f"/manifests[{i}].judgment_thresholds[{j}]"
             try:
                 t = threshold_from_v2_entry(item, where=where)
