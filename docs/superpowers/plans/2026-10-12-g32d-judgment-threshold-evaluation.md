@@ -1369,7 +1369,7 @@ async def test_latency_beyond_a_top_bucket_below_the_bound_is_not_evaluable():
     p = _provider([_OLD, (_BUCKETS, _buckets(("5000", 1), ("10000", 2), ("+Inf", 10)))])
     t = _lat(p50="1d", p90="1d")
     o = evaluate_threshold(t, await sample(p, "svc", t, now=NOW))
-    assert [(b.status, b.reason) for b in o.bounds] == [("not_evaluable", "no_data")] * 2
+    assert [(b.status, b.reason) for b in o.bounds] == [("not_evaluable", "beyond_top_bucket")] * 2
 
 
 @pytest.mark.parametrize("response", [
