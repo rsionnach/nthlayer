@@ -111,7 +111,8 @@ Rules:
   except that a quantile beyond the largest finite boundary (its rank falls
   in the `+Inf` bucket) is reported as a **lower bound**, `AtLeast(boundary)`:
   a breach if that boundary already reaches the bound, otherwise not
-  evaluable (`no_data`). PromQL's `histogram_quantile` is not used: it returns
+  evaluable (`beyond_top_bucket`, added at Checkpoint B so a reader can tell
+  it from an absent series). PromQL's `histogram_quantile` is not used: it returns
   the largest finite boundary for such a quantile, so a latency far above
   the top bucket (OpenTelemetry's default top boundary is 10000s, below a
   `1d` bound) would read as within.
@@ -161,7 +162,7 @@ without exactly one bound, raises `ValueError` (the parsers reject both).
   of 0. A lower bound `AtLeast(v)` means the measured value is strictly
   greater than `v`: it is a breach (measured `v`, reason `lower_bound`) iff
   `v >= limit`; otherwise it decides nothing and is `not_evaluable`
-  (`no_data`).
+  (`beyond_top_bucket`).
 - **E2:** duration limits and measured durations are compared in seconds via
   `duration_seconds`.
 - **E3:** a `Missing` sample makes that bound (or segment) `not_evaluable`,
@@ -176,6 +177,10 @@ without exactly one bound, raises `ValueError` (the parsers reject both).
   not_evaluable > within.
 - `ThresholdOutcome.to_dict()` / `from_dict()` define the assessment payload;
   a round-trip test pins them. Every emitter and reader uses them.
+  `from_dict` is forward-compatible: unknown keys are ignored and unknown
+  reason strings are preserved, so a later 5.x reason does not break an
+  older reader; an unknown `status` is rejected (`ValueError`), since a
+  reader must not guess one.
 
 ## 6. Sampler (workers)
 

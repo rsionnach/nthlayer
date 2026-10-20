@@ -105,9 +105,11 @@ these reasons:
 
 - `no_data` — the series is absent, its labels do not match (e.g. other
   `bins`/`window`), the query errored or timed out, the value is not
-  finite (`NaN`, `±Inf`), the histogram has no `+Inf` bucket or no
-  observations in the window, or the quantile lies beyond the largest finite
-  bucket boundary and that boundary is below the bound (see below).
+  finite (`NaN`, `±Inf`), or the histogram has no `+Inf` bucket or no
+  observations in the window.
+- `beyond_top_bucket` — the quantile lies beyond the largest finite bucket
+  boundary and that boundary is below the bound, so the true value is known
+  only to exceed a number smaller than the limit (see below).
 - `insufficient_window` — Prometheus's retention is shorter than the 30-day
   window.
 - `no_data_source` — no series is defined for this threshold type yet.
@@ -134,7 +136,7 @@ Rules:
   one difference: a quantile beyond the largest finite boundary (its rank
   falls in the `+Inf` bucket) is reported as a lower bound, not as that
   boundary. It is a breach if that boundary already reaches the bound,
-  otherwise not evaluable (`no_data`). PromQL's `histogram_quantile` would
+  otherwise not evaluable (`beyond_top_bucket`). PromQL's `histogram_quantile` would
   return the boundary itself and so read such a latency as within.
 - Interpolation is linear within a bucket: include each declared bound
   (e.g. `3600`, `86400`) among the bucket boundaries.
