@@ -23,8 +23,8 @@
 - Operator switch `MEASURE_RETENTION_CHECK` (default ON; `off`/`false`/`0`, case-insensitive, disable it) controls the Prometheus retention check. Like `MEASURE_THRESHOLD_AUTONOMY` it is read once, when `MeasureModule` is constructed.
 - One threshold never affects another, and the threshold phase never stops the SLO phases: per-entry and whole-phase exceptions are logged and contained.
 - Threshold `quality_breach` severity is the string `"high"` (downstream knows only `low | high | critical`).
-- Thresholds run on their own cadence: `MEASURE_THRESHOLD_INTERVAL` seconds (default 900) since the last threshold run; open threshold breaches still reach governance every measure cycle. An assessment is emitted on first sight, when the outcome signature (outcome minus measured values) changes, every `MEASURE_THRESHOLD_HEARTBEAT` seconds (default 3600), and whenever a breach fires. Invalid timing env values (not a number, negative, non-finite) fall back to the default with a log.
-- Re-arm is a duration: a key re-arms after staying `within` for `REARM_INTERVALS` (**3**) × the threshold interval; `not_evaluable` neither starts nor ends the within run.
+- Thresholds run on their own cadence: `MEASURE_THRESHOLD_INTERVAL` seconds (default 900) since the last threshold run; open threshold breaches still reach governance every measure cycle. An assessment is emitted on first sight, when the outcome signature (outcome minus measured values) changes, every `MEASURE_THRESHOLD_HEARTBEAT` seconds (default 3600), and whenever a breach fires. Timing env values must be finite and in (0, 7d]; anything else (not a number, zero, negative, non-finite, over 604800) falls back to the default with a log. Retirement of removed entries runs every measure cycle, threshold run or not.
+- Re-arm needs BOTH a duration and a count: a disarmed key re-arms only once its current `within` run is at least `REARM_INTERVALS` (**3**) × the threshold interval old AND holds at least 3 consecutive `within` evaluations; `not_evaluable` neither starts, extends nor ends the run; a run that starts in the future (clock went back) restarts at now.
 - Operator toggle env var: `MEASURE_THRESHOLD_AUTONOMY` (truthy: `1`, `true`, `yes`, `on`, case-insensitive), default off.
 - Assessment kind string: `judgment_threshold_evaluation`.
 - Identity key: `f"{service}:{type}:{sha256(identifying fields)[:12]}"`, identifying fields = sorted bound NAMES, `metric`, `source`, `confidence_threshold`, `outcome_signal`, `segment_dimension`, sorted `segment_values`, `probe` (input set + frequency), measurement `window`, `bins`; bound VALUES excluded. Identical entries evaluate once; when a key has more than one distinct entry in a service, EVERY such entry's key is `f"{key}~{sha256(json.dumps(sorted bound items))[:8]}"` — keys never depend on position, so reordering moves no state.
@@ -43,7 +43,7 @@
 7. A `quality_breach` verdict that core does not accept leaves the key's state unchanged, so the next cycle raises it again. Pinned in Task 11 (`test_failed_breach_verdict_refires_next_cycle`).
 8. Corrupt restored state (`threshold_state` of `None`, a non-dict entry, wrong-typed fields) → the cycle runs and SLO breaches are still detected. Pinned in Task 10 (`test_from_dict_tolerates_a_corrupt_or_old_restored_state`) and Task 11 (`test_corrupt_restored_state_does_not_stop_the_cycle`).
 9. Cadence and emission: two measure cycles inside the threshold interval run the threshold phase once, yet an open threshold breach still counts in the second cycle's governance; an unchanged outcome is re-emitted only on the heartbeat, a breach that fires always emits the assessment its verdict names. Pinned in Task 11 (`test_the_phase_runs_on_its_own_interval`, `test_unchanged_outcome_is_reemitted_only_on_the_heartbeat`, `test_a_firing_breach_always_emits_its_parent_assessment`) and Task 12 (`test_open_threshold_breach_counts_in_later_governance`).
-10. Re-arm is 3 threshold intervals of `within`, measured as time: 2 intervals stay disarmed. Pinned in Task 10 (`test_within_for_less_than_the_rearm_duration_does_not_rearm`) and Task 11 (`test_rearm_is_three_threshold_intervals`).
+10. Re-arm needs 3 threshold intervals of `within` AND 3 `within` evaluations: 2 intervals stay disarmed, and so do 2 evaluations far apart. A backward clock delays but never stops re-arming, emitting or running. Pinned in Task 10 (`test_within_for_less_than_the_rearm_duration_does_not_rearm`, `test_rearm_needs_both_the_duration_and_three_within_evaluations`, `test_a_run_starting_in_the_future_restarts_now`) and Task 11 (`test_rearm_is_three_threshold_intervals`, `test_rearm_needs_three_within_evaluations_even_when_far_apart`, `test_a_backward_clock_still_runs_emits_and_rearms`).
 
 ---
 
@@ -1715,12 +1715,12 @@ git commit -m "feat(measure): Prometheus sampler for judgment thresholds (opensr
 **Interfaces:**
 - Consumes: `JudgmentThreshold` (and, in tests, `ThresholdMeasurement`) from `nthlayer_common.manifest`.
 - Produces:
-  - `REARM_INTERVALS = 3` — a key re-arms after staying `within` for this many threshold intervals; `MeasureModule` (Task 11) passes `rearm_seconds = REARM_INTERVALS * threshold_interval_seconds`.
+  - `REARM_INTERVALS = 3` — a disarmed key re-arms only after BOTH `REARM_INTERVALS` threshold intervals of `within` (`MeasureModule`, Task 11, passes `rearm_seconds = REARM_INTERVALS * threshold_interval_seconds`) AND at least `REARM_INTERVALS` consecutive `within` evaluations.
   - `threshold_key(service: str, t: JudgmentThreshold) -> str` — `service:type:sha256(identifying fields)[:12]`; bound VALUES excluded.
   - `bounds_digest(t: JudgmentThreshold) -> str` — `sha256(json.dumps(sorted bound items))[:8]`; Task 11 suffixes `~<digest>` onto the keys of same-identity entries.
   - `as_timestamp(v: Any) -> float | None` — a finite `int`/`float` (not `bool`) as `float`, else `None`; used to read persisted timestamps.
-  - `@dataclass KeyState(last_evaluable: str | None = None, armed: bool = True, within_since: float | None = None)` with `to_dict()` / `from_dict(d: Any)`. `within_since` is when the current `within` run began. `from_dict` never raises: restored `component_state` is untrusted, so a non-dict, or a field of the wrong type or value (`last_evaluable` not `"within"`/`"breach"`, `armed` not a `bool`, `within_since` not `as_timestamp`-valid), takes the default; state from before this design (`within_streak`, no `within_since`) reads as no within run.
-  - `advance(state: KeyState, status: str, now: float, rearm_seconds: float) -> tuple[KeyState, bool]` — the new state and whether a `quality_breach` fires. `within` starts a run (if none) and arms once `now - within_since >= rearm_seconds`; `not_evaluable` returns the state unchanged (neither starts nor ends a run); `breach` ends the run and fires iff armed and `last_evaluable != "breach"` (the second condition stops a restored armed+breach state re-firing).
+  - `@dataclass KeyState(last_evaluable: str | None = None, armed: bool = True, within_since: float | None = None, within_count: int = 0)` with `to_dict()` / `from_dict(d: Any)`. `within_since` is when the current `within` run began, `within_count` how many `within` evaluations it holds. `from_dict` never raises: restored `component_state` is untrusted, so a non-dict, or a field of the wrong type or value (`last_evaluable` not `"within"`/`"breach"`, `armed` not a `bool`, `within_since` not `as_timestamp`-valid, `within_count` not a non-negative `int`), takes the default; state from before this design (`within_streak`, no `within_since`) reads as no within run.
+  - `advance(state: KeyState, status: str, now: float, rearm_seconds: float) -> tuple[KeyState, bool]` — the new state and whether a `quality_breach` fires. `within` starts a run (if none, or if `within_since > now` — the clock went back — it restarts at `now`) and, when disarmed, arms only once BOTH `now - within_since >= rearm_seconds` AND `within_count >= REARM_INTERVALS`; `not_evaluable` returns the state unchanged (neither starts, extends nor ends a run); `breach` ends the run (`within_since=None`, `within_count=0`) and fires iff armed and `last_evaluable != "breach"` (the second condition stops a restored armed+breach state re-firing).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1821,16 +1821,28 @@ def test_within_for_the_rearm_duration_rearms():
     assert REARM_INTERVALS == 3
 
 
-def test_rearm_is_a_duration_not_a_count():
-    # Two within evaluations 2700s apart re-arm; four 100s apart do not.
+def test_rearm_needs_both_the_duration_and_three_within_evaluations():
+    # Far apart: two evaluations 2700s apart are not enough; the third is.
     st, _ = advance(KeyState(), "breach", 0.0, REARM)
     st, _ = advance(st, "within", 100.0, REARM)
     st, _ = advance(st, "within", 2800.0, REARM)
+    assert not st.armed
+    st, _ = advance(st, "within", 2900.0, REARM)
     assert st.armed
+    # Close together: four evaluations within 300s are not enough.
     st, _ = advance(KeyState(), "breach", 0.0, REARM)
     for t in (100.0, 200.0, 300.0, 400.0):
         st, _ = advance(st, "within", t, REARM)
     assert not st.armed
+
+
+def test_a_run_starting_in_the_future_restarts_now():
+    # The clock went back: the run restarts instead of never re-arming.
+    st, _ = advance(KeyState(), "breach", 10_000.0, REARM)
+    st, _ = advance(st, "within", 10_900.0, REARM)
+    for t in (100.0, 1000.0, 1900.0, 2800.0):
+        st, _ = advance(st, "within", t, REARM)
+    assert (st.within_since, st.within_count, st.armed) == (100.0, 4, True)
 
 
 def test_flapping_does_not_refire_until_rearmed():
@@ -1843,9 +1855,10 @@ def test_not_evaluable_neither_starts_nor_ends_a_within_run():
     st, _ = advance(KeyState(), "breach", 0.0, REARM)
     st, _ = advance(st, "within", 900.0, REARM)
     st, _ = advance(st, "not_evaluable", 1800.0, REARM)
-    assert st.within_since == 900.0
+    assert (st.within_since, st.within_count) == (900.0, 1)
+    st, _ = advance(st, "within", 2700.0, REARM)
     st, _ = advance(st, "within", 3600.0, REARM)
-    assert st.armed  # 3600 - 900 = 2700
+    assert st.armed  # 3600 - 900 = 2700, and 3 within evaluations
     st, _ = advance(KeyState(), "not_evaluable", 0.0, REARM)
     assert st.within_since is None
 
@@ -1872,6 +1885,12 @@ def test_state_round_trip():
     ("garbage", KeyState()),
     ({"last_evaluable": 7, "armed": "no", "within_since": "x"}, KeyState()),
     ({"last_evaluable": "breach", "armed": 0, "within_since": True}, KeyState("breach", True, None)),
+    ({"last_evaluable": "within", "armed": False, "within_since": 5, "within_count": True},
+     KeyState("within", False, 5.0, 0)),
+    ({"last_evaluable": "within", "armed": False, "within_since": 5, "within_count": -1},
+     KeyState("within", False, 5.0, 0)),
+    ({"last_evaluable": "within", "armed": False, "within_since": 5, "within_count": 2},
+     KeyState("within", False, 5.0, 2)),
     ({"last_evaluable": "within", "armed": False, "within_since": float("nan")}, KeyState("within", False, None)),
     ({"last_evaluable": "within", "armed": False, "within_since": 12, "service": "svc"},
      KeyState("within", False, 12.0)),
@@ -1902,9 +1921,11 @@ from typing import Any
 
 from nthlayer_common.manifest import JudgmentThreshold
 
-# Re-arm once a threshold has stayed within for this many threshold intervals
-# after a breach (the CLI path's 3-window hysteresis, as a duration).
-# MeasureModule passes REARM_INTERVALS * threshold_interval_seconds to advance().
+# After a breach, a key re-arms only when BOTH hold: it has been within for
+# rearm_seconds (MeasureModule passes REARM_INTERVALS * threshold_interval_seconds)
+# AND it was evaluated within at least REARM_INTERVALS times in a row (the CLI
+# path's 3-window hysteresis). The count keeps hysteresis when evaluations
+# are close together; the duration keeps it when they are far apart.
 # Tuning belongs to ratchet configuration.
 REARM_INTERVALS = 3
 
@@ -1953,6 +1974,7 @@ class KeyState:
     last_evaluable: str | None = None  # last "within" or "breach"; not_evaluable never sets it
     armed: bool = True
     within_since: float | None = None  # when the current within run began; None outside one
+    within_count: int = 0  # within evaluations in the current run; not_evaluable leaves it
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1966,27 +1988,35 @@ class KeyState:
         within_streak) reads as no within run."""
         if not isinstance(d, dict):
             return cls()
-        last, armed = d.get("last_evaluable"), d.get("armed")
+        last, armed, count = d.get("last_evaluable"), d.get("armed"), d.get("within_count")
         return cls(
             last_evaluable=last if last in ("within", "breach") else None,
             armed=armed if isinstance(armed, bool) else True,
             within_since=as_timestamp(d.get("within_since")),
+            within_count=count if type(count) is int and count >= 0 else 0,
         )
 
 
 def advance(state: KeyState, status: str, now: float, rearm_seconds: float) -> tuple[KeyState, bool]:
     """Apply one evaluation's combined status at time *now*. Returns (new
-    state, fire a breach?). A key re-arms once it has been within for
-    *rearm_seconds*; not_evaluable neither starts nor ends a within run."""
+    state, fire a breach?).
+
+    A disarmed key re-arms when its current within run is at least
+    *rearm_seconds* old AND holds at least REARM_INTERVALS within
+    evaluations. not_evaluable neither starts, extends nor ends a run; a
+    breach ends it. A run that starts in the future (the clock went back)
+    restarts now, so a backward clock delays re-arming but cannot stop it."""
     if status == "not_evaluable":
         return state, False
     if status == "within":
-        since = now if state.within_since is None else state.within_since
-        armed = state.armed or now - since >= rearm_seconds
-        return KeyState("within", armed, since), False
+        restart = state.within_since is None or state.within_since > now
+        since = now if restart else state.within_since
+        count = 1 if restart else state.within_count + 1
+        armed = state.armed or (now - since >= rearm_seconds and count >= REARM_INTERVALS)
+        return KeyState("within", armed, since, count), False
     # breach. last_evaluable also guards a restored armed+breach state.
     fire = state.armed and state.last_evaluable != "breach"
-    return KeyState("breach", state.armed and not fire, None), fire
+    return KeyState("breach", state.armed and not fire, None, 0), fire
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -2019,17 +2049,18 @@ git commit -m "feat(measure): threshold identity key and duration re-arm state (
   - existing `MeasureModule` (`measure/worker.py`): dataclass fields `client`, `prometheus_url`, `eval_concurrency: int = 5` (copied to `self._eval_concurrency` in `__post_init__`; the SLO phase already uses it for its `asyncio.Semaphore`); `restore_state(state)` returns early on a falsy `state`; `process_cycle` returns early unless `/manifests` is ok, then opens `provider = PrometheusProvider(...)` and runs, inside one `try … finally: await provider.aclose()`, Phase 1 (SLO evaluation, ending in `await asyncio.gather(...)`), Phase 2 (SLO breach transitions, starting `new_breaches = _detect_transitions(...)`), Phase 3 (governance).
 - Produces (`nthlayer_workers.measure.thresholds.phase`):
   - `DEFAULT_THRESHOLD_INTERVAL_SECONDS = 900.0`, `DEFAULT_THRESHOLD_HEARTBEAT_SECONDS = 3600.0`, `THRESHOLD_BREACH_SEVERITY = "high"`.
-  - `outcome_signature(outcome: ThresholdOutcome) -> str` — the outcome without measured values (type, combined status, per-bound `[bound, status, reason]`, per-segment `[segment, status, reason]`) as a `sort_keys` JSON string.
+  - `outcome_signature(outcome: ThresholdOutcome) -> str` — the outcome without measured values (type, combined status, per-bound `[bound, status, reason, limit]` sorted by bound, per-segment `[segment, status, reason]` sorted by segment) as a `sort_keys` JSON string; the declared `limit` is included so tightening a bound is reported.
+  - `retire_thresholds(*, manifests, state, seen_problems) -> None` — garbage collection alone (parses, sends no query), for measure cycles on which the phase does not run; same rule as the phase's own retirement.
   - `async def run_threshold_phase(*, client, provider, manifests: list[dict], state: dict[str, dict], seen_problems: set[str], eval_concurrency: int = 5, retention_check: bool = True, now: float | None = None, rearm_seconds: float = 2700.0, heartbeat_seconds: float = 3600.0) -> list[tuple[str, str, str]]` — evaluates entries concurrently (at most `eval_concurrency` at a time), queries retention at most once (only if `retention_check` and an entry needs it), returns new breaches as `(key, service, breach_verdict_id)`, and mutates `state`: key → `KeyState.to_dict()` plus `"service"`, `"last_signature"` (the last emitted `outcome_signature`, or `None`) and `"last_emitted_at"` (seconds, or `None`).
-    - **Keys:** each entry's base is `threshold_key`; identical entries (equal `threshold_to_v2_entry`) are evaluated once; when a base has more than one distinct entry, EVERY such entry's key is `f"{base}~{bounds_digest(t)}"`, otherwise the bare base. Keys never depend on position, so reordering moves no state; adding or removing a same-identity sibling changes keys (fresh state, which may re-raise: the safe direction).
+    - **Keys:** each entry's base is `threshold_key`; identical entries (equal `threshold_to_v2_entry` once `segment_values` is sorted — their order means nothing) are evaluated once; when a base has more than one distinct entry, EVERY such entry's key is `f"{base}~{bounds_digest(t)}"`, otherwise the bare base. Keys never depend on position, so reordering moves no state; adding or removing a same-identity sibling changes keys (fresh state, which may re-raise: the safe direction).
     - **Emission:** the assessment is submitted on first sight, when `outcome_signature` differs from `last_signature`, when `now - last_emitted_at >= heartbeat_seconds`, and whenever a breach fires (the verdict's `parent_ids` name it). A rejected assessment is logged and not recorded as emitted.
     - **Failure:** an entry that raises is logged once (`threshold_eval_failed`) and skipped; a manifest that is not a dict, whose `"name"` is not a non-empty `str`, or whose `"judgment_thresholds"` is neither absent/`None` nor a list is logged once (`threshold_manifest_skipped`) and skipped (its service is not treated as present, so its state is not retired); a state entry whose `"service"` is not a `str` is dropped. `state[key]` changes only when the entry's breach verdict (if one fires) was accepted (`ok`), so a rejected verdict (and its assessment) is raised again next run.
 - `MeasureModule` gains:
   - `retention_check: bool` — default from `MEASURE_RETENTION_CHECK` via `_env_flag_default_on` (`off`/`false`/`0`, any case, disable it);
-  - `threshold_interval_seconds: float` (env `MEASURE_THRESHOLD_INTERVAL`, default 900) and `threshold_heartbeat_seconds: float` (env `MEASURE_THRESHOLD_HEARTBEAT`, default 3600), via `_env_seconds` (not a number, negative or non-finite → default, logged `measure_env_invalid`). All three are read once at construction (restart to change);
+  - `threshold_interval_seconds: float` (env `MEASURE_THRESHOLD_INTERVAL`, default 900) and `threshold_heartbeat_seconds: float` (env `MEASURE_THRESHOLD_HEARTBEAT`, default 3600), via `_env_seconds` (valid only when finite and in (0, 604800] — zero would collapse hysteresis; anything else → default, logged `measure_env_invalid`). All three are read once at construction (restart to change);
   - `clock: Callable[[], float] = time.time` — injectable for tests;
   - `self._threshold_state` — persisted under `threshold_state` (`get_state` / `restore_state`; restore drops a non-dict value, non-dict entries and entries whose `"service"` is not a `str`);
-  - `self._threshold_last_run: float | None` — persisted under `threshold_last_run` (restored via `as_timestamp`); the phase runs when it is `None`, the clock went back, or `threshold_interval_seconds` have passed. `threshold_breaches` is `[]` on cycles where it does not run;
+  - `self._threshold_last_run: float | None` — persisted under `threshold_last_run` (restored via `as_timestamp`); the phase runs when it is `None`, the clock went back, or `threshold_interval_seconds` have passed. `threshold_breaches` is `[]` on cycles where it does not run, and those cycles call `retire_thresholds` so a removed entry retires at once. `run_threshold_phase` passes `now` to `sample`; a `last_emitted_at` in the future (clock went back) re-emits;
   - `self._threshold_problems: set[str]` — the once-per-change log memory; in-memory only, NOT persisted (after a restart each problem is logged once more).
 
 - [ ] **Step 1: Write the failing tests** (pattern: `tests/measure/test_measure_worker.py` — `AsyncMock` client, patched `PrometheusProvider`)
@@ -2079,9 +2110,10 @@ class _Clock:
 
 def _module(prom_values, manifests, **module_kw):
     """prom_values: list of ECE values returned on successive queries.
-    Defaults: the threshold phase runs on every cycle (interval 0) and the
-    clock stands still unless a test moves it."""
-    module_kw.setdefault("threshold_interval_seconds", 0.0)
+    Defaults: a 1s threshold interval, and _cycles advances the clock by the
+    interval after each cycle, so every cycle is a threshold run. A test that
+    needs exact times sets m.clock.t itself before each cycle."""
+    module_kw.setdefault("threshold_interval_seconds", 1.0)
     module_kw.setdefault("clock", _Clock())
     client = AsyncMock()
     client.get_manifests = AsyncMock(side_effect=manifests if isinstance(manifests, list) else None,
@@ -2106,6 +2138,7 @@ async def _cycles(module, prov, n):
     with patch("nthlayer_workers.measure.worker.PrometheusProvider", return_value=prov):
         for _ in range(n):
             await module.process_cycle()
+            module.clock.t += module.threshold_interval_seconds
 
 
 async def test_breach_emits_assessment_and_one_high_verdict():
@@ -2218,8 +2251,10 @@ async def test_restart_does_not_refire():
     saved = await m.get_state()
     m2, prov2, a2, v2 = _module([0.2], _manifests(("svc", [_CAL])))
     await m2.restore_state(saved)
+    m2.clock.t = m.clock.t           # one interval after the saved run
     await _cycles(m2, prov2, 1)
-    assert _breaches(v2) == []
+    assert prov2.query.await_count == 1  # the phase ran...
+    assert _breaches(v2) == []           # ...and did not re-raise
 
 
 _SPEC_V2 = Path(__file__).resolve().parents[4] / "opensrm" / "spec" / "v2"
@@ -2461,8 +2496,8 @@ def _evals(assessments):
 
 async def test_unchanged_outcome_is_reemitted_only_on_the_heartbeat():
     m, prov, a, v = _module([0.01] * 4, _manifests(("svc", [_CAL])), threshold_heartbeat_seconds=3600.0)
-    for step in (0, 900, 2700, 900):   # t = 0, 900, 3600, 4500
-        m.clock.t += step
+    for t in (0, 900, 3600, 4500):
+        m.clock.t = NOW + t
         await _cycles(m, prov, 1)
     # first sight (t=0) and the heartbeat (t=3600); 900 and 4500 are unchanged.
     assert len(_evals(a)) == 2
@@ -2497,10 +2532,10 @@ async def test_a_firing_breach_always_emits_its_parent_assessment():
 async def test_the_phase_runs_on_its_own_interval():
     m, prov, a, v = _module([0.01, 0.01], _manifests(("svc", [_CAL])), threshold_interval_seconds=900.0)
     await _cycles(m, prov, 1)        # first cycle after start: runs
-    m.clock.t += 300
+    m.clock.t = NOW + 300
     await _cycles(m, prov, 1)        # inside the interval: does not run
     assert prov.query.await_count == 1
-    m.clock.t += 600
+    m.clock.t = NOW + 900
     await _cycles(m, prov, 1)        # 900s after the last run: runs
     assert prov.query.await_count == 2
 
@@ -2511,7 +2546,7 @@ async def test_the_interval_survives_a_restart():
     saved = await m.get_state()
     m2, prov2, *_ = _module([0.01], _manifests(("svc", [_CAL])), threshold_interval_seconds=900.0)
     await m2.restore_state(saved)
-    m2.clock.t += 300
+    m2.clock.t = NOW + 300
     await _cycles(m2, prov2, 1)
     assert prov2.query.await_count == 0
 
@@ -2531,17 +2566,74 @@ async def test_a_corrupt_last_run_runs_the_phase(last_run):
 ])
 async def test_rearm_is_three_threshold_intervals(statuses, expected_breaches):
     m, prov, a, v = _module(statuses, _manifests(("svc", [_CAL])), threshold_interval_seconds=100.0)
-    for _ in statuses:
-        await _cycles(m, prov, 1)
-        m.clock.t += 100
+    await _cycles(m, prov, len(statuses))  # _cycles moves the clock 100s per cycle
     assert len(_breaches(v)) == expected_breaches
+
+
+async def test_rearm_needs_three_within_evaluations_even_when_far_apart():
+    """A 1s interval makes the 3s duration pass at once when evaluations are
+    10s apart; the within count still holds the key disarmed."""
+    m, prov, a, v = _module([0.2, 0.01, 0.01, 0.2], _manifests(("svc", [_CAL])),
+                            threshold_interval_seconds=1.0)
+    for t in (0, 10, 20, 30):
+        m.clock.t = NOW + t
+        await _cycles(m, prov, 1)
+    assert len(_breaches(v)) == 1
+
+
+async def test_a_backward_clock_still_runs_emits_and_rearms():
+    m, prov, a, v = _module([0.2, 0.01, 0.01, 0.01, 0.01, 0.01, 0.2], _manifests(("svc", [_CAL])),
+                            threshold_interval_seconds=60.0)
+    times = [10_000, 10_060, 100, 160, 220, 280, 340]  # the clock goes back ~10000s
+    for t in times:
+        m.clock.t = NOW + t
+        await _cycles(m, prov, 1)
+    # (c) every cycle was a threshold run, the backward jump included (now < last run).
+    assert prov.query.await_count == len(times)
+    # (b) the jump re-emitted the unchanged within outcome (its last emission is in the future).
+    assert [x["data"]["outcome"]["status"] for x in _evals(a)] == ["breach", "within", "within", "breach"]
+    # (a) the within run restarted at 100: by 280 it is 180s = 3 x 60s old with 4 evaluations,
+    # so the key re-armed and the breach at 340 fires.
+    assert len(_breaches(v)) == 2
+
+
+async def test_tightening_a_bound_emits_without_a_status_change():
+    tighter = dict(_CAL, bounds={"maximum_expected_calibration_error": 0.03})
+    m, prov, a, v = _module([0.01, 0.01], [_manifests(("svc", [_CAL])), _manifests(("svc", [tighter]))])
+    await _cycles(m, prov, 2)
+    assert [(x["data"]["outcome"]["status"], x["data"]["outcome"]["bounds"][0]["limit"]) for x in _evals(a)] == [
+        ("within", 0.05), ("within", 0.03)]
+
+
+async def test_a_removed_entry_retires_on_a_non_threshold_cycle():
+    m, prov, a, v = _module([0.2], [_manifests(("svc", [_CAL])), _manifests(("svc", []))],
+                            threshold_interval_seconds=900.0)
+    await _cycles(m, prov, 1)
+    m.clock.t = NOW + 60             # inside the interval: no threshold run...
+    await _cycles(m, prov, 1)
+    assert prov.query.await_count == 1
+    assert m._threshold_state == {}  # ...but the removed entry retired
+
+
+_SEG = {"type": "segments", "metric": "escalation", "segment_dimension": "region",
+        "segment_values": ["eu", "us"], "bounds": {"maximum_variance_from_overall": 0.05}}
+
+
+async def test_segment_value_order_does_not_make_a_distinct_entry():
+    m, prov, a, v = _module([], _manifests(("svc", [_SEG, dict(_SEG, segment_values=["us", "eu"])])))
+    await _cycles(m, prov, 1)
+    assert len(_evals(a)) == 1
+    assert set(m._threshold_state) == {threshold_key("svc", threshold_from_v2_entry(_SEG))}
 
 
 @pytest.mark.parametrize("name,default", [("MEASURE_THRESHOLD_INTERVAL", 900.0),
                                           ("MEASURE_THRESHOLD_HEARTBEAT", 3600.0)])
-@pytest.mark.parametrize("raw,ok", [(None, False), ("60", True), ("abc", False), ("-5", False),
-                                    ("nan", False), ("inf", False)])
-def test_threshold_timing_env(monkeypatch, name, default, raw, ok):
+@pytest.mark.parametrize("raw,expected", [
+    (None, None), ("60", 60.0), ("604800", 604800.0),                    # None: the default
+    ("abc", None), ("0", None), ("-5", None), ("nan", None), ("inf", None),
+    ("1e308", None), ("604801", None),
+])
+def test_threshold_timing_env(monkeypatch, name, default, raw, expected):
     if raw is None:
         monkeypatch.delenv(name, raising=False)
     else:
@@ -2549,7 +2641,7 @@ def test_threshold_timing_env(monkeypatch, name, default, raw, ok):
     m = MeasureModule(client=AsyncMock(), prometheus_url="http://p")
     field = {"MEASURE_THRESHOLD_INTERVAL": m.threshold_interval_seconds,
              "MEASURE_THRESHOLD_HEARTBEAT": m.threshold_heartbeat_seconds}[name]
-    assert field == (60.0 if ok else default)
+    assert field == (default if expected is None else expected)
 ```
 
 Check the `parents[N]` depth for `tests/measure/thresholds/` against the repo layout (workers is `<eco>/nthlayer-workers/tests/measure/thresholds/test_phase.py` → `parents[4]` is `<eco>`); assert `src.is_file()` so a wrong depth fails loudly.
@@ -2612,15 +2704,28 @@ def _log_once(seen: set[str], token: str, event: str, **kw: Any) -> None:
 
 
 def outcome_signature(outcome: ThresholdOutcome) -> str:
-    """The outcome without its measured values, as a sorted JSON string: an
-    assessment is re-emitted when this changes (or on the heartbeat)."""
+    """The outcome without its measured values, as a JSON string with sorted
+    keys and sorted bound/segment lists: an assessment is re-emitted when
+    this changes (or on the heartbeat). A bound's declared limit is part of
+    it, so tightening a bound is reported even when no status changes."""
     d = outcome.to_dict()
     return json.dumps({
         "type": d["type"],
         "status": d["status"],
-        "bounds": [[b["bound"], b["status"], b["reason"]] for b in d["bounds"]],
-        "segments": [[s["segment"], s["status"], s["reason"]] for s in d["segments"]],
+        "bounds": sorted(([b["bound"], b["status"], b["reason"], b["limit"]] for b in d["bounds"]),
+                         key=lambda row: row[0]),
+        "segments": sorted(([s["segment"], s["status"], s["reason"]] for s in d["segments"]),
+                           key=lambda row: row[0]),
     }, sort_keys=True)
+
+
+def _canonical(t: JudgmentThreshold) -> dict:
+    """The entry's v2 form for the identical-entry check, with segment_values
+    sorted: their order is not part of an entry's meaning (or its key)."""
+    entry = threshold_to_v2_entry(t)
+    if isinstance(entry.get("segment_values"), list):
+        entry = {**entry, "segment_values": sorted(entry["segment_values"], key=str)}
+    return entry
 
 
 def _entries(manifests: list[dict], seen_problems: set[str]) -> tuple[set[str], list[_Entry]]:
@@ -2656,7 +2761,7 @@ def _entries(manifests: list[dict], seen_problems: set[str]) -> tuple[set[str], 
                           service=service, where=where, error=str(exc))
                 continue
             base = threshold_key(service, t)
-            canonical = threshold_to_v2_entry(t)
+            canonical = _canonical(t)
             same_base = by_base.setdefault(base, [])
             if any(c == canonical for c, _, _ in same_base):  # identical: evaluate once
                 _log_once(seen_problems, f"dup:{base}", "threshold_duplicate", service=service, key=base)
@@ -2688,7 +2793,8 @@ async def _evaluate(
     """Sample, evaluate, report one entry; returns its new breach, if any.
     state[key] changes only once everything this run owes is delivered."""
     outcome = evaluate_threshold(
-        t, await sample(provider, service, t, retention=retention, retention_check=retention_check)
+        t, await sample(provider, service, t, now=now, retention=retention,
+                        retention_check=retention_check)
     )
     prev = state.get(key) or {}
     new_state, fire = advance(KeyState.from_dict(prev), outcome.status, now, rearm_seconds)
@@ -2696,10 +2802,13 @@ async def _evaluate(
     last_signature = prev.get("last_signature")
     last_emitted_at = as_timestamp(prev.get("last_emitted_at"))
     # A firing breach always emits: its verdict's parent_ids name this assessment.
+    # A last emission in the future (the clock went back) emits too, so a
+    # backward clock cannot silence the heartbeat.
     emit = (
         fire
         or signature != last_signature
         or last_emitted_at is None
+        or last_emitted_at > now
         or now - last_emitted_at >= heartbeat_seconds
     )
     assessment_id = f"jte-{service}-{t.type}-{uuid.uuid4().hex[:8]}"
@@ -2783,20 +2892,33 @@ async def run_threshold_phase(
             new_breaches.append(breach)
 
     await asyncio.gather(*(one(*e) for e in entries))
-    # Retire only keys of services present in this (successful) response. An
-    # entry without a str service (corrupt state) can never match a
-    # manifest: drop it rather than let it fail every run.
-    live_keys = {key for key, _, _ in entries}
+    _retire(state, present_services, {key for key, _, _ in entries})
+    return new_breaches
+
+
+def _retire(state: dict[str, dict], present_services: set[str], live_keys: set[str]) -> None:
+    """Retire only keys of services present in a successful response whose
+    entry is gone. An entry without a str service (corrupt state) can never
+    match a manifest: drop it rather than let it fail every run."""
     for key in [k for k, v in state.items()
                 if not isinstance(v.get("service"), str)
                 or (v["service"] in present_services and k not in live_keys)]:
         del state[key]
         logger.info("threshold_retired", key=key)
-    return new_breaches
+
+
+def retire_thresholds(*, manifests: list[dict], state: dict[str, dict], seen_problems: set[str]) -> None:
+    """Garbage collection alone, for measure cycles on which the threshold
+    phase does not run: /manifests is fetched every cycle, so a removed
+    entry retires (and leaves governance) without waiting for the next
+    threshold run. Same rule as the phase: successful response, service
+    present, entry gone. Parses only; sends no query."""
+    present_services, entries = _entries(manifests, seen_problems)
+    _retire(state, present_services, {key for key, _, _ in entries})
 ```
 
 - [ ] **Step 4: Wire it into `MeasureModule`** (`measure/worker.py`)
-  - Imports: `import math`, `import os`, `import time`; `from collections.abc import Callable`; `from dataclasses import dataclass, field`; `from nthlayer_workers.measure.thresholds.phase import DEFAULT_THRESHOLD_HEARTBEAT_SECONDS, DEFAULT_THRESHOLD_INTERVAL_SECONDS, run_threshold_phase`; `from nthlayer_workers.measure.thresholds.state import REARM_INTERVALS, as_timestamp`.
+  - Imports: `import math`, `import os`, `import time`; `from collections.abc import Callable`; `from dataclasses import dataclass, field`; `from nthlayer_workers.measure.thresholds.phase import DEFAULT_THRESHOLD_HEARTBEAT_SECONDS, DEFAULT_THRESHOLD_INTERVAL_SECONDS, retire_thresholds, run_threshold_phase`; `from nthlayer_workers.measure.thresholds.state import REARM_INTERVALS, as_timestamp`.
   - Module-level helpers (above the class, below `logger = structlog.get_logger()`):
 
 ```python
@@ -2805,9 +2927,14 @@ def _env_flag_default_on(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() not in ("off", "false", "0")
 
 
+# Upper bound for the threshold timing settings (7 days). Zero is rejected:
+# a zero interval would evaluate every cycle and collapse re-arm hysteresis.
+_MAX_TIMING_SECONDS = 7 * 86400.0
+
+
 def _env_seconds(name: str, default: float) -> float:
-    """A non-negative number of seconds from the environment. Unset: the
-    default. Not a number, negative or non-finite: the default, with a warning."""
+    """Seconds from the environment, in (0, 7d]. Unset: the default. Not a
+    number, non-finite, zero, negative or over 7d: the default, with a warning."""
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
@@ -2815,7 +2942,7 @@ def _env_seconds(name: str, default: float) -> float:
         value = float(raw)
     except ValueError:
         value = math.nan
-    if not math.isfinite(value) or value < 0:
+    if not (math.isfinite(value) and 0 < value <= _MAX_TIMING_SECONDS):
         logger.warning("measure_env_invalid", name=name, value=raw, default=default)
         return default
     return value
@@ -2881,6 +3008,14 @@ def _env_seconds(name: str, default: float) -> float:
                     )
                 except Exception as exc:
                     logger.warning("threshold_phase_failed", error=f"{type(exc).__name__}: {exc}")
+            else:
+                # Not a threshold run: still retire removed entries, since
+                # /manifests is fresh every cycle.
+                try:
+                    retire_thresholds(manifests=manifests, state=self._threshold_state,
+                                      seen_problems=self._threshold_problems)
+                except Exception as exc:
+                    logger.warning("threshold_retire_failed", error=f"{type(exc).__name__}: {exc}")
             if threshold_breaches:
                 logger.info("threshold_breaches", count=len(threshold_breaches))
 ```
@@ -2919,7 +3054,7 @@ git commit -m "feat(measure): evaluate judgment thresholds each cycle (opensrm-g
 - Test: `nthlayer-workers/tests/measure/thresholds/test_autonomy_toggle.py`
 
 **Interfaces:**
-- Consumes, from Task 11: the local `threshold_breaches: list[tuple[str, str, str]]` (`(key, service, breach_verdict_id)` for each threshold whose `quality_breach` verdict core accepted this cycle; `[]` when the threshold phase raised or did not run — it runs on its own `threshold_interval_seconds` cadence, so most measure cycles are non-threshold cycles), which Task 11 sets in `process_cycle` between Phase 1 and Phase 2; the module-level `_env_flag_default_on` helper and the `os` / `dataclasses.field` imports Task 11 added to `measure/worker.py`; and `self._threshold_state: dict[str, dict]` (threshold key → `KeyState.to_dict()` plus `"service"`, `"last_signature"`, `"last_emitted_at"`; `last_evaluable` is `"within"`, `"breach"` or `None`), which persists between threshold runs — so the re-inject block below reads it EVERY measure cycle, threshold run or not. Also `MeasureModule.clock` (injectable `Callable[[], float]`) and `threshold_interval_seconds` (default 900). Threshold keys look like `service:type:hash` (optionally `#n`), so `key.split(":", 1)[0]` is the service, as for SLO keys.
+- Consumes, from Task 11: the local `threshold_breaches: list[tuple[str, str, str]]` (`(key, service, breach_verdict_id)` for each threshold whose `quality_breach` verdict core accepted this cycle; `[]` when the threshold phase raised or did not run — it runs on its own `threshold_interval_seconds` cadence, so most measure cycles are non-threshold cycles), which Task 11 sets in `process_cycle` between Phase 1 and Phase 2; the module-level `_env_flag_default_on` helper and the `os` / `dataclasses.field` imports Task 11 added to `measure/worker.py`; and `self._threshold_state: dict[str, dict]` (threshold key → `KeyState.to_dict()` plus `"service"`, `"last_signature"`, `"last_emitted_at"`; `last_evaluable` is `"within"`, `"breach"` or `None`), which persists between threshold runs — so the re-inject block below reads it EVERY measure cycle, threshold run or not. Also `MeasureModule.clock` (injectable `Callable[[], float]`) and `threshold_interval_seconds` (default 900). Threshold keys look like `service:type:hash` (optionally `~<digest>`), so `key.split(":", 1)[0]` is the service, as for SLO keys.
 - Consumes, existing `MeasureModule` internals in `measure/worker.py` (read `process_cycle` before editing):
   - `current_status: dict[str, str]` — `process_cycle` local filled in Phase 1: SLO key (`service:slo_name`) → `"healthy"` / `"breach"`. Phase 3 groups its `"breach"` keys by service into `breaching_services`; at the end of the cycle it becomes `self._slo_status` (after a carry-forward loop that copies keys from the previous `_slo_status` missing this cycle).
   - `new_breaches: list[str]` — Phase 2 local: keys that transitioned to breach this cycle. Phase 3 acts only on a service that has at least one key in it.
@@ -3048,7 +3183,8 @@ async def test_retired_threshold_leaves_no_governance_memory(monkeypatch):
     await _cycle(m, prov)
     m.client.get_manifests = AsyncMock(return_value=APIResult(ok=True, status_code=200, data=[
         {"name": "svc", "type": "ai-gate", "slos": [], "judgment_thresholds": []}]))
-    m.clock.t += 900                          # the next threshold run retires the entry
+    # No clock move: a non-threshold cycle retires the removed entry too
+    # (retire_thresholds runs on every cycle the phase does not).
     await _cycle(m, prov)
     assert not any(":calibration:" in k for k in m._breach_decisions)
     assert not any(":calibration:" in k for k in m._breach_severities)
@@ -3158,9 +3294,9 @@ git commit -m "feat(measure): MEASURE_THRESHOLD_AUTONOMY lets threshold breaches
 - [ ] **Step 2: Write the upgrade note** (`docs/upgrading-3.0.md`) covering: common 5.2 pin; calibration/segments/stability under `judgment_slo` now fail to load (move them to `spec.judgment_threshold`); thresholds are evaluated from core ≥3.0's `/manifests`; new assessment kind; the metric contract (link the front door's `docs/metrics-contract.md`), calling out that `gen_ai_feedback_latency_seconds` is now a histogram sharing the old gauge's base name (an exporter cannot register both: cut over in one release) and that its buckets need a finite boundary strictly above every declared bound (OTel's default top, 10000s, is below `1d`; a quantile beyond the top boundary is reported as a lower bound); and the operator settings:
   - `MEASURE_THRESHOLD_AUTONOMY` (default off) — threshold breaches feed the autonomy ratchet;
   - `MEASURE_RETENTION_CHECK` (default on; `off`/`false`/`0` disable) — set it **off** behind Thanos sidecar, Mimir or Cortex, where `prometheus_tsdb_lowest_timestamp_seconds` describes a local TSDB, not what the query path can see, and would wrongly report `insufficient_window`;
-  - `MEASURE_THRESHOLD_INTERVAL` (seconds, default 900) — how often thresholds are evaluated, independent of the measure cycle; re-arm after a breach takes 3 intervals of `within`;
-  - `MEASURE_THRESHOLD_HEARTBEAT` (seconds, default 3600) — an unchanged `judgment_threshold_evaluation` is re-emitted this often; a changed one (any bound/segment status or reason) is emitted at once. Dashboards should read the latest assessment per key, not count them;
-  - an invalid timing value (not a number, negative, non-finite) is logged and the default used;
+  - `MEASURE_THRESHOLD_INTERVAL` (seconds, default 900) — how often thresholds are evaluated, independent of the measure cycle; re-arm after a breach takes 3 intervals of `within` AND 3 `within` evaluations;
+  - `MEASURE_THRESHOLD_HEARTBEAT` (seconds, default 3600) — an unchanged `judgment_threshold_evaluation` is re-emitted this often; a changed one (any bound/segment status or reason, or a bound's declared limit) is emitted at once. Dashboards should read the latest assessment per key, not count them;
+  - a timing value must be in (0, 604800] (7 days); anything else (not a number, zero, negative, non-finite, larger) is logged and the default used;
   - all four are read once at startup: restart the worker to change them.
 
 - [ ] **Step 3: Commit**

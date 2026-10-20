@@ -225,8 +225,13 @@ gone back. Calibration and 30-day latency quantiles move slowly; evaluating
 them every measure cycle only multiplies queries and assessments. Open
 threshold breaches still reach governance on every measure cycle (from the
 persisted per-key state), threshold run or not. `MEASURE_THRESHOLD_INTERVAL`
-and `MEASURE_THRESHOLD_HEARTBEAT` are read at startup; a value that is not a
-number, negative or non-finite falls back to the default with a log.
+and `MEASURE_THRESHOLD_HEARTBEAT` are read at startup; a value must be finite
+and in (0, 7 days] — zero would evaluate every cycle and collapse re-arm
+hysteresis — and anything else falls back to the default with a log.
+Garbage collection (item 7) runs on every measure cycle, threshold run or
+not, since `/manifests` is fetched every cycle. A clock that goes backwards
+runs the phase at once, re-emits (the last emission is in the future) and
+restarts any within run at now: it can delay, never silence.
 
 Per threshold run:
 
@@ -245,7 +250,8 @@ Per threshold run:
    §5.5 allows several entries of one type, so two entries of one service
    can still share a key (same identifying fields, different bound values).
    Within one service:
-   - an entry identical to one already seen (same canonical v2 form) is
+   - an entry identical to one already seen (same canonical v2 form, with
+     `segment_values` sorted — their order means nothing) is
      not evaluated again; the duplicate is logged once per change;
    - a key with exactly one distinct entry is used bare;
    - when a key has more than one distinct entry, EVERY such entry's key
@@ -267,8 +273,9 @@ Per threshold run:
    `ThresholdOutcome.to_dict()` plus the key and service, when the outcome
    changes, not every run. Per key the state keeps `last_signature` — the
    outcome without measured values (type, combined status, per-bound
-   `(bound, status, reason)`, per-segment `(segment, status, reason)`) as a
-   sorted JSON string — and `last_emitted_at`. The assessment is emitted on
+   `(bound, status, reason, limit)` sorted by bound, per-segment
+   `(segment, status, reason)` sorted by segment) as a sorted-key JSON
+   string; the declared limit is in it, so tightening a bound is reported — and `last_emitted_at`. The assessment is emitted on
    first sight, when the signature differs, when `MEASURE_THRESHOLD_HEARTBEAT`
    (seconds, default 3600) has passed since the last emission, and whenever a
    breach fires (its verdict references that run's assessment). This
@@ -278,16 +285,18 @@ Per threshold run:
 6. **Transitions** (`component_state`, per key):
    - `last_evaluable` — the last `within` or `breach`; `not_evaluable` never
      changes it;
-   - `within_since` — when the current run of `within` began; `breach`
-     clears it, `not_evaluable` neither starts nor ends it;
+   - `within_since` / `within_count` — when the current run of `within`
+     began and how many `within` evaluations it holds; `breach` clears both,
+     `not_evaluable` neither starts, extends nor ends the run, and a run
+     starting in the future (clock went back) restarts at now;
    - a verdict fires when the status is `breach`, `last_evaluable` is not
      `breach`, and the key is armed. A key is armed initially and re-arms
-     once it has been `within` for 3 threshold intervals
-     (`now - within_since >= 3 × MEASURE_THRESHOLD_INTERVAL`), a duration
-     rather than a count, so it does not depend on how often the phase ran.
-     So `breach → not_evaluable → breach` raises once, and flapping at the
+     only when BOTH `now - within_since >= 3 × MEASURE_THRESHOLD_INTERVAL`
+     AND `within_count >= 3`: the duration keeps hysteresis when runs are
+     close together, the count when they are far apart. So
+     `breach → not_evaluable → breach` raises once, and flapping at the
      bound does not re-raise until the value has stayed within for 3
-     intervals. State written before this field (`within_streak`) reads as
+     intervals and 3 evaluations. State written before this field (`within_streak`) reads as
      no within run;
    - the verdict is `quality_breach`, severity `high` for every threshold
      breach, referencing the assessment. Downstream knows only
