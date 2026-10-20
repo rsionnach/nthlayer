@@ -18,7 +18,7 @@
 - E2: Duration limits compared in seconds via `nthlayer_common.manifest.duration_seconds`.
 - E3: missing data → `not_evaluable` with a reason in `{"no_data_source", "no_data", "insufficient_window"}`; never `within`.
 - E4: breach > not_evaluable > within, across bounds and across segments.
-- A lower bound `AtLeast(v)` (the true value is strictly greater than `v`) breaches iff `v >= limit`; otherwise it is `not_evaluable("no_data")`. It is what a histogram quantile in the `+Inf` bucket yields: the sampler computes quantiles from bucket counts itself and never uses PromQL `histogram_quantile`, which reports such a quantile as the largest finite `le` (and so as `within`).
+- A lower bound `AtLeast(v)` (the true value is strictly greater than `v`) breaches iff `v >= limit`; otherwise it is `not_evaluable("beyond_top_bucket")`. It is what a histogram quantile in the `+Inf` bucket yields: the sampler computes quantiles from bucket counts itself and never uses PromQL `histogram_quantile`, which reports such a quantile as the largest finite `le` (and so as `within`).
 - PromQL label values are always escaped (`\` → `\\`, `"` → `\"`, newline → `\n`) via the sampler's `_label`.
 - Operator switch `MEASURE_RETENTION_CHECK` (default ON; `off`/`false`/`0`, case-insensitive, disable it) controls the Prometheus retention check. Like `MEASURE_THRESHOLD_AUTONOMY` it is read once, when `MeasureModule` is constructed.
 - One threshold never affects another, and the threshold phase never stops the SLO phases: per-entry and whole-phase exceptions are logged and contained.
@@ -565,7 +565,7 @@ git -C nthlayer-common commit -m "feat(manifest): threshold outcome model and as
 
 **Interfaces:**
 - Consumes: Task 3's types (incl. `Missing`, `AtLeast`, `Samples`); `THRESHOLD_BOUNDS`, `DURATION`, `duration_seconds` from `nthlayer_common.manifest.thresholds`; `JudgmentThreshold`, `ThresholdMeasurement` from `nthlayer_common.manifest.models`.
-- Produces: `evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome`. Raises `ValueError` (never `KeyError`) for a type not in `THRESHOLD_BOUNDS` or a bound that type does not define (parsed thresholds never have one; hand-built ones can). A sample `AtLeast(v)` is a `breach` with `measured=v`, `reason="lower_bound"` when `v >= limit` (the true value is > v ≥ limit), else `not_evaluable` with reason `no_data`.
+- Produces: `evaluate_threshold(threshold: JudgmentThreshold, samples: Samples) -> ThresholdOutcome`. Raises `ValueError` (never `KeyError`) for a type not in `THRESHOLD_BOUNDS` or a bound that type does not define (parsed thresholds never have one; hand-built ones can). A sample `AtLeast(v)` is a `breach` with `measured=v`, `reason="lower_bound"` when `v >= limit` (the true value is > v ≥ limit), else `not_evaluable` with reason `beyond_top_bucket`.
 - Also produces the helpers Task 5 consumes: `_limit_value(threshold_type, bound, limit) -> float` (raises `ValueError` for an undefined bound) and `_decide(measured, limit) -> (status, measured, reason)`.
 
 - [ ] **Step 1: Write the failing tests**
