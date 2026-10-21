@@ -145,8 +145,10 @@ Rules:
   over the ground truth that has arrived; only when Prometheus's retention
   (`min(prometheus_tsdb_lowest_timestamp_seconds)`, queried once per cycle)
   is shorter than 30 days is the bound not evaluable
-  (`insufficient_window`). When retention is unknown (Prometheus does not
-  scrape itself), the sampler measures what Prometheus returns.
+  (`insufficient_window`). The check allows one hour of slack, so a
+  retention configured as exactly 30 days does not flap at block and scrape
+  boundaries. When retention is unknown (Prometheus does not scrape itself,
+  or reports no samples yet), the sampler measures what Prometheus returns.
 - `MEASURE_RETENTION_CHECK` (nthlayer-workers; default on, `off` / `false` /
   `0` disable it, read at startup) turns the retention check off. Turn it off
   when the queried endpoint is not the TSDB that metric describes — Thanos
