@@ -3,6 +3,14 @@
 **Bead:** opensrm-pnmv (P1). **Status:** design approved in conversation
 2026-10-22; this document is for review.
 
+**Revision 1 (2026-10-22, before planning).** Probing common's parser and the
+v2 schema found the first version's map could not produce valid output in
+five places. Rob's rulings: v1 judgment SLOs are unmapped; the parser learns
+`resource:` refs; a missing `spec.type` is an error unless supplied
+(`--service-type`); throughput and parser-untypeable SLOs are unmapped. Also:
+error-rate targets complement to good-ratios, `openslo[]` paths become `$ref`
+items, `timeWindow` is always emitted, and a v2-invalid name is an error.
+
 ## 1. Problem
 
 The spec's published v1 format — `apiVersion: opensrm/v1`, the shape of
@@ -42,6 +50,9 @@ In: the loader rejection; the converter in nthlayer-common; `migrate-manifest`
 dispatch and `--allow-lossy` in nthlayer-generate; the decision doc; consumer
 floor bumps the common release forces (§7).
 
+Also in: common's v2 parser accepts `resource:` entity refs in
+`spec.dependencies[].service` (needed by §4's dependency mapping).
+
 Out (existing or new beads): core surfacing load failures via the API
 (opensrm-e3tz); generate's own `srm/v1`-only parser (retired by
 opensrm-wo62.1); workers' separate measure manifest loader, a third v1 shape
@@ -59,8 +70,9 @@ opensrm-wo62.1); workers' separate measure manifest loader, a third v1 shape
   `spec.dependencies[0].critical`); `reason` names the AUTHORING §7 row.
 - `@dataclass(frozen=True) MigrationResult(manifest: dict, unmapped:
   tuple[UnmappedField, ...])`.
-- `convert_opensrm_v1_to_v2(data: dict) -> MigrationResult` — pure: never
-  decides what to do about loss, only reports it.
+- `convert_opensrm_v1_to_v2(data: dict, *, service_type: str | None = None)
+  -> MigrationResult` — pure: never decides what to do about loss, only
+  reports it. `service_type` supplies `spec.service.type` when v1 omits it.
 
 Shared helpers with the `srm/v1` lift (`v1_compat.py`) are allowed only where
 the semantics are identical (entity-ref building, service-type resolution,
@@ -88,17 +100,21 @@ raised.
 | `metadata.tier` | `metadata.labels.tier` | §7.1 |
 | `metadata.description` | `spec.service.description` | §7.1 |
 | `metadata.template` | — | unmapped: v2 templates are a different mechanism |
-| `spec.type` | `spec.service.type` via `resolve_service_type` | absent or invalid → error |
-| `spec.slos.<classical>` (`availability`, `error_rate`, `latency`, `throughput`, `success_rate`, …) | `spec.slo[]` OpenSLO documents; ratio targets copied unchanged | §7.3 |
-| `spec.slos.openslo[]` | appended to `spec.slo[]` verbatim | |
+| `spec.type` | `spec.service.type` via `resolve_service_type` | invalid → error. Absent (optional in v1, required in v2) → error unless the caller supplies `service_type`; the CLI's `--service-type` feeds it. A supplied type that disagrees with a declared one → error |
+| `spec.slos.availability`, `connection_availability` | `spec.slo[]` OpenSLO document (below) | §7.3 |
+| `spec.slos.latency`, `duration`, `query_latency` | OpenSLO document; the percentile keys go into `displayName` | §7.3 |
+| `spec.slos.error_rate` (a maximum error ratio, e.g. 0.001) | OpenSLO document with target `1 - x` (0.999) | OpenSLO targets are good-ratios; matches the spec's reference output and how consumers read targets |
+| `spec.slos.throughput` | — | unmapped: v1 declares a rate (1000 rps), OpenSLO needs a ratio target |
+| `spec.slos.success_rate`, `processing_time`, `lag` | — | unmapped: common's v2 parser cannot infer their type (opensrm-47tt) |
+| `spec.slos.schedule_adherence`, `data_freshness`, `replication_lag` | — | unmapped: maximum-only (`max_delay`/`max_age`/`max_lag`), no target |
+| `spec.slos.openslo[]` (`{path}`) | `spec.slo[]` item `{"$ref": <path>}` | the path stays relative to the manifest |
 | `spec.slos.custom[]` | — | unmapped |
-| `spec.slos.judgment.reversal_rate` (`target`, `window`, `observation_period`) | `spec.judgment_slo[]`, `judgment_type: reversal_rate` | target is a maximum rate (ratio) |
-| `spec.slos.judgment.high_confidence_failure` (+ `confidence_threshold`) | `spec.judgment_slo[]`, `judgment_type: high_confidence_failure` | |
+| `spec.slos.judgment.reversal_rate`, `high_confidence_failure` | — | unmapped (Rob, 2026-10-22): AUTHORING §7.7 step 8 calls `judgment_slo` new capability, not migration; and no v2 judgment-SLO shape passes both the schema and common's parser (opensrm-a742) |
 | `spec.slos.judgment.calibration` (`target`, `window`) | `spec.judgment_threshold[]`, `type: calibration` | §7.6 |
 | `spec.slos.judgment.feedback_latency` (`p50`, `p90`) | `spec.judgment_threshold[]`, `bounds.maximum_p50` / `maximum_p90` | §7.6 |
 | `spec.contract.availability`, `latency.p99`, `throughput.max_rps` | `spec.contracts[0]`: `name: <service>`, `promise.{availability, latency_p99, throughput: "<n>rps"}`, `contract_owner` = owner group | §7.4 |
 | `spec.contract.latency.p50` / `p999`, `throughput.burst`, `contract.judgment` | — | unmapped: v2's promise has three fields |
-| `spec.dependencies[].service` + `type` | `service: "resource:default/<s>"` for database/cache/queue, else `component:default/<s>` | §7.5 |
+| `spec.dependencies[].service` + `type` | `resource:default/<s>` for database/cache/queue; `component:external/<s>` for external; `component:default/<s>` for service | §7.5 and the reference output. common's v2 parser learns to accept `resource:` refs (Rob, 2026-10-22) |
 | `spec.dependencies[].expects.availability` / `latency.p99` | `expected_availability` / `expected_latency_p99` | |
 | `spec.dependencies[].critical` | — | unmapped: the author must choose a `fallback` (§7.5) |
 | `spec.dependencies[].manifest` | — | unmapped (§7.5) |
@@ -112,10 +128,17 @@ raised.
 | `spec.deployment` | — | unmapped (§7.6) |
 | `spec.instrumentation.events` / `attributes` | `spec.instrumentation.required_events` | not in §7's map: the plan verifies the v2 shape; if it cannot represent them, unmapped |
 
-To verify in the plan: common's `parse_opensrm_v2` accepts OpenSLO
-objectives without an indicator query (v1 classical SLOs carry none; §7.3's
-own example has none). If it does not, the plan decides — an indicator-free
-objective is what the spec's reference output contains.
+**OpenSLO documents** (verified against common's parser and the v2 schema):
+`{apiVersion: openslo/v1, kind: SLO, metadata.name: "<service>-<v1 key, _→->",
+spec: {service, timeWindow: [{duration: <v1 window>, isRolling: true}],
+objectives: [{displayName, target}]}}`, no indicator. `timeWindow` is always
+emitted when v1 has a window: without it the parser silently defaults to 30d,
+which would turn a 7d v1 window into 30d. When v1 has no window, the v1 schema's
+declared default is used; if it declares none, `timeWindow` is omitted and the
+parser's 30d default applies (the plan records which).
+
+**Names:** v1 `metadata.name` allows a leading or trailing `-`; v2 does not.
+Such a name → error.
 
 ## 5. Errors
 
@@ -126,9 +149,10 @@ OpenSRM v1 schema (`opensrm/v1`); NthLayer reads `opensrm.nthlayer.io/v2`
 `ManifestLoadError` and skips the file.
 
 **Converter:** `ValueError` only for a document it cannot convert at all —
-wrong apiVersion or kind, missing `metadata.name`, missing or invalid
-`spec.type`, a target that is not a ratio in [0, 1], a malformed duration, a
-non-mapping where a mapping is required. Unmapped fields are never errors.
+wrong apiVersion or kind, missing or v2-invalid `metadata.name`, missing
+(and not supplied) or invalid `spec.type`, a ratio field outside [0, 1] on a
+field the map converts, a malformed duration, a non-mapping where a mapping is
+required. Unmapped fields are never errors and are not value-checked.
 
 **Output validity:** every converted manifest validates against
 `opensrm/spec/v2/schema.json` and parses with `parse_opensrm_v2`.
@@ -140,7 +164,8 @@ non-mapping where a mapping is required. Unmapped fields are never errors.
 | `opensrm/v1` | none | — | writes v2, exit 0 |
 | `opensrm/v1` | some | — | writes nothing, lists them, exit 1 |
 | `opensrm/v1` | some | `--allow-lossy` | writes v2, lists them under "Not migrated", exit 0 |
-| `srm/v1` | — | either | unchanged behaviour (`--allow-lossy` has no effect) |
+| `opensrm/v1` without `spec.type` | — | `--service-type <t>` | converts with that type; without the flag, error naming the flag |
+| `srm/v1` | — | either | unchanged behaviour (`--allow-lossy` and `--service-type` have no effect) |
 | other | — | — | error naming the two supported inputs, exit 1 |
 
 ## 7. Testing and release
@@ -150,12 +175,16 @@ non-mapping where a mapping is required. Unmapped fields are never errors.
 - Spec examples as fixtures, read from the `../opensrm` sibling, with a
   presence test (named files + minimum count) so a missing checkout fails
   rather than skips.
-- `examples/api-full.yaml` converts to a document equal to
-  `spec/v2/examples/migration/api-full-v2.yaml` on every field §4 defines
-  (fields that record an author decision — `fallback`, `api_ref`, extra
-  annotations — are excluded and listed in the test).
-- Every `opensrm/v1` example converts; output validates and parses; its
-  `unmapped` list is exactly what §4 predicts for that file.
+- `examples/api-full.yaml` (with `service_type="api"`) converts to a document
+  equal to `spec/v2/examples/migration/api-full-v2.yaml` on every field §4
+  defines. Excluded, and listed in the test: what the reference author decided
+  or invented (`fallback`, `api_ref`, `technical_contact`, the
+  `backstage.io/component-ref` annotation, `namespace`, `instrumentation`,
+  `displayName` wording), and the throughput SLO, which §4 reports unmapped.
+- Every `opensrm/v1` example converts (supplying `service_type` for the two
+  without one); output validates against the v2 schema and parses with
+  `parse_opensrm_v2`; its `unmapped` list is exactly what §4 predicts for that
+  file, derived from the example's keys, not from running the converter.
 - **Schema completeness (the test this bead owns):** every property of
   `spec/v1/schema.json`'s `Spec`, `Metadata`, `SLOs`, `JudgmentSLOs`,
   `Contract`, `Dependency`, `Ownership`, `Observability`, `Instrumentation`
