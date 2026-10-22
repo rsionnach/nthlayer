@@ -17,8 +17,10 @@ contract judgment keys, dependency keys, instrumentation, deployment gate keys,
 - `opensrm/v1` is rejected by `load_manifest` with an error that names the
   supported formats and the migrate command.
 - `nthlayer migrate-manifest` converts `opensrm/v1` to v2 following
-  `opensrm/spec/v2/AUTHORING.md` §7. Fields with no v2 home are listed; the
-  conversion refuses unless `--allow-lossy` is given.
+  `opensrm/spec/v2/AUTHORING.md` §7. Fields with no v2 home are listed as
+  *dropped*; the conversion refuses unless `--allow-lossy` is given. Fields
+  converted using a value v1 does not declare (calibration's `bins: 10`) are
+  listed as *assumed*: they warn but do not refuse (Rob, 2026-10-22).
 
 ## Canonical alternative (rejected)
 
@@ -29,7 +31,7 @@ examples.
 
 ## What's routed to no-ops
 
-Unmapped in the conversion (reported, never dropped): v1 judgment SLOs
+Dropped by the conversion (always reported, never silent): v1 judgment SLOs
 (`reversal_rate`, `high_confidence_failure` — AUTHORING §7.7 step 8, and
 opensrm-a742); throughput SLOs (a rate, not a ratio); SLO types common's
 parser cannot type (opensrm-47tt) and maximum-only SLOs; `notifications`,

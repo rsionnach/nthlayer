@@ -41,6 +41,10 @@ Rob chose **reject clearly + migrate** (2026-10-22):
   (`opensrm/spec/v2/AUTHORING.md` §7).
 - Fields with no v2 home are never dropped silently: the conversion refuses
   unless `--allow-lossy` is given, and always lists them (Rob, 2026-10-22).
+  Entries come in two kinds: *dropped* (not in the output) and *assumed*
+  (converted, but with a value v1 does not declare). Only dropped entries make
+  the conversion lossy and trigger the refusal; assumed-only output is written
+  with a warning (Rob, 2026-10-22).
 
 Recorded as a decision document (§8).
 
@@ -65,14 +69,19 @@ opensrm-wo62.1); workers' separate measure manifest loader, a third v1 shape
 - `OPENSRM_V1_API_VERSION = "opensrm/v1"`
 - `is_opensrm_v1_format(data) -> bool` — `apiVersion == "opensrm/v1"`
   (any kind; the kind is checked by the converter).
-- `@dataclass(frozen=True) UnmappedField(path: str, reason: str)` — `path`
-  is a dotted path into the v1 document (`spec.deployment`,
-  `spec.dependencies[0].critical`); `reason` names the AUTHORING §7 row.
+- `@dataclass(frozen=True) UnmappedField(path: str, reason: str, kind:
+  Literal["dropped", "assumed"])` — `path` is a dotted path into the v1
+  document (`spec.deployment`, `spec.dependencies[0].critical`); `reason`
+  names the AUTHORING §7 row; `kind` is `"dropped"` (value not in the output)
+  or `"assumed"` (converted with a value v1 does not declare).
 - `@dataclass(frozen=True) MigrationResult(manifest: dict, unmapped:
-  tuple[UnmappedField, ...])`.
+  tuple[UnmappedField, ...])` — `unmapped` is in document order (depth-first,
+  as the fields appear in the v1 file) and holds both kinds; the `lossy`
+  property is true only if something was dropped.
 - `convert_opensrm_v1_to_v2(data: dict, *, service_type: str | None = None)
   -> MigrationResult` — pure: never decides what to do about loss, only
-  reports it. `service_type` supplies `spec.service.type` when v1 omits it.
+  reports it. A document it cannot convert at all (wrong kind, unusable
+  value, conflicting fields) raises `OpenSRMV1MigrationError(ValueError)`. `service_type` supplies `spec.service.type` when v1 omits it.
 
 Shared helpers with the `srm/v1` lift (`v1_compat.py`) are allowed only where
 the semantics are identical (entity-ref building, service-type resolution,
@@ -90,7 +99,9 @@ converter) and adds `--allow-lossy`.
 ## 4. Field mapping
 
 Per AUTHORING §7. *Unmapped* = reported in `MigrationResult.unmapped`, never
-raised.
+raised; *dropped* when the value is absent from the output, *assumed* when it
+is converted using a value v1 does not declare. Converter errors (not unmapped
+fields) raise `OpenSRMV1MigrationError`.
 
 | v1 (`opensrm/v1`) | v2 (`opensrm.nthlayer.io/v2`) | Note |
 |---|---|---|
@@ -110,7 +121,7 @@ raised.
 | `spec.slos.openslo[]` (`{path}`) | `spec.slo[]` item `{"$ref": <path>}` | the path stays relative to the manifest |
 | `spec.slos.custom[]` | — | unmapped |
 | `spec.slos.judgment.reversal_rate`, `high_confidence_failure` | — | unmapped (Rob, 2026-10-22): AUTHORING §7.7 step 8 calls `judgment_slo` new capability, not migration; and no v2 judgment-SLO shape passes both the schema and common's parser (opensrm-a742) |
-| `spec.slos.judgment.calibration` (`target`, `window`) | `spec.judgment_threshold[]`, `type: calibration` | §7.6 |
+| `spec.slos.judgment.calibration` (`target`, `window`) | `spec.judgment_threshold[]`, `type: calibration` | §7.6. Converted and reported as *assumed*: v2 requires `measurement.bins` and v1 has none, so `bins: 10` is defaulted |
 | `spec.slos.judgment.feedback_latency` (`p50`, `p90`) | `spec.judgment_threshold[]`, `bounds.maximum_p50` / `maximum_p90` | §7.6 |
 | `spec.contract.availability`, `latency.p99`, `throughput.max_rps` | `spec.contracts[0]`: `name: <service>`, `promise.{availability, latency_p99, throughput: "<n>rps"}`, `contract_owner` = owner group | §7.4 |
 | `spec.contract.latency.p50` / `p999`, `throughput.burst`, `contract.judgment` | — | unmapped: v2's promise has three fields |
@@ -120,7 +131,9 @@ raised.
 | `spec.dependencies[].manifest` | — | unmapped (§7.5) |
 | `spec.ownership.team` | `spec.owner.group` (if `metadata.team` absent; disagreement → error) | §7.2 |
 | `spec.ownership.escalation` | `spec.owner.escalation` (entity ref) | §7.2 |
-| `spec.ownership.slack` / `email` / `pagerduty` / `runbook` / `documentation` | `metadata.annotations` with §7.2's keys | §7.2 |
+| `spec.ownership.slack` / `runbook` / `documentation` | `metadata.annotations`: `slack.com/channel`, `opensrm.nthlayer.io/runbook`, `opensrm.nthlayer.io/documentation` | §7.2 |
+| `spec.ownership.pagerduty.service_id` | `metadata.annotations["pagerduty.com/service-id"]` | §7.2 |
+| `spec.ownership.email`, `spec.ownership.pagerduty.escalation_policy_id` | — | unmapped (dropped): §7.2 names no annotation key for either, and it is the authority; the reference output `api-full-v2.yaml` also drops email |
 | `spec.ownership.oncall_required` | — | unmapped |
 | `spec.observability.metrics` | — | unmapped: v2 needs a `type` per metric (§7.7 step 6) |
 | `spec.observability.dashboards` / `alerts` / `tracing` | — | unmapped (§7.6) |
@@ -162,11 +175,16 @@ required. Unmapped fields are never errors and are not value-checked.
 | Input | Unmapped | Flag | Result |
 |---|---|---|---|
 | `opensrm/v1` | none | — | writes v2, exit 0 |
-| `opensrm/v1` | some | — | writes nothing, lists them, exit 1 |
-| `opensrm/v1` | some | `--allow-lossy` | writes v2, lists them under "Not migrated", exit 0 |
+| `opensrm/v1` | assumed only | — | writes v2, warns "Converted with an assumption", exit 0 |
+| `opensrm/v1` | some dropped | — | writes nothing, lists them, exit 1 |
+| `opensrm/v1` | some dropped | `--allow-lossy` | writes v2, lists them under "Not migrated", exit 0 |
 | `opensrm/v1` without `spec.type` | — | `--service-type <t>` | converts with that type; without the flag, error naming the flag |
 | `srm/v1` | — | either | unchanged behaviour (`--allow-lossy` and `--service-type` have no effect) |
 | other | — | — | error naming the two supported inputs, exit 1 |
+
+Relative openslo `$ref` paths are copied verbatim, so they stay relative to the
+input; the CLI warns when `--output` is in a different directory, where they
+would resolve differently.
 
 ## 7. Testing and release
 
