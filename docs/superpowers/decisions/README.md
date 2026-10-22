@@ -51,6 +51,7 @@ Skip when:
 | [verdict-assessment-taxonomy-boundary.md](verdict-assessment-taxonomy-boundary.md) | Stable | Verdicts are decisions, assessments are observations |
 | [eager-case-creation.md](eager-case-creation.md) | Active for v1.5 | Cases created at incident-open, before triage runs |
 | [hot-path-vs-cli-side-effect-ownership.md](hot-path-vs-cli-side-effect-ownership.md) | Active for v1.5 | Worker modules own production side-effects; CLI is ad-hoc only |
+| [opensrm-v1-support.md](opensrm-v1-support.md) | Active | opensrm/v1 is migrate-only; srm/v1 is NthLayer's v1 dialect |
 
 ## Linking from code
 
