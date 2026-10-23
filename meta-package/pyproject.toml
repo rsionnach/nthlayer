@@ -45,8 +45,9 @@ Repository = "https://github.com/rsionnach/nthlayer"
 Changelog = "https://github.com/rsionnach/nthlayer/releases"
 
 # No [project.scripts] — the meta-package is dependency-only.
-# CLI binaries come from the sub-packages: nthlayer (core), nthlayer-workers,
-# nthlayer-bench, nthlayer-generate.
+# CLI binaries come from the sub-packages: nthlayer and nthlayer-generate
+# (generate), nthlayer-core (core >= 4.0.0), nthlayer-workers and
+# nthlayer-learn (workers), nthlayer-bench.
 
 [tool.setuptools]
 # No Python source — meta-package is metadata-only.

@@ -51,7 +51,7 @@ Each active component has its own `CLAUDE.md`.
 - `nthlayer-generate/` — pure deterministic compiler: specs →
   artifacts (Python, stateless, no runtime).
 - `nthlayer-core/` — Tier 1 reliability-critical HTTP API server:
-  verdict store, case management. CLI: `nthlayer serve`.
+  verdict store, case management. CLI: `nthlayer-core serve`.
 - `nthlayer-workers/` — Tier 2 consolidated runtime process (Apache
   2.0): five internal modules — observe, measure, correlate, respond,
   learn. Communicates with core via HTTP API only.
