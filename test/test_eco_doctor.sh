@@ -76,6 +76,10 @@
 #   34.    distinct script names are not a finding.
 #   35.    a worktree of the declaring repo is not a second declarer — the same
 #          identity collapsing test 17 asserts for DUPLICATE-NAME.
+#   36.    names differing only in case clash (case-insensitive filesystems);
+#          reported as declared, by the alphabetically first declarer.
+#   37.    a [project.gui-scripts] name clashing with a [project.scripts] name
+#          is reported — both land in bin/.
 #
 # Absence assertions are paired with assert_scanned(), because "no finding was
 # reported" is vacuous if a fixture bug left a checkout undiscovered.
@@ -1477,6 +1481,47 @@ else
     fail "worktree reported as DUPLICATE-SCRIPT (exit $rc): $out"
 fi
 assert_scanned "$out" 3 "test 35"
+
+# --- Test 36: scripts differing only in case clash --------------------------
+
+echo
+echo "=== Test 36: script names differing only in case are reported ==="
+# bin/ on macOS and Windows is case-insensitive, so `Nthlayer` and `nthlayer`
+# are one file there. Reported with the spelling as declared.
+SCRC="$WORK/case-script"
+mkdir -p "$SCRC"
+make_scripted "$SCRC/nthlayer-core" nthlayer-core Nthlayer
+make_scripted "$SCRC/nthlayer-generate" nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRC" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  Nthlayer declared by nthlayer-core, nthlayer-generate" ]] && (( rc == FINDINGS_RC )); then
+    pass "case-only clash reported with the declared spelling (exit $rc)"
+else
+    fail "expected a DUPLICATE-SCRIPT line for the case-only clash (exit $rc), got: $out"
+fi
+
+# --- Test 37: gui-scripts clash with scripts --------------------------------
+
+echo
+echo "=== Test 37: a gui-script clashing with a script is reported ==="
+SCRG="$WORK/gui-script"
+mkdir -p "$SCRG/nthlayer-bench"
+printf '[project]\nname = "nthlayer-bench"\nversion = "1.0.0"\n\n[project.gui-scripts]\nnthlayer = "nthlayer_bench.cli:main"\n' > "$SCRG/nthlayer-bench/pyproject.toml"
+git -C "$SCRG/nthlayer-bench" init -q
+git -C "$SCRG/nthlayer-bench" add -A
+git -C "$SCRG/nthlayer-bench" -c user.email=t@t -c user.name=t commit -qm init
+make_scripted "$SCRG/nthlayer-generate" nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRG" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declared by nthlayer-bench, nthlayer-generate" ]] && (( rc == FINDINGS_RC )); then
+    pass "gui-script vs script clash reported (exit $rc)"
+else
+    fail "expected a DUPLICATE-SCRIPT line for the gui-script clash (exit $rc), got: $out"
+fi
 
 echo
 echo "==============================================="

@@ -582,28 +582,38 @@ def duplicate_script_findings(repos: list[Path]) -> list[str]:
     worktrees, so without that collapse this would fire on every correct
     workflow and the pre-flight would refuse every gate.
 
-    Script names are compared after strip() but are NOT canonicalised: unlike
-    distribution names they are file names, and ``nthlayer_core`` and
-    ``nthlayer-core`` are two different files in ``bin/``.
+    Script names are compared after strip() and casefold() but are NOT
+    otherwise canonicalised: unlike distribution names they are file names, so
+    ``nthlayer_core`` and ``nthlayer-core`` are two different files in
+    ``bin/``, while ``Nthlayer`` and ``nthlayer`` are one on a case-insensitive
+    filesystem. ``[project.gui-scripts]`` is included because pip writes those
+    to ``bin/`` too. Names are reported as declared (first declarer by repo
+    name, so the output is stable).
     """
     seen: dict[str, dict[str, str]] = {}
-    for repo in sorted(repos, key=lambda p: not is_main_checkout(p)):
-        scripts = working_project(repo).get("scripts")
-        if not isinstance(scripts, dict):
-            continue
+    declared: dict[str, str] = {}  # casefolded key -> spelling, first declarer by repo name
+    for repo in sorted(repos, key=lambda p: (not is_main_checkout(p), p.name)):
+        project = working_project(repo)
         identity = repo_identity(repo)
-        for script in scripts:
-            script = script.strip()
-            if not script:
+        # gui-scripts are written to bin/ exactly like scripts.
+        for table in ("scripts", "gui-scripts"):
+            scripts = project.get(table)
+            if not isinstance(scripts, dict):
                 continue
-            seen.setdefault(script, {}).setdefault(identity, repo.name)
+            for script in scripts:
+                script = script.strip()
+                if not script:
+                    continue
+                key = script.casefold()
+                declared.setdefault(key, script)
+                seen.setdefault(key, {}).setdefault(identity, repo.name)
 
     out = []
-    for script, by_identity in sorted(seen.items()):
+    for key, by_identity in sorted(seen.items()):
         if len(by_identity) > 1:
             dirs = ", ".join(sorted(by_identity.values()))
             out.append(
-                f"DUPLICATE-SCRIPT {'(workspace)':28} {script} declared by {dirs}"
+                f"DUPLICATE-SCRIPT {'(workspace)':28} {declared[key]} declared by {dirs}"
             )
     return out
 
