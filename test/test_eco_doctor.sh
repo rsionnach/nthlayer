@@ -69,6 +69,20 @@
 #   30.    absolute and relative recorded gitdirs (git >= 2.48 writes relative)
 #          name one parent, so two worktrees of it do not split.
 #
+# Tests 33-39 are DUPLICATE-SCRIPT [opensrm-dww5] — two members declaring one
+# [project.scripts] name, so which binary a co-install gets depends on install
+# order (nthlayer-core and nthlayer-generate both shipped `nthlayer`):
+#   33.    two distinct members declaring one script are reported, naming both.
+#   34.    distinct script names are not a finding.
+#   35.    a worktree of the declaring repo is not a second declarer — the same
+#          identity collapsing test 17 asserts for DUPLICATE-NAME.
+#   36.    names differing only in case clash (case-insensitive filesystems);
+#          reported as declared, by the alphabetically first declarer.
+#   37.    a [project.gui-scripts] name clashing with a [project.scripts] name
+#          is reported — both land in bin/.
+#   38.    a non-table `scripts` value is skipped, not a traceback.
+#   39.    a whitespace-padded script name is the same name.
+#
 # Absence assertions are paired with assert_scanned(), because "no finding was
 # reported" is vacuous if a fixture bug left a checkout undiscovered.
 #
@@ -126,6 +140,27 @@ make_consumer() {
         "$name" "$dep" "$range" "$dep" "$spath" > "$dir/pyproject.toml"
     printf 'version = 1\n\n[[package]]\nname = "%s"\nversion = "%s"\nsource = { editable = "%s" }\n\n[[package]]\nname = "starlette"\nversion = "0.48.0"\nsource = { registry = "https://pypi.org/simple" }\n' \
         "$lockname" "$locked" "$spath" > "$dir/uv.lock"
+    git -C "$dir" init -q
+    git -C "$dir" add -A
+    git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
+}
+
+# make_scripted <dir> <name> <script>...
+#
+# A member declaring [project.scripts], one `<script> = "pkg.cli:main"` entry per
+# argument. The shape is the one PEP 621 specifies and every member uses — a
+# table of script name to entry-point string — not one derived from what the
+# detector parses.
+make_scripted() {
+    local dir="$1" name="$2"; shift 2
+    mkdir -p "$dir"
+    {
+        printf '[project]\nname = "%s"\nversion = "1.0.0"\n\n[project.scripts]\n' "$name"
+        local s
+        for s in "$@"; do
+            printf '%s = "%s.cli:main"\n' "$s" "${name//-/_}"
+        done
+    } > "$dir/pyproject.toml"
     git -C "$dir" init -q
     git -C "$dir" add -A
     git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
@@ -1372,6 +1407,171 @@ if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
     pass "underscore and hyphen spellings collide as one name (exit $rc)"
 else
     fail "canonicalisation untested, the two spellings did not collide (exit $rc): $out"
+fi
+
+# --- Test 33: two members declaring one console script ----------------------
+
+echo
+echo "=== Test 33: two members declaring one console script are reported ==="
+# opensrm-dww5. nthlayer-core and nthlayer-generate both declared `nthlayer`;
+# pip installs whichever comes last over the other, silently, so a co-install's
+# `nthlayer` depended on install order. Two members carry it here plus a
+# bystander with its own script, so the finding must name exactly the two.
+SCR="$WORK/dup-script"
+mkdir -p "$SCR"
+make_scripted "$SCR/nthlayer-core" nthlayer-core nthlayer
+make_scripted "$SCR/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+make_scripted "$SCR/nthlayer-bench" nthlayer-bench nthlayer-bench
+
+rc=0
+out="$(cd "$SCR" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declared by nthlayer-core, nthlayer-generate" ]]; then
+    pass "duplicate script reported once, naming both declarers"
+else
+    fail "expected one DUPLICATE-SCRIPT line naming core and generate, got: $out"
+fi
+if (( rc == FINDINGS_RC )); then
+    pass "duplicate script exits $FINDINGS_RC"
+else
+    fail "exited $rc, expected $FINDINGS_RC — output: $out"
+fi
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "distinct package names are not a DUPLICATE-NAME"
+else
+    fail "reported a duplicate name for distinct packages: $out"
+fi
+
+# --- Test 34: distinct console scripts are not a finding --------------------
+
+echo
+echo "=== Test 34: distinct console scripts are not reported ==="
+# The rename dww5 made: core keeps the same table shape under its own name.
+SCRD="$WORK/distinct-script"
+mkdir -p "$SCRD"
+make_scripted "$SCRD/nthlayer-core" nthlayer-core nthlayer-core
+make_scripted "$SCRD/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRD" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-SCRIPT" <<<"$out" && (( rc == 0 )); then
+    pass "distinct script names are clean (exit 0)"
+else
+    fail "distinct script names reported (exit $rc): $out"
+fi
+assert_scanned "$out" 2 "test 34"
+
+# --- Test 35: a worktree is not a second declarer ---------------------------
+
+echo
+echo "=== Test 35: a worktree of the declaring repo is not a DUPLICATE-SCRIPT ==="
+# A worktree carries its parent's pyproject, scripts included, and CLAUDE.md
+# mandates sibling worktrees — so without the identity collapsing test 17 pins
+# for DUPLICATE-NAME, this would fire on every correct workflow and block every
+# gate, since the pre-flight classifies it as range.
+SCRW="$WORK/worktree-script"
+mkdir -p "$SCRW"
+make_scripted "$SCRW/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+make_scripted "$SCRW/nthlayer-core" nthlayer-core nthlayer-core
+make_worktree "$SCRW/nthlayer-generate" "$SCRW/nthlayer-generate-wip"
+
+rc=0
+out="$(cd "$SCRW" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-SCRIPT" <<<"$out" && (( rc == 0 )); then
+    pass "a worktree of the same repo is not a second declarer (exit 0)"
+else
+    fail "worktree reported as DUPLICATE-SCRIPT (exit $rc): $out"
+fi
+assert_scanned "$out" 3 "test 35"
+
+# --- Test 36: scripts differing only in case clash --------------------------
+
+echo
+echo "=== Test 36: script names differing only in case are reported ==="
+# bin/ on macOS and Windows is case-insensitive, so `Nthlayer` and `nthlayer`
+# are one file there. Reported with the spelling as declared.
+SCRC="$WORK/case-script"
+mkdir -p "$SCRC"
+make_scripted "$SCRC/nthlayer-core" nthlayer-core Nthlayer
+make_scripted "$SCRC/nthlayer-generate" nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRC" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  Nthlayer declared by nthlayer-core, nthlayer-generate" ]] && (( rc == FINDINGS_RC )); then
+    pass "case-only clash reported with the declared spelling (exit $rc)"
+else
+    fail "expected a DUPLICATE-SCRIPT line for the case-only clash (exit $rc), got: $out"
+fi
+
+# --- Test 37: gui-scripts clash with scripts --------------------------------
+
+echo
+echo "=== Test 37: a gui-script clashing with a script is reported ==="
+SCRG="$WORK/gui-script"
+mkdir -p "$SCRG/nthlayer-bench"
+printf '[project]\nname = "nthlayer-bench"\nversion = "1.0.0"\n\n[project.gui-scripts]\nnthlayer = "nthlayer_bench.cli:main"\n' > "$SCRG/nthlayer-bench/pyproject.toml"
+git -C "$SCRG/nthlayer-bench" init -q
+git -C "$SCRG/nthlayer-bench" add -A
+git -C "$SCRG/nthlayer-bench" -c user.email=t@t -c user.name=t commit -qm init
+make_scripted "$SCRG/nthlayer-generate" nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRG" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declared by nthlayer-bench, nthlayer-generate" ]] && (( rc == FINDINGS_RC )); then
+    pass "gui-script vs script clash reported (exit $rc)"
+else
+    fail "expected a DUPLICATE-SCRIPT line for the gui-script clash (exit $rc), got: $out"
+fi
+
+# --- Test 38: a non-table `scripts` does not abort the scan -----------------
+
+echo
+echo "=== Test 38: a non-table [project] scripts value does not traceback ==="
+# PEP 621 requires `scripts` to be a table, but a malformed member is exactly
+# when this tool must still finish: a traceback exits 1, which the pre-flight
+# reads as "drift found" with zero range-prefixed lines — the test-25 failure
+# shape. `3` is truthy and not iterable, so a truthiness guard in place
+# of the type guard raises TypeError here.
+SCRN="$WORK/nontable-script"
+mkdir -p "$SCRN/nthlayer-bench"
+printf '[project]\nname = "nthlayer-bench"\nversion = "1.0.0"\nscripts = 3\n' > "$SCRN/nthlayer-bench/pyproject.toml"
+git -C "$SCRN/nthlayer-bench" init -q
+git -C "$SCRN/nthlayer-bench" add -A
+git -C "$SCRN/nthlayer-bench" -c user.email=t@t -c user.name=t commit -qm init
+make_scripted "$SCRN/nthlayer-core" nthlayer-core nthlayer-core
+make_scripted "$SCRN/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRN" && run_doctor)" || rc=$?
+if ! grep -q "Traceback" <<<"$out" && (( rc == 0 )); then
+    pass "non-table scripts is skipped, scan completes (exit 0)"
+else
+    fail "non-table scripts aborted or reported (exit $rc): $out"
+fi
+assert_scanned "$out" 3 "test 38"
+
+# --- Test 39: a padded script key is the same script -------------------------
+
+echo
+echo "=== Test 39: a whitespace-padded script name clashes with the bare one ==="
+# The PyPA entry-points spec forbids a name starting or ending with whitespace,
+# and the entry_points.txt reader installers use strips around `=` — so a build
+# backend that accepts the TOML key `" nthlayer "` yields bin/nthlayer. The key
+# must be the TRIMMED name, as tests 28/29 require for package names.
+SCRP="$WORK/padded-script"
+mkdir -p "$SCRP"
+make_scripted "$SCRP/nthlayer-core" nthlayer-core '" nthlayer "'
+make_scripted "$SCRP/nthlayer-generate" nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRP" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declared by nthlayer-core, nthlayer-generate" ]] && (( rc == FINDINGS_RC )); then
+    pass "padded and bare script names collide (exit $rc)"
+else
+    fail "expected a DUPLICATE-SCRIPT line for the padded name (exit $rc), got: $out"
 fi
 
 echo

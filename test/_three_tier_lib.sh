@@ -106,7 +106,7 @@ preflight_port_conflicts() {
 # Brings up the full stack:
 #   1. docker compose up -d prometheus → poll /-/ready (60s deadline).
 #   2. fake-service.py for fraud-detect → poll /health (15s deadline).
-#   3. nthlayer serve (core) on CORE_PORT → poll /health (30s deadline)
+#   3. nthlayer-core serve on CORE_PORT → poll /health (30s deadline)
 #      and sanity-check /manifests returns ≥1.
 #   4. nthlayer-workers serve with NTHLAYER_LLM_STUB=canned and 5s cycles
 #      → wait for first heartbeat via three_tier_assertions.py (30s).
@@ -159,7 +159,7 @@ boot_three_tier_stack() {
     tt_log "Start nthlayer-core on ${core_port}"
     NTHLAYER_STORE_PATH="${state_db}" \
     NTHLAYER_MANIFESTS_DIR="${specs_dir}" \
-    ${run_core} nthlayer serve --host 127.0.0.1 --port "${core_port}" \
+    ${run_core} nthlayer-core serve --host 127.0.0.1 --port "${core_port}" \
         >"${work_dir}/core.log" 2>&1 &
     CORE_PID=$!
     deadline=$(( $(date +%s) + 30 ))

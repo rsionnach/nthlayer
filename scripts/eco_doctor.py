@@ -21,6 +21,15 @@ workers back to a release whose measure adapter yielded zero SLOs for every v2
 manifest. Nothing compared the declared range, the committed lock, and the
 sibling actually on disk.
 
+FINDING CLASSES — the /r5-supervise pre-flight classifies output by PREFIX
+
+    range      STALE  LOCK<FLOOR  SIBLING>CEILING  NO-CEILING  DUPLICATE-NAME
+               DUPLICATE-SCRIPT  SIBLING-MISSING  PARSE-ERROR      -> abort
+    currency   BEHIND  FETCH-FAILED  NO-UPSTREAM (--fetch only)    -> log, continue
+
+A new prefix must be added to this list AND to the pre-flight's table in
+``.claude/skills/r5-supervise/SKILL.md``; an unlisted prefix is unclassified.
+
 WHICH SOURCE EACH FACT COMES FROM, AND WHY IT DIFFERS
 
     sibling version      working tree   what ``uv sync`` would install right now
@@ -464,6 +473,33 @@ def repo_identity(repo: Path) -> str:
     return unidentified(repo)
 
 
+def working_project(repo: Path) -> dict:
+    """``[project]`` table from *repo*'s WORKING TREE pyproject; ``{}`` if unreadable.
+
+    Shared by the two duplicate scans so both survive the same bad inputs.
+    errors="replace" and UnicodeDecodeError both, for the reason git() gives:
+    text=True / read_text() decode as UTF-8, and an undecodable byte raises a
+    ValueError that neither OSError nor TOMLDecodeError catches. Unguarded, one
+    latin-1 byte in one pyproject killed the ENTIRE scan with a traceback — and
+    since the /r5-supervise pre-flight classifies findings by line PREFIX, a
+    traceback emits no prefix at all, so the gate read zero blocking findings
+    and proceeded having scanned nothing. A clean record from a check that
+    never ran is the failure this tool exists to prevent.
+
+    A ``[project]`` that is not a table is treated as absent rather than
+    raising AttributeError, for the same reason.
+    """
+    pj = repo / "pyproject.toml"
+    if not pj.is_file():
+        return {}
+    try:
+        text = pj.read_text(encoding="utf-8", errors="replace")
+        project = tomllib.loads(text).get("project", {})
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return {}
+    return project if isinstance(project, dict) else {}
+
+
 def duplicate_name_findings(repos: list[Path]) -> list[str]:
     """Report DISTINCT repositories that declare the same package name.
 
@@ -497,23 +533,7 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
     # setdefault below was written to fix. Stable sort, so lexicographic order
     # still holds within each class.
     for repo in sorted(repos, key=lambda p: not is_main_checkout(p)):
-        pj = repo / "pyproject.toml"
-        if not pj.is_file():
-            continue
-        try:
-            # errors="replace" and UnicodeDecodeError both, for the reason
-            # git() gives: text=True / read_text() decode as UTF-8, and an
-            # undecodable byte raises a ValueError that neither OSError nor
-            # TOMLDecodeError catches. Unguarded, one latin-1 byte in one
-            # pyproject killed the ENTIRE scan with a traceback — and since the
-            # /r5-supervise pre-flight classifies findings by line PREFIX, a
-            # traceback emits no prefix at all, so the gate read zero blocking
-            # findings and proceeded having scanned nothing. A clean record from
-            # a check that never ran is the failure this tool exists to prevent.
-            text = pj.read_text(encoding="utf-8", errors="replace")
-            name = tomllib.loads(text).get("project", {}).get("name")
-        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
-            continue
+        name = working_project(repo).get("name")
         # strip(): a whitespace-only name is not a name. `if not name` admitted
         # "   ", which then rendered a finding with an empty gap where the
         # package should be — unreadable, and indistinguishable from a
@@ -541,6 +561,59 @@ def duplicate_name_findings(repos: list[Path]) -> list[str]:
             dirs = ", ".join(sorted(by_identity.values()))
             out.append(
                 f"DUPLICATE-NAME   {'(workspace)':28} {name} declared by {dirs}"
+            )
+    return out
+
+
+def duplicate_script_findings(repos: list[Path]) -> list[str]:
+    """Report DISTINCT repositories that declare the same console script.
+
+    [opensrm-dww5] nthlayer-core and nthlayer-generate both declared the
+    ``nthlayer`` script. pip and uv write a console script as a file in the
+    environment's ``bin/``, so co-installing the two left whichever package
+    was installed LAST owning ``nthlayer`` — silently, with no resolver error,
+    and differently depending on install order. That is an install-time
+    breakage of the published packages, hence range class, not currency.
+
+    Same structure as duplicate_name_findings(), for the same reasons: read
+    from the working tree, main checkouts first, and keyed by repo_identity()
+    so a repository and its worktrees count as ONE declarer. A worktree always
+    carries its parent's ``[project.scripts]``, and CLAUDE.md mandates sibling
+    worktrees, so without that collapse this would fire on every correct
+    workflow and the pre-flight would refuse every gate.
+
+    Script names are compared after strip() and casefold() but are NOT
+    otherwise canonicalised: unlike distribution names they are file names, so
+    ``nthlayer_core`` and ``nthlayer-core`` are two different files in
+    ``bin/``, while ``Nthlayer`` and ``nthlayer`` are one on a case-insensitive
+    filesystem. ``[project.gui-scripts]`` is included because pip writes those
+    to ``bin/`` too. Names are reported as declared (first declarer by repo
+    name, so the output is stable).
+    """
+    seen: dict[str, dict[str, str]] = {}
+    declared: dict[str, str] = {}  # casefolded key -> spelling, first declarer by repo name
+    for repo in sorted(repos, key=lambda p: (not is_main_checkout(p), p.name)):
+        project = working_project(repo)
+        identity = repo_identity(repo)
+        # gui-scripts are written to bin/ exactly like scripts.
+        for table in ("scripts", "gui-scripts"):
+            scripts = project.get(table)
+            if not isinstance(scripts, dict):
+                continue
+            for script in scripts:
+                script = script.strip()
+                if not script:
+                    continue
+                key = script.casefold()
+                declared.setdefault(key, script)
+                seen.setdefault(key, {}).setdefault(identity, repo.name)
+
+    out = []
+    for key, by_identity in sorted(seen.items()):
+        if len(by_identity) > 1:
+            dirs = ", ".join(sorted(by_identity.values()))
+            out.append(
+                f"DUPLICATE-SCRIPT {'(workspace)':28} {declared[key]} declared by {dirs}"
             )
     return out
 
@@ -660,6 +733,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERROR
 
     findings: list[str] = duplicate_name_findings(repos)
+    findings.extend(duplicate_script_findings(repos))
     for repo in repos:
         findings.extend(check_repo(repo))
         if args.fetch:

@@ -167,7 +167,7 @@ sign-off, commit c1307a4).
 2. Poll Prometheus `/-/ready` (60s).
 3. Start `fake-service.py --name fraud-detect --type ai-gate` (15s
    health check).
-4. Start `nthlayer serve` with `NTHLAYER_STORE_PATH` +
+4. Start `nthlayer-core serve` with `NTHLAYER_STORE_PATH` +
    `NTHLAYER_MANIFESTS_DIR`; poll `/health` (30s); sanity-check
    `GET /manifests` returns ≥1 manifest.
 5. Start `nthlayer-workers serve` with `NTHLAYER_LLM_STUB=canned`

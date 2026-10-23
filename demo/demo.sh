@@ -386,7 +386,7 @@ cmd_start() {
     header "Starting nthlayer-core (HTTP API on $CORE_PORT)"
     NTHLAYER_STORE_PATH="$STATE_DB" \
     NTHLAYER_MANIFESTS_DIR="$SPECS_DIR" \
-    $RUN_CORE nthlayer serve --host 127.0.0.1 --port "$CORE_PORT" \
+    $RUN_CORE nthlayer-core serve --host 127.0.0.1 --port "$CORE_PORT" \
         >> "$OUTPUT_DIR/core.log" 2>&1 &
     echo $! > "$CORE_PID_FILE"
     success "core PID $(cat "$CORE_PID_FILE")"

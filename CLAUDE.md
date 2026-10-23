@@ -51,7 +51,7 @@ Each active component has its own `CLAUDE.md`.
 - `nthlayer-generate/` — pure deterministic compiler: specs →
   artifacts (Python, stateless, no runtime).
 - `nthlayer-core/` — Tier 1 reliability-critical HTTP API server:
-  verdict store, case management. CLI: `nthlayer serve`.
+  verdict store, case management. CLI: `nthlayer-core serve`.
 - `nthlayer-workers/` — Tier 2 consolidated runtime process (Apache
   2.0): five internal modules — observe, measure, correlate, respond,
   learn. Communicates with core via HTTP API only.
@@ -126,21 +126,32 @@ examples, generator-specific scripts.
     in the ecosystem, deliberately: a checker that imported the packages
     it checks would fail exactly when they are broken. The workspace
     root's `.claude/bin/eco-doctor.sh` is a shim that execs this.
-    Public surface, all 16 module-level functions:
+    Public surface, all 18 module-level functions:
     - entry point — `main`
     - discovery / reporting — `discover_repos`, `check_repo`,
-      `check_currency`, `duplicate_name_findings`
+      `check_currency`, `duplicate_name_findings`,
+      `duplicate_script_findings`
     - repository identity — `repo_identity`, `recorded_common_dir`,
       `unidentified`, `is_main_checkout`
     - manifest and lock reading — `path_sources`, `locked_versions`,
-      `version_at`, `canonical`, `git`
+      `version_at`, `working_project`, `canonical`, `git`
     - range arithmetic — `parse_bounds`, `release_tuple`
 
     The four identity functions arrived with [opensrm-bnal], which made
     REPOSITORY identity rather than directory identity the key a
     duplicate-name finding groups by, so a repo and its worktrees
     collapse to one entry while genuinely distinct repos claiming one
-    name still report.
+    name still report. `DUPLICATE-SCRIPT` [opensrm-dww5] applies the same
+    identity rule to `[project.scripts]` names: two members declaring one
+    console script means a co-install's binary depends on install order.
+
+    Finding classes (the `/r5-supervise` pre-flight classifies by prefix;
+    the authoritative list is `eco_doctor.py`'s module docstring):
+    - range, aborts a gate — `STALE`, `LOCK<FLOOR`, `SIBLING>CEILING`,
+      `NO-CEILING`, `DUPLICATE-NAME`, `DUPLICATE-SCRIPT`,
+      `SIBLING-MISSING`, `PARSE-ERROR`
+    - currency, logged only (`--fetch`) — `BEHIND`, `FETCH-FAILED`,
+      `NO-UPSTREAM`
 - `demo/` — runnable cascading-failure scenario, `demo.sh`
   orchestrator, example OpenSRM specifications.
 - `.github/workflows/`:

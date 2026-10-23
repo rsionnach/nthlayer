@@ -32,10 +32,12 @@ The meta-package is a friendly entry point for **evaluators, demos, and local de
 
 Sub-packages provide their own console scripts:
 
-- `nthlayer serve` — start the Tier 1 HTTP API server (from `nthlayer-core`)
+- `nthlayer` / `nthlayer-generate` — compile manifests (from `nthlayer-generate`; the two names are aliases)
+- `nthlayer-core serve` — start the Tier 1 HTTP API server (from `nthlayer-core` >= 4.0.0; earlier releases named this script `nthlayer`; this meta-package currently pins an older core, pin update pending bead opensrm-lt91)
 - `nthlayer-workers serve` — start the worker runtime (from `nthlayer-workers`)
+- `nthlayer-learn` — verdict-learning CLI (from `nthlayer-workers`)
 - `nthlayer-bench` — launch the operator TUI (from `nthlayer-bench`)
-- `nthlayer-generate plan|apply|validate ...` — compile manifests (from `nthlayer-generate`)
+- `nthlayer-override-adapter` — override-event sidecar (from `nthlayer-override-adapter`; not a dependency of this meta-package, install it separately)
 
 The meta-package itself contributes no Python modules and no console scripts.
 
