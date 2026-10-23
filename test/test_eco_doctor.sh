@@ -69,6 +69,14 @@
 #   30.    absolute and relative recorded gitdirs (git >= 2.48 writes relative)
 #          name one parent, so two worktrees of it do not split.
 #
+# Tests 33-35 are DUPLICATE-SCRIPT [opensrm-dww5] — two members declaring one
+# [project.scripts] name, so which binary a co-install gets depends on install
+# order (nthlayer-core and nthlayer-generate both shipped `nthlayer`):
+#   33.    two distinct members declaring one script are reported, naming both.
+#   34.    distinct script names are not a finding.
+#   35.    a worktree of the declaring repo is not a second declarer — the same
+#          identity collapsing test 17 asserts for DUPLICATE-NAME.
+#
 # Absence assertions are paired with assert_scanned(), because "no finding was
 # reported" is vacuous if a fixture bug left a checkout undiscovered.
 #
@@ -126,6 +134,27 @@ make_consumer() {
         "$name" "$dep" "$range" "$dep" "$spath" > "$dir/pyproject.toml"
     printf 'version = 1\n\n[[package]]\nname = "%s"\nversion = "%s"\nsource = { editable = "%s" }\n\n[[package]]\nname = "starlette"\nversion = "0.48.0"\nsource = { registry = "https://pypi.org/simple" }\n' \
         "$lockname" "$locked" "$spath" > "$dir/uv.lock"
+    git -C "$dir" init -q
+    git -C "$dir" add -A
+    git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
+}
+
+# make_scripted <dir> <name> <script>...
+#
+# A member declaring [project.scripts], one `<script> = "pkg.cli:main"` entry per
+# argument. The shape is the one PEP 621 specifies and every member uses — a
+# table of script name to entry-point string — not one derived from what the
+# detector parses.
+make_scripted() {
+    local dir="$1" name="$2"; shift 2
+    mkdir -p "$dir"
+    {
+        printf '[project]\nname = "%s"\nversion = "1.0.0"\n\n[project.scripts]\n' "$name"
+        local s
+        for s in "$@"; do
+            printf '%s = "%s.cli:main"\n' "$s" "${name//-/_}"
+        done
+    } > "$dir/pyproject.toml"
     git -C "$dir" init -q
     git -C "$dir" add -A
     git -C "$dir" -c user.email=t@t -c user.name=t commit -qm init
@@ -1373,6 +1402,81 @@ if grep -q "DUPLICATE-NAME" <<<"$out" && (( rc == FINDINGS_RC )); then
 else
     fail "canonicalisation untested, the two spellings did not collide (exit $rc): $out"
 fi
+
+# --- Test 33: two members declaring one console script ----------------------
+
+echo
+echo "=== Test 33: two members declaring one console script are reported ==="
+# opensrm-dww5. nthlayer-core and nthlayer-generate both declared `nthlayer`;
+# pip installs whichever comes last over the other, silently, so a co-install's
+# `nthlayer` depended on install order. Two members carry it here plus a
+# bystander with its own script, so the finding must name exactly the two.
+SCR="$WORK/dup-script"
+mkdir -p "$SCR"
+make_scripted "$SCR/nthlayer-core" nthlayer-core nthlayer
+make_scripted "$SCR/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+make_scripted "$SCR/nthlayer-bench" nthlayer-bench nthlayer-bench
+
+rc=0
+out="$(cd "$SCR" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declared by nthlayer-core, nthlayer-generate" ]]; then
+    pass "duplicate script reported once, naming both declarers"
+else
+    fail "expected one DUPLICATE-SCRIPT line naming core and generate, got: $out"
+fi
+if (( rc == FINDINGS_RC )); then
+    pass "duplicate script exits $FINDINGS_RC"
+else
+    fail "exited $rc, expected $FINDINGS_RC — output: $out"
+fi
+if ! grep -q "DUPLICATE-NAME" <<<"$out"; then
+    pass "distinct package names are not a DUPLICATE-NAME"
+else
+    fail "reported a duplicate name for distinct packages: $out"
+fi
+
+# --- Test 34: distinct console scripts are not a finding --------------------
+
+echo
+echo "=== Test 34: distinct console scripts are not reported ==="
+# The rename dww5 made: core keeps the same table shape under its own name.
+SCRD="$WORK/distinct-script"
+mkdir -p "$SCRD"
+make_scripted "$SCRD/nthlayer-core" nthlayer-core nthlayer-core
+make_scripted "$SCRD/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRD" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-SCRIPT" <<<"$out" && (( rc == 0 )); then
+    pass "distinct script names are clean (exit 0)"
+else
+    fail "distinct script names reported (exit $rc): $out"
+fi
+assert_scanned "$out" 2 "test 34"
+
+# --- Test 35: a worktree is not a second declarer ---------------------------
+
+echo
+echo "=== Test 35: a worktree of the declaring repo is not a DUPLICATE-SCRIPT ==="
+# A worktree carries its parent's pyproject, scripts included, and CLAUDE.md
+# mandates sibling worktrees — so without the identity collapsing test 17 pins
+# for DUPLICATE-NAME, this would fire on every correct workflow and block every
+# gate, since the pre-flight classifies it as range.
+SCRW="$WORK/worktree-script"
+mkdir -p "$SCRW"
+make_scripted "$SCRW/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+make_scripted "$SCRW/nthlayer-core" nthlayer-core nthlayer-core
+make_worktree "$SCRW/nthlayer-generate" "$SCRW/nthlayer-generate-wip"
+
+rc=0
+out="$(cd "$SCRW" && run_doctor)" || rc=$?
+if ! grep -q "DUPLICATE-SCRIPT" <<<"$out" && (( rc == 0 )); then
+    pass "a worktree of the same repo is not a second declarer (exit 0)"
+else
+    fail "worktree reported as DUPLICATE-SCRIPT (exit $rc): $out"
+fi
+assert_scanned "$out" 3 "test 35"
 
 echo
 echo "==============================================="
