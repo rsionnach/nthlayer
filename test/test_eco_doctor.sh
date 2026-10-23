@@ -69,7 +69,7 @@
 #   30.    absolute and relative recorded gitdirs (git >= 2.48 writes relative)
 #          name one parent, so two worktrees of it do not split.
 #
-# Tests 33-35 are DUPLICATE-SCRIPT [opensrm-dww5] — two members declaring one
+# Tests 33-39 are DUPLICATE-SCRIPT [opensrm-dww5] — two members declaring one
 # [project.scripts] name, so which binary a co-install gets depends on install
 # order (nthlayer-core and nthlayer-generate both shipped `nthlayer`):
 #   33.    two distinct members declaring one script are reported, naming both.
@@ -80,6 +80,8 @@
 #          reported as declared, by the alphabetically first declarer.
 #   37.    a [project.gui-scripts] name clashing with a [project.scripts] name
 #          is reported — both land in bin/.
+#   38.    a non-table `scripts` value is skipped, not a traceback.
+#   39.    a whitespace-padded script name is the same name.
 #
 # Absence assertions are paired with assert_scanned(), because "no finding was
 # reported" is vacuous if a fixture bug left a checkout undiscovered.
@@ -1521,6 +1523,55 @@ if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declare
     pass "gui-script vs script clash reported (exit $rc)"
 else
     fail "expected a DUPLICATE-SCRIPT line for the gui-script clash (exit $rc), got: $out"
+fi
+
+# --- Test 38: a non-table `scripts` does not abort the scan -----------------
+
+echo
+echo "=== Test 38: a non-table [project] scripts value does not traceback ==="
+# PEP 621 requires `scripts` to be a table, but a malformed member is exactly
+# when this tool must still finish: a traceback exits 1, which the pre-flight
+# reads as "drift found" with zero range-prefixed lines — the test-25 failure
+# shape. `3` is truthy and not iterable, so a truthiness guard in place
+# of the type guard raises TypeError here.
+SCRN="$WORK/nontable-script"
+mkdir -p "$SCRN/nthlayer-bench"
+printf '[project]\nname = "nthlayer-bench"\nversion = "1.0.0"\nscripts = 3\n' > "$SCRN/nthlayer-bench/pyproject.toml"
+git -C "$SCRN/nthlayer-bench" init -q
+git -C "$SCRN/nthlayer-bench" add -A
+git -C "$SCRN/nthlayer-bench" -c user.email=t@t -c user.name=t commit -qm init
+make_scripted "$SCRN/nthlayer-core" nthlayer-core nthlayer-core
+make_scripted "$SCRN/nthlayer-generate" nthlayer-generate nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRN" && run_doctor)" || rc=$?
+if ! grep -q "Traceback" <<<"$out" && (( rc == 0 )); then
+    pass "non-table scripts is skipped, scan completes (exit 0)"
+else
+    fail "non-table scripts aborted or reported (exit $rc): $out"
+fi
+assert_scanned "$out" 3 "test 38"
+
+# --- Test 39: a padded script key is the same script -------------------------
+
+echo
+echo "=== Test 39: a whitespace-padded script name clashes with the bare one ==="
+# The PyPA entry-points spec forbids a name starting or ending with whitespace,
+# and the entry_points.txt reader installers use strips around `=` — so a build
+# backend that accepts the TOML key `" nthlayer "` yields bin/nthlayer. The key
+# must be the TRIMMED name, as tests 28/29 require for package names.
+SCRP="$WORK/padded-script"
+mkdir -p "$SCRP"
+make_scripted "$SCRP/nthlayer-core" nthlayer-core '" nthlayer "'
+make_scripted "$SCRP/nthlayer-generate" nthlayer-generate nthlayer
+
+rc=0
+out="$(cd "$SCRP" && run_doctor)" || rc=$?
+line="$(grep "^DUPLICATE-SCRIPT" <<<"$out" || true)"
+if [[ "$line" == "DUPLICATE-SCRIPT (workspace)                  nthlayer declared by nthlayer-core, nthlayer-generate" ]] && (( rc == FINDINGS_RC )); then
+    pass "padded and bare script names collide (exit $rc)"
+else
+    fail "expected a DUPLICATE-SCRIPT line for the padded name (exit $rc), got: $out"
 fi
 
 echo
