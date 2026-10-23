@@ -35,7 +35,7 @@ dependencies = [
     "nthlayer-core==1.6.0",
     "nthlayer-workers==1.6.0",
     "nthlayer-bench==1.6.0",
-    "nthlayer-generate==1.1.0",
+    "nthlayer-generate==2.0.6",
 ]
 
 [project.urls]
