@@ -4,7 +4,7 @@
 
 **Goal:** nthlayer-generate loads every manifest through `nthlayer_common.manifest.load_manifest` and consumes common's `ReliabilityManifest`; its own `specs/manifest.py`, `specs/loader.py` and `specs/opensrm_parser.py` are deleted; no rule it emits today disappears; v2 manifests load.
 
-**Architecture:** common 5.4.0 first (an `authored_type` field; srm/v1 top-level `query:`). Then, in generate, goldens pinned on unchanged code, then the switch: imports move to common, generate-only behaviour (alerting parse, contracts, service-context and migrate helpers, generate's service-name rule) stays in generate, and the calibration/feedback_latency recording rules are rebuilt from `JudgmentThreshold` with identical names.
+**Architecture:** common 5.4.0 first (an `authored_type` field only; srm/v1 top-level `query:` stays unsupported per opensrm-0i5h, and generate's one example using it is rewritten to `indicator.query`). Then, in generate, goldens pinned on unchanged code, then the switch: imports move to common, generate-only behaviour (alerting parse, contracts, service-context and migrate helpers, generate's service-name rule) stays in generate, and the calibration/feedback_latency recording rules are rebuilt from `JudgmentThreshold` with identical names.
 
 **Tech Stack:** Python 3.11+, uv, pytest, ruff, mypy (generate), release-please.
 
@@ -18,23 +18,23 @@
 - Commit format: `<type>(<scope>): <description> (opensrm-wo62.1)` + blank line + `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. New behaviour in unshipped code is `feat`, never `fix`. Generate's switch commit carries `BREAKING CHANGE:` (spec §5.5).
 - Run `uv run ruff check src/ tests/` and check its exit code directly — never pipe it. Never chain a command after a `sed`/edit with `&&` without checking it succeeded. Full suites: `uv run pytest -p no:cacheprovider -o addopts= -q`.
 - Fixtures come from shipped examples and the spec, never from the code under test: generate's `examples/`, `opensrm/spec/v2/examples/` via `Path(__file__).resolve().parents[2] / "opensrm"` with an assertion-style presence test (no `skipif`). A fixture copied into a test carries a provenance comment naming its source path and commit.
-- Goldens are never regenerated to make a test pass. In Checkpoint B they are written once from unchanged code; in Checkpoint C every changed golden is listed and approved by Rob before the gate (Task 14).
+- Goldens are never regenerated to make a test pass. In Checkpoint B they are written once from unchanged code; in Checkpoint C every changed golden is listed and approved by Rob before the gate (Task 13).
 - `git status --short` before every commit; nothing under `generated/`, `htmlcov/` or `.claude/` is committed.
 - After merging any PR: `gh pr merge N --merge --body ""`. Squash release PRs.
 
 ## Review Focus
 
-1. **A manifest declaring both `indicator.query` and a different top-level `query`.** Expected: `ManifestLoadError` naming the SLO, not a silent precedence. Identical values load. Test in Task 2.
+1. **srm/v1 top-level `query:` stays unsupported (opensrm-0i5h).** generate's own parser reads only top-level `query` (`specs/opensrm_parser.py:237`), common's only `indicator.query` (`parser/v1.py:196-213`). The UAT example is rewritten to `indicator.query` in the switch commit (Task 11), so its goldens must not change (spec §6.3 G6); a changed `uat__payment-api.reliability` golden means a query was lost. Test in Task 11.
 2. **`authored_type` through the v2 parser.** The v2 parser resolves the type before constructing the manifest (`parser/v2.py:164-170`); without an explicit `authored_type=` it would record the resolved spelling and reopen opensrm-z3ab for v2. Test in Task 1.
-3. **A v2 judgment SLO whose `metadata.name` is not its type** (`triage-agent-reversal-rate`, `judgment_type: reversal_rate`, in the spec's own example). Expected: reversal-rate rules emitted (dispatch on `judgment_type`). Today's dispatch on `slo.name` would emit nothing. Test in Task 11.
-4. **Calibration with only `maximum_brier_score`, feedback_latency with only `maximum_p90`.** Expected: no `ai_gate:calibration:*` rules and no `:bucket` rule respectively, and no exception; `:p50/:p95/:p99` still emitted. Test in Task 11.
-5. **A v2 manifest given to `nthlayer migrate`.** Expected: "already OpenSRM", exit 0, nothing written (spec Ruling on `source_format`). Test in Task 12.
-6. **A manifest with a malformed `alerting:` block.** Expected: `alerts evaluate` fails on it; `docs` and `backstage` now succeed (load no longer parses alerting). The behaviour change is in the golden list. Test in Task 9.
-7. **The golden harness passing vacuously** — an empty corpus, a missing `../opensrm`, a mask that hides everything, or update mode left on. Each must fail. Tests in Task 5.
+3. **A v2 judgment SLO whose `metadata.name` is not its type** (`triage-agent-reversal-rate`, `judgment_type: reversal_rate`, in the spec's own example). Expected: reversal-rate rules emitted (dispatch on `judgment_type`). Today's dispatch on `slo.name` would emit nothing. Test in Task 10.
+4. **Calibration with only `maximum_brier_score`, feedback_latency with only `maximum_p90`.** Expected: no `ai_gate:calibration:*` rules and no `:bucket` rule respectively, and no exception; `:p50/:p95/:p99` still emitted. Test in Task 10.
+5. **A v2 manifest given to `nthlayer migrate`.** Expected: "already OpenSRM", exit 0, nothing written (spec Ruling on `source_format`). Test in Task 11.
+6. **A manifest with a malformed `alerting:` block.** Expected: `alerts evaluate` fails on it; `docs` and `backstage` now succeed (load no longer parses alerting). The behaviour change is in the golden list. Test in Task 8.
+7. **The golden harness passing vacuously** — an empty corpus, a missing `../opensrm`, a mask that hides everything, or update mode left on. Each must fail. Tests in Task 4.
 
 ---
 
-## Checkpoint A — nthlayer-common 5.4.0 (worktree `nthlayer-common-wo62`, branch `feat/wo62-1-authored-type-query`)
+## Checkpoint A — nthlayer-common 5.4.0 (worktree `nthlayer-common-wo62`, branch `feat/wo62-1-authored-type`)
 
 ### Task 1: `ReliabilityManifest.authored_type`
 
@@ -44,7 +44,7 @@
 - Test: `nthlayer-common/tests/test_manifest_authored_type.py` (create)
 
 **Interfaces:**
-- Produces: `ReliabilityManifest.authored_type: str | None` — after construction always a `str`: the type exactly as written. `type` keeps its meaning (resolved). Consumed by generate's sloth `${type}` substitution and `specs/context.py` (Task 9).
+- Produces: `ReliabilityManifest.authored_type: str | None` — after construction always a `str`: the type exactly as written. `type` keeps its meaning (resolved). Consumed by generate's sloth `${type}` substitution and `specs/context.py` (Task 8).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -148,150 +148,18 @@ In `parser/v2.py`, keep the raw value before resolution (`authored_type = servic
 
 - [ ] **Step 4: Run the file, the full suite, ruff.** — **Step 5: Commit** — `feat(manifest): ReliabilityManifest.authored_type keeps the authored service type (opensrm-wo62.1)`.
 
-### Task 2: srm/v1 reads a top-level SLO `query:`
-
-**Files:**
-- Modify: `nthlayer-common/src/nthlayer_common/manifest/parser/v1.py` (`_extract_indicator_query` :196-213; callers `_infer_slo_type` :241 and `_parse_slos` :343)
-- Modify: `nthlayer-common/src/nthlayer_common/manifest/v1_compat.py` (`_v1_slo_to_openslo` :352-353)
-- Modify: `nthlayer-common/src/nthlayer_common/manifest/parser/_shared.py` (new home of the reader)
-- Test: `nthlayer-common/tests/test_srm_v1_top_level_query.py` (create)
-
-**Interfaces:**
-- Produces: `parser._shared.srm_v1_indicator_query(name: str, config: dict) -> str | None` (replaces `parser.v1._extract_indicator_query`; lives in `_shared.py` because `parser/v1.py:52` imports `v1_compat`, so `v1_compat` importing `parser.v1` would cycle; package-internal, not re-exported). Raises `ValueError` when both spellings are present and differ; `_parse_slos` wraps it as `OpenSRMParseError`, `convert_v1_to_v2` lets the `ValueError` through (its documented error type).
-
-- [ ] **Step 1: Write the failing tests.** The fixture SLO block is copied verbatim from `nthlayer-generate/examples/uat/payment-api.reliability.yaml` (lines 17-41 at generate commit ebf484c) — put that provenance in the module docstring.
-
-```python
-"""srm/v1 SLOs may declare their PromQL as a top-level `query:` (opensrm-wo62.1).
-
-opensrm-0i5h dropped the top-level read as "not in any spec or example". It is
-in one: nthlayer-generate examples/uat/payment-api.reliability.yaml (lines 17-41
-at generate ebf484c), copied verbatim below, which generate's own parser read.
-"""
-import pytest
-import yaml
-
-from nthlayer_common.manifest.parser.v1 import OpenSRMParseError, parse_srm_v1
-from nthlayer_common.manifest.parser.v2 import parse_opensrm_v2
-from nthlayer_common.manifest.v1_compat import convert_v1_to_v2
-
-UAT_SLOS = yaml.safe_load('''
-availability:
-  target: 99.9
-  window: 30d
-  type: availability
-  description: "99.9% availability over 30 days"
-  query: |
-    sum(rate(http_requests_total{service="payment-api",status=~"[1234].."}[5m]))
-    /
-    sum(rate(http_requests_total{service="payment-api"}[5m]))
-
-latency-p95:
-  target: 99.0
-  window: 30d
-  type: latency
-  percentile: p95
-  unit: ms
-  description: "99% of requests under 500ms at p95"
-  query: |
-    histogram_quantile(0.95,
-      sum(rate(http_request_duration_seconds_bucket{service="payment-api"}[5m])) by (le)
-    )
-''')
-
-
-def _doc(slos: dict) -> dict:
-    return {"apiVersion": "srm/v1", "kind": "ServiceReliabilityManifest",
-            "metadata": {"name": "payment-api", "team": "payments-team", "tier": "critical"},
-            "spec": {"type": "api", "slos": slos}}
-
-
-def test_top_level_query_is_the_indicator_query():
-    m = parse_srm_v1(_doc(UAT_SLOS))
-    assert {s.name: s.indicator_query for s in m.slos} == \
-           {n: c["query"] for n, c in UAT_SLOS.items()}
-
-
-def test_nested_form_is_unchanged():
-    slo = {"target": 99.9, "indicator": {"query": UAT_SLOS["availability"]["query"]}}
-    (s,) = parse_srm_v1(_doc({"availability": slo})).slos
-    assert s.indicator_query == UAT_SLOS["availability"]["query"]
-
-
-def test_both_spellings_agreeing_load():
-    q = UAT_SLOS["availability"]["query"]
-    (s,) = parse_srm_v1(_doc({"availability": {"target": 99.9, "query": q,
-                                                "indicator": {"query": q}}})).slos
-    assert s.indicator_query == q
-
-
-def test_both_spellings_disagreeing_is_an_error_naming_the_slo():
-    slo = {"target": 99.9, "query": "a", "indicator": {"query": "b"}}
-    with pytest.raises(OpenSRMParseError, match="availability"):
-        parse_srm_v1(_doc({"availability": slo}))
-
-
-def test_top_level_query_drives_type_inference():
-    # No type, no name hint: only the query can type it (parser/v1.py:241).
-    slo = {"target": 99.0, "query": UAT_SLOS["latency-p95"]["query"]}
-    (s,) = parse_srm_v1(_doc({"checkout-p95": slo})).slos
-    assert s.slo_type == "latency"
-
-
-def test_migration_carries_a_top_level_query():
-    v2 = convert_v1_to_v2(_doc(UAT_SLOS))
-    m = parse_opensrm_v2(v2)
-    assert {s.name.removeprefix("payment-api-"): s.indicator_query for s in m.slos} == \
-           {n: c["query"] for n, c in UAT_SLOS.items()}
-```
-
-Before running, check how `convert_v1_to_v2` names the OpenSLO documents (`v1_compat.py` `_v1_slo_to_openslo`) and adjust only the key mapping in the last test to that naming — never the expected queries.
-
-- [ ] **Step 2: Run, expect the top-level, inference and migration tests to FAIL.**
-
-- [ ] **Step 3: Implement.** Replace `parser/v1.py`'s `_extract_indicator_query` with, in `parser/_shared.py`:
-
-```python
-def srm_v1_indicator_query(name: str, config: dict[str, Any]) -> str | None:
-    """The SLO's PromQL: ``indicator.query`` or a top-level ``query``.
-
-    Both spellings are srm/v1: the nested form is the documented one, the
-    top-level form is what nthlayer-generate's parser read and its UAT example
-    (examples/uat/payment-api.reliability.yaml) uses. opensrm-0i5h dropped the
-    top-level read believing no example used it (opensrm-wo62.1 restored it).
-    Declaring both with different values is an error rather than a precedence
-    rule: either choice would silently discard a query the author wrote.
-    Raises ValueError.
-    """
-    indicator = config.get("indicator")
-    nested = indicator.get("query") if isinstance(indicator, dict) else None
-    nested = nested if isinstance(nested, str) and nested else None
-    top = config.get("query")
-    top = top if isinstance(top, str) and top else None
-    if nested is not None and top is not None and nested != top:
-        raise ValueError(
-            f"SLO '{name}' declares both indicator.query and a top-level query, "
-            f"and they differ; keep one"
-        )
-    return nested if nested is not None else top
-```
-
-`_infer_slo_type(name, config, ...)` and `_parse_slos` call it with the SLO name; `_parse_slos` wraps `ValueError` in `OpenSRMParseError` (its existing pattern at :330-334). In `v1_compat._v1_slo_to_openslo`, replace the two-line nested read with `query = srm_v1_indicator_query(slo_name, v1_slo)`; both modules import it from `parser/_shared.py`. Update the existing `test_v1_to_v2_migration.py` only if a test there asserted the drop.
-
-- [ ] **Step 4: Run, full suite, ruff.** — **Step 5: Commit** — `feat(manifest): srm/v1 reads an SLO's top-level query (opensrm-wo62.1)`.
-
-### Task 3: Documentation
+### Task 2: Documentation
 
 **Files:**
 - Modify: `nthlayer-common/docs/architecture.md` (manifest section, near the judgment-threshold bullet ~line 340)
 - Modify: `nthlayer-common/README.md` only if it documents the manifest model fields (grep `ReliabilityManifest`).
 
-- [ ] **Step 1:** Add two bullets: "`ReliabilityManifest.authored_type` — the service type as written, before alias resolution (opensrm-z3ab invariant; set by every parser). Use it for `${type}` substitution into user PromQL; compare against `type`." and "srm/v1 SLO PromQL: `indicator.query` or a top-level `query` (both are srm/v1; differing values are a parse error); `convert_v1_to_v2` carries either (opensrm-wo62.1)."
-- [ ] **Step 2: Commit** — `docs(manifest): authored_type and srm/v1 top-level query (opensrm-wo62.1)`.
+- [ ] **Step 1:** Add one bullet: "`ReliabilityManifest.authored_type` — the service type as written, before alias resolution (opensrm-z3ab invariant; set by every parser). Use it for `${type}` substitution into user PromQL; compare against `type`.". Leave the srm/v1 query docs as they are: top-level `query:` stays unsupported (opensrm-0i5h).
+- [ ] **Step 2: Commit** — `docs(manifest): document ReliabilityManifest.authored_type (opensrm-wo62.1)`.
 
-**Checkpoint A (common):** R5-gate nthlayer-common (base = branch point, head = Task 3). Push, open the PR, hold. On Rob's approval: merge, squash the release PR (5.4.0), verify on PyPI (`uv pip install nthlayer-common==5.4.0` into a scratch venv; `python -c "from nthlayer_common.manifest import ReliabilityManifest as R; print(R(name='s',team='t',tier='low',type='web').authored_type)"` → `web`), sync the local checkout.
+**Checkpoint A (common):** R5-gate nthlayer-common (base = branch point, head = Task 2). Push, open the PR, hold. On Rob's approval: merge, squash the release PR (5.4.0), verify on PyPI (`uv pip install nthlayer-common==5.4.0` into a scratch venv; `python -c "from nthlayer_common.manifest import ReliabilityManifest as R; print(R(name='s',team='t',tier='low',type='web').authored_type)"` → `web`), sync the local checkout.
 
-### Task 4: Floor bumps to 5.4.0 in generate, core, bench, workers, override-adapter
+### Task 3: Floor bumps to 5.4.0 in generate, core, bench, workers, override-adapter
 
 **Files (each repo):** `pyproject.toml` (floor `nthlayer-common>=5.4.0,<6.0.0`; replace the newest `WHY` line with `WHY 5.4.0 (opensrm-wo62.1): <one sentence: what this repo uses, or "floor rule 10: the floor is the installed sibling">`, keeping the "bump on every minor" sentence), `uv.lock` (relock).
 
@@ -307,11 +175,11 @@ def srm_v1_indicator_query(name: str, config: dict[str, Any]) -> str | None:
 
 ---
 
-## Checkpoint B — goldens on unchanged generate (worktree `nthlayer-generate-wo62`, branch `feat/wo62-1-common-manifest`, from main after Task 4)
+## Checkpoint B — goldens on unchanged generate (worktree `nthlayer-generate-wo62`, branch `feat/wo62-1-common-manifest`, from main after Task 3)
 
 No `src/` change in this checkpoint. Every golden is written from the code as it is.
 
-### Task 5: Golden harness, corpus and load records
+### Task 4: Golden harness, corpus and load records
 
 **Files:**
 - Create: `nthlayer-generate/tests/golden/__init__.py`, `tests/golden/_corpus.py`, `tests/golden/_golden.py`, `tests/golden/test_golden_harness.py`, `tests/golden/test_golden_load.py`
@@ -357,11 +225,11 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 
 - [ ] **Step 6: Commit** — `test(golden): pin manifest load records for the example corpus (opensrm-wo62.1)`.
 
-### Task 6: Library-generator cells
+### Task 5: Library-generator cells
 
 **Files:** Create `nthlayer-generate/tests/golden/test_golden_generators.py`.
 
-**Interfaces:** Consumes Task 5. Each cell is one test function parametrised over the loadable manifests of `SRM_V1 + LEGACY` (ids from the load goldens where `ok` is true — read from the corpus by loading, not hard-coded).
+**Interfaces:** Consumes Task 4. Each cell is one test function parametrised over the loadable manifests of `SRM_V1 + LEGACY` (ids from the load goldens where `ok` is true — read from the corpus by loading, not hard-coded).
 
 - [ ] **Step 1: Cells** (spec §6.2), each passing its output through `check(cell, id, value)`:
   - `recording_rules` — `create_rule_groups(build_recording_rules_from_manifest(m))` parsed;
@@ -380,7 +248,7 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 - [ ] **Step 2: Find the mask mechanically.** Run every cell twice in one process with `time.sleep(1.1)` between; any leaf that differs must be added to `MASK` by key name, with a comment naming the cell. Expect `generatedAt` and the pipeline's time-derived fields (`slos/alerts.py:142,191,258`; `slos/pipeline.py:212`). If a differing leaf has no stable key name, stop and report it — do not mask by path wildcard.
 - [ ] **Step 3: Write goldens (update mode), rerun clean, run twice more to prove stability.** — **Step 4: Commit** — `test(golden): pin every manifest-path generator over the example corpus (opensrm-wo62.1)`.
 
-### Task 7: CLI cells
+### Task 6: CLI cells
 
 **Files:** Create `nthlayer-generate/tests/golden/test_golden_cli.py`.
 
@@ -394,14 +262,14 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
   - `policy_handler` — `PolicyHandler().generate(ctx)` count with a minimal `OrchestratorContext` whose detector returns `examples/policies.yaml`'s rules (read `orchestration/handlers.py:455-490` for the shape).
 - [ ] **Step 2: Write goldens, rerun clean.** — **Step 3: Commit** — `test(golden): pin the manifest-path CLI commands (opensrm-wo62.1)`.
 
-### Task 8: Kill check and coverage report
+### Task 7: Kill check and coverage report
 
-- [ ] **Step 1: Kill checks** — one at a time, revert after each, record the red test: rename `ai_gate:calibration:ece` (`recording_rules/manifest_builder.py:471`) → `recording_rules` golden red; make `get_judgment_slos` return `[]` → recording-rules and docs goldens red; change `${type}` substitution to `manifest.type` in `generators/sloth.py:264` → no golden goes red (no example uses `${type}`) — that is expected and is why Task 9's z3ab test exists; note it. `git status --short` clean after.
+- [ ] **Step 1: Kill checks** — one at a time, revert after each, record the red test: rename `ai_gate:calibration:ece` (`recording_rules/manifest_builder.py:471`) → `recording_rules` golden red; make `get_judgment_slos` return `[]` → recording-rules and docs goldens red; change `${type}` substitution to `manifest.type` in `generators/sloth.py:264` → no golden goes red (no example uses `${type}`) — that is expected and is why Task 8's z3ab test exists; note it. `git status --short` clean after.
 - [ ] **Step 2: Coverage report** for Rob in the PR draft and the session handoff: the matrix (cells × manifests) with counts, the mask and its justification, the baseline failures, and the `${type}` gap.
 
 **Checkpoint B:** no gate and no merge yet — the goldens ride the Checkpoint C branch so the switch's diff is reviewable against them (C's gate covers B's tests; base = branch point).
 
-- Committed: Tasks 5–7 on `feat/wo62-1-common-manifest` (local; push only on Rob's word).
+- Committed: Tasks 4–6 on `feat/wo62-1-common-manifest` (local; push only on Rob's word).
 - Tests green: full generate suite including `tests/golden` on unchanged `src/`.
 - Memory: none (session-scoped; the handoff carries the coverage report).
 - **Stop and ask Rob:** "Golden coverage is <N> cells over <M> manifests (matrix attached); baseline failures and the mask are listed. Approve coverage and start Checkpoint C?"
@@ -410,7 +278,7 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 
 ## Checkpoint C — the switch (same worktree and branch)
 
-### Task 9: Generate-owned helpers (names, service context, alerting, migrate)
+### Task 8: Generate-owned helpers (names, service context, alerting, migrate)
 
 **Files:**
 - Create: `nthlayer-generate/src/nthlayer_generate/specs/names.py` (move `SERVICE_NAME_PATTERN`, `_SERVICE_NAME_RE`, `is_valid_service_name` and their full comment block from `specs/manifest.py:49-100`, unchanged except the stale "no opensrm/ checkout" sentence, which is deleted with a note that CI checks it out)
@@ -428,7 +296,7 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 - [ ] **Step 1: Failing tests.** z3ab through common: load `examples/opensrm/api-basic.reliability.yaml` with `spec.type` rewritten to `web` into `tmp_path` (the alias from common's table), assert `service_context_from_manifest(m).authored_type == "web"` and `.type == "x-web"`; PagerDuty from `examples/opensrm/api-critical.reliability.yaml` (`escalation_policy_id: P456DEF`) → `ServiceContext.pagerduty.escalation_policy == "P456DEF"`. Alerting: a legacy example with an `Alerts` resource (find one with `grep -l "kind: Alerts" examples/services/*.yaml`; if none, take the `alerting:` block from `docs-site` and cite it) → `manifest_alerting(m).channels` equals what `parse_alerting_config` gives for that block; malformed `alerting: [1]` → `alerts evaluate` exit 1 and `generate_service_docs` success (Review Focus 6).
 - [ ] **Step 2: Implement; the helpers import `ReliabilityManifest` from `nthlayer_common.manifest` only.** — **Step 3: Run, ruff, mypy (`make typecheck`).** — **Step 4: Commit** — `feat(specs): generate-owned helpers over common's manifest model (opensrm-wo62.1)`.
 
-### Task 10: Contracts on `manifest.contracts`
+### Task 9: Contracts on `manifest.contracts`
 
 **Files:**
 - Modify: `nthlayer-generate/src/nthlayer_generate/specs/contracts.py`
@@ -441,7 +309,7 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 - [ ] **Step 1: Failing tests** from shipped files: registry from `examples/opensrm/` → `promised_availability("payment-api") == 0.999` (`api-critical.reliability.yaml` `contract.availability`); `fraud-detector` → `0.999`. Multi-contract: `opensrm/spec/v2/examples/service-manifest-full.yaml` if it declares several contracts (check; otherwise a v2 example that does, or state that no spec example has two and build the second contract by copying the first with a different `name` and `availability`, commented as such).
 - [ ] **Step 2: Implement.** — **Step 3: Run, ruff.** — **Step 4: Commit** — `feat(specs): contract registry reads common's contracts list (opensrm-wo62.1)`.
 
-### Task 11: Judgment recording rules from `JudgmentThreshold`
+### Task 10: Judgment recording rules from `JudgmentThreshold`
 
 **Files:**
 - Modify: `nthlayer-generate/src/nthlayer_generate/recording_rules/manifest_builder.py` (`build` :31-73, `_build_judgment_slo_rules` :333-357, `_build_calibration_rules` :457, `_build_feedback_latency_rules` :499)
@@ -460,7 +328,7 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 - [ ] **Step 2: Implement.** `build()` collects judgment rules when `is_ai_gate()` from `get_judgment_slos()` (dispatch on `slo.judgment_type`) then `get_judgment_thresholds()`; the group is added if it has rules. Threshold rules per spec §5.3. Keep every record name, expr and label byte-identical.
 - [ ] **Step 3: Run, ruff, mypy.** — **Step 4: Commit** — `feat(recording-rules): judgment threshold rules from common's JudgmentThreshold (opensrm-wo62.1)`.
 
-### Task 12: Switch every consumer and delete the stack
+### Task 11: Switch every consumer and delete the stack
 
 **Files:**
 - Modify (imports → `nthlayer_common.manifest`): `cli/{migrate,topology,docs,backstage,alerts,simulate,validate}.py`, `orchestration/handlers.py:468`, `generators/{sloth,alerts,backstage,docs}.py`, `dashboards/manifest_builder.py`, `loki/generator.py`, `recording_rules/manifest_builder.py`, `metrics/recommender.py`, `topology/enrichment.py`, `simulate/graph.py`, `policies/{rules,engine}.py`, `slos/pipeline.py`, `specs/{helpers,contracts,validator,templates}.py`, the four package `__init__.py` docstrings that mention the "new API".
@@ -468,11 +336,13 @@ NON_MANIFESTS = tuple(sorted((EX / "environments").glob("*.yaml"))
 - Modify: `specs/validator.py:107-118` → manifest path when `is_srm_v1_format(data) or is_opensrm_v2_format(data)` (from `nthlayer_common.manifest.parser.v1` / `.v2`), and filter common's `LegacyFormatWarning`.
 - Modify: `specs/__init__.py` — drop the manifest re-exports; keep the legacy API; docstring points to `nthlayer_common.manifest`.
 - Delete: `specs/manifest.py`, `specs/loader.py`, `specs/opensrm_parser.py`.
+- Modify: `examples/uat/payment-api.reliability.yaml` — move each SLO's top-level `query:` (lines 23, 35) under `indicator: {query: ...}`, text unchanged (spec §4.2). It lands in this commit, not in Checkpoint B: generate's current parser reads only the top-level form (`specs/opensrm_parser.py:237`), so the rewrite is not output-neutral before the switch; with the switch it is.
 
 - [ ] **Step 1:** `grep -rnE "specs\.(manifest|loader|opensrm_parser)|from nthlayer_generate\.specs import (load_manifest|ReliabilityManifest|SLODefinition|ManifestLoadError)" src` must print nothing at the end of this task.
 - [ ] **Step 2: Tests first for the two behaviour rulings:** `migrate_command` on `opensrm/spec/v2/examples/minimal.yaml` → exit 0, nothing written (Review Focus 5); `validate_manifest` on the same file → takes the manifest path (`resource_count` from `manifest.slos` + dependencies), not `parse_service_file`.
-- [ ] **Step 3: Run the full suite.** Failures in tests that import the retired modules are Task 13's; any other failure is a real regression — fix `src`, never the golden.
-- [ ] **Step 4: Commit** — message:
+- [ ] **Step 3: Run the golden suite against the Checkpoint B goldens before regenerating anything:** every `uat__payment-api.reliability` cell must be unchanged (G6). A change there means a query was lost — stop.
+- [ ] **Step 4: Run the full suite.** Failures in tests that import the retired modules are Task 12's; any other failure is a real regression — fix `src`, never the golden.
+- [ ] **Step 5: Commit** — message:
 
 ```
 feat!: consume nthlayer-common's manifest model; retire generate's own (opensrm-wo62.1)
@@ -482,12 +352,13 @@ ReliabilityManifest, SLODefinition or ManifestLoadError, and the modules
 specs.manifest, specs.loader and specs.opensrm_parser are removed. Import
 them from nthlayer_common.manifest. Every *_from_manifest function takes
 nthlayer_common's ReliabilityManifest. ContractRegistry.get_contract is
-replaced by get_contracts / promised_availability.
+replaced by get_contracts / promised_availability. srm/v1 SLOs declare
+PromQL under indicator.query; a top-level query is not read (opensrm-0i5h).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Task 13: Migrate the test suite
+### Task 12: Migrate the test suite
 
 **Files:** the 21 files from `grep -rlE "ReliabilityManifest|SLODefinition|load_manifest|specs\.manifest|specs\.loader|opensrm_parser" tests`; delete `tests/uat_opensrm.py` (spec Ruling).
 
@@ -495,23 +366,23 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 - [ ] **Step 2:** Tests of the retired stack itself (`test_opensrm.py` parser/loader units, `to_dict`, `as_resources`, `to_service_context`, `is_manifest_file`) are deleted where common's own suite covers the behaviour; list each deleted test and the common test that covers it in the commit body. Keep and port the z3ab tests (`tests/test_service_type_agreement.py:296-340`) to common's model + `service_context_from_manifest`.
 - [ ] **Step 3:** Full suite, ruff, mypy. — **Step 4: Commit** — `test: move the suite onto common's manifest model (opensrm-wo62.1)`.
 
-### Task 14: Goldens after the switch — the list for Rob
+### Task 13: Goldens after the switch — the list for Rob
 
-- [ ] **Step 1:** Extend the cells in Tasks 5–7 to `V2` manifests that load (new goldens).
+- [ ] **Step 1:** Extend the cells in Tasks 4–6 to `V2` manifests that load (new goldens).
 - [ ] **Step 2:** `NTHLAYER_UPDATE_GOLDENS=1 uv run pytest -q tests/golden`, then `git diff --stat tests/golden/data` and `git diff tests/golden/data`.
 - [ ] **Step 3: Write the list** (PR body draft + handoff): one row per changed golden — cell, manifest, what changed, and the spec §6.3 prediction it matches (G1–G8) or **UNPREDICTED**; then every manifest whose load record went ok → fail (**newly failing**, expected none); then new V2 goldens summarised per cell. Do not commit the regenerated goldens until Rob approves.
 - [ ] **Step 4 (after approval): Commit** — `test(golden): re-pin goldens on common's manifest model (opensrm-wo62.1)` with the approved list in the body.
 
-### Task 15: Docs
+### Task 14: Docs
 
 **Files:** `nthlayer-generate/README.md`, `docs-site/` pages that show `from nthlayer_generate.specs import load_manifest` or describe the specs API (`grep -rn "specs import\|load_manifest\|ReliabilityManifest" README.md docs-site`), `CLAUDE.md`/`AGENTS.md` lines describing `specs/manifest.py`/`loader.py`/`opensrm_parser.py`.
 
 - [ ] **Step 1:** Point them at `nthlayer_common.manifest`; state that v2 manifests are accepted; one upgrading paragraph for 3.0.0 (the BREAKING CHANGE text).
 - [ ] **Step 2: Commit** — `docs: generate reads manifests through nthlayer-common (opensrm-wo62.1)`.
 
-**Checkpoint C:** Rob approves the Task 14 list → R5-gate generate (base = branch point, so Checkpoint B's goldens are in scope; the provenance pass's kill checks include Task 8's three plus: drop the threshold branch in Task 11, revert Task 12's `source_format` ruling). Push, PR held; on Rob's approval merge, squash the release PR (3.0.0), verify on PyPI with a clean co-install of all six packages, sync local.
+**Checkpoint C:** Rob approves the Task 13 list → R5-gate generate (base = branch point, so Checkpoint B's goldens are in scope; the provenance pass's kill checks include Task 7's three plus: drop the threshold branch in Task 10, revert Task 11's `source_format` ruling). Push, PR held; on Rob's approval merge, squash the release PR (3.0.0), verify on PyPI with a clean co-install of all six packages, sync local.
 
-- Committed: Tasks 9–15 + goldens; release 3.0.0.
+- Committed: Tasks 8–14 + goldens; release 3.0.0.
 - Tests green: generate full suite (incl. `tests/golden`), ruff, mypy, dependency guard.
 - Memory: add `project_generate_on_common.md` (generate consumes common's manifest model from 3.0.0; goldens live in `tests/golden`, update only via `NTHLAYER_UPDATE_GOLDENS=1` and a listed approval) and its MEMORY.md line.
 - **Stop and ask Rob:** "generate 3.0.0 is on PyPI on common's manifest model. File the follow-up beads and close wo62.1 (Checkpoint D)?"
@@ -520,7 +391,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 ## Checkpoint D — follow-ups and close (opensrm, front door)
 
-### Task 16: File the follow-up beads
+### Task 15: File the follow-up beads
 
 - [ ] **Step 1:** `cd opensrm` and `bd create` each, `--parent opensrm-wo62` where it belongs to the epic, with the deferred work named in the description:
   1. Route the legacy `parse_service_file`/`ServiceContext` CLI (12 commands) and plan/apply through common (decision 1).
@@ -529,10 +400,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   4. Add to wo62.2's notes: Brier-only calibration, p90 feedback rules (spec §5.3).
   5. Add to wo62.3's notes: `ai_gate_*` source metrics vs `THRESHOLD_SERIES` `gen_ai_*`; `target` label units differ srm/v1 vs v2.
   6. `cli/migrate.py:169-171` dead alias branch.
-  7. Anything UNPREDICTED from Task 14 that Rob deferred.
+  7. Anything UNPREDICTED from Task 13 that Rob deferred.
 - [ ] **Step 2:** Tag each with the same phase as wo62.1 (memory: feedback_scope_down_beads).
 
-### Task 17: eco-doctor, close
+### Task 16: eco-doctor, close
 
 - [ ] **Step 1:** `.claude/bin/eco-doctor.sh --fetch` — no range finding.
 - [ ] **Step 2:** `bd close opensrm-wo62.1` with the release versions (common 5.4.0, generate 3.0.0) and the follow-up bead ids.

@@ -1,6 +1,7 @@
 # opensrm-wo62.1 — nthlayer-generate on nthlayer-common's manifest model
 
-**Bead:** opensrm-wo62.1 (P1), epic opensrm-wo62. **Status:** for review.
+**Bead:** opensrm-wo62.1 (P1), epic opensrm-wo62. **Status:** rulings approved
+by Rob 2026-10-24, except the srm/v1 top-level `query:` proposal, replaced by §4.2.
 **Binding input:** Rob's four decisions of 2026-10-24 (bead notes), restated in
 §2. Every `Ruling:` line below is a call this document makes on Rob's behalf,
 with what it costs if it is wrong; each needs his yes before Checkpoint A.
@@ -38,8 +39,8 @@ nthlayer-common's, which every other member uses. Consequences measured today:
    common's `JudgmentThreshold`, with identical record names and labels.
    wo62.2 adds alerts, docs, segments, stability and audit_backlog.
 3. **common first, a minor.** common gains `ReliabilityManifest.authored_type`
-   and its srm/v1 parser reads an SLO's top-level `query:`; gated and released
-   before generate starts. generate keeps generate-only behaviour: it parses the
+   (revised 2026-10-24: the srm/v1 top-level `query:` read was dropped, see
+   §4.2); gated and released before generate starts. generate keeps generate-only behaviour: it parses the
    raw `alerting` dict with its own `parse_alerting_config` at the use sites,
    adapts `specs/contracts.py` to `manifest.contracts`, and owns local helpers
    for what `to_dict` / `as_service_context` did.
@@ -93,27 +94,24 @@ series. Pinned in generate by
   carries the canonical type (same rule as generate's `to_dict`,
   `specs/manifest.py:854-860`).
 
-### 4.2 srm/v1 top-level `query:`
+### 4.2 srm/v1 top-level `query:` stays unsupported (revised 2026-10-24)
 
-`_extract_indicator_query(config)` (`parser/v1.py:196`) becomes the one reader
-for both spellings: `indicator.query` if present, else a top-level `query`
-string; empty or non-string values are absent, as today. It feeds
-`_parse_slos`, `_infer_slo_type` (`:241`) and — so a migrated manifest does not
-lose what a parsed one keeps — `v1_compat._v1_slo_to_openslo`
-(`v1_compat.py:352-353`).
+**Top-level `query:` on an srm/v1 SLO stays unsupported, per opensrm-0i5h
+(nthlayer-common 0fb5096); common reads `indicator.query` only
+(`parser/v1.py:196-213`), and `convert_v1_to_v2` is unchanged.** (Rob,
+2026-10-24, replacing this document's first proposal to read it.)
 
-opensrm-0i5h removed the top-level read on the grounds that it was "not in any
-spec or example". It is in one: nthlayer-generate's
-`examples/uat/payment-api.reliability.yaml:23,35`, which generate's own parser
-reads (`specs/opensrm_parser.py:237`). Its docstring is corrected to say so.
-
-**Ruling: `indicator.query` plus a different top-level `query` is an `OpenSRMParseError`, not a precedence rule. Cost if wrong: such a manifest (none exists today) stops loading.**
-
-Either precedence would silently discard a query the author wrote.
+The one manifest using it, generate's
+`examples/uat/payment-api.reliability.yaml:23,35`, is rewritten to
+`indicator: {query: ...}` with the PromQL text unchanged. generate's current
+parser reads **only** the top-level form (`specs/opensrm_parser.py:237`), so the
+rewrite is not output-neutral before the switch: it lands in the switch commit
+(plan Task 11), where common's parser reads the nested form, and the example's
+goldens must come out unchanged (§6.3 G6).
 
 ### 4.3 Release
 
-Minor (5.4.0): one additive field, one parser that accepts strictly more. Notes
+Minor (5.4.0): one additive field. Notes
 in `docs/architecture.md`'s manifest section. No upgrading guide (nothing a
 consumer must change).
 
@@ -278,7 +276,7 @@ approves the actual list against this one; anything unpredicted is a finding.
 | G3 | `TargetConventionWarning` in the load record | ai-gate (2), api-critical, stream, worker |
 | G4 | new contract warning; `validate --strict` exit 0 → 1 | ai-gate |
 | G5 | legacy `Dependencies.spec.services` now read: new dependencies in alerts, docs, topology, simulate, policies, dashboards, migrate output, validate ("critical dependency has no contract") | analytics-pipeline, auth-api, mobile-api, payment-api, payment-api-with-deps, search-api |
-| G6 | **none** — top-level `query:` carried by common 5.4.0 | uat/payment-api.reliability.yaml |
+| G6 | **none** in any golden — the example file itself changes (top-level `query:` → `indicator.query`, §4.2); a changed golden means a query was lost | uat/payment-api.reliability.yaml |
 | G7 | newly load; every cell new | v2 spec examples |
 | G8 | none expected | the other srm/v1 and legacy cells |
 
@@ -291,10 +289,7 @@ under both loaders today). If any appears, it is listed separately.
   `background-job`, `pipeline` — common's `SERVICE_TYPE_ALIASES`, the
   documented input conveniences) and an extension type
   (`opensrm/spec/v2/examples/x-service-type.yaml`); survives
-  `dataclasses.replace`. Top-level `query` with the SLO block copied verbatim
-  from generate's `examples/uat/payment-api.reliability.yaml` (provenance
-  comment with path and commit); both-keys-agree, both-keys-differ; migration
-  carries it.
+  `dataclasses.replace`.
 - **generate:** the goldens; the judgment port against the ai-gate example
   and `opensrm/spec/v2/examples/judgment-thresholds/{all-five-types,calibration-both-bounds,feedback-latency-p50-only}.yaml`;
   z3ab tests ported to common's model; every test that hand-builds generate's
