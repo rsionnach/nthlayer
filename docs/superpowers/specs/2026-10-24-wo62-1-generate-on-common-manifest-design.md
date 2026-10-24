@@ -289,6 +289,22 @@ G7) rather than to every loadable golden.
 Newly failing manifests predicted: **none** (all 27 load or fail identically
 under both loaders today). If any appears, it is listed separately.
 
+**Undetectable by goldens.** Two divergences from §3 cannot show up in any
+golden, because nothing in the corpus exercises them. The absence of a golden
+change for them is not evidence that they were handled correctly:
+
+- **D6 `authored_type`** — the `${type}` substitution in
+  `generators/sloth.py:264`. No corpus query uses `${type}`, so substituting
+  `manifest.type` instead leaves every golden green. Task 7's kill check
+  confirms this.
+- **D3 alerting** — the use-site parse at `slos/pipeline.py`,
+  `generators/alerts.py` and `cli/alerts.py`, plus the no-longer-at-load
+  behaviour in docs and backstage. No corpus manifest has an `alerting:` block.
+
+Both are covered instead by unit tests whose expected values are built from
+the spec, the schema or the documented format, never from the code (plan,
+Tasks 8 and 11).
+
 ## 7. Testing
 
 - **common:** `authored_type` across v1, v2 and legacy for an alias (`web`,
