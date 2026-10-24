@@ -275,9 +275,9 @@ approves the actual list against this one; anything unpredicted is a finding.
 | G2 | `calibration`, `feedback_latency` leave `slos`: gone from Backstage, docs (README table, ai-gate API "Judgment SLOs"), dashboard, sloth, pipeline budgets; **recording rules unchanged** | ai-gate |
 | G3 | `TargetConventionWarning` in the load record | ai-gate (2), api-critical, stream, worker |
 | G4 | new contract warning; `validate --strict` exit 0 → 1 | ai-gate |
-| G5 | legacy `Dependencies.spec.services` now read: new dependencies in alerts, docs, topology, simulate, policies, dashboards, migrate output, validate ("critical dependency has no contract") | analytics-pipeline, auth-api, mobile-api, payment-api, payment-api-with-deps, search-api |
+| G5 | legacy `Dependencies.spec.services` now read: new dependencies in alerts, docs, topology, simulate, policies, dashboards, migrate output. **Not** `validate` (corrected 2026-10-24): `validate` routes a legacy file to `parse_service_file`, which runs no dependency or contract check, before and after the switch (§5.2, "validator"). The new critical-dependency warning appears only where `validate_dependency_expectations` runs directly (Task 8 test) | analytics-pipeline, auth-api, mobile-api, payment-api, payment-api-with-deps, search-api |
 | G6 | **none** in any golden — the example file itself changes (top-level `query:` → `indicator.query`, §4.2); a changed golden means a query was lost | uat/payment-api.reliability.yaml |
-| G7 | newly load; every cell new | v2 spec examples |
+| G7 | routed to common's v2 parser; which ones load is listed in Task 13, and every cell is new for those that do. Not all will load (revised 2026-10-24). Failure classes found while writing Task 8: a missing `$ref` target (`services/api.yaml`, `service-manifest-full.yaml`), a judgment SLO without `metadata.name` (`services/ai-gate.yaml`), and an `slo_type` that cannot be inferred from an OpenSLO document (`services/stream.yaml`, `services/worker.yaml`) | v2 spec examples |
 | G8 | none expected | the other srm/v1 and legacy cells |
 | G9 | load record `source_format` `"opensrm"` → `"srm_v1"` (common's `SourceFormat.SRM_V1`; generate's `SourceFormat.OPENSRM` value was `"opensrm"`). Legacy stays `"legacy"` (same value in both); v2 files record `"opensrm_v2"` as part of G7 | every loadable srm/v1 load golden (all 7) |
 
