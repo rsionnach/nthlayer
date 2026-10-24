@@ -279,6 +279,12 @@ approves the actual list against this one; anything unpredicted is a finding.
 | G6 | **none** in any golden — the example file itself changes (top-level `query:` → `indicator.query`, §4.2); a changed golden means a query was lost | uat/payment-api.reliability.yaml |
 | G7 | newly load; every cell new | v2 spec examples |
 | G8 | none expected | the other srm/v1 and legacy cells |
+| G9 | load record `source_format` `"opensrm"` → `"srm_v1"` (common's `SourceFormat.SRM_V1`; generate's `SourceFormat.OPENSRM` value was `"opensrm"`). Legacy stays `"legacy"` (same value in both); v2 files record `"opensrm_v2"` as part of G7 | every loadable srm/v1 load golden (all 7) |
+
+The load record carries `judgment_thresholds` only when the loaded manifest
+has a non-empty one, so the switch adds that key only to manifests that
+declare thresholds (ai-gate, and the v2 judgment-thresholds examples under
+G7) rather than to every loadable golden.
 
 Newly failing manifests predicted: **none** (all 27 load or fail identically
 under both loaders today). If any appears, it is listed separately.
