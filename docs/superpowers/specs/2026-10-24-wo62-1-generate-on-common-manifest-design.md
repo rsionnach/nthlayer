@@ -272,7 +272,7 @@ approves the actual list against this one; anything unpredicted is a finding.
 | # | Change | Manifests |
 |---|---|---|
 | G1 | `slo_type` `None` → inferred: Backstage `sloType`, docs Type column, dashboard indicator type; sloth SLI branch where the name was not an exact type (e.g. `latency-p95` → latency branch) | all 6 `examples/opensrm`; legacy analytics-pipeline, auth-api, checkout-service, identity-service, mobile-api, notification-worker |
-| G2 | `calibration`, `feedback_latency` leave `slos`: gone from Backstage, docs (README table, ai-gate API "Judgment SLOs"), dashboard, sloth, pipeline budgets; **recording rules unchanged** | ai-gate |
+| G2 | `calibration`, `feedback_latency` leave `slos`: gone from Backstage, docs (README table, ai-gate API "Judgment SLOs"), dashboard, sloth, pipeline budgets, and the `alerts evaluate` / `alerts show` CLI cells (their budgets and rule lists; added 2026-10-26 at Checkpoint C); **recording rules unchanged** | ai-gate |
 | G3 | `TargetConventionWarning` in the load record | ai-gate (2), api-critical, stream, worker |
 | G4 | new contract warning; `validate --strict` exit 0 → 1 | ai-gate |
 | G5 | legacy `Dependencies.spec.services` now read: new dependencies in alerts, docs, topology, simulate, policies, dashboards, migrate output. **Not** `validate` (corrected 2026-10-24): `validate` routes a legacy file to `parse_service_file`, which runs no dependency or contract check, before and after the switch (§5.2, "validator"). The new critical-dependency warning appears only where `validate_dependency_expectations` runs directly (Task 8 test) | analytics-pipeline, auth-api, mobile-api, payment-api, payment-api-with-deps, search-api |
