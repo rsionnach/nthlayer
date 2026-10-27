@@ -96,7 +96,15 @@ other.
 New module `generators/judgment_threshold_alerts.py`. It turns a
 `ReliabilityManifest` into a `list[AlertRule]`.
 `generate_alerts_from_manifest` appends its output after tier filtering
-(Q2). The output appears in the `alerts` and `cli_alerts_*` golden cells.
+(Q2). The output appears in the `alerts` golden cell. The `cli_alerts_*`
+commands render the alerting config and call neither generator.
+
+`nthlayer generate alerts` and plan/apply still use the legacy
+`generate_alerts_for_service` path, so they emit no threshold alerts until
+opensrm-wo62.4 routes them through common.
+
+The `for:` durations are fixed (Rob, Checkpoint C): the manifest's
+`alerting.for_duration` overrides apply to dependency templates only.
 
 For each declared bound with a rule, given its record `R`, label selector `{service="S", …}` and comparison value `B`:
 
@@ -154,7 +162,7 @@ bound:
 | Cell | Change |
 |---|---|
 | `recording_rules` | `all-five-types` gains brier + p50_30d + p90_30d; `calibration-both-bounds` gains brier; `single-bounds` gains p90_30d; `feedback-latency-p50-only` and the srm/v1 example gain p50_30d |
-| `alerts`, `cli_alerts_*` | new alerts for the same files |
+| `alerts` | new alerts for the same files |
 | `docs`, `cli_docs` | new section for the five threshold fixtures and the srm/v1 example |
 | everything else | no change |
 
