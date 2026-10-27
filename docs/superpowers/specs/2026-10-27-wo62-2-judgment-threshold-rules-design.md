@@ -64,8 +64,11 @@ it with `bins` and `window`).
 
 ## 4. Recording rules (Checkpoint B)
 
-Group `<name>_judgment_metrics`, ordered as today: judgment SLOs, then
-thresholds in manifest order. Existing rules stay byte-identical.
+Group `<name>_judgment_metrics` (30s), ordered as today: judgment SLOs, then
+thresholds in manifest order. Existing rules stay byte-identical. The `_30d`
+rules go in a separate group, `<name>_judgment_thresholds_30d`, at
+`interval: 5m` (Rob, Checkpoint B), so the 30-day range query does not run
+every 30s.
 
 | Type | Bound declared | Rules emitted | Change |
 |---|---|---|---|
