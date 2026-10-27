@@ -175,3 +175,30 @@ checkpoint's diff (`handoffs/…-wo62-2-checkpoint-{B,C,D}-golden-diff.md`).
 - Rules for segments / stability / audit_backlog (needs a series contract first).
 - Legacy-format segments / stability / audit_backlog (opensrm-1l6f).
 - Duplicate rules from duplicate entries (pre-existing).
+
+## 9. R5 correction (Rob, 2026-10-27: option A)
+
+The R5 correctness pass found a flaw in §3 Q1. `histogram_quantile`
+reports a quantile that falls in the +Inf bucket as the highest finite `le`.
+So whenever the bound is at or above the top bucket, a real breach reads as
+within bounds, and neither alert fires. common's `ThresholdSeries` and
+workers' sampler avoid `histogram_quantile` for exactly this reason. The
+earlier claim in §3 that the rule used "the same query shape workers'
+sampler uses" was wrong.
+
+Replacement: the 30-day rules record the fraction of ground truth that
+arrived within the bound:
+
+- `ai_gate:feedback_latency:p50_within_bound_30d` and `…p90_within_bound_30d`
+  = `sum(increase(…_bucket{service="S",le="B"}[30d])) / sum(increase(…_count{service="S"}[30d]))`,
+  with labels `service`, `target=B` (seconds), `quantile`, `slo`.
+- Breach: `R{…} < q`. pq > B exactly when fewer than q of the arrivals fall
+  within B. A latency equal to B is counted in `le="B"`, so it is within
+  bounds (E1).
+- NotEvaluable is unchanged. It fires when there is no `le="B"` bucket
+  (absent series) or no arrivals (0/0 = NaN). This needs a histogram bucket
+  at exactly the bound, the same assumption the existing `:bucket` rule
+  makes.
+
+The group and interval are unchanged (`<name>_judgment_thresholds_30d`, 5m).
+The alert names are unchanged.
