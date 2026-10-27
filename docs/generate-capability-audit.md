@@ -95,6 +95,8 @@ For each capability:
 | Grafana provider | `providers/grafana.py` | Dashboard push (generate concern). |
 | Provider base/CLI | `providers/base.py`, `providers/cli.py`, `providers/__main__.py` | Provider infrastructure for generate's artifact push. |
 
+> **Note (2026-10-27, opensrm-wo62.1):** `specs/opensrm_parser.py`, `specs/loader.py` and `specs/manifest.py` above are historical locations. They were removed in nthlayer-generate 3.0.0, which reads manifests via `nthlayer_common.manifest` instead.
+
 ### B. MOVE to observe — Gate (Deploy-Time Decisions Using Runtime State)
 
 Deployment gates are deterministic runtime decisions (threshold checks, freeze periods, budget math), not agentic judgment. All gate infrastructure moves to `nthlayer-observe/gate/`. See `NTHLAYER-OBSERVE-SPEC.md` for the architectural rationale.
