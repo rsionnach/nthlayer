@@ -127,3 +127,79 @@ Other gaps:
 - Correction to the plan: 4.2 (pins) does not depend on 4.1. It pins today's
   legacy behaviour. The dependencies are .3/.4/.5 → .1 and .2, and .6 → .3,
   .4 and .5.
+
+## Rulings (Rob, 2026-10-28), from wo62.4.3's golden review and gates
+
+wo62.4.3's first golden diff showed three more legacy-loader parity gaps.
+Following the cross-repo rule, they were split into a common child,
+**wo62.4.7**, which was gated and released as nthlayer-common 5.7.0 before
+wo62.4.3 resumed.
+
+- **R1 — latency threshold.** `SLODefinition` gains `threshold_ms`. The
+  legacy loader reads three keys, in this order:
+  1. `spec.indicator.threshold_ms`
+  2. `spec.threshold_ms`
+  3. `spec.latency_threshold`
+
+  generate's own legacy code disagreed on which key to use:
+  - sloth read only the first key;
+  - recording rules read only the third, which no corpus file uses, so they
+    always got 500 ms;
+  - `nthlayer setup` writes the second.
+
+  Without the field, generate's manifest path used the 0–100 objective as
+  the bound, so "99% under 500ms" became `> 0.099`. A value that is not a
+  number, not finite, or not positive is a `ManifestLoadError`.
+- **R2 — cache/queue technology.** A legacy cache's or queue's `type:` is
+  stored in `Dependency.database_type`, as a database's already was. The
+  name is kept and the field redocumented as the dependency's technology;
+  `database_type` is an NthLayer extension, not part of the spec.
+- **R3 — alias.** `stream-processor → stream` goes into
+  `SERVICE_TYPE_ALIASES` and applies to every format, alongside
+  `background-job` and `pipeline`.
+- **R4 (mid-gate, wo62.4.7 edge-cases).** An environment overlay that
+  declares any threshold key first removes the base's threshold keys.
+  - Without this, the deep merge kept both values and R1's order picked the
+    base one: payment-api with `--env prod` got 500 where the overlay said
+    300.
+  - This departs from generate's merger, which lost the overlay value too.
+- **Golden diff for wo62.4.3 approved.** 255 goldens changed and 23 are new:
+  analytics-stream now loads, so it joins every library and CLI cell.
+  - No cell moves from success to failure.
+  - srm/v1 and v2 files that the legacy parser rejected now generate.
+  - Recording rules follow the declared `indicator.type`, not the SLO's
+    name, and use the declared bound.
+  - Alert, loki and dashboard content follows the single dependency rule
+    set (D5). An untyped `redpanda` queue defaults to kafka; Redpanda speaks
+    the Kafka protocol.
+  - email-worker's override with no objective is dropped.
+  - Any manifest that starts to load adds new goldens. A golden review has
+    to include untracked files, not just `git diff`.
+- **Untemplated technology (mid-gate, wo62.4.3 edge-cases).** If a cache or
+  queue has a technology with no dashboard template, generate-dashboard
+  leaves it out with a warning instead of failing the whole dashboard, as
+  alerts already did. notification-service and `opensrm/worker.reliability`,
+  whose sqs queues have no template, now get a dashboard. Legacy failed on
+  both.
+- **Recording-rule formatting (mid-gate, wo62.4.3 edge-cases).**
+  - `le` is written with `prometheus_le` (Go `%g`).
+  - The `threshold` label uses `%g`, so it reads `500ms` as the legacy
+    builder wrote it.
+- **Pre-flight override (wo62.4.3 gate).** eco-doctor reported `STALE` for
+  generate's main checkout. That checkout's lock pinned common 5.6.0, and
+  the floor bump was the branch under review, so it could not clear before
+  merge.
+  - The gated worktree had no range finding and resolved common 5.7.0.
+  - The gate ran, and the override is recorded in
+    `.claude/r5-state-wo62-4-3-completed.json`.
+- **Follow-ups filed:**
+  - **wo62.4.8:** plural `indicators:` lists and `message_queues:`, which
+    neither common nor the legacy builders read.
+  - **wo62.4.9:** `migrate` drops `threshold_ms`.
+  - **wo62.4.10:** common raises a bare `AttributeError` on a malformed
+    resource spec. generate's CLIs catch it at their boundary until it is
+    fixed.
+
+Shipped: nthlayer-common 5.7.0 (rsionnach/nthlayer-common#111). Floor bumps:
+core#29, bench#28, workers#30 and adapter#27. generate is
+rsionnach/nthlayer-generate#54.
