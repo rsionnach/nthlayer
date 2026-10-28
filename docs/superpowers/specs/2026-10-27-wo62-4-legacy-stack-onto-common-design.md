@@ -114,8 +114,16 @@ Other gaps:
 - D1: environment overlays go in common's loader.
 - D2: template expansion moves into common.
 - D5: common's single dependency rule set wins.
-- D3, D4, D6, D7: my recommendations stand as defaults. Rob can object on the
-  design PR.
+- D3, D4: shipped as recommended in nthlayer-common 5.6.0 (wo62.4.1). D3 became
+  an exact port of generate's two `${var}` passes (an environment pass before
+  template lookup, then a per-spec pass), after the edge-cases review found that
+  one pass broke parity.
+- D6 (Rob, 2026-10-28): delete the unwired `dependencies` and `dashboard-validate`
+  commands in wo62.4.6 rather than migrate them; fix ownership's
+  `context.owner` (always None) during the wo62.4.4 move.
+- D7 (Rob, 2026-10-28): diff-envs / validate-env compare the two merged
+  manifests that common's overlays produce (field-level differences). The
+  wo62.4.2 goldens for these commands are expected to change in wo62.4.4.
 - Correction to the plan: 4.2 (pins) does not depend on 4.1. It pins today's
   legacy behaviour. The dependencies are .3/.4/.5 → .1 and .2, and .6 → .3,
   .4 and .5.
