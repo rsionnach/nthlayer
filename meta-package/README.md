@@ -47,4 +47,4 @@ See https://github.com/rsionnach/nthlayer for the project front door, architectu
 
 ## Licence
 
-MIT.
+Apache 2.0. See [LICENSE](LICENSE).
