@@ -8,7 +8,7 @@
 
 **An open-source reliability platform for SREs.** NthLayer compiles your service reliability requirements — SLOs, alerts, dashboards, deployment gates, dependency graphs — into observable production infrastructure, then runs an autonomous reliability runtime that observes those services, judges their health, correlates incidents, responds to breaches, and learns from outcomes. Built on the [OpenSRM specification][opensrm].
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status: v1.5 in development](https://img.shields.io/badge/Status-v1.5%20in%20development-orange.svg)](#current-status)
 
 This repository is the **project front door + ecosystem hub**. Implementation lives in the per-tier ecosystem repos described below; ecosystem-spanning artefacts (integration tests, demo materials, specifications, design docs, the GitHub Action, and the PyPI meta-package) live here.
@@ -62,7 +62,7 @@ The runtime tiers (`nthlayer-core`, `nthlayer-workers`, `nthlayer-bench`) are im
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
 
 [opensrm]: https://github.com/rsionnach/opensrm
 [common]: https://github.com/rsionnach/nthlayer-common
