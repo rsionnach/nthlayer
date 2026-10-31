@@ -33,7 +33,7 @@ classifiers = [
 ]
 dependencies = [
     "nthlayer-core==1.6.0",
-    "nthlayer-workers==1.6.0",
+    "nthlayer-workers==2.0.1",
     "nthlayer-bench==1.6.0",
     "nthlayer-generate==1.1.0",
 ]
