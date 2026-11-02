@@ -152,6 +152,8 @@ examples, generator-specific scripts.
       `SIBLING-MISSING`, `PARSE-ERROR`
     - currency, logged only (`--fetch`) — `BEHIND`, `FETCH-FAILED`,
       `NO-UPSTREAM`
+  - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
+    hold a tier below its newest in-range release [opensrm-z1kq].
 - `demo/` — runnable cascading-failure scenario, `demo.sh`
   orchestrator, example OpenSRM specifications.
 - `.github/workflows/`:
@@ -160,6 +162,8 @@ examples, generator-specific scripts.
     (opensrm-0buj); `ruff check` over the same three directories
     (opensrm-u5dw.1); and the `test_eco_doctor.sh` regression suite
     (opensrm-8hn3).
+  - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
+    PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
     the published nthlayer-generate and nthlayer-workers, nightly and
     on PRs (opensrm-h0at).
@@ -288,8 +292,10 @@ repo (each has its own CLAUDE.md describing its conventions).
   current when the range was last set, ceiling = the next major
   (opensrm-z1kq, ruling 2026-11-02). Patch and minor releases flow to
   `pip install nthlayer` without a meta release; a new major of any
-  tier needs one. `nthlayer-common` is a transitive dep. `ci.yml`
-  checks the four ranges co-resolve. (Exact pins, the earlier policy,
+  tier needs one. `nthlayer-common` is a transitive dep.
+  `scripts/meta-resolve-check.sh` (nightly, `meta-resolve.yml`) fails
+  when a tier would be installed below its newest in-range release.
+  (Exact pins, the earlier policy,
   left 1.0.2 installing core/workers/bench 1.6.0.)
 - **Tag namespace:** `meta-v*` (e.g. `meta-v1.0.0`). Separate from
   legacy `v0.1.0a*` and from sub-package tags.

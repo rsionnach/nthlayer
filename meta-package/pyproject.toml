@@ -28,6 +28,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Monitoring",
     "Topic :: System :: Systems Administration",
 ]
@@ -36,7 +37,8 @@ classifiers = [
 # ceiling the next major. Patch and minor releases reach `pip install nthlayer`
 # without a meta release; a major needs one, deliberately, since it can break
 # the other tiers. Exact pins went stale for majors at a time (1.0.2 still
-# installed core/workers/bench 1.6.0). CI checks the four ranges co-resolve.
+# installed core/workers/bench 1.6.0). scripts/meta-resolve-check.sh, run
+# nightly, fails if a tier would be installed below its newest in-range release.
 dependencies = [
     "nthlayer-core>=4.0.10,<5",
     "nthlayer-workers>=4.0.2,<5",
