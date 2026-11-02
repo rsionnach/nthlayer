@@ -38,7 +38,8 @@ budget, 0 spent, negative overspent. Labels: `service`, `slo` (the SLO name),
 `objective`. Its name and labels are owned by nthlayer-common's
 `ERROR_BUDGET_REMAINING` (`manifest/slo_series.py`); generate writes it, and
 workers' measure, correlate and drift read it (opensrm-h0at).
-`test/test_error_budget_seam.py` checks the writer and the readers agree.
+`test/test_error_budget_seam.py` checks generate and measure agree (correlate
+and drift build their selectors from the same constant).
 
 ### Alert Inputs
 
