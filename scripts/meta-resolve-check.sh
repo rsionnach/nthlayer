@@ -14,8 +14,9 @@
 # Needs uv. Resolves against PyPI, so a PyPI outage also fails it; read the
 # output before treating a red run as a regression.
 #
-# Exit codes: 0 every tier at its newest in-range release · 1 a tier held back
-# or the ranges do not co-resolve.
+# Exit codes: 0 every tier at its newest in-range release; non-zero otherwise
+# (a tier held back or unresolvable, no requirements read, or uv itself
+# failing, e.g. the four ranges do not co-resolve or PyPI is unreachable).
 
 set -euo pipefail
 
@@ -30,6 +31,11 @@ for d in tomllib.load(open("meta-package/pyproject.toml", "rb"))["project"]["dep
     print(d)
 ')
 
+if [ -z "$reqs" ]; then
+    echo "no dependencies read from meta-package/pyproject.toml" >&2
+    exit 1
+fi
+
 together=$("${COMPILE[@]}" meta-package/pyproject.toml)
 
 fail=0
@@ -38,8 +44,11 @@ while IFS= read -r req; do
     name=${req%%[<>=!~ ]*}
     alone=$(printf '%s\n' "$req" | "${COMPILE[@]}" - | grep -E "^${name}==" || true)
     with=$(printf '%s\n' "$together" | grep -E "^${name}==" || true)
-    if [ -z "$alone" ] || [ "$alone" != "$with" ]; then
-        echo "HELD BACK  $name: newest in range ${alone:-?}, installed together ${with:-?}"
+    if [ -z "$alone" ] || [ -z "$with" ]; then
+        echo "UNRESOLVED $name: alone ${alone:-none}, together ${with:-none} (unsatisfiable, or a name uv spells differently)"
+        fail=1
+    elif [ "$alone" != "$with" ]; then
+        echo "HELD BACK  $name: newest in range $alone, installed together $with"
         fail=1
     else
         echo "ok         $with"
