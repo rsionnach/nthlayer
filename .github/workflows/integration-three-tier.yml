@@ -57,33 +57,33 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout front-door (test harness lives here)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: nthlayer
 
       - name: Checkout nthlayer-common
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: rsionnach/nthlayer-common
           path: nthlayer-common
           ref: main
 
       - name: Checkout nthlayer-core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: rsionnach/nthlayer-core
           path: nthlayer-core
           ref: main
 
       - name: Checkout nthlayer-workers
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: rsionnach/nthlayer-workers
           path: nthlayer-workers
           ref: main
 
       - name: Checkout nthlayer-bench
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: rsionnach/nthlayer-bench
           path: nthlayer-bench
