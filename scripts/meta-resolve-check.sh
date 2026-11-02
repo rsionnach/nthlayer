@@ -11,7 +11,7 @@
 # fails when any tier is held back.
 #
 # It also fails when a tier's newest release is OUTSIDE its range (a new
-# major): the ranges then need raising and a meta release cut. Exact pins went
+# major, say): the ranges then need raising and a meta release cut. Exact pins went
 # stale that way for majors at a time (opensrm-z1kq), and nothing noticed.
 #
 # Usage, from the front-door repo root: scripts/meta-resolve-check.sh
@@ -53,7 +53,7 @@ while IFS= read -r req; do
         echo "UNRESOLVED $name: alone ${alone:-none}, together ${with:-none} (unsatisfiable, or a name uv spells differently)"
         fail=1
     elif [ "$newest" != "$alone" ]; then
-        echo "NEW MAJOR  $name: newest release ${newest:-none} is outside the range; raise it and release the meta-package"
+        echo "OUT OF RANGE $name: newest release ${newest:-none} is outside the range; raise it and release the meta-package"
         fail=1
     elif [ "$alone" != "$with" ]; then
         echo "HELD BACK  $name: newest in range $alone, installed together $with"
