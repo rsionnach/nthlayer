@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.3](https://github.com/rsionnach/nthlayer/compare/meta-vv1.0.2...meta-vv1.0.3) (2026-11-02)
+
+
+### Bug Fixes
+
+* **meta:** depend on compatible ranges, not stale exact pins (opensrm-z1kq) ([c13eb48](https://github.com/rsionnach/nthlayer/commit/c13eb48fc75f0f5b8c073b62ad88f2a0c3e198f4))
+* **meta:** depend on compatible ranges, not stale exact pins (opensrm-z1kq) ([adfc87a](https://github.com/rsionnach/nthlayer/commit/adfc87a9aee3e3261897a778e46e3151f93e29a4))
+
+
+### Documentation
+
+* the meta resolve check also flags out-of-range releases · opensrm-z1kq ([4e3a11b](https://github.com/rsionnach/nthlayer/commit/4e3a11b11ce1b402137338f4b47f02f5fc3b84ea))
+
 ## [1.0.2](https://github.com/rsionnach/nthlayer/compare/meta-vv1.0.1...meta-vv1.0.2) (2026-10-31)
 
 
