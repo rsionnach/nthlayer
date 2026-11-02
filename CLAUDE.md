@@ -317,11 +317,13 @@ repos does not apply here. `release.yml` goes straight from
 `twine check` to PyPI trusted-publishing.
 
 **Dependabot** (`.github/dependabot.yml`): declares the `uv` ecosystem
-pointing at `/meta-package` (where `pyproject.toml` and `uv.lock`
-live) on a Monday-morning Europe/Dublin schedule. Sibling `nthlayer-*`
-packages grouped into a single weekly PR. **No `github-actions`
-ecosystem entry** for the front-door workflows because those workflows
-pin to `main` by convention. Auto-merge policy in
+pointing at `/meta-package` (`pyproject.toml` only; there is no
+lockfile) on a Monday-morning Europe/Dublin schedule, with
+`versioning-strategy: increase-if-necessary`. Since the tiers are
+compatible ranges, patch and minor releases reach installs without a
+PR; dependabot opens one only for a new major, grouped across
+`nthlayer-*` (opensrm-z1kq). A `github-actions` entry covers the
+workflows' action versions. Auto-merge policy in
 `.github/workflows/dependabot-automerge.yml`: external patch and dev
 patch/minor auto-merge; sibling packages and any major bump require
 review.

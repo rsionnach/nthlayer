@@ -19,18 +19,16 @@ updates:
       timezone: Europe/Dublin
     labels:
       - dependencies
+    # With ranges and no lockfile, patch and minor releases need no PR (they
+    # are already in range), so the only PRs are majors. Grouped, so tiers
+    # moving majors together arrive as one review. The meta-package has no
+    # dev dependencies, so it has no dev group.
     groups:
       nthlayer-ecosystem:
         patterns:
           - "nthlayer-*"
         update-types:
-          - "patch"
-          - "minor"
-      dev-dependencies:
-        dependency-type: development
-        update-types:
-          - "patch"
-          - "minor"
+          - "major"
     open-pull-requests-limit: 10
 
   - package-ecosystem: github-actions
