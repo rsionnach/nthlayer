@@ -14,8 +14,8 @@ name: CI
 #   - python-lint  (this workflow): ruff check on the 5 root helpers (opensrm-u5dw.1).
 #   - .github/workflows/error-budget-seam.yml: generate's error-budget rules vs
 #     measure's queries over real manifests (opensrm-h0at); nightly + PR.
-#   - .github/workflows/meta-resolve.yml: no meta-package tier is held back
-#     below its newest in-range release (opensrm-z1kq); nightly + PR.
+#   - .github/workflows/meta-resolve.yml: every meta-package tier at its newest
+#     release, and that release in range (opensrm-z1kq); nightly + PR.
 #   - .github/workflows/docs.yml: mkdocs build --strict on docs-site/.
 #   - .github/workflows/demo-paths.yml: cmd_start path-resolution test (opensrm-oey5).
 #   - .github/workflows/integration-three-tier.yml: nightly cross-repo smoke.

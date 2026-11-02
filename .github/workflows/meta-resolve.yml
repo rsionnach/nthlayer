@@ -3,8 +3,9 @@ name: meta-resolve
 # opensrm-z1kq: the meta-package depends on one compatible range per tier.
 # scripts/meta-resolve-check.sh fails when `pip install nthlayer` would hold
 # a tier below its newest in-range release (a resolver falls back quietly when
-# tiers disagree, e.g. on nthlayer-common), or when the ranges do not
-# co-resolve. Nightly as well as on PRs, because what breaks it is a tier
+# tiers disagree, e.g. on nthlayer-common), when a tier's newest release is
+# outside its range (time to raise it and cut a meta release), or when the
+# ranges do not co-resolve. Nightly as well as on PRs, because what breaks it is a tier
 # release, not a front-door change. Resolves against PyPI.
 
 on:

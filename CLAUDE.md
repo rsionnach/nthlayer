@@ -153,7 +153,8 @@ examples, generator-specific scripts.
     - currency, logged only (`--fetch`) — `BEHIND`, `FETCH-FAILED`,
       `NO-UPSTREAM`
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
-    hold a tier below its newest in-range release [opensrm-z1kq].
+    hold a tier below its newest in-range release, or a tier's newest
+    release is outside its range [opensrm-z1kq].
 - `demo/` — runnable cascading-failure scenario, `demo.sh`
   orchestrator, example OpenSRM specifications.
 - `.github/workflows/`:
@@ -294,7 +295,9 @@ repo (each has its own CLAUDE.md describing its conventions).
   `pip install nthlayer` without a meta release; a new major of any
   tier needs one. `nthlayer-common` is a transitive dep.
   `scripts/meta-resolve-check.sh` (nightly, `meta-resolve.yml`) fails
-  when a tier would be installed below its newest in-range release.
+  when a tier would be installed below its newest in-range release, or
+  when its newest release is outside the range (raise it, cut a meta
+  release).
   (Exact pins, the earlier policy,
   left 1.0.2 installing core/workers/bench 1.6.0.)
 - **Tag namespace:** `meta-v*` (e.g. `meta-v1.0.0`). Separate from
