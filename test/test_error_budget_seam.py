@@ -55,7 +55,7 @@ EXPECTED_REJECTED = {
     "opensrm/spec/v2/examples/judgment-slos/05-escalation.yaml": _TEMPLATE,
     "opensrm/spec/v2/examples/judgment-thresholds/ai-gate-template.yaml": _TEMPLATE,
     "opensrm/spec/v2/examples/service-manifest-template.yaml": _TEMPLATE,
-    "opensrm/spec/v2/examples/template-extension.yaml": "extends a template not in the corpus",
+    "opensrm/spec/v2/examples/template-extension.yaml": "opensrm-moq0",
     "opensrm/spec/v2/examples/minimal.yaml": "opensrm-ta0m",
     "opensrm/spec/v2/examples/x-service-type.yaml": "opensrm-ta0m",
     "opensrm/spec/v2/examples/services/ai-gate-without-judgment-slos.yaml": "opensrm-ta0m",
