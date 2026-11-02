@@ -284,12 +284,13 @@ repo (each has its own CLAUDE.md describing its conventions).
   dev. For production, install individual tiers.
 - **Content:** dependency-only (`packages = []`); no Python modules,
   no console scripts.
-- **Pinning:** each release pins all four sub-packages at explicit
-  versions; they are not guaranteed to match. `nthlayer-generate`
-  follows its own versioning baseline (currently `==1.1.0`);
-  `nthlayer-core`, `nthlayer-workers`, and `nthlayer-bench` are
-  aligned (currently `==1.6.0`). `nthlayer-common` is a transitive
-  dep.
+- **Pinning:** compatible ranges, one per tier: floor = the release
+  current when the range was last set, ceiling = the next major
+  (opensrm-z1kq, ruling 2026-11-02). Patch and minor releases flow to
+  `pip install nthlayer` without a meta release; a new major of any
+  tier needs one. `nthlayer-common` is a transitive dep. `ci.yml`
+  checks the four ranges co-resolve. (Exact pins, the earlier policy,
+  left 1.0.2 installing core/workers/bench 1.6.0.)
 - **Tag namespace:** `meta-v*` (e.g. `meta-v1.0.0`). Separate from
   legacy `v0.1.0a*` and from sub-package tags.
 - **First release:** `meta-v1.0.0` — published;

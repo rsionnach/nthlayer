@@ -9,6 +9,9 @@ updates:
   # repo root has no Python source.
   - package-ecosystem: uv
     directory: /meta-package
+    # The tiers are compatible ranges (opensrm-z1kq): only touch one when a
+    # release falls outside it, i.e. a new major, which needs review.
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: weekly
       day: monday

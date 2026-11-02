@@ -64,3 +64,8 @@ jobs:
       # dedicated workflows (demo-paths, demo-start-lock) exist for tests that do.
       - name: eco-doctor regression test
         run: bash test/test_eco_doctor.sh
+
+      # opensrm-z1kq: the meta-package's tier ranges must co-install (each
+      # tier also constrains nthlayer-common). Resolves against PyPI.
+      - name: meta-package dependencies resolve
+        run: uv pip compile --python 3.11 meta-package/pyproject.toml

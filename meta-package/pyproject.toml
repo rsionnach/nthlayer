@@ -31,11 +31,17 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Topic :: System :: Systems Administration",
 ]
+# Compatible ranges, not exact pins (opensrm-z1kq, ruling 2026-11-02): each
+# tier's floor is the release current when the range was last set, and its
+# ceiling the next major. Patch and minor releases reach `pip install nthlayer`
+# without a meta release; a major needs one, deliberately, since it can break
+# the other tiers. Exact pins went stale for majors at a time (1.0.2 still
+# installed core/workers/bench 1.6.0). CI checks the four ranges co-resolve.
 dependencies = [
-    "nthlayer-core==1.6.0",
-    "nthlayer-workers==1.6.0",
-    "nthlayer-bench==1.6.0",
-    "nthlayer-generate==1.1.0",
+    "nthlayer-core>=4.0.10,<5",
+    "nthlayer-workers>=4.0.2,<5",
+    "nthlayer-bench>=1.7.17,<2",
+    "nthlayer-generate>=4.0.10,<5",
 ]
 
 [project.urls]
