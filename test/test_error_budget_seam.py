@@ -85,7 +85,8 @@ def _corpus() -> list[Path]:
 
 def _load(path: Path) -> ReliabilityManifest | None:
     """The manifest, or None if the loader rejects it (checked against
-    EXPECTED_REJECTED by the caller). Any other exception propagates."""
+    EXPECTED_REJECTED by the caller). Any other exception propagates to the
+    caller, which reports it against the file."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
@@ -113,7 +114,7 @@ def _read(path: Path, spec_dir: Path) -> set[str]:
         loaded = load_specs(spec_dir)
     # A manifest load_manifest accepted must not fail measure's load; one that
     # did would read as no SLOs, and with no budget written would pass unseen.
-    assert loaded.parse_failures == 0, "measure failed to load it"
+    assert loaded.parse_failures == 0, "measure failed to load it (its reason is in the captured log)"
     return {s.query for s in loaded.slos if s.query_kind == "error_budget"}
 
 
@@ -123,11 +124,11 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     problems: dict[str, object] = {}
     for i, path in enumerate(_corpus()):
         rel = str(path.relative_to(ROOT))
-        manifest = _load(path)
-        if manifest is None:
-            rejected.add(rel)
-            continue
         try:
+            manifest = _load(path)
+            if manifest is None:
+                rejected.add(rel)
+                continue
             # A directory per file: load_specs reads every manifest in its directory.
             written, read = _written(manifest), _read(path, tmp_path / str(i))
         except Exception as exc:  # name the file; a bare traceback does not
