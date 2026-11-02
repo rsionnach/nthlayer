@@ -1,7 +1,7 @@
 # Dependabot — dependency-bump automation. GitHub-native; no Mend.io
-# account required. Auto-merge for patch updates on external runtime
-# deps + patch/minor on dev deps is handled by
-# .github/workflows/dependabot-automerge.yml.
+# account required. Auto-merge rules live in
+# .github/workflows/dependabot-automerge.yml; nthlayer-* updates (the only
+# ones the uv entry below can raise) always need review.
 version: 2
 
 updates:

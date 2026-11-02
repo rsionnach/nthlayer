@@ -324,9 +324,10 @@ compatible ranges, patch and minor releases reach installs without a
 PR; dependabot opens one only for a new major, grouped across
 `nthlayer-*` (opensrm-z1kq). A `github-actions` entry covers the
 workflows' action versions. Auto-merge policy in
-`.github/workflows/dependabot-automerge.yml`: external patch and dev
-patch/minor auto-merge; sibling packages and any major bump require
-review.
+`.github/workflows/dependabot-automerge.yml`: sibling packages and any
+major bump require review, so the uv entry's PRs never auto-merge; its
+external-patch and dev patch/minor rules can only apply to other
+entries.
 
 `release-please.yml` mints a short-lived GitHub App token
 (`actions/create-github-app-token@v3`, App `nthlayer-release-bot`,
