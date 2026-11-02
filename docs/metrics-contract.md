@@ -21,7 +21,7 @@ These metrics are already OTel-aligned in generate templates.
 | `slo:requests_total:30d` | `sum(increase(http_requests_total{service="X"}[30d]))` | Availability denominator |
 | `slo:requests_success:30d` | `sum(increase(http_requests_total{service="X",status!~"5.."}[30d]))` | Availability numerator |
 | `slo:availability:ratio` | success / total | Availability SLO ratio |
-| `slo:error_budget_remaining:ratio` | `1 - ((1 - availability) / (1 - objective))` | Remaining error budget, signed (negative is overspent). Labels `service`, `slo`, `objective`. Name and labels are owned by nthlayer-common's `ERROR_BUDGET_REMAINING` (`manifest/slo_series.py`), which generate writes and measure, correlate and drift read (opensrm-h0at); `test/test_error_budget_seam.py` checks writer and readers agree |
+| `slo:error_budget_remaining:ratio` | `1 - ((1 - availability) / (1 - objective))` | Remaining error budget (signed; see note) |
 | `slo:latency_requests_total:30d` | `sum(increase(http_request_duration_seconds_count{...}[30d]))` | Latency denominator |
 | `slo:latency_requests_fast:30d` | `sum(increase(http_request_duration_seconds_bucket{...,le="0.5"}[30d]))` | Latency numerator (requests under threshold) |
 | `slo:latency:ratio` | fast / total | Latency SLO ratio |
@@ -32,6 +32,13 @@ These metrics are already OTel-aligned in generate templates.
 | `service:http_errors:rate5m` | error rate / total rate | Health: error rate |
 | `service:http_request_duration_seconds:p95` | `histogram_quantile(0.95, rate(...[5m]))` | Health: P95 latency |
 | `service:http_request_duration_seconds:p99` | `histogram_quantile(0.99, rate(...[5m]))` | Health: P99 latency |
+
+**Error budget.** `slo:error_budget_remaining:ratio` is signed: 1.0 is a full
+budget, 0 spent, negative overspent. Labels: `service`, `slo` (the SLO name),
+`objective`. Its name and labels are owned by nthlayer-common's
+`ERROR_BUDGET_REMAINING` (`manifest/slo_series.py`); generate writes it, and
+workers' measure, correlate and drift read it (opensrm-h0at).
+`test/test_error_budget_seam.py` checks the writer and the readers agree.
 
 ### Alert Inputs
 

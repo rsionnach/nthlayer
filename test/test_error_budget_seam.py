@@ -13,10 +13,13 @@ rejects must be listed in EXPECTED_REJECTED with its reason, and the number
 that write an error budget is pinned. A manifest that stops loading, or a
 fixed one that starts, turns this red.
 
-Run from the ecosystem root, against the published packages:
+Run from the ecosystem root with CI's command (ci.yml, error-budget-seam).
+--isolated --no-project matter: without them uv uses the workspace's
+editable sibling checkouts, not the published packages.
 
-    uv run --with nthlayer-generate --with nthlayer-workers --with pytest \\
-        pytest nthlayer/test/test_error_budget_seam.py
+    uv run --isolated --no-project --python 3.11 \\
+        --with nthlayer-generate --with nthlayer-workers --with pytest \\
+        pytest -q nthlayer/test/test_error_budget_seam.py
 """
 
 from __future__ import annotations
@@ -25,7 +28,12 @@ import shutil
 import warnings
 from pathlib import Path
 
-from nthlayer_common.manifest import ERROR_BUDGET_REMAINING, ManifestLoadError, load_manifest
+from nthlayer_common.manifest import (
+    ERROR_BUDGET_REMAINING,
+    ManifestLoadError,
+    ReliabilityManifest,
+    load_manifest,
+)
 from nthlayer_generate.recording_rules import build_recording_rules_from_manifest
 from nthlayer_workers.measure.adapters.prometheus import load_specs
 
@@ -38,7 +46,7 @@ CORPUS_DIRS = (
     ROOT / "nthlayer-generate" / "examples" / "opensrm",
 )
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-WITH_BUDGET = 24  # 2026-11-02, common 5.10.1 / generate 4.0.10 / workers 4.0.2
+EXPECTED_WITH_BUDGET = 24  # 2026-11-02, common 5.10.1 / generate 4.0.10 / workers 4.0.2
 
 _TEMPLATE = "template or fragment, not a service manifest"
 # Every corpus file the loader rejects, with why. Spec examples that should
@@ -75,7 +83,7 @@ def _corpus() -> list[Path]:
     return sorted(p for d in CORPUS_DIRS for p in d.rglob("*.yaml"))
 
 
-def _load(path: Path):
+def _load(path: Path) -> ReliabilityManifest | None:
     """The manifest, or None if the loader rejects it (checked against
     EXPECTED_REJECTED by the caller). Any other exception propagates."""
     with warnings.catch_warnings():
@@ -86,7 +94,7 @@ def _load(path: Path):
             return None
 
 
-def _written(manifest) -> set[str]:
+def _written(manifest: ReliabilityManifest) -> set[str]:
     """Each error-budget series generate writes, as the selector reading it."""
     return {
         ERROR_BUDGET_REMAINING.selector(service=r.labels["service"], slo=r.labels["slo"])
@@ -115,6 +123,7 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         if manifest is None:
             rejected.add(str(path.relative_to(ROOT)))
             continue
+        # A directory per file: load_specs reads every manifest in its directory.
         written, read = _written(manifest), _read(path, tmp_path / str(i))
         if written != read:
             mismatches[str(path.relative_to(ROOT))] = {
@@ -122,17 +131,17 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
                 "read_not_written": sorted(read - written),
             }
         if written:
-            with_budget.append(path)
+            with_budget.append(str(path.relative_to(ROOT)))
 
     assert not mismatches, mismatches
     assert rejected == set(EXPECTED_REJECTED), {
         "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
         "now_loads": sorted(set(EXPECTED_REJECTED) - rejected),
     }
-    assert len(with_budget) == WITH_BUDGET, [str(p) for p in with_budget]
+    assert len(with_budget) == EXPECTED_WITH_BUDGET, with_budget
     # Every manifest format the loader serves reaches the seam: the spec's v2
     # example, srm/v1 and legacy.
-    names = {p.name for p in with_budget}
-    assert "api-full-v2.yaml" in names
-    assert any(n.endswith(".reliability.yaml") for n in names)
-    assert "payment-api.yaml" in names
+    names = {Path(p).name for p in with_budget}
+    assert "api-full-v2.yaml" in names  # opensrm v2
+    assert any(n.endswith(".reliability.yaml") for n in names)  # srm/v1
+    assert "payment-api.yaml" in names  # legacy
