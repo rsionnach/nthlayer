@@ -13,7 +13,7 @@ rejects must be listed in EXPECTED_REJECTED with its reason, and the number
 that write an error budget is pinned. A manifest that stops loading, or a
 fixed one that starts, turns this red.
 
-Run from the ecosystem root with CI's command (ci.yml, error-budget-seam).
+Run from the ecosystem root with CI's command (.github/workflows/error-budget-seam.yml).
 --isolated --no-project matter: without them uv uses the workspace's
 editable sibling checkouts, not the published packages.
 
@@ -80,7 +80,7 @@ EXPECTED_REJECTED = {
 def _corpus() -> list[Path]:
     missing = [d for d in CORPUS_DIRS if not d.is_dir()]
     assert not missing, f"corpus checkout missing: {missing}"
-    return sorted(p for d in CORPUS_DIRS for p in d.rglob("*.yaml"))
+    return sorted(p for d in CORPUS_DIRS for p in d.rglob("*") if p.suffix in (".yaml", ".yml"))
 
 
 def _load(path: Path) -> ReliabilityManifest | None:
@@ -110,38 +110,55 @@ def _read(path: Path, spec_dir: Path) -> set[str]:
     shutil.copy(path, spec_dir / path.name)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        slos = load_specs(spec_dir).slos
-    return {s.query for s in slos if s.query_kind == "error_budget"}
+        loaded = load_specs(spec_dir)
+    # A manifest load_manifest accepted must not fail measure's load; one that
+    # did would read as no SLOs, and with no budget written would pass unseen.
+    assert loaded.parse_failures == 0, "measure failed to load it"
+    return {s.query for s in loaded.slos if s.query_kind == "error_budget"}
 
 
 def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     with_budget = []
     rejected = set()
-    mismatches = {}
+    problems: dict[str, object] = {}
     for i, path in enumerate(_corpus()):
+        rel = str(path.relative_to(ROOT))
         manifest = _load(path)
         if manifest is None:
-            rejected.add(str(path.relative_to(ROOT)))
+            rejected.add(rel)
             continue
-        # A directory per file: load_specs reads every manifest in its directory.
-        written, read = _written(manifest), _read(path, tmp_path / str(i))
+        try:
+            # A directory per file: load_specs reads every manifest in its directory.
+            written, read = _written(manifest), _read(path, tmp_path / str(i))
+        except Exception as exc:  # name the file; a bare traceback does not
+            problems[rel] = f"raised {exc!r}"
+            continue
         if written != read:
-            mismatches[str(path.relative_to(ROOT))] = {
+            problems[rel] = {
                 "written_not_read": sorted(written - read),
                 "read_not_written": sorted(read - written),
             }
         if written:
-            with_budget.append(str(path.relative_to(ROOT)))
+            with_budget.append(rel)
 
-    assert not mismatches, mismatches
-    assert rejected == set(EXPECTED_REJECTED), {
-        "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
-        "now_loads": sorted(set(EXPECTED_REJECTED) - rejected),
-    }
-    assert len(with_budget) == EXPECTED_WITH_BUDGET, with_budget
-    # Every manifest format the loader serves reaches the seam: the spec's v2
-    # example, srm/v1 and legacy.
+    # Collected, then asserted once, so one failure does not hide another.
+    if rejected != set(EXPECTED_REJECTED):
+        problems["EXPECTED_REJECTED (add each new file with a reason or bead)"] = {
+            "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
+            "now_loads": sorted(set(EXPECTED_REJECTED) - rejected),
+        }
+    if len(with_budget) != EXPECTED_WITH_BUDGET:
+        problems[f"EXPECTED_WITH_BUDGET is {EXPECTED_WITH_BUDGET}, got {len(with_budget)}"] = (
+            with_budget
+        )
+    # Every manifest format the loader serves reaches the seam.
     names = {Path(p).name for p in with_budget}
-    assert "api-full-v2.yaml" in names  # opensrm v2
-    assert any(n.endswith(".reliability.yaml") for n in names)  # srm/v1
-    assert "payment-api.yaml" in names  # legacy
+    formats = {
+        "opensrm v2": "api-full-v2.yaml" in names,
+        "srm/v1": any(n.endswith(".reliability.yaml") for n in names),
+        "legacy": "payment-api.yaml" in names,
+    }
+    missing = [f for f, present in formats.items() if not present]
+    if missing:
+        problems["formats with no budget-writing manifest"] = missing
+    assert not problems, problems

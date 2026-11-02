@@ -158,10 +158,11 @@ examples, generator-specific scripts.
   - `docs.yml` — docs site build + GitHub Pages deploy.
   - `ci.yml` — `bash -n` across `demo/`, `test/` and `scripts/` *.sh
     (opensrm-0buj); `ruff check` over the same three directories
-    (opensrm-u5dw.1); the `test_eco_doctor.sh` regression suite
-    (opensrm-8hn3); and `error-budget-seam`, which runs
-    `test/test_error_budget_seam.py` against the published
-    nthlayer-generate and nthlayer-workers (opensrm-h0at).
+    (opensrm-u5dw.1); and the `test_eco_doctor.sh` regression suite
+    (opensrm-8hn3).
+  - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
+    the published nthlayer-generate and nthlayer-workers, nightly and
+    on PRs (opensrm-h0at).
   - `demo-paths.yml` — `cmd_start` path-resolution regression test
     (opensrm-oey5).
   - `demo-start-lock.yml` — `cmd_start` concurrent-invocation lock

@@ -1,0 +1,52 @@
+name: error-budget-seam
+
+# opensrm-h0at: measure read an error-budget series nothing wrote, and both
+# repos' suites stayed green. This checks the seam across the two PUBLISHED
+# packages, over the spec's v2 examples and generate's shipped examples.
+#
+# Nightly as well as on PRs: what breaks it lands elsewhere (a new example on
+# opensrm or nthlayer-generate main, a generate or workers release), and
+# without a schedule the first sign would be an unrelated front-door PR going
+# red. The corpus checkouts float on main, as nthlayer-common's spec checkout
+# does.
+#
+# Siblings are checked out side by side, as in the workspace, so the test's
+# path resolution is the same locally and here; a missing checkout fails the
+# test rather than skipping it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: nthlayer
+      - uses: actions/checkout@v6
+        with:
+          repository: rsionnach/opensrm
+          path: opensrm
+      - uses: actions/checkout@v6
+        with:
+          repository: rsionnach/nthlayer-generate
+          path: nthlayer-generate
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: error-budget seam (published nthlayer-generate + nthlayer-workers)
+        run: >
+          uv run --isolated --no-project --python 3.11
+          --with nthlayer-generate --with nthlayer-workers --with pytest
+          pytest -q nthlayer/test/test_error_budget_seam.py

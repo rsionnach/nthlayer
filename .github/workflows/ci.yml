@@ -12,8 +12,8 @@ name: CI
 # What CI does for the front-door now:
 #   - shell-syntax (this workflow): bash -n on every demo/ and test/ shell script.
 #   - python-lint  (this workflow): ruff check on the 5 root helpers (opensrm-u5dw.1).
-#   - error-budget-seam (this workflow): generate's error-budget rules vs measure's
-#     queries over the spec's and generate's example manifests (opensrm-h0at).
+#   - .github/workflows/error-budget-seam.yml: generate's error-budget rules vs
+#     measure's queries over real manifests (opensrm-h0at); nightly + PR.
 #   - .github/workflows/docs.yml: mkdocs build --strict on docs-site/.
 #   - .github/workflows/demo-paths.yml: cmd_start path-resolution test (opensrm-oey5).
 #   - .github/workflows/integration-three-tier.yml: nightly cross-repo smoke.
@@ -64,32 +64,3 @@ jobs:
       # dedicated workflows (demo-paths, demo-start-lock) exist for tests that do.
       - name: eco-doctor regression test
         run: bash test/test_eco_doctor.sh
-
-  # opensrm-h0at: measure read an error-budget series nothing wrote, and both
-  # repos' suites stayed green. This checks the seam across the two published
-  # packages. The corpus comes from sibling checkouts, laid out as in the
-  # workspace so the test's path resolution is the same locally and here; a
-  # missing checkout fails the test rather than skipping it.
-  error-budget-seam:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          path: nthlayer
-      - uses: actions/checkout@v6
-        with:
-          repository: rsionnach/opensrm
-          path: opensrm
-      - uses: actions/checkout@v6
-        with:
-          repository: rsionnach/nthlayer-generate
-          path: nthlayer-generate
-
-      - name: install uv
-        uses: astral-sh/setup-uv@v6
-
-      - name: error-budget seam (published nthlayer-generate + nthlayer-workers)
-        run: >
-          uv run --isolated --no-project --python 3.11
-          --with nthlayer-generate --with nthlayer-workers --with pytest
-          pytest -q nthlayer/test/test_error_budget_seam.py
