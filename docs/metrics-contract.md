@@ -21,7 +21,7 @@ These metrics are already OTel-aligned in generate templates.
 | `slo:requests_total:30d` | `sum(increase(http_requests_total{service="X"}[30d]))` | Availability denominator |
 | `slo:requests_success:30d` | `sum(increase(http_requests_total{service="X",status!~"5.."}[30d]))` | Availability numerator |
 | `slo:availability:ratio` | success / total | Availability SLO ratio |
-| `slo:error_budget:ratio` | `1 - ((1 - availability) / (1 - objective))` | Remaining error budget |
+| `slo:error_budget_remaining:ratio` | `1 - ((1 - availability) / (1 - objective))` | Remaining error budget, signed (negative is overspent). Labels `service`, `slo`, `objective`. Name and labels are owned by nthlayer-common's `ERROR_BUDGET_REMAINING` (`manifest/slo_series.py`), which generate writes and measure, correlate and drift read (opensrm-h0at); `test/test_error_budget_seam.py` checks writer and readers agree |
 | `slo:latency_requests_total:30d` | `sum(increase(http_request_duration_seconds_count{...}[30d]))` | Latency denominator |
 | `slo:latency_requests_fast:30d` | `sum(increase(http_request_duration_seconds_bucket{...,le="0.5"}[30d]))` | Latency numerator (requests under threshold) |
 | `slo:latency:ratio` | fast / total | Latency SLO ratio |
@@ -72,7 +72,7 @@ sum(increase(gen_ai_overrides_hcf_total{service="fraud-detect"}[7d]))
 sum(increase(gen_ai_decisions_total{service="fraud-detect",confidence_bucket="high"}[7d]))
 
 # Error budget remaining (availability)
-slo:error_budget:ratio{service="fraud-detect", slo="availability"}
+slo:error_budget_remaining:ratio{service="fraud-detect",slo="availability"}
 ```
 
 ## Judgment threshold metrics (opensrm-g32d)
