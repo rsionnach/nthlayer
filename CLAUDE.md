@@ -152,6 +152,9 @@ examples, generator-specific scripts.
       `SIBLING-MISSING`, `PARSE-ERROR`
     - currency, logged only (`--fetch`) — `BEHIND`, `FETCH-FAILED`,
       `NO-UPSTREAM`
+  - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
+    hold a tier below its newest in-range release, or a tier's newest
+    release is outside its range [opensrm-z1kq].
 - `demo/` — runnable cascading-failure scenario, `demo.sh`
   orchestrator, example OpenSRM specifications.
 - `.github/workflows/`:
@@ -160,6 +163,8 @@ examples, generator-specific scripts.
     (opensrm-0buj); `ruff check` over the same three directories
     (opensrm-u5dw.1); and the `test_eco_doctor.sh` regression suite
     (opensrm-8hn3).
+  - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
+    PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
     the published nthlayer-generate and nthlayer-workers, nightly and
     on PRs (opensrm-h0at).
@@ -284,12 +289,17 @@ repo (each has its own CLAUDE.md describing its conventions).
   dev. For production, install individual tiers.
 - **Content:** dependency-only (`packages = []`); no Python modules,
   no console scripts.
-- **Pinning:** each release pins all four sub-packages at explicit
-  versions; they are not guaranteed to match. `nthlayer-generate`
-  follows its own versioning baseline (currently `==1.1.0`);
-  `nthlayer-core`, `nthlayer-workers`, and `nthlayer-bench` are
-  aligned (currently `==1.6.0`). `nthlayer-common` is a transitive
-  dep.
+- **Pinning:** compatible ranges, one per tier: floor = the release
+  current when the range was last set, ceiling = the next major
+  (opensrm-z1kq, ruling 2026-11-02). Patch and minor releases flow to
+  `pip install nthlayer` without a meta release; a new major of any
+  tier needs one. `nthlayer-common` is a transitive dep.
+  `scripts/meta-resolve-check.sh` (nightly, `meta-resolve.yml`) fails
+  when a tier would be installed below its newest in-range release, or
+  when its newest release is outside the range (raise it, cut a meta
+  release).
+  (Exact pins, the earlier policy,
+  left 1.0.2 installing core/workers/bench 1.6.0.)
 - **Tag namespace:** `meta-v*` (e.g. `meta-v1.0.0`). Separate from
   legacy `v0.1.0a*` and from sub-package tags.
 - **First release:** `meta-v1.0.0` — published;
@@ -316,14 +326,17 @@ repos does not apply here. `release.yml` goes straight from
 `twine check` to PyPI trusted-publishing.
 
 **Dependabot** (`.github/dependabot.yml`): declares the `uv` ecosystem
-pointing at `/meta-package` (where `pyproject.toml` and `uv.lock`
-live) on a Monday-morning Europe/Dublin schedule. Sibling `nthlayer-*`
-packages grouped into a single weekly PR. **No `github-actions`
-ecosystem entry** for the front-door workflows because those workflows
-pin to `main` by convention. Auto-merge policy in
-`.github/workflows/dependabot-automerge.yml`: external patch and dev
-patch/minor auto-merge; sibling packages and any major bump require
-review.
+pointing at `/meta-package` (`pyproject.toml` only; there is no
+lockfile) on a Monday-morning Europe/Dublin schedule, with
+`versioning-strategy: increase-if-necessary`. Since the tiers are
+compatible ranges, patch and minor releases reach installs without a
+PR; dependabot opens one only for a new major, grouped across
+`nthlayer-*` (opensrm-z1kq). A `github-actions` entry covers the
+workflows' action versions. Auto-merge policy in
+`.github/workflows/dependabot-automerge.yml`: sibling packages and any
+major bump require review, so the uv entry's PRs never auto-merge; its
+external-patch and dev patch/minor rules can only apply to other
+entries.
 
 `release-please.yml` mints a short-lived GitHub App token
 (`actions/create-github-app-token@v3`, App `nthlayer-release-bot`,

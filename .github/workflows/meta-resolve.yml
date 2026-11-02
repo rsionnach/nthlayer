@@ -1,0 +1,33 @@
+name: meta-resolve
+
+# opensrm-z1kq: the meta-package depends on one compatible range per tier.
+# scripts/meta-resolve-check.sh fails when `pip install nthlayer` would hold
+# a tier below its newest in-range release (a resolver falls back quietly when
+# tiers disagree, e.g. on nthlayer-common), when a tier's newest release is
+# outside its range (time to raise it and cut a meta release), or when the
+# ranges do not co-resolve. Nightly as well as on PRs, because what breaks it is a tier
+# release, not a front-door change. Resolves against PyPI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "45 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: every tier at its newest in-range release
+        run: scripts/meta-resolve-check.sh

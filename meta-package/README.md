@@ -10,10 +10,12 @@
 ## Installation
 
 ```bash
-pip install nthlayer==1.0.0
+pip install nthlayer
 ```
 
-This installs all four sub-packages pinned to their matching `1.0.0` releases.
+This installs all four sub-packages at the newest releases within each one's
+current major version (core 4.x, workers 4.x, bench 1.x, generate 4.x). A new
+major of any tier needs a new meta-package release.
 
 ## When to install the meta-package vs. individual components
 
@@ -33,7 +35,7 @@ The meta-package is a friendly entry point for **evaluators, demos, and local de
 Sub-packages provide their own console scripts:
 
 - `nthlayer` / `nthlayer-generate` — compile manifests (from `nthlayer-generate`; the two names are aliases)
-- `nthlayer-core serve` — start the Tier 1 HTTP API server (from `nthlayer-core` >= 4.0.0; earlier releases named this script `nthlayer`; this meta-package currently pins an older core, pin update pending bead opensrm-lt91)
+- `nthlayer-core serve` — start the Tier 1 HTTP API server (from `nthlayer-core` >= 4.0.0; earlier releases named this script `nthlayer`)
 - `nthlayer-workers serve` — start the worker runtime (from `nthlayer-workers`)
 - `nthlayer-learn` — verdict-learning CLI (from `nthlayer-workers`)
 - `nthlayer-bench` — launch the operator TUI (from `nthlayer-bench`)
