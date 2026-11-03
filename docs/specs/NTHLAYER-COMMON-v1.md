@@ -14,7 +14,7 @@ nthlayer-common is the shared library used by every other NthLayer component. It
 2. **Store access primitives.** SQLite connection management, WAL configuration, transactional helpers.
 3. **Identity and principal resolution.** Consistent handling of human and agent principals across components.
 4. **Provider SDK wrappers.** Prometheus, Grafana, PagerDuty, Mimir — the external observability systems components interact with.
-5. **Telemetry emission.** OTel tracing, metrics, log emission with nthlayer-specific attribute conventions.
+5. **Telemetry emission.** NthLayer events as OTel log records (§7), with nthlayer-specific attribute conventions.
 6. **Error handling patterns.** Structured errors, retry decorators, circuit breakers.
 7. **Data models.** Pydantic models for verdicts, assessments, cases, and other shared types.
 
@@ -99,15 +99,19 @@ Instructor handles JSON-mode validation, retry on schema violation, and partial 
 
 ### 3.4 Cost accounting
 
-Every LLM call emits a `llm_call` OTel event with:
+Every LLM call emits an `nthlayer.llm.call` event (`emit_llm_event`, carried as in §7.1) with:
 
 - `gen_ai.request.model`
+- `gen_ai.provider.name` (A1 §5 P4: `gen_ai.system` is never emitted)
 - `gen_ai.usage.input_tokens`
 - `gen_ai.usage.output_tokens`
-- `gen_ai.usage.cached_tokens` (Anthropic)
-- `gen_ai.usage.reasoning_tokens` (reasoning models)
+- `gen_ai.usage.cache_read.input_tokens` (cache reads, not writes)
+- `gen_ai.usage.reasoning.output_tokens` (reasoning models)
 - `nthlayer.llm.caller` (which component/agent made the call)
 - `nthlayer.llm.caller_verdict_cid` (the verdict being produced, if applicable)
+- `nthlayer.llm.duration_ms`, `nthlayer.llm.success`, `nthlayer.llm.error`
+
+Fields with no value are omitted.
 
 This makes cost attribution tractable: which components and agents use how much of what model. Not cheap to ignore.
 
@@ -265,21 +269,70 @@ Principal attributes may come from multiple sources (identity provider, team ros
 
 ### 7.1 OTel integration
 
-nthlayer-common initialises the OTel SDK with the deployment's configured exporter (OTLP by default). Components import the configured tracer and meter:
+*Corrected 2026-11-03 (opensrm-quqo).* This section used to say that
+nthlayer-common initialises the OTel SDK and hands components a tracer and
+a meter. It never did: until 5.11.0 it depended on the OTel API only, no
+component installed a provider, and every event, emitted as a span event
+on a span that was not recording, was dropped. What it does from 5.11.0:
+
+**Every NthLayer event is an OTel log record**, emitted with
+`emit_event(name, attributes, *, timestamp=None)`. That covers the OpenSRM
+Addendum A1 §4 events (A1 §4.0 calls them log-based events) and NthLayer's
+own, such as `nthlayer.llm.call` (§3.4). The carriage is ruling Q2 (Rob,
+2026-11-02); A1 does not yet specify it (opensrm-pdx7):
+
+| record field | value |
+|---|---|
+| `EventName` | the event name |
+| body | none |
+| attributes | every field; `None` values dropped |
+| `SeverityNumber` | 9 (INFO) |
+| `Timestamp` | when the event happened, if the caller passes it, else the emit time; never left to `ObservedTimestamp` |
+
+`emit_event` never raises: a telemetry failure must not break its caller.
+
+**A process opts in once, at startup**, with
+`init_telemetry(service_name, *, endpoint=None) -> TelemetryStatus`:
+
+- The endpoint is `endpoint`, then `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then
+  `OTEL_EXPORTER_OTLP_ENDPOINT`. The exporter is OTLP **gRPC** only (a
+  collector's port 4317); `OTEL_EXPORTER_OTLP_PROTOCOL` is not read.
+- `service.name` is `OTEL_SERVICE_NAME` if set, else `service_name`.
+- The SDK and exporter are the `otel` extra (`nthlayer-common[otel]`);
+  without it the API is a no-op.
+- The returned status says what happened: `INSTALLED`, `NO_ENDPOINT`
+  (telemetry off, by design), `SDK_MISSING` (an endpoint but no extra:
+  events drop, with a warning) or `EXTERNAL_PROVIDER` (another provider,
+  e.g. one set by `opentelemetry-instrument`, owns the global slot).
+  `status.exporting` is true for `INSTALLED` and `EXTERNAL_PROVIDER`.
+  Under `OTEL_SDK_DISABLED=true` it currently still reports `INSTALLED`
+  (opensrm-q3np).
+- It is idempotent. Events emitted before it is called are dropped. The
+  provider flushes at exit, which with an unreachable collector waits up
+  to `OTEL_EXPORTER_OTLP_TIMEOUT`. In a forking server, call it in each
+  worker after the fork.
+
+Every nthlayer-workers CLI entry point and the override-adapter call it.
 
 ```python
-from nthlayer_common.telemetry import get_tracer, get_meter
+from nthlayer_common.telemetry import emit_event, init_telemetry
 
-tracer = get_tracer(__name__)
-meter = get_meter(__name__)
-
-with tracer.start_as_current_span("process_verdict"):
-    # ...
+init_telemetry("nthlayer-workers")          # once, at startup
+emit_event("nthlayer.calibration.report", {"agent_name": "triage", "mae": 0.04})
 ```
+
+Tests assert on what a component emits with `capture_events()`, which
+yields each record as a `CapturedEvent(name, attributes, timestamp,
+severity_number)`; they do not patch the module (ruling Q5).
+
+nthlayer-common provides no tracer or meter. Self-metrics are Prometheus
+(§7.3).
 
 ### 7.2 Nthlayer-specific attributes
 
-Common attributes set on traces and emitted with events:
+Intended common attributes. **Not implemented:** `emit_event` adds
+none of these automatically, and no component sets them today; an event
+carries only the attributes its emitter passes.
 
 - `nthlayer.component` — which component (observe, measure, etc.)
 - `nthlayer.instance_id` — deployment-unique instance identifier
@@ -368,7 +421,7 @@ async def call_llm(...):
     ...
 ```
 
-Retries emit telemetry on each attempt; the retry count is visible in traces.
+Retries emit no telemetry and are not logged. (This used to say each attempt was visible in traces; there were never any traces.)
 
 ### 9.3 Circuit breakers
 
@@ -452,12 +505,16 @@ dependencies = [
     "networkx>=3.4",
     "scipy>=1.14",
     "numpy>=2.0",
-    "opentelemetry-api>=1.28",
-    "opentelemetry-sdk>=1.28",
-    "opentelemetry-exporter-otlp>=1.28",
+    "opentelemetry-api>=1.38,<2",
 ]
 
 [project.optional-dependencies]
+# The SDK and exporter init_telemetry installs (§7.1). Without them the
+# OTel API is a no-op and every event is dropped.
+otel = [
+    "opentelemetry-sdk>=1.38,<2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.38,<2",
+]
 spiffe = ["spiffe>=0.2.3", "spiffe-tls>=0.3.1"]
 vault = ["hvac>=2.0"]
 kubernetes = ["kubernetes>=31.0"]
@@ -491,7 +548,7 @@ Major version bumps in `nthlayer-common` are breaking; component pins are expect
 
 **Store unavailable.** Components can't read or write. Degraded state is emitted; heartbeat fails. Operators see the outage.
 
-**OTel exporter unavailable.** Telemetry is buffered per the SDK's configured behaviour. If buffers fill, telemetry is dropped (not critical-path).
+**OTel exporter unavailable.** Records are buffered by the SDK's batch processor (2048 by default, `OTEL_BLRP_MAX_QUEUE_SIZE`). If the buffer fills, records are dropped (not critical-path); nothing at emit time reports it.
 
 **Configuration malformed.** Components fail to start. Startup errors are clear about what's wrong.
 
