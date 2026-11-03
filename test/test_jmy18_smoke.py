@@ -40,6 +40,14 @@ from nthlayer_override_adapter.metrics import binding_total
 _TELEMETRY = TelemetryStatus.INSTALLED
 
 
+@pytest.fixture(autouse=True)
+def _sdk_enabled(monkeypatch):
+    """The adapter reports otel "failed" under OTEL_SDK_DISABLED=true
+    whatever status it is given; this smoke runs from a developer's shell,
+    so an exported value must not turn it red for an unrelated reason."""
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+
+
 def _build_adapter_config() -> AdapterConfig:
     """Build a minimal AdapterConfig for in-process testing.
 
