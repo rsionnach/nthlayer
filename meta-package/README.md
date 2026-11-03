@@ -1,6 +1,10 @@
 # nthlayer
 
-**NthLayer is an ecosystem of components for AI-augmented operations governance.** This package is a meta-package that installs all four tiers:
+**Your dashboards say it's up. NthLayer tells you whether it was right.**
+
+NthLayer records decisions that no test can check (an AI SRE's triage, an approval, a release), waits for the outcome, and turns how often they hold up into judgment SLOs and alerts in the Prometheus and Grafana you already run. See [nthlayer.io](https://nthlayer.io).
+
+This package is a meta-package that installs all four tiers:
 
 - **`nthlayer-core`** (Tier 1) — reliability-critical state, verdicts, assessments, manifests, change-freezes (HTTP API server)
 - **`nthlayer-workers`** (Tier 2) — observe / measure / correlate / respond / learn worker modules
