@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.4](https://github.com/rsionnach/nthlayer/compare/meta-vv1.0.3...meta-vv1.0.4) (2026-11-03)
+
+
+### Documentation
+
+* align CLAUDE.md and meta-package README with the new pitch ([bcf3dcf](https://github.com/rsionnach/nthlayer/commit/bcf3dcfd8a9500bd365a372b9870436278520b67))
+* align CLAUDE.md and meta-package README with the new pitch ([28c916c](https://github.com/rsionnach/nthlayer/commit/28c916c343e844a0583a231ca5b47c20f1abe78c))
+
 ## [1.0.3](https://github.com/rsionnach/nthlayer/compare/meta-vv1.0.2...meta-vv1.0.3) (2026-11-02)
 
 
