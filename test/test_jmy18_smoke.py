@@ -18,6 +18,7 @@ from starlette.testclient import TestClient
 
 from nthlayer_common.api_client import CoreAPIClient
 from nthlayer_common.overrides import OverridePrivacyConfig
+from nthlayer_common.telemetry import TelemetryStatus
 from nthlayer_common.verdicts.models import (
     Judgment,
     Outcome,
@@ -30,6 +31,13 @@ from nthlayer_core.store import Store
 from nthlayer_override_adapter.app import build_app
 from nthlayer_override_adapter.config import AdapterConfig, CoreConfig
 from nthlayer_override_adapter.metrics import binding_total
+
+
+# Adapter 0.4.0 requires the telemetry status init_telemetry returned
+# (opensrm-a829 ruling Q7): it decides each binding's otel field. These tests
+# model a deployed sidecar whose events export, so "otel" is "ok"; no
+# provider is actually installed, and the emitted records go nowhere.
+_TELEMETRY = TelemetryStatus.INSTALLED
 
 
 def _build_adapter_config() -> AdapterConfig:
@@ -96,7 +104,7 @@ async def test_sidecar_override_binds_to_core_verdict(tmp_path):
 
     # 2. Real sidecar app.
     cfg = _build_adapter_config()
-    sidecar_app = build_app(cfg)
+    sidecar_app = build_app(cfg, telemetry=_TELEMETRY)
 
     # 3. Rewire sidecar's CoreAPIClient to talk to core ASGI in-process.
     _wire_asgi_transport(sidecar_app, cfg.core.url)
@@ -151,7 +159,7 @@ async def test_sidecar_override_handles_unknown_verdict(tmp_path):
     server.set_store(store)
 
     cfg = _build_adapter_config()
-    sidecar_app = build_app(cfg)
+    sidecar_app = build_app(cfg, telemetry=_TELEMETRY)
     _wire_asgi_transport(sidecar_app, cfg.core.url)
 
     before = _counter_value(binding_total, result="failed", reason="verdict_not_found")
@@ -200,7 +208,7 @@ async def test_plaintext_reviewer_is_hashed_at_sidecar_boundary(tmp_path):
     # 2. Real sidecar with default privacy (plaintext_reviewer=False, pre_redacted=False).
     #    Default config: sidecar MUST hash the reviewer before sending to core.
     cfg = _build_adapter_config()
-    sidecar_app = build_app(cfg)
+    sidecar_app = build_app(cfg, telemetry=_TELEMETRY)
     _wire_asgi_transport(sidecar_app, cfg.core.url)
 
     # 3. POST with a clearly-plaintext reviewer.
