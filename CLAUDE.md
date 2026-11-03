@@ -20,25 +20,27 @@ roadmap + conventions).
 
 ## NthLayer at a glance
 
-NthLayer is an open-source reliability platform for SREs. It compiles
-service reliability requirements (SLOs, alerts, dashboards, deployment
-gates, dependency graphs) into observable production infrastructure,
-then runs an autonomous reliability runtime that observes, judges,
-correlates, responds, and learns. Built on the
-[OpenSRM specification](https://github.com/rsionnach/opensrm).
+NthLayer records decisions that no test can check (an AI SRE's triage,
+an approval, a release), waits for the outcome, and turns how often they
+hold up into judgment SLOs and alerts in the Prometheus and Grafana teams
+already run. Agentic SRE is the flagship case: measuring an AI SRE the way
+you measure your services. Built on the
+[OpenSRM specification](https://github.com/rsionnach/opensrm). The
+README and nthlayer.io carry the current pitch; keep this paragraph in
+line with them.
 
-The ecosystem spans seven active repositories: one specification
+The ecosystem spans eight active repositories: one specification
 (`opensrm`), one shared library (`nthlayer-common`), one compiler
 (`nthlayer-generate`), three runtime tiers (`nthlayer-core` /
-`nthlayer-workers` / `nthlayer-bench`), and this front door
-(`nthlayer/`). The marketing site (`nthlayer-site`) is a separate
-concern.
+`nthlayer-workers` / `nthlayer-bench`), the override adapter
+(`nthlayer-override-adapter`), and this front door (`nthlayer/`). The
+marketing site (`nthlayer-site`) is a separate concern.
 
-NthLayer is in **v1.5 development**. The three-tier architecture
-(core + workers + bench) is being actively built; the six-repo
-consolidation completed 2026-04-26. Production-ready usage today
-centres on `nthlayer-generate` plus the OpenSRM spec; runtime tiers
-are under integration testing for v1.5.
+Status (matches the README's ecosystem table): `opensrm` is a v2 draft;
+`nthlayer-generate` and `nthlayer-common` are stable; `nthlayer-core`
+and `nthlayer-workers` are implemented (respond proposes only:
+execution, notifications and escalation are not wired); the override
+adapter is early; `nthlayer-bench` is usable against a running core.
 
 ## Components
 
@@ -57,6 +59,8 @@ Each active component has its own `CLAUDE.md`.
   learn. Communicates with core via HTTP API only.
 - `nthlayer-bench/` — Tier 3 Textual TUI operator interface.
   Communicates with core via HTTP API only.
+- `nthlayer-override-adapter/` — ingests human overrides (Slack, Jira,
+  webhooks) and binds each to its verdict by decision ID.
 - `opensrm/` — OpenSRM specification (no code deps).
 - `nthlayer-common/` — shared library: LLM wrappers, providers,
   identity resolution, errors, tier definitions, manifest parser,
