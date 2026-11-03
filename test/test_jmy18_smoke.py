@@ -6,6 +6,12 @@ to-end claims from the design doc:
 (a) nthlayer_override_binding_total{result=success} increments,
 (b) GET /verdicts/{id} on core shows outcome.status=overridden,
 (c) sidecar response carries bindings.{id}.core == "ok".
+
+Run by hand (no CI runs it), from the ecosystem root, which has core, the
+override-adapter (0.4.0 or later) and common in one environment:
+
+    uv run --with pytest --with pytest-asyncio python -m pytest \
+        -o asyncio_mode=auto nthlayer/test/test_jmy18_smoke.py
 """
 from __future__ import annotations
 
