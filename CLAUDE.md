@@ -116,6 +116,9 @@ examples, generator-specific scripts.
     cross-reference (new under the auto-memory retirement).
   - `docs/release-runbook.md` — operator runbook for the full
     ecosystem-wide release pipeline (Phase 5).
+  - `docs/r5-gate.md` — the R5 review gate every bead passes before
+    merge: pass roster and order, fix-loop, provenance kill checks,
+    lock and state files [opensrm-xf73].
 - `test/` — cross-repo integration test infrastructure (see
   `docs/integration-testing.md`). Also `test_eco_doctor.sh`, the
   regression suite for `scripts/eco_doctor.py`.
