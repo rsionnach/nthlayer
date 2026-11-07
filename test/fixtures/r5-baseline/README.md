@@ -5,7 +5,8 @@ Synthetic gate records, one per structural pattern the archived
 the numbers of a record that exhibits the pattern, with an invented bead id
 (`fx-<pattern>`, except that two share `fx-checkpointed-bead`, as a bead gated
 at two checkpoints has two records) and invented timestamps (`2000-01-01T…`,
-in event order). They carry no free text: no notes, rulings, briefs or session
+in event order; the second `fx-checkpointed-bead` record, `re-run-passes`, is a
+day later, as a later checkpoint would be). They carry no free text: no notes, rulings, briefs or session
 fields.
 
 They are synthetic, not trimmed copies of real records, so that nobody

@@ -409,11 +409,23 @@ def test_a_directory_without_a_key_s_bead_is_a_subset_not_an_error():
 
 
 def test_a_mistyped_key_for_a_bead_that_is_present_is_refused(tmp_path, monkeypatch):
-    # The bead's record is here but the key's ts is wrong: the blocked dispatch
-    # would count as a review. main() must refuse, not print a table.
-    bead, lens, _ts = sorted(SYNTHETIC_BLOCKED_DISPATCHES)[0]
-    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({(bead, lens, "1999-01-01T00:00:00Z")}))
+    # The key's ts is off by a second, inside the record's span: the blocked
+    # dispatch would count as a review. main() must refuse, not print a table.
+    bead, lens, ts = sorted(SYNTHETIC_BLOCKED_DISPATCHES)[0]
+    typo = ts.replace(":03Z", ":04Z")
+    assert typo != ts
+    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({(bead, lens, typo)}))
     shutil.copy(FIXTURES / f"r5-state-{bead}-completed.json", tmp_path)
     rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in tmp_path.glob("*.json")]
-    assert r5_baseline.unmatched_table_entries(rows) == [(bead, lens, "1999-01-01T00:00:00Z")]
+    assert r5_baseline.unmatched_table_entries(rows) == [(bead, lens, typo)]
     assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
+
+
+def test_another_checkpoint_of_the_key_s_bead_is_a_subset_not_an_error(tmp_path):
+    # fx-checkpointed-bead has two records; its PASSLESS_EVENTS keys fall in
+    # fx-passless-fix-events (2000-01-01), not in fx-re-run-passes (2000-01-02).
+    # A directory holding only the latter is a subset: no refusal.
+    shutil.copy(FIXTURES / "r5-state-fx-re-run-passes-completed.json", tmp_path)
+    rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in tmp_path.glob("*.json")]
+    assert r5_baseline.unmatched_table_entries(rows) == []
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 0

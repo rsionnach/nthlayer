@@ -41,8 +41,9 @@ is the sum over every pass, advisory excellence included. ``steps_source`` says
 which derivation each pass used.
 
 Each ``--json`` record lists the known-data keys it used (``table_hits``). A
-known-data entry whose bead is in the directory but which matches none of its
-events is refused (exit 2), since a mistyped key would miscount silently.
+known-data entry that falls within a record here (same bead, inside its audit
+trail's time span) but matches none of its events is refused (exit 2), since a
+mistyped key would miscount silently.
 
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
 library only.
@@ -58,6 +59,7 @@ baseline quietly missing a gate would look as plausible as a correct one.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import statistics
 import sys
@@ -297,22 +299,55 @@ def analyse_record(record: dict) -> dict:
         "lenses": lenses,
         "sequential_steps": sum(v["steps"] for v in lenses.values()),
         "table_hits": [list(key) for key in scan["table_hits"]],
+        "ts_span": _span(record),
     }
 
 
-def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
-    """BLOCKED_DISPATCHES and PASSLESS_EVENTS keys whose bead was read but which
-    no event matched.
+def _instant(ts: object) -> datetime.datetime | None:
+    """An archive timestamp as an aware datetime, or None if it is not one. The
+    archives mix "Z" and "+00:00" and fractional seconds, so strings cannot be
+    compared as they stand."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        # "Z" by hand: fromisoformat only reads it from Python 3.11, and the
+        # workspace shim runs the system python3.
+        moment = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    # timezone.utc, not datetime.UTC (3.11+): the shim runs the system python3.
+    return moment if moment.tzinfo else moment.replace(tzinfo=datetime.timezone.utc)  # noqa: UP017
 
-    A key for a bead with no record here is skipped: the directory is a subset
-    of the archive. A key whose bead IS here but matched nothing is mistyped,
-    and would silently count a blocked dispatch as a review, so main() refuses
-    the report (exit 2). The tests cannot check the real keys, since their
-    fixtures are synthetic; this check does, every time the script runs."""
+
+def _span(record: dict) -> list[str] | None:
+    """The first and last event timestamps of a record's audit trail."""
+    moments = [m for e in record.get("audit_trail") or [] if (m := _instant(e.get("ts")))]
+    return [min(moments).isoformat(), max(moments).isoformat()] if moments else None
+
+
+def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
+    """BLOCKED_DISPATCHES and PASSLESS_EVENTS keys that a record here should
+    have matched but did not.
+
+    A key belongs to the record of its bead whose audit trail spans the key's
+    timestamp; a bead gated at several checkpoints has one record each. A key
+    with no such record here is skipped, since the directory is a subset of the
+    archive. A key with one, unmatched, is mistyped, and would silently count a
+    blocked dispatch as a review, so main() refuses the report (exit 2). The
+    tests cannot check the real keys, since their fixtures are synthetic; this
+    check does, every time the script runs."""
     hits = {tuple(key) for row in rows for key in row["table_hits"]}
-    beads = {row["bead"] for row in rows}
+
+    def held_here(key: tuple) -> bool:
+        moment = _instant(key[2])
+        return moment is not None and any(
+            row["bead"] == key[0] and row["ts_span"]
+            and _instant(row["ts_span"][0]) <= moment <= _instant(row["ts_span"][1])
+            for row in rows
+        )
+
     keys = set(BLOCKED_DISPATCHES) | set(PASSLESS_EVENTS)
-    return sorted((k for k in keys - hits if k[0] in beads), key=str)
+    return sorted((k for k in keys - hits if held_here(k)), key=str)
 
 
 def load_records(archive_dir: Path) -> list[tuple[str, dict]]:
