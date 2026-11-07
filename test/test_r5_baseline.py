@@ -47,7 +47,7 @@ def test_fixtures_are_present():
     ]
 
 
-def test_severities_per_iteration_come_from_findings_received():
+def test_severities_per_review_come_from_findings_received():
     # 3ntg correctness logged three reviews: 0/1/3, then 0/1/0, then 0/0/1,
     # with fix_iterations 2.
     lens = _row("3ntg")["lenses"]["correctness"]

@@ -62,7 +62,7 @@ logged severity: many passes, most v1, recorded nothing else. Model steps are
 reviews plus fix rounds, summed over a gate's passes.
 
 The 2026-08-28 table this replaces showed 274 findings but only 152 across its
-severity columns. Over the 21 records it covered (the m7su dry run included),
+severity columns. Over the 21 records it covered (20 live beads plus the m7su dry run),
 274 is the passes' recorded first-review totals and 124 their logged CRITICAL,
 IMPORTANT and MINOR, so 274 − 124 = 150 first-review findings had no logged
 severity. Its severity columns also added the 28 found by re-reviews, so the gap
@@ -70,9 +70,10 @@ it showed was 150 − 28 = 122.
 
 On 2026-08-28, over the 20 beads then recorded, all nine CRITICALs came from
 correctness and edge-cases, and excellence spent a blocking serial slot to
-produce one IMPORTANT in 18 runs. The full record bears it out: first reviews found 1 CRITICAL
-in 82 excellence runs and 56 in 65 provenance runs. Meanwhile the two known escapes cleared
-every lens, because none asked whether the tests touched reality:
+produce one IMPORTANT in 18 runs. The full record bears it out: first reviews
+found 1 CRITICAL in 82 excellence runs and 56 in 65 provenance runs. Meanwhile
+the two known escapes cleared every lens, because none asked whether the tests
+touched reality:
 
 - **opensrm-oh27** tested `spec.slos` as a list. v1 writes a mapping and v2
   has no such key, so the branch never fired for a real manifest. It survived

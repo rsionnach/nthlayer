@@ -121,7 +121,7 @@ def _scan_events(record: dict) -> dict:
         "reviews": {},  # lens -> severity Counter per review
         "fix_events": {},  # lens -> Counter of fixes_applied / fix_dispatched
         "runs": {},  # lens -> fix_iterations of each pass_completed
-        "dispatched": Counter(),
+        "dispatched": Counter(),  # lens -> reviewer_dispatched, less BLOCKED_DISPATCHES
         "seen": [],  # first appearance of each pass in any event
         "sequence": [],  # pass_started in order, repeats kept
     }
@@ -253,10 +253,10 @@ def totals(rows: list[dict]) -> dict[str, dict[str, int]]:
             acc["unattributed"] += data["unattributed"]
             acc["reviews"] += data["reviews"]
             acc["steps"] += data["steps"]
-            its = data["findings_by_review"]
-            for sev, n in (its[0] if its else {}).items():
+            by_review = data["findings_by_review"]
+            for sev, n in (by_review[0] if by_review else {}).items():
                 acc[sev] += n  # first review only, comparable to the pass totals
-            acc["rereview_findings"] += sum(sum(it.values()) for it in its[1:])
+            acc["rereview_findings"] += sum(sum(r.values()) for r in by_review[1:])
     return {lens: dict(out[lens]) for lens in sorted(out, key=_lens_sort_key)}
 
 
@@ -270,8 +270,7 @@ def render_markdown(all_rows: list[dict]) -> str:
     rows = baseline_rows(all_rows)
     agg = totals(rows)
     # Passes outside the roster (one-off re-checks such as "delta-clarity" or
-    # "scoped re-check") are folded into one row here; --json
-    # keeps them by name.
+    # "scoped re-check") are folded into one row here; --json keeps them by name.
     other: Counter = Counter()
     for lens in [lens for lens in agg if lens not in LENS_ORDER]:
         other.update(agg.pop(lens))

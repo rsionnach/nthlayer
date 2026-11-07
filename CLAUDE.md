@@ -161,8 +161,8 @@ examples, generator-specific scripts.
       `NO-UPSTREAM`
   - `r5_baseline.py` — the baseline of the sequential R5 gate from the
     archived `.claude/r5-state-*-completed.json` records (R5 Gate v2
-    Phase A, opensrm-6kqs.1): per bead and lens, review iterations,
-    findings by severity per iteration, model steps, lens order;
+    Phase A, opensrm-6kqs.1): per bead and lens, reviews, findings by
+    severity per review, model steps, lens order;
     `--json` for the replay corpus's `sequential_steps`. Standard library
     only. Tests: `test/test_r5_baseline.py` (run by `ci.yml`). The
     workspace root's `.claude/bin/r5-baseline.sh` is a shim.
