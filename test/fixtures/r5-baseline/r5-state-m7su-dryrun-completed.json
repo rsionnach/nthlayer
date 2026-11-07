@@ -1,0 +1,118 @@
+{
+ "supervisor": "r5-supervise",
+ "version": 1,
+ "target_bead": "opensrm-m7su",
+ "started_at": "2026-05-31T07:20:58Z",
+ "dry_run": true,
+ "passes": [
+  "correctness",
+  "clarity",
+  "edge-cases",
+  "excellence"
+ ],
+ "status": "completed",
+ "completed_passes": [
+  {
+   "name": "correctness",
+   "findings_count_initial": 2,
+   "findings_count_final": 2,
+   "fix_iterations": 0
+  },
+  {
+   "name": "clarity",
+   "findings_count_initial": 1,
+   "findings_count_final": 1,
+   "fix_iterations": 0
+  },
+  {
+   "name": "edge-cases",
+   "findings_count_initial": 4,
+   "findings_count_final": 4,
+   "fix_iterations": 0
+  },
+  {
+   "name": "excellence",
+   "findings_count_initial": 0,
+   "findings_count_final": 0,
+   "fix_iterations": 0
+  }
+ ],
+ "audit_trail": [
+  {
+   "ts": "2026-05-31T07:27:14Z",
+   "event": "findings_received",
+   "pass": "correctness",
+   "counts": {
+    "critical": 0,
+    "important": 2,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-05-31T07:27:14Z",
+   "event": "pass_completed",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-05-31T07:27:14Z",
+   "event": "pass_started",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-05-31T07:28:57Z",
+   "event": "findings_received",
+   "pass": "clarity",
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 4
+   }
+  },
+  {
+   "ts": "2026-05-31T07:28:57Z",
+   "event": "pass_completed",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-05-31T07:28:57Z",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-05-31T07:32:30Z",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "counts": {
+    "critical": 0,
+    "important": 4,
+    "minor": 4,
+    "missing_tests": 5
+   }
+  },
+  {
+   "ts": "2026-05-31T07:32:30Z",
+   "event": "pass_completed",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-05-31T07:32:30Z",
+   "event": "pass_started",
+   "pass": "excellence"
+  },
+  {
+   "ts": "2026-05-31T07:34:35Z",
+   "event": "findings_received",
+   "pass": "excellence",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2026-05-31T07:34:35Z",
+   "event": "pass_completed",
+   "pass": "excellence"
+  }
+ ]
+}

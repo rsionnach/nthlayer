@@ -37,20 +37,37 @@ a sign that a blocking lens has a gap.
 
 ### Why this order, and why excellence is advisory
 
-Until 2026-08-28 the fourth blocking slot was excellence. Measured across the
-20 beads then recorded in `.claude/r5-state-*.json` (274 findings):
+Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
+`scripts/r5_baseline.py` run over every archived gate record
+(`.claude/r5-state-*-completed.json`, 2026-11-07) [opensrm-6kqs.1]:
 
-| pass | findings | CRITICAL | IMPORTANT | MINOR |
-|---|---|---|---|---|
-| correctness | 47 | 5 | 17 | 17 |
-| clarity | 92 | 0 | 19 | 31 |
-| edge-cases | 86 | 4 | 15 | 22 |
-| excellence | 49 | 0 | 1 | 21 |
+87 archived gate records, 64 beads (21 schema v1, 66 v2; 1 dry run(s) excluded).
 
-All nine CRITICALs came from correctness and edge-cases; excellence spent a
-blocking serial slot to produce one IMPORTANT in 18 runs. Meanwhile the two
-known escapes cleared every lens, because none asked whether the tests touched
-reality:
+| pass | records | findings (pass totals) | CRITICAL | IMPORTANT | MINOR | other | unattributed | reviews | model steps |
+|---|---|---|---|---|---|---|---|---|---|
+| correctness | 87 | 146 | 14 | 71 | 158 | 0 | 24 | 137 | 190 |
+| clarity | 86 | 380 | 0 | 141 | 408 | 0 | 66 | 159 | 238 |
+| edge-cases | 84 | 256 | 17 | 79 | 268 | 0 | 69 | 166 | 252 |
+| provenance | 65 | 179 | 76 | 63 | 136 | 0 | 29 | 122 | 177 |
+| excellence | 82 | 318 | 1 | 31 | 256 | 0 | 30 | 93 | 105 |
+| other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 7 | 7 |
+
+Sequential model steps per gate: total 969, median 10, max 27.
+
+*Findings (pass totals)* sums each pass's `findings_count_initial`, the first
+review's count. The severity columns sum the severities logged for every review
+iteration, re-reviews included, so they can exceed the totals. *Unattributed* is
+the part of a first review's total that no logged severity accounts for, because
+many passes, most v1, recorded only the total. That is the 152-versus-274 gap in
+the 2026-08-28 table this replaces: its findings column was the totals, and its
+severity columns covered only the findings whose severity was logged. Model steps
+are reviews plus fix rounds, summed over a gate's passes.
+
+On 2026-08-28, over the 20 beads then recorded, all nine CRITICALs came from
+correctness and edge-cases, and excellence spent a blocking serial slot to
+produce one IMPORTANT in 18 runs. The full record bears it out: excellence has 1
+CRITICAL in 82 runs, provenance 76 in 65. Meanwhile the two known escapes cleared
+every lens, because none asked whether the tests touched reality:
 
 - **opensrm-oh27** tested `spec.slos` as a list. v1 writes a mapping and v2
   has no such key, so the branch never fired for a real manifest. It survived

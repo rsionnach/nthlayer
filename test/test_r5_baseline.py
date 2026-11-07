@@ -1,0 +1,131 @@
+"""Tests for scripts/r5_baseline.py (opensrm-6kqs.1, R5-R0).
+
+The fixtures are trimmed real archives (test/fixtures/r5-baseline/README.md),
+and every expected number below is read off those files by hand: the
+findings_received counts, findings_count_initial and fix_iterations each one
+records. None is copied from the script's output.
+
+Run: uv run --no-project --with pytest pytest -q test/test_r5_baseline.py
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+HERE = Path(__file__).resolve().parent
+FIXTURES = HERE / "fixtures" / "r5-baseline"
+_spec = importlib.util.spec_from_file_location("r5_baseline", HERE.parent / "scripts" / "r5_baseline.py")
+assert _spec and _spec.loader
+r5_baseline = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(r5_baseline)
+
+
+def _row(name: str) -> dict:
+    record = json.loads((FIXTURES / f"r5-state-{name}-completed.json").read_text())
+    return r5_baseline.analyse_record(record)
+
+
+def test_fixtures_are_present():
+    # A missing fixture must fail here, not shrink the suite.
+    names = sorted(p.name for p in FIXTURES.glob("r5-state-*-completed.json"))
+    assert names == [
+        "r5-state-1mja-completed.json",
+        "r5-state-3ntg-completed.json",
+        "r5-state-m7su-dryrun-completed.json",
+        "r5-state-oh27-completed.json",
+    ]
+
+
+def test_severities_per_iteration_come_from_findings_received():
+    # 3ntg correctness logged three reviews: 0/1/3, then 0/1/0, then 0/0/1,
+    # with fix_iterations 2.
+    lens = _row("3ntg")["lenses"]["correctness"]
+    assert lens["findings_by_iteration"] == [
+        {"critical": 0, "important": 1, "minor": 3, "other": 0},
+        {"critical": 0, "important": 1, "minor": 0, "other": 0},
+        {"critical": 0, "important": 0, "minor": 1, "other": 0},
+    ]
+    assert (lens["iterations"], lens["fix_rounds"], lens["steps"]) == (3, 2, 5)
+    assert lens["steps_source"] == "events"
+    assert lens["unattributed"] == 0  # first review 0+1+3 = findings_count_initial 4
+
+
+def test_advisory_excellence_is_one_review_from_advisory_pass_completed():
+    lens = _row("3ntg")["lenses"]["excellence"]
+    assert lens["findings_by_iteration"] == [{"critical": 0, "important": 0, "minor": 4, "other": 0}]
+    assert (lens["iterations"], lens["fix_rounds"], lens["steps"]) == (1, 0, 1)
+
+
+def test_lens_order_and_critical_path_for_a_v2_record():
+    row = _row("3ntg")
+    assert row["lens_order"] == ["correctness", "clarity", "edge-cases", "provenance", "excellence"]
+    # reviews + fixes: correctness 3+2, clarity 2+1, edge-cases 2+1,
+    # provenance 3+2, excellence 1+0.
+    assert row["sequential_steps"] == 17
+
+
+def test_a_totals_only_record_reports_every_finding_unattributed():
+    # 1mja (v1) has no findings_received: totals 2/5/3/0, fix_iterations 1/0/1/0.
+    lenses = _row("1mja")["lenses"]
+    assert {k: (v["findings_initial"], v["unattributed"]) for k, v in lenses.items()} == {
+        "correctness": (2, 2), "clarity": (5, 5), "edge-cases": (3, 3), "excellence": (0, 0),
+    }
+    assert all(v["steps_source"] == "pass_summary" for v in lenses.values())
+    assert all(v["findings_by_iteration"] == [] for v in lenses.values())
+
+
+def test_without_events_reviews_are_fix_iterations_plus_one():
+    # oh27: fix_iterations 1/3/5/1, so reviews 2/4/6/2 and steps 3+7+11+3.
+    row = _row("oh27")
+    assert [row["lenses"][k]["iterations"] for k in row["lens_order"]] == [2, 4, 6, 2]
+    assert row["sequential_steps"] == 24
+
+
+def test_a_count_key_outside_the_three_severities_goes_to_other():
+    # m7su's first edge-cases review logged missing_tests: 5.
+    first = _row("m7su-dryrun")["lenses"]["edge-cases"]["findings_by_iteration"][0]
+    assert first["other"] == 5
+
+
+def test_dry_runs_are_excluded_from_the_totals():
+    rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in sorted(FIXTURES.glob("*.json"))]
+    counted = r5_baseline.baseline_rows(rows)
+    assert sorted(r["bead"] for r in counted) == ["opensrm-1mja", "opensrm-3ntg", "opensrm-oh27"]
+    # Correctness pass totals over the three live records: 4 + 2 + 3.
+    assert r5_baseline.totals(counted)["correctness"]["findings_initial"] == 9
+
+
+def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
+    # Future-shape guard: no archive logs both today (checked 2026-11-07).
+    record = {"completed_passes": [], "audit_trail": [
+        {"event": "findings_received", "pass": "excellence", "counts": {"minor": 2}},
+        {"event": "advisory_pass_completed", "pass": "excellence", "counts": {"minor": 2}},
+    ]}
+    lens = r5_baseline.analyse_record(record)["lenses"]["excellence"]
+    assert lens["iterations"] == 1
+
+
+def test_json_mode_reports_every_record(tmp_path, capsys):
+    assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert len(out["records"]) == 4
+    assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
+
+
+@pytest.mark.parametrize("make", ["missing", "empty"])
+def test_no_records_is_a_usage_error(tmp_path, make):
+    target = tmp_path / "archive"
+    if make == "empty":
+        target.mkdir()
+    assert r5_baseline.main(["--archive-dir", str(target)]) == 2
+
+
+def test_a_non_archive_file_is_ignored(tmp_path):
+    shutil.copy(FIXTURES / "r5-state-1mja-completed.json", tmp_path)
+    (tmp_path / "r5-state.json").write_text("{}")  # the live state file, not an archive
+    assert [n for n, _ in r5_baseline.load_records(tmp_path)] == ["r5-state-1mja-completed.json"]

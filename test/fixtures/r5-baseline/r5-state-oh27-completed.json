@@ -1,0 +1,82 @@
+{
+ "supervisor": "r5-supervise",
+ "version": 1,
+ "target_bead": "opensrm-oh27",
+ "started_at": "2026-08-28T00:00:00Z",
+ "dry_run": false,
+ "passes": [
+  "correctness",
+  "clarity",
+  "edge-cases",
+  "excellence"
+ ],
+ "status": "awaiting_user_confirmation",
+ "completed_passes": [
+  {
+   "name": "correctness",
+   "findings_count_initial": 3,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  },
+  {
+   "name": "clarity",
+   "findings_count_initial": 7,
+   "findings_count_final": 0,
+   "fix_iterations": 3
+  },
+  {
+   "name": "edge-cases",
+   "findings_count_initial": 6,
+   "findings_count_final": 0,
+   "fix_iterations": 5
+  },
+  {
+   "name": "excellence",
+   "findings_count_initial": 3,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  }
+ ],
+ "audit_trail": [
+  {
+   "ts": "2026-08-28T00:01:00Z",
+   "event": "pass_started",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-08-28T00:20:00Z",
+   "event": "pass_completed",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-08-28T00:21:00Z",
+   "event": "pass_started",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-08-28T00:45:00Z",
+   "event": "pass_completed",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-08-28T00:46:00Z",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-08-28T02:10:00Z",
+   "event": "pass_completed",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-08-28T02:11:00Z",
+   "event": "pass_started",
+   "pass": "excellence"
+  },
+  {
+   "ts": "2026-08-28T02:40:00Z",
+   "event": "pass_completed",
+   "pass": "excellence"
+  }
+ ]
+}
