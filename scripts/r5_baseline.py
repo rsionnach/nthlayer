@@ -40,6 +40,10 @@ there. The sequential gate runs passes one after another, so the critical path
 is the sum over every pass, advisory excellence included. ``steps_source`` says
 which derivation each pass used.
 
+Each ``--json`` record lists the known-data keys it used (``table_hits``); a
+known-data entry that no archived record used is a warning on stderr, since a
+mistyped key would silently change nothing.
+
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
 library only.
 
@@ -301,8 +305,8 @@ def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
 
     Run over the full archive, every entry should match: an unmatched one is a
     mistyped key, which would silently exclude or place nothing, or an archive
-    gone missing. The tests cannot check this (their fixtures are synthetic),
-    so main() warns on it."""
+    gone missing. The tests cannot check the real keys (their fixtures are
+    synthetic), so main() warns on it."""
     hits = {tuple(key) for row in rows for key in row["table_hits"]}
     return sorted((set(BLOCKED_DISPATCHES) | set(PASSLESS_EVENTS)) - hits, key=str)
 

@@ -3,9 +3,10 @@
 Synthetic gate records, one per structural pattern the archived
 `.claude/r5-state-*-completed.json` records show. Each has the structure and
 the numbers of a record that exhibits the pattern, with an invented bead id
-(`fx-<pattern>`, except that two share `fx-checkpointed-bead`, as a bead
-gated at two checkpoints has two records) and invented timestamps (`2000-01-01T…`, in event order). They
-carry no free text: no notes, rulings, briefs or session fields.
+(`fx-<pattern>`, except that two share `fx-checkpointed-bead`, as a bead gated
+at two checkpoints has two records) and invented timestamps (`2000-01-01T…`,
+in event order). They carry no free text: no notes, rulings, briefs or session
+fields.
 
 They are synthetic, not trimmed copies of real records, so that nobody
 "refreshes" them from the archive later with more fields in them (opensrm-6kqs.8).
@@ -31,6 +32,13 @@ counterparts (`SYNTHETIC_BLOCKED_DISPATCHES`, `SYNTHETIC_PASSLESS_EVENTS` in
 `test_r5_baseline.py`); the real keys are checked against the archive when the
 script runs, by `unmatched_table_entries`.
 
+To add one for a new pattern: write the record by hand as
+`r5-state-fx-<pattern>-completed.json`, with only the fields above, a bead id
+of `fx-<pattern>` and `2000-01-01T…` timestamps in event order; add its row
+below and its name to `test_fixtures_are_present`. If the pattern needs a
+known-data entry, add the synthetic key to `SYNTHETIC_BLOCKED_DISPATCHES` or
+`SYNTHETIC_PASSLESS_EVENTS` too. Never copy a record from the archive.
+
 | fixture (`r5-state-fx-…-completed.json`) | pattern |
 |---|---|
 | `v2-per-review-severities` | schema v2: severities logged per review, advisory excellence as `advisory_pass_completed` |
@@ -42,7 +50,7 @@ script runs, by `unmatched_table_entries`.
 | `re-run-fixes-only-in-runs` | a re-run pass whose fix rounds only the summed runs show (events and summary hold one each) |
 | `blocking-only-initial-count` | fixes applied with `fix_iterations: 0`, and `findings_count_initial` counting only blocking findings |
 | `stall-and-resend` | a stalled reviewer re-dispatched: more `reviewer_dispatched` than `findings_received` |
-| `blocked-dispatch-after-launch` | a dispatch the hook refused, followed by `reviewer_dispatch_blocked`, beside a real stall in another pass |
-| `blocked-dispatch-before-launch` | a dispatch the hook refused, followed by `supervisor_blocked` |
+| `blocked-dispatch-after-launch` | a dispatch the hook refused after the reviewer was launched, so `reviewer_dispatch_blocked` follows; beside a real stall in another pass |
+| `blocked-dispatch-before-launch` | a dispatch logged before launch that the hook refused, so `supervisor_blocked` follows |
 | `passless-fix-events` | two counting events logged with no `pass`, and one-off re-check passes |
 | `abandoned-unreviewed` | a gate abandoned after `pass_started`, nothing reviewed (excluded from the totals) |

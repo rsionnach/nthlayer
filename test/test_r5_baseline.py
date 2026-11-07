@@ -71,7 +71,8 @@ def test_fixtures_are_present():
 
 
 def test_severities_per_review_come_from_findings_received():
-    # v2-per-review-severities correctness logged three reviews: 0/1/3, then 0/1/0, then 0/0/1,
+    # fx-v2-per-review-severities, correctness: three reviews, 0/1/3, then
+    # 0/1/0, then 0/0/1,
     # with fix_iterations 2.
     lens = _row("fx-v2-per-review-severities")["lenses"]["correctness"]
     assert lens["findings_by_review"] == [
@@ -99,7 +100,8 @@ def test_lens_order_and_critical_path_for_a_v2_record():
 
 
 def test_a_totals_only_record_reports_every_finding_unattributed():
-    # v1-totals-only (v1) has no findings_received: totals 2/5/3/0, fix_iterations 1/0/1/0.
+    # fx-v1-totals-only has no findings_received: totals 2/5/3/0,
+    # fix_iterations 1/0/1/0.
     lenses = _row("fx-v1-totals-only")["lenses"]
     assert {k: (v["recorded_initial"], v["unattributed"]) for k, v in lenses.items()} == {
         "correctness": (2, 2), "clarity": (5, 5), "edge-cases": (3, 3), "excellence": (0, 0),
@@ -113,14 +115,16 @@ def test_a_totals_only_record_reports_every_finding_unattributed():
 
 
 def test_without_events_reviews_are_fix_iterations_plus_one():
-    # v1-fix-loops: fix_iterations 1/3/5/1, so reviews 2/4/6/2 and steps 3+7+11+3.
+    # fx-v1-fix-loops: fix_iterations 1/3/5/1, so reviews 2/4/6/2 and steps
+    # 3+7+11+3.
     row = _row("fx-v1-fix-loops")
     assert [row["lenses"][k]["reviews"] for k in row["lens_order"]] == [2, 4, 6, 2]
     assert row["sequential_steps"] == 24
 
 
 def test_a_count_key_outside_the_three_severities_goes_to_other():
-    # dry-run-with-other-bucket's first edge-cases review logged missing_tests: 5.
+    # fx-dry-run-with-other-bucket: its first edge-cases review logged
+    # missing_tests: 5.
     first = _row("fx-dry-run-with-other-bucket")["lenses"]["edge-cases"]["findings_by_review"][0]
     assert first["other"] == 5
 
@@ -129,7 +133,7 @@ def test_dry_runs_are_excluded_from_the_totals():
     rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in sorted(FIXTURES.glob("*.json"))]
     counted = r5_baseline.baseline_rows(rows)
     assert "fx-dry-run-with-other-bucket" not in {r["bead"] for r in counted}
-    # Excluded: the dry-run-with-other-bucket dry run and abandoned-unreviewed, abandoned with nothing reviewed.
+    # Excluded: fx-dry-run-with-other-bucket and fx-abandoned-unreviewed.
     assert len(counted) == len(rows) - 2
 
 
@@ -165,7 +169,8 @@ def test_a_non_archive_file_is_ignored(tmp_path):
 
 
 def test_fixes_with_no_re_review_are_counted():
-    # blocking-only-initial-count: clarity, edge-cases and provenance each logged fixes_applied
+    # fx-blocking-only-initial-count: clarity, edge-cases and provenance each
+    # logged fixes_applied
     # with fix_iterations 0. Reviews 1 each; fixes 0/1/1/1; excellence 1.
     row = _row("fx-blocking-only-initial-count")
     assert [row["lenses"][k]["fix_rounds"] for k in ("correctness", "clarity", "edge-cases", "provenance")] == [0, 1, 1, 1]
@@ -173,7 +178,8 @@ def test_fixes_with_no_re_review_are_counted():
 
 
 def test_a_re_run_pass_counts_every_run():
-    # re-run-passes re-ran correctness, edge-cases and provenance. edge-cases: three
+    # fx-re-run-passes re-ran correctness, edge-cases and provenance.
+    # edge-cases: three
     # reviews (2 + 1), three fix_dispatched, runs' fix_iterations 2 + 1.
     lenses = _row("fx-re-run-passes")["lenses"]
     assert (lenses["edge-cases"]["reviews"], lenses["edge-cases"]["fix_rounds"]) == (3, 3)
@@ -190,7 +196,8 @@ def test_a_re_run_shows_in_the_dispatch_sequence():
 
 
 def test_a_combined_pass_is_counted_once():
-    # combined-pass reviewed clarity and edge-cases as one pass, "clarity+edge-cases",
+    # fx-combined-pass reviewed clarity and edge-cases as one pass,
+    # "clarity+edge-cases",
     # yet completed_passes lists both. One review and one fix, counted there.
     row = _row("fx-combined-pass")
     assert row["lens_order"] == ["correctness", "clarity+edge-cases", "provenance", "excellence"]
@@ -200,20 +207,22 @@ def test_a_combined_pass_is_counted_once():
 
 
 def test_lens_order_follows_first_appearance_not_the_roster():
-    # dry-run-with-other-bucket has no pass_started for correctness, which nonetheless ran first.
+    # fx-dry-run-with-other-bucket has no pass_started for correctness, which
+    # nonetheless ran first.
     assert _row("fx-dry-run-with-other-bucket")["lens_order"][0] == "correctness"
 
 
 def test_first_review_findings_are_never_below_the_logged_severities():
     # Some passes counted only blocking findings in findings_count_initial:
-    # blocking-only-initial-count records 0 everywhere but logged MINORs (1/5/3/2).
+    # fx-blocking-only-initial-count records 0 everywhere but logged MINORs
+    # (1/5/3/2).
     lenses = _row("fx-blocking-only-initial-count")["lenses"]
     assert [lenses[k]["findings_first_review"] for k in ("correctness", "clarity", "edge-cases", "provenance")] == [1, 5, 3, 2]
 
 
 def test_a_re_sent_dispatch_counts_as_a_review():
-    # stall-and-resend correctness: three reviewer_dispatched, two findings_received (a
-    # stalled dispatch was re-sent).
+    # fx-stall-and-resend, correctness: three reviewer_dispatched, two
+    # findings_received (a stalled dispatch was re-sent).
     assert _row("fx-stall-and-resend")["lenses"]["correctness"]["reviews"] == 3
 
 
@@ -223,13 +232,15 @@ def test_a_pass_started_but_never_reviewed_is_not_a_lens_run():
     assert row["lenses"] == {} and row["lens_order"] == [] and row["sequential_steps"] == 0
 
 
-# The two archived dispatches the hook blocked before any reviewer ran
-# (BLOCKED_DISPATCHES). Hand counts from each record's events, per lens
+# The two fixtures modelling BLOCKED_DISPATCHES: a dispatch the hook refused
+# before any reviewer ran. Hand counts from each one's events, per lens
 # reviews + fix rounds:
-#   blocked-dispatch-after-launch      correctness 2+1 (3 dispatched, 1 blocked), clarity 4+2 (a real
-#             stall re-sent), edge-cases 3+3, provenance 3+3, excellence 1.
-#   blocked-dispatch-before-launch  correctness 2+1 (3 dispatched, 1 blocked), clarity 2+1,
-#             edge-cases 2+1, provenance 5+4, excellence 1.
+#   fx-blocked-dispatch-after-launch
+#       correctness 2+1 (3 dispatched, 1 blocked), clarity 4+2 (a real stall
+#       re-sent), edge-cases 3+3, provenance 3+3, excellence 1.
+#   fx-blocked-dispatch-before-launch
+#       correctness 2+1 (3 dispatched, 1 blocked), clarity 2+1,
+#       edge-cases 2+1, provenance 5+4, excellence 1.
 @pytest.mark.parametrize(("name", "steps", "correctness_reviews"), [
     ("fx-blocked-dispatch-after-launch", 22, 2),
     ("fx-blocked-dispatch-before-launch", 19, 2),
@@ -241,7 +252,7 @@ def test_a_dispatch_the_hook_blocked_is_not_a_model_step(name, steps, correctnes
 
 
 def test_a_gate_with_no_lens_reviewed_is_not_counted():
-    # abandoned-unreviewed was abandoned after pass_started (status in_progress).
+    # fx-abandoned-unreviewed stops after pass_started (status in_progress).
     row = _row("fx-abandoned-unreviewed")
     assert row["lenses"] == {} and row["sequential_steps"] == 0
     assert row not in r5_baseline.baseline_rows([row])
@@ -278,7 +289,8 @@ def test_a_record_it_cannot_count_is_refused(tmp_path, record):
 
 
 def test_a_known_passless_fix_is_given_to_its_pass():
-    # passless-fix-events logged the scoped(correctness+edge) re-check's fix_dispatched and
+    # fx-passless-fix-events logged the scoped(correctness+edge) re-check's
+    # fix_dispatched and
     # fixes_applied with no pass (PASSLESS_EVENTS): one review, one fix round.
     lens = _row("fx-passless-fix-events")["lenses"]["scoped(correctness+edge)"]
     assert (lens["reviews"], lens["fix_rounds"]) == (1, 1)
@@ -299,14 +311,16 @@ def test_an_unreadable_archive_is_refused(tmp_path, content):
 
 
 def test_a_re_run_s_fixes_come_from_its_runs_when_events_and_summary_hold_one():
-    # re-run-fixes-only-in-runs provenance ran twice, each pass_completed fix_iterations 1, but
+    # fx-re-run-fixes-only-in-runs, provenance: ran twice, each pass_completed
+    # fix_iterations 1, but
     # logged one fix_dispatched and its summary holds the last run's 1.
     lens = _row("fx-re-run-fixes-only-in-runs")["lenses"]["provenance"]
     assert (lens["reviews"], lens["fix_rounds"]) == (4, 2)
 
 
 def test_totals_take_the_first_review_s_severities_and_count_re_reviews_apart():
-    # v2-per-review-severities's findings_received, first review then the rest, per lens:
+    # fx-v2-per-review-severities' findings_received, first review then the
+    # rest, per lens:
     #   correctness 0/1/3 then 0/1/0, 0/0/1; clarity 0/2/9 then 0/0/1;
     #   edge-cases 0/1/6 then 0/0/1; provenance 3/1/1 then 0/1/0, 0/0/1;
     #   excellence (advisory) 0/0/4.
@@ -322,7 +336,7 @@ def test_totals_take_the_first_review_s_severities_and_count_re_reviews_apart():
 
 
 def test_passes_outside_the_roster_fold_into_one_row():
-    # combined-pass's combined "clarity+edge-cases" review: first review 0/1/5.
+    # fx-combined-pass's "clarity+edge-cases" review: first review 0/1/5.
     folded = r5_baseline.fold_other_passes(r5_baseline.totals([_row("fx-combined-pass")]))
     assert "clarity+edge-cases" not in folded
     other = folded["other passes"]
@@ -338,8 +352,9 @@ def test_step_stats_use_a_true_median():
 
 def test_the_published_table_folds_other_passes_and_follows_the_roster():
     # What docs/r5-gate.md publishes, as data. The fixtures' live, reviewed
-    # gates use the five roster passes plus three one-off names (combined-pass
-    # "clarity+edge-cases", passless-fix-events "scoped(correctness+edge)" and
+    # gates use the five roster passes plus three one-off names
+    # (fx-combined-pass "clarity+edge-cases"; fx-passless-fix-events
+    # "scoped(correctness+edge)" and
     # "scoped re-check"), which the table must show as one "other passes" row.
     r = r5_baseline.report([_row(p.name.removeprefix("r5-state-").removesuffix("-completed.json"))
                             for p in sorted(FIXTURES.glob("*.json"))])
@@ -347,20 +362,24 @@ def test_the_published_table_folds_other_passes_and_follows_the_roster():
         "correctness", "clarity", "edge-cases", "provenance", "excellence", "other passes",
     ]
     assert (r["excluded_dry_runs"], r["excluded_unreviewed"]) == (1, 1)
-    # 13 fixtures less the dry-run-with-other-bucket dry run and abandoned-unreviewed (nothing reviewed); all
+    # 13 fixtures less fx-dry-run-with-other-bucket and fx-abandoned-unreviewed;
+    # all
     # 11 have a reviewed correctness pass. With the exclusions skipped, either
     # number would rise.
     assert r["records"] == 11
-    # Two of those are checkpoints of one bead (passless-fix-events and
-    # re-run-passes share fx-checkpointed-bead), as checkpointed beads are.
+    # Two of those are checkpoints of one bead (fx-passless-fix-events and
+    # fx-re-run-passes share fx-checkpointed-bead), as checkpointed beads are.
     assert r["beads"] == 10
     assert r["table"][0][r5_baseline.TABLE_COLUMNS.index("records")] == 11
     # Every row has a cell per column, or every later value shifts left.
     assert all(len(row) == len(r5_baseline.TABLE_COLUMNS) for row in r["table"])
     # The three one-off passes, by hand from the fixtures' events:
-    #   combined-pass clarity+edge-cases     1 review, 0/1/5, 1 fix (fixes_applied)
-    #   passless-fix-events scoped(correctness+edge)  1 review, 0/3/7, 1 fix (PASSLESS_EVENTS)
-    #   passless-fix-events scoped re-check      1 review, 0/0/1, no fix
+    #   fx-combined-pass, clarity+edge-cases:
+    #       1 review, 0/1/5, 1 fix (fixes_applied)
+    #   fx-passless-fix-events, scoped(correctness+edge):
+    #       1 review, 0/3/7, 1 fix (PASSLESS_EVENTS)
+    #   fx-passless-fix-events, scoped re-check:
+    #       1 review, 0/0/1, no fix
     # No summaries, so findings = severities and nothing is unattributed.
     assert r["table"][-1] == ["other passes", 3, 17, 0, 4, 13, 0, 0, 0, 3, 5]
 
@@ -386,4 +405,6 @@ def test_every_known_data_entry_matches_a_fixture_event():
 def test_an_entry_matching_no_event_is_reported():
     # A mistyped key would silently exclude nothing; main() warns on it.
     rows = [_row("fx-v1-totals-only")]
-    assert len(r5_baseline.unmatched_table_entries(rows)) == 4
+    assert len(r5_baseline.unmatched_table_entries(rows)) == (
+        len(SYNTHETIC_BLOCKED_DISPATCHES) + len(SYNTHETIC_PASSLESS_EVENTS)
+    )
