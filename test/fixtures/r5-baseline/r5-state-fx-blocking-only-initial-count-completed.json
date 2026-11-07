@@ -1,8 +1,8 @@
 {
  "supervisor": "r5-supervise",
  "version": 2,
- "target_bead": "opensrm-g35i",
- "started_at": "2026-10-21T21:01:56+00:00",
+ "target_bead": "fx-blocking-only-initial-count",
+ "started_at": "2000-01-01T00:00:00Z",
  "dry_run": false,
  "passes": [
   "correctness",
@@ -17,98 +17,110 @@
  "completed_passes": [
   {
    "name": "correctness",
-   "findings_count_initial": 3,
+   "findings_count_initial": 0,
    "findings_count_final": 0,
-   "fix_iterations": 1
+   "fix_iterations": 0
   },
   {
    "name": "clarity",
-   "findings_count_initial": 6,
+   "findings_count_initial": 0,
    "findings_count_final": 0,
-   "fix_iterations": 1
+   "fix_iterations": 0
   },
   {
    "name": "edge-cases",
-   "findings_count_initial": 6,
+   "findings_count_initial": 0,
    "findings_count_final": 0,
-   "fix_iterations": 1
+   "fix_iterations": 0
   },
   {
    "name": "provenance",
-   "findings_count_initial": 2,
+   "findings_count_initial": 0,
    "findings_count_final": 0,
    "fix_iterations": 0
   }
  ],
  "audit_trail": [
   {
-   "ts": "2026-10-21T21:01:56+00:00",
+   "ts": "2000-01-01T00:00:00Z",
    "event": "pass_started",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-21T21:02:39+00:00",
-   "event": "reviewer_dispatched",
-   "pass": "correctness"
-  },
-  {
-   "ts": "2026-10-21T21:03:39+00:00",
+   "ts": "2000-01-01T00:00:01Z",
    "event": "findings_received",
    "pass": "correctness",
    "counts": {
     "critical": 0,
-    "important": 1,
-    "minor": 2
+    "important": 0,
+    "minor": 1
    }
   },
   {
-   "ts": "2026-10-21T21:03:39+00:00",
+   "ts": "2000-01-01T00:00:02Z",
    "event": "pass_completed",
    "pass": "correctness",
-   "fix_iterations": 1
+   "fix_iterations": 0
   },
   {
-   "ts": "2026-10-21T21:03:39+00:00",
+   "ts": "2000-01-01T00:00:03Z",
    "event": "pass_started",
-   "pass": "clarity+edge-cases"
+   "pass": "clarity"
   },
   {
-   "ts": "2026-10-21T21:08:57+00:00",
+   "ts": "2000-01-01T00:00:04Z",
    "event": "findings_received",
-   "pass": "clarity+edge-cases",
+   "pass": "clarity",
    "counts": {
     "critical": 0,
-    "important": 1,
+    "important": 0,
     "minor": 5
    }
   },
   {
-   "ts": "2026-10-21T21:08:57+00:00",
+   "ts": "2000-01-01T00:00:05Z",
    "event": "fixes_applied",
-   "pass": "clarity+edge-cases"
-  },
-  {
-   "ts": "2026-10-21T21:08:57+00:00",
-   "event": "pass_completed",
    "pass": "clarity"
   },
   {
-   "ts": "2026-10-21T21:08:57+00:00",
+   "ts": "2000-01-01T00:00:06Z",
    "event": "pass_completed",
+   "pass": "clarity",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2000-01-01T00:00:07Z",
+   "event": "pass_started",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-21T21:08:57+00:00",
+   "ts": "2000-01-01T00:00:08Z",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2000-01-01T00:00:09Z",
+   "event": "fixes_applied",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2000-01-01T00:00:10Z",
+   "event": "pass_completed",
+   "pass": "edge-cases",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2000-01-01T00:00:11Z",
    "event": "pass_started",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-21T21:09:11+00:00",
-   "event": "reviewer_dispatched",
-   "pass": "provenance"
-  },
-  {
-   "ts": "2026-10-21T21:10:10+00:00",
+   "ts": "2000-01-01T00:00:12Z",
    "event": "findings_received",
    "pass": "provenance",
    "counts": {
@@ -118,13 +130,18 @@
    }
   },
   {
-   "ts": "2026-10-21T21:10:10+00:00",
+   "ts": "2000-01-01T00:00:13Z",
+   "event": "fixes_applied",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2000-01-01T00:00:14Z",
    "event": "pass_completed",
    "pass": "provenance",
    "fix_iterations": 0
   },
   {
-   "ts": "2026-10-21T21:10:49+00:00",
+   "ts": "2000-01-01T00:00:15Z",
    "event": "advisory_pass_completed",
    "pass": "excellence",
    "counts": {

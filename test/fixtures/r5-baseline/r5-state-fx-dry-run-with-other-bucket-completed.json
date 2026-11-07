@@ -1,8 +1,8 @@
 {
  "supervisor": "r5-supervise",
  "version": 1,
- "target_bead": "opensrm-m7su",
- "started_at": "2026-05-31T07:20:58Z",
+ "target_bead": "fx-dry-run-with-other-bucket",
+ "started_at": "2000-01-01T00:00:00Z",
  "dry_run": true,
  "passes": [
   "correctness",
@@ -39,12 +39,12 @@
  ],
  "audit_trail": [
   {
-   "ts": "2026-05-31T07:27:14Z",
+   "ts": "2000-01-01T00:00:00Z",
    "event": "reviewer_dispatched",
    "pass": "correctness"
   },
   {
-   "ts": "2026-05-31T07:27:14Z",
+   "ts": "2000-01-01T00:00:01Z",
    "event": "findings_received",
    "pass": "correctness",
    "counts": {
@@ -54,18 +54,18 @@
    }
   },
   {
-   "ts": "2026-05-31T07:27:14Z",
+   "ts": "2000-01-01T00:00:02Z",
    "event": "pass_completed",
    "pass": "correctness",
    "fix_iterations": 0
   },
   {
-   "ts": "2026-05-31T07:27:14Z",
+   "ts": "2000-01-01T00:00:03Z",
    "event": "pass_started",
    "pass": "clarity"
   },
   {
-   "ts": "2026-05-31T07:28:57Z",
+   "ts": "2000-01-01T00:00:04Z",
    "event": "findings_received",
    "pass": "clarity",
    "counts": {
@@ -75,18 +75,18 @@
    }
   },
   {
-   "ts": "2026-05-31T07:28:57Z",
+   "ts": "2000-01-01T00:00:05Z",
    "event": "pass_completed",
    "pass": "clarity",
    "fix_iterations": 0
   },
   {
-   "ts": "2026-05-31T07:28:57Z",
+   "ts": "2000-01-01T00:00:06Z",
    "event": "pass_started",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-05-31T07:32:30Z",
+   "ts": "2000-01-01T00:00:07Z",
    "event": "findings_received",
    "pass": "edge-cases",
    "counts": {
@@ -97,18 +97,18 @@
    }
   },
   {
-   "ts": "2026-05-31T07:32:30Z",
+   "ts": "2000-01-01T00:00:08Z",
    "event": "pass_completed",
    "pass": "edge-cases",
    "fix_iterations": 0
   },
   {
-   "ts": "2026-05-31T07:32:30Z",
+   "ts": "2000-01-01T00:00:09Z",
    "event": "pass_started",
    "pass": "excellence"
   },
   {
-   "ts": "2026-05-31T07:34:35Z",
+   "ts": "2000-01-01T00:00:10Z",
    "event": "findings_received",
    "pass": "excellence",
    "counts": {
@@ -118,7 +118,7 @@
    }
   },
   {
-   "ts": "2026-05-31T07:34:35Z",
+   "ts": "2000-01-01T00:00:11Z",
    "event": "pass_completed",
    "pass": "excellence",
    "fix_iterations": 0

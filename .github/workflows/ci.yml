@@ -68,6 +68,12 @@ jobs:
         run: bash test/test_eco_doctor.sh
 
       # r5_baseline's tests (opensrm-6kqs.1). Standard library plus pytest, over
-      # trimmed real archives in test/fixtures/r5-baseline/; no network.
+      # synthetic fixtures, one per archive pattern (opensrm-6kqs.8); no network.
       - name: r5-baseline tests
         run: uv run --no-project --with pytest pytest -q test/test_r5_baseline.py
+
+      # Again on 3.9: the workspace shim (.claude/bin/r5-baseline.sh) runs the
+      # system python3, and before 3.11 fromisoformat cannot read a "Z"
+      # timestamp, so the script's own normalisation is exercised only here.
+      - name: r5-baseline tests (Python 3.9, as the shim runs)
+        run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_baseline.py
