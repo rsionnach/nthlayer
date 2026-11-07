@@ -18,13 +18,23 @@ These metrics are already OTel-aligned in generate templates.
 
 | Recording Rule | PromQL Expression | Purpose |
 |---------------|-------------------|---------|
-| `slo:requests_total:30d` | `sum(increase(http_requests_total{service="X"}[30d]))` | Availability denominator |
-| `slo:requests_success:30d` | `sum(increase(http_requests_total{service="X",status!~"5.."}[30d]))` | Availability numerator |
-| `slo:availability:ratio` | success / total | Availability SLO ratio |
-| `slo:error_budget_remaining:ratio` | `1 - ((1 - availability) / (1 - objective))` | Remaining error budget (signed; see note) |
-| `slo:latency_requests_total:30d` | `sum(increase(http_request_duration_seconds_count{...}[30d]))` | Latency denominator |
-| `slo:latency_requests_fast:30d` | `sum(increase(http_request_duration_seconds_bucket{...,le="0.5"}[30d]))` | Latency numerator (requests under threshold) |
-| `slo:latency:ratio` | fast / total | Latency SLO ratio |
+`{w}` is the SLO's own window (`30d` when it declares none). Every `slo:*`
+rule carries `service` and `slo`; the ratio rules also carry `objective`.
+
+| Recording Rule | PromQL Expression | Purpose |
+|---------------|-------------------|---------|
+| `slo:requests_total:{w}` | `sum(increase(http_requests_total{service="X"}[{w}]))` | Availability denominator |
+| `slo:requests_success:{w}` | `sum(increase(http_requests_total{service="X",status!~"5.."}[{w}]))` | Availability numerator |
+| `slo:availability:ratio` | success / total | Availability SLO ratio (good) |
+| `slo:latency_requests_total:{w}` | `sum(increase(http_request_duration_seconds_count{...}[{w}]))` | Latency denominator |
+| `slo:latency_requests_fast:{w}` | `sum(increase(http_request_duration_seconds_bucket{...,le="<bound>"}[{w}]))` | Latency numerator: requests under the SLO's `threshold_ms` (see the budget note for SLOs that declare none) |
+| `slo:latency:ratio` | fast / total | Latency SLO ratio (good) |
+| `slo:error_requests_total:{w}`, `slo:error_requests_failed:{w}` | `sum(increase(http_requests_total{...}[{w}]))`, the same over `status=~"5.."` | Error-rate denominator and numerator |
+| `slo:error_rate:ratio` | failed / total | Error-rate SLO ratio (**bad**: the budget uses `1 - ratio`) |
+| `slo:sli_good:rate`, `slo:sli_total:rate` | the SLO's own good and total queries, as written | Only for an SLO that declares them (OpenSLO `ratioMetric`, or a legacy `indicators[]` `success_ratio`; a bad query becomes `total - bad`) |
+| `slo:sli:ratio` | `sum_over_time(good[{w}]) / sum_over_time(total[{w}])` | That SLO's ratio (good); its budget comes from this, not from the canned ratio (ruling Z3) |
+| `slo:error_budget_remaining:ratio` | `1 - ((1 - good_ratio) / (1 - objective/100))` | Remaining error budget, one per availability, latency and error_rate SLO (signed; see note) |
+| `slo:throughput:rate5m`, `slo:throughput:compliance` | request rate; rate against the SLO's minimum | Throughput: written, but no budget (ruling D5) |
 | `slo:http_request_duration_seconds:p50` | `histogram_quantile(0.5, rate(...[5m]))` | P50 latency |
 | `slo:http_request_duration_seconds:p95` | `histogram_quantile(0.95, rate(...[5m]))` | P95 latency |
 | `slo:http_request_duration_seconds:p99` | `histogram_quantile(0.99, rate(...[5m]))` | P99 latency |
@@ -36,10 +46,40 @@ These metrics are already OTel-aligned in generate templates.
 **Error budget.** `slo:error_budget_remaining:ratio` is signed: 1.0 is a full
 budget, 0 spent, negative overspent. Labels: `service`, `slo` (the SLO name),
 `objective`. Its name and labels are owned by nthlayer-common's
-`ERROR_BUDGET_REMAINING` (`manifest/slo_series.py`); generate writes it, and
-workers' measure, correlate and drift read it (opensrm-h0at).
-`test/test_error_budget_seam.py` checks generate and measure agree (correlate
-and drift build their selectors from the same constant).
+`ERROR_BUDGET_REMAINING` (`manifest/slo_series.py`; opensrm-h0at).
+
+Since opensrm-zo0o (ruling Z1: every classical SLO is good/total against its
+objective, as OpenSLO defines it), nthlayer-generate 4.1.0 writes one budget
+per **availability, latency and error_rate** SLO, from that SLO's good ratio
+(table above). Throughput, freshness, lag and custom SLOs get none (ruling D5;
+time-slice budgets are opensrm-vcxm).
+
+generate deliberately writes **no** budget when it cannot trust one, because a
+reader treats a missing series as no data and a wrong one as an answer:
+
+- the objective is not a success percentage in `[50, 100)` (srm/v1 keeps a
+  latency bound or an error_rate maximum in `target`, opensrm-t13c);
+- a latency SLO declares no `threshold_ms` and has no queries of its own
+  (v2 reads the bound from the objective, opensrm-8jpp; the legacy
+  `indicators[].threshold_ms` is not read, opensrm-s7b1).
+
+Readers (nthlayer-workers 4.2.0):
+
+- **measure** evaluates every availability, latency and error_rate SLO from
+  its budget, `{service, slo}`, breaching below zero. A missing series is a
+  warning and a `NO DATA` line in `evaluate-once`. Throughput, freshness, lag
+  and custom SLOs are reported `NOT EVALUABLE` (no_data_source) and never
+  queried.
+- **correlate** takes the service's worst budget with `bottomk(1, ...)`, so
+  its `error_budget_exhausted` event names the `slo`.
+- **drift** analyses only SLOs Prometheus holds a budget for, found with
+  `group by (slo)` over the service's budgets.
+
+`test/test_error_budget_seam.py` checks, against the published packages, that
+for every real manifest generate writes exactly the budgets measure reads. It
+pins one witness per kind, and lists each budget measure asks for that
+generate's guard skips, with its bead (correlate and drift build their
+selectors from the same constant).
 
 ### Alert Inputs
 
@@ -51,7 +91,7 @@ and drift build their selectors from the same constant).
 
 ### KNOWN GAP: No recording rules exist in nthlayer-generate for judgment SLOs yet.
 
-The ai-gate spec (`examples/opensrm/ai-gate.reliability.yaml`) declares judgment SLOs (reversal_rate, high_confidence_failure, calibration, feedback_latency) but nthlayer-generate does not yet produce recording rules for them.
+The ai-gate spec (`examples/opensrm/ai-gate.reliability.yaml`) declares judgment SLOs (reversal_rate, high_confidence_failure) but nthlayer-generate does not yet produce recording rules for them. Calibration and feedback latency are judgment thresholds now, not SLOs (see "Judgment threshold metrics").
 
 **Interim path for nthlayer-measure:** Query raw metrics directly until generate templates are extended.
 
@@ -79,7 +119,7 @@ sum(increase(gen_ai_overrides_hcf_total{service="fraud-detect"}[7d]))
 /
 sum(increase(gen_ai_decisions_total{service="fraud-detect",confidence_bucket="high"}[7d]))
 
-# Error budget remaining (availability)
+# Error budget remaining (any availability, latency or error_rate SLO)
 slo:error_budget_remaining:ratio{service="fraud-detect",slo="availability"}
 ```
 
