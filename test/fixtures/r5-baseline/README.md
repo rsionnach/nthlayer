@@ -6,13 +6,19 @@ record's structure and every number the baseline reads; free text (notes,
 rulings, briefs) and session details are dropped, because the archives are
 internal and this repository is public.
 
-Kept: top-level `supervisor`, `version`, `target_bead`, `started_at`,
-`dry_run`, `passes`, `advisory_passes`, `status`; `completed_passes[]` `name`,
-`findings_count_initial`, `findings_count_final`, `fix_iterations`;
-`audit_trail[]` events `pass_started`, `findings_received`,
-`advisory_pass_completed`, `pass_completed`, `fixes_applied`, `fix_dispatched`,
-`reviewer_dispatched`, `reviewer_dispatch_blocked`, `supervisor_blocked` with `ts`, `event`, `pass`, `iteration`, `counts`,
-`fix_iterations`.
+How each was made: load the archive, keep only these fields, write it back
+with `json.dump(..., indent=1)`. Nothing is edited by hand; to add one, apply
+the same filter to another archive.
+
+- top level: `supervisor`, `version`, `target_bead`, `started_at`, `dry_run`,
+  `passes`, `advisory_passes`, `status`;
+- each `completed_passes[]` entry: `name`, `findings_count_initial`,
+  `findings_count_final`, `fix_iterations`;
+- `audit_trail[]` events `pass_started`, `findings_received`,
+  `advisory_pass_completed`, `pass_completed`, `fixes_applied`,
+  `fix_dispatched`, `reviewer_dispatched`, `reviewer_dispatch_blocked` and
+  `supervisor_blocked`, keeping `ts`, `event`, `pass`, `iteration`, `counts`
+  and `fix_iterations`.
 
 | file | why it is here |
 |---|---|
