@@ -41,7 +41,8 @@
   {
    "ts": "2026-05-30T02:30:00Z",
    "event": "pass_completed",
-   "pass": "correctness"
+   "pass": "correctness",
+   "fix_iterations": 1
   },
   {
    "ts": "2026-05-30T02:45:00Z",
@@ -51,7 +52,8 @@
   {
    "ts": "2026-05-30T03:05:00Z",
    "event": "pass_completed",
-   "pass": "edge-cases"
+   "pass": "edge-cases",
+   "fix_iterations": 1
   },
   {
    "ts": "2026-05-30T03:15:00Z",

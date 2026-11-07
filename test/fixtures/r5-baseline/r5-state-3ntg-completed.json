@@ -57,6 +57,11 @@
    }
   },
   {
+   "ts": "2026-10-23T20:15:21Z",
+   "event": "fixes_applied",
+   "pass": "correctness"
+  },
+  {
    "ts": "2026-10-23T20:16:20Z",
    "event": "findings_received",
    "pass": "correctness",
@@ -66,6 +71,12 @@
     "important": 1,
     "minor": 0
    }
+  },
+  {
+   "ts": "2026-10-23T20:20:38Z",
+   "event": "fixes_applied",
+   "pass": "correctness",
+   "iteration": 2
   },
   {
    "ts": "2026-10-23T20:21:13Z",
@@ -81,7 +92,8 @@
   {
    "ts": "2026-10-23T20:21:13Z",
    "event": "pass_completed",
-   "pass": "correctness"
+   "pass": "correctness",
+   "fix_iterations": 2
   },
   {
    "ts": "2026-10-23T20:21:13Z",
@@ -99,6 +111,11 @@
    }
   },
   {
+   "ts": "2026-10-23T20:27:40Z",
+   "event": "fixes_applied",
+   "pass": "clarity"
+  },
+  {
    "ts": "2026-10-23T20:28:08Z",
    "event": "findings_received",
    "pass": "clarity",
@@ -112,7 +129,8 @@
   {
    "ts": "2026-10-23T20:28:08Z",
    "event": "pass_completed",
-   "pass": "clarity"
+   "pass": "clarity",
+   "fix_iterations": 1
   },
   {
    "ts": "2026-10-23T20:28:08Z",
@@ -130,6 +148,11 @@
    }
   },
   {
+   "ts": "2026-10-23T20:38:01Z",
+   "event": "fixes_applied",
+   "pass": "edge-cases"
+  },
+  {
    "ts": "2026-10-23T20:39:44Z",
    "event": "findings_received",
    "pass": "edge-cases",
@@ -143,7 +166,8 @@
   {
    "ts": "2026-10-23T20:39:44Z",
    "event": "pass_completed",
-   "pass": "edge-cases"
+   "pass": "edge-cases",
+   "fix_iterations": 1
   },
   {
    "ts": "2026-10-23T20:39:44Z",
@@ -161,6 +185,11 @@
    }
   },
   {
+   "ts": "2026-10-23T20:48:19Z",
+   "event": "fixes_applied",
+   "pass": "provenance"
+  },
+  {
    "ts": "2026-10-23T20:49:31Z",
    "event": "findings_received",
    "pass": "provenance",
@@ -170,6 +199,12 @@
     "important": 1,
     "minor": 0
    }
+  },
+  {
+   "ts": "2026-10-23T20:54:07Z",
+   "event": "fixes_applied",
+   "pass": "provenance",
+   "iteration": 2
   },
   {
    "ts": "2026-10-23T20:55:17Z",
@@ -185,7 +220,8 @@
   {
    "ts": "2026-10-23T20:55:17Z",
    "event": "pass_completed",
-   "pass": "provenance"
+   "pass": "provenance",
+   "fix_iterations": 2
   },
   {
    "ts": "2026-10-23T20:55:50Z",

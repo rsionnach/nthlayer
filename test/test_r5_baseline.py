@@ -36,8 +36,11 @@ def test_fixtures_are_present():
     assert names == [
         "r5-state-1mja-completed.json",
         "r5-state-3ntg-completed.json",
+        "r5-state-g32d-checkpointB-completed.json",
+        "r5-state-g35i-completed.json",
         "r5-state-m7su-dryrun-completed.json",
         "r5-state-oh27-completed.json",
+        "r5-state-wo62-1-checkpointA-common-completed.json",
     ]
 
 
@@ -75,7 +78,11 @@ def test_a_totals_only_record_reports_every_finding_unattributed():
     assert {k: (v["findings_initial"], v["unattributed"]) for k, v in lenses.items()} == {
         "correctness": (2, 2), "clarity": (5, 5), "edge-cases": (3, 3), "excellence": (0, 0),
     }
-    assert all(v["steps_source"] == "pass_summary" for v in lenses.values())
+    # pass_completed carries fix_iterations for correctness and edge-cases only.
+    assert {k: v["steps_source"] for k, v in lenses.items()} == {
+        "correctness": "pass_completed", "clarity": "pass_summary",
+        "edge-cases": "pass_completed", "excellence": "pass_summary",
+    }
     assert all(v["findings_by_iteration"] == [] for v in lenses.values())
 
 
@@ -95,9 +102,8 @@ def test_a_count_key_outside_the_three_severities_goes_to_other():
 def test_dry_runs_are_excluded_from_the_totals():
     rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in sorted(FIXTURES.glob("*.json"))]
     counted = r5_baseline.baseline_rows(rows)
-    assert sorted(r["bead"] for r in counted) == ["opensrm-1mja", "opensrm-3ntg", "opensrm-oh27"]
-    # Correctness pass totals over the three live records: 4 + 2 + 3.
-    assert r5_baseline.totals(counted)["correctness"]["findings_initial"] == 9
+    assert "opensrm-m7su" not in {r["bead"] for r in counted}
+    assert len(counted) == len(rows) - 1
 
 
 def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
@@ -113,7 +119,7 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
 def test_json_mode_reports_every_record(tmp_path, capsys):
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["records"]) == 4
+    assert len(out["records"]) == 7
     assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
@@ -129,3 +135,50 @@ def test_a_non_archive_file_is_ignored(tmp_path):
     shutil.copy(FIXTURES / "r5-state-1mja-completed.json", tmp_path)
     (tmp_path / "r5-state.json").write_text("{}")  # the live state file, not an archive
     assert [n for n, _ in r5_baseline.load_records(tmp_path)] == ["r5-state-1mja-completed.json"]
+
+
+def test_fixes_with_no_re_review_are_counted():
+    # wo62-1-A: clarity, edge-cases and provenance each logged fixes_applied
+    # with fix_iterations 0. Reviews 1 each; fixes 0/1/1/1; excellence 1.
+    row = _row("wo62-1-checkpointA-common")
+    assert [row["lenses"][k]["fix_rounds"] for k in ("correctness", "clarity", "edge-cases", "provenance")] == [0, 1, 1, 1]
+    assert row["sequential_steps"] == 8
+
+
+def test_a_re_run_pass_counts_every_run():
+    # g32d-B re-ran correctness, edge-cases and provenance. edge-cases: three
+    # reviews (2 + 1), three fix_dispatched, runs' fix_iterations 2 + 1.
+    lenses = _row("g32d-checkpointB")["lenses"]
+    assert (lenses["edge-cases"]["iterations"], lenses["edge-cases"]["fix_rounds"]) == (3, 3)
+    assert (lenses["provenance"]["iterations"], lenses["provenance"]["fix_rounds"]) == (3, 2)
+    # correctness 3+1, clarity 2+1, edge-cases 3+3, provenance 3+2, excellence 1+0.
+    assert _row("g32d-checkpointB")["sequential_steps"] == 19
+
+
+def test_a_re_run_shows_in_the_dispatch_sequence():
+    assert _row("g32d-checkpointB")["dispatch_sequence"] == [
+        "correctness", "clarity", "edge-cases", "provenance",
+        "correctness", "edge-cases", "provenance",
+    ]
+
+
+def test_a_combined_pass_is_counted_once():
+    # g35i reviewed clarity and edge-cases as one pass, "clarity+edge-cases",
+    # yet completed_passes lists both. One review and one fix, counted there.
+    row = _row("g35i")
+    assert row["lens_order"] == ["correctness", "clarity+edge-cases", "provenance", "excellence"]
+    assert (row["lenses"]["clarity+edge-cases"]["iterations"], row["lenses"]["clarity+edge-cases"]["fix_rounds"]) == (1, 1)
+    # correctness 1+1, combined 1+1, provenance 1+0, excellence 1+0.
+    assert row["sequential_steps"] == 6
+
+
+def test_lens_order_follows_first_appearance_not_the_roster():
+    # m7su has no pass_started for correctness, which nonetheless ran first.
+    assert _row("m7su-dryrun")["lens_order"][0] == "correctness"
+
+
+def test_first_review_findings_are_never_below_the_logged_severities():
+    # Some passes counted only blocking findings in findings_count_initial:
+    # wo62-1-A records 0 everywhere but logged MINORs (1/5/3/2).
+    lenses = _row("wo62-1-checkpointA-common")["lenses"]
+    assert [lenses[k]["findings_first_review"] for k in ("correctness", "clarity", "edge-cases", "provenance")] == [1, 5, 3, 2]

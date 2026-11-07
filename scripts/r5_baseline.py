@@ -16,17 +16,24 @@ Two sources in each record, and why both are read:
 - ``completed_passes[].findings_count_initial`` is the pass's first-review
   total. Many older passes recorded only this total, with the severities in
   free text or nowhere, so it can exceed the first iteration's severity sum.
-  The excess is reported as ``unattributed``, never guessed.
+  The excess is reported as ``unattributed``, never guessed. Others counted
+  only blocking findings in it, so a pass's first-review count is the larger
+  of the two, and the columns add up: findings = severities + unattributed.
 
-That difference is the 152-versus-274 discrepancy in the gate description's
-2026-08-28 table: its findings column summed the totals, its severity columns
-summed the events.
+That is the 152-versus-274 discrepancy in the gate description's 2026-08-28
+table: its findings column summed the first-review totals, while its severity
+columns summed every review's logged severities, so the gap was the
+unattributed findings less the re-review findings counted again. Here the
+severity columns are the first review's and re-reviews are reported apart.
 
-Model steps, per pass: reviews (one per ``findings_received`` event, or
-``fix_iterations + 1`` when the record has none) plus fix rounds
-(``fix_iterations``). The sequential gate runs passes one after another, so the
-critical path is the sum over every pass, advisory excellence included.
-``steps_source`` says which derivation each pass used.
+Model steps, per pass: reviews (one per ``findings_received`` event; failing
+that, one per run plus its fix iterations, from ``pass_completed`` events or the
+summary) plus fix rounds (the largest of the ``fixes_applied``/``fix_dispatched``
+events, the runs' ``fix_iterations`` summed, and the summary's). A pass reviewed
+under a combined name ("clarity+edge-cases") is counted once, there. The
+sequential gate runs passes one after another, so the critical path is the sum
+over every pass, advisory excellence included. ``steps_source`` says which
+derivation each pass used.
 
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
 library only.
@@ -75,6 +82,16 @@ def _lens_sort_key(lens: str) -> tuple[int, str]:
     return (LENS_ORDER.index(lens), "") if lens in LENS_ORDER else (len(LENS_ORDER), lens)
 
 
+def _covers(event_lens: str, lens: str) -> bool:
+    """Whether a combined pass name such as "clarity+edge-cases" or
+    "scoped(correctness+edge)" covers ``lens``: the record logged one review for
+    both, so the lens's own summary must not add a second."""
+    parts = event_lens.replace("(", "+").replace(")", "+").split("+")
+    return event_lens != lens and any(
+        part and (part == lens or lens.startswith(part + "-")) for part in parts
+    )
+
+
 def analyse_record(record: dict) -> dict:
     """The baseline row for one archived gate record."""
     passes = [p for p in record.get("completed_passes", []) if isinstance(p, dict)]
@@ -82,41 +99,69 @@ def analyse_record(record: dict) -> dict:
 
     iterations: dict[str, list[Counter]] = {}
     advisory: dict[str, list[Counter]] = {}
-    started: list[str] = []
+    fix_events: dict[str, Counter] = {}
+    runs: dict[str, list[int]] = {}  # fix_iterations of each pass_completed, per run
+    dispatched: Counter = Counter()
+    seen: list[str] = []  # first appearance of each pass in any event
+    sequence: list[str] = []  # pass_started in order, repeats kept
     for event in record.get("audit_trail", []):
-        if not isinstance(event, dict):
+        if not isinstance(event, dict) or not isinstance(event.get("pass"), str):
             continue
-        lens = event.get("pass")
-        if event.get("event") == "pass_started" and isinstance(lens, str) and lens not in started:
-            started.append(lens)
-        if event.get("event") == "findings_received" and isinstance(lens, str):
+        lens, kind = event["pass"], event.get("event")
+        if lens not in seen:
+            seen.append(lens)
+        if kind == "pass_started":
+            sequence.append(lens)
+        elif kind == "findings_received":
             iterations.setdefault(lens, []).append(_counts(event.get("counts")))
-        if event.get("event") == "advisory_pass_completed" and isinstance(lens, str):
+        elif kind == "advisory_pass_completed":
             # The advisory read is one review with no fix loop; v2 records log
             # it here rather than as findings_received. Used only for a lens
             # with no findings_received of its own, so it is never counted twice.
             advisory.setdefault(lens, []).append(_counts(event.get("counts")))
+        elif kind in ("fixes_applied", "fix_dispatched"):
+            fix_events.setdefault(lens, Counter())[kind] += 1
+        elif kind == "pass_completed" and isinstance(event.get("fix_iterations"), int):
+            runs.setdefault(lens, []).append(event["fix_iterations"])
+        elif kind == "reviewer_dispatched":
+            dispatched[lens] += 1
     for lens, found in advisory.items():
         iterations.setdefault(lens, found)
 
-    # Lens order as dispatched: pass_started order where the record has it,
-    # else completed_passes order; advisory lenses with no pass_started last.
-    order = list(started) or [p["name"] for p in passes]
-    for lens in sorted(set(summaries) | set(iterations), key=_lens_sort_key):
-        if lens not in order:
-            order.append(lens)
+    # Lens order: first appearance in the audit trail, which follows dispatch;
+    # lenses that appear only in completed_passes follow, in that order.
+    order = list(seen) + [p["name"] for p in passes if p["name"] not in seen]
+    if not sequence:
+        for lens in order:
+            if lens in iterations or lens in summaries:
+                sequence.append(lens)
 
     lenses = {}
     for lens in order:
         summary = summaries.get(lens, {})
-        fixes = summary.get("fix_iterations") or 0
         found = iterations.get(lens, [])
+        if not found and any(_covers(other, lens) for other in iterations):
+            continue  # reviewed under a combined pass, counted there
+        summary_fixes = summary.get("fix_iterations") or 0
+        # A fix that no re-review followed leaves fix_iterations at 0, and a
+        # re-run pass's summary holds one run only, so take the largest of the
+        # three ways a record shows fix rounds.
+        fixes = max(
+            max(fix_events.get(lens, Counter()).values(), default=0),
+            sum(runs.get(lens, [])),
+            summary_fixes,
+        )
         if found:
             reviews, source = len(found), "events"
+        elif lens in runs:
+            reviews, source = sum(n + 1 for n in runs[lens]), "pass_completed"
+        elif summary:
+            reviews, source = summary_fixes + 1, "pass_summary"
         else:
-            reviews, source = fixes + 1, "pass_summary"
+            # Started but never completed: only reviews actually dispatched.
+            reviews, source = dispatched[lens], "dispatched"
         initial = summary.get("findings_count_initial")
-        first = sum((found[0][s] for s in (*SEVERITIES, "other")), 0) if found else 0
+        first = sum(found[0].values()) if found else 0
         if initial is None:
             initial = first
         lenses[lens] = {
@@ -126,6 +171,10 @@ def analyse_record(record: dict) -> dict:
                 {s: c[s] for s in (*SEVERITIES, "other")} for c in found
             ],
             "findings_initial": initial,
+            # Some passes counted only blocking findings in
+            # findings_count_initial (0 with only MINORs), others every one, so
+            # the first review's count is whichever of the two sources is larger.
+            "findings_first_review": max(initial, first),
             "unattributed": max(0, initial - first),
             "steps": reviews + fixes,
             "steps_source": source,
@@ -135,7 +184,8 @@ def analyse_record(record: dict) -> dict:
         "version": record.get("version", 1),
         "started_at": record.get("started_at"),
         "dry_run": bool(record.get("dry_run")),
-        "lens_order": order,
+        "lens_order": [lens for lens in order if lens in lenses],
+        "dispatch_sequence": [lens for lens in sequence if lens in lenses],
         "lenses": lenses,
         "sequential_steps": sum(v["steps"] for v in lenses.values()),
     }
@@ -151,19 +201,23 @@ def load_records(archive_dir: Path) -> list[tuple[str, dict]]:
 
 
 def totals(rows: list[dict]) -> dict[str, dict[str, int]]:
-    """Per-lens totals over all rows: severities summed over every iteration."""
+    """Per-lens totals over all rows. Severities are the first review's, so they
+    sit beside the pass totals they make up; later reviews' findings are
+    ``rereview_findings``, so a residual finding re-raised is not counted twice."""
     out: dict[str, Counter] = {}
     for row in rows:
         for lens, data in row["lenses"].items():
             acc = out.setdefault(lens, Counter())
             acc["records"] += 1
             acc["findings_initial"] += data["findings_initial"]
+            acc["findings_first_review"] += data["findings_first_review"]
             acc["unattributed"] += data["unattributed"]
             acc["iterations"] += data["iterations"]
             acc["steps"] += data["steps"]
-            for it in data["findings_by_iteration"]:
-                for sev, n in it.items():
-                    acc[sev] += n
+            its = data["findings_by_iteration"]
+            for sev, n in (its[0] if its else {}).items():
+                acc[sev] += n  # first review only, comparable to the pass totals
+            acc["rereview_findings"] += sum(sum(it.values()) for it in its[1:])
     return {lens: dict(out[lens]) for lens in sorted(out, key=_lens_sort_key)}
 
 
@@ -191,15 +245,16 @@ def render_markdown(all_rows: list[dict]) -> str:
         f" {sum(r['version'] != 1 for r in rows)} v2;"
         f" {len(all_rows) - len(rows)} dry run(s) excluded).",
         "",
-        "| pass | records | findings (pass totals) | CRITICAL | IMPORTANT | MINOR"
-        " | other | unattributed | reviews | model steps |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR"
+        " | other | unattributed | re-review findings | reviews | model steps |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for lens, t in agg.items():
         lines.append(
-            f"| {lens} | {t['records']} | {t['findings_initial']} | {t.get('critical', 0)}"
+            f"| {lens} | {t['records']} | {t['findings_first_review']} | {t.get('critical', 0)}"
             f" | {t.get('important', 0)} | {t.get('minor', 0)} | {t.get('other', 0)}"
-            f" | {t['unattributed']} | {t['iterations']} | {t['steps']} |"
+            f" | {t['unattributed']} | {t.get('rereview_findings', 0)}"
+            f" | {t['iterations']} | {t['steps']} |"
         )
     steps = [r["sequential_steps"] for r in rows]
     lines += [

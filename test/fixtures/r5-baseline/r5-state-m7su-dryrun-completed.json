@@ -40,6 +40,11 @@
  "audit_trail": [
   {
    "ts": "2026-05-31T07:27:14Z",
+   "event": "reviewer_dispatched",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-05-31T07:27:14Z",
    "event": "findings_received",
    "pass": "correctness",
    "counts": {
@@ -51,7 +56,8 @@
   {
    "ts": "2026-05-31T07:27:14Z",
    "event": "pass_completed",
-   "pass": "correctness"
+   "pass": "correctness",
+   "fix_iterations": 0
   },
   {
    "ts": "2026-05-31T07:27:14Z",
@@ -71,7 +77,8 @@
   {
    "ts": "2026-05-31T07:28:57Z",
    "event": "pass_completed",
-   "pass": "clarity"
+   "pass": "clarity",
+   "fix_iterations": 0
   },
   {
    "ts": "2026-05-31T07:28:57Z",
@@ -92,7 +99,8 @@
   {
    "ts": "2026-05-31T07:32:30Z",
    "event": "pass_completed",
-   "pass": "edge-cases"
+   "pass": "edge-cases",
+   "fix_iterations": 0
   },
   {
    "ts": "2026-05-31T07:32:30Z",
@@ -112,7 +120,8 @@
   {
    "ts": "2026-05-31T07:34:35Z",
    "event": "pass_completed",
-   "pass": "excellence"
+   "pass": "excellence",
+   "fix_iterations": 0
   }
  ]
 }

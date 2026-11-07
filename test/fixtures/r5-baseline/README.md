@@ -1,6 +1,6 @@
 # r5_baseline fixtures
 
-Trimmed copies of four real archived gate records from the workspace root's
+Trimmed copies of seven real archived gate records from the workspace root's
 `.claude/` (untracked, so they cannot be referenced in place). Each keeps the
 record's structure and every number the baseline reads; free text (notes,
 rulings, briefs) and session details are dropped, because the archives are
@@ -10,8 +10,9 @@ Kept: top-level `supervisor`, `version`, `target_bead`, `started_at`,
 `dry_run`, `passes`, `advisory_passes`, `status`; `completed_passes[]` `name`,
 `findings_count_initial`, `findings_count_final`, `fix_iterations`;
 `audit_trail[]` events `pass_started`, `findings_received`,
-`advisory_pass_completed`, `pass_completed` with `ts`, `event`, `pass`,
-`iteration`, `counts`.
+`advisory_pass_completed`, `pass_completed`, `fixes_applied`, `fix_dispatched`,
+`reviewer_dispatched` with `ts`, `event`, `pass`, `iteration`, `counts`,
+`fix_iterations`.
 
 | file | why it is here |
 |---|---|
@@ -19,3 +20,6 @@ Kept: top-level `supervisor`, `version`, `target_bead`, `started_at`,
 | `r5-state-1mja-completed.json` | schema v1, no `findings_received` at all: pass totals only, so every finding is unattributed |
 | `r5-state-oh27-completed.json` | schema v1, the oh27 escape; totals only, multi-iteration fix loops |
 | `r5-state-m7su-dryrun-completed.json` | the one dry run (excluded from totals), and the one `counts` key outside the three severities (`missing_tests`) |
+| `r5-state-g32d-checkpointB-completed.json` | passes re-run after the first round: reviews, fixes and the dispatch sequence across runs |
+| `r5-state-g35i-completed.json` | a combined `clarity+edge-cases` pass that `completed_passes` lists as two |
+| `r5-state-wo62-1-checkpointA-common-completed.json` | fixes applied with `fix_iterations: 0`, and `findings_count_initial` counting only blocking findings |
