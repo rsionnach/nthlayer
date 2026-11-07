@@ -1,7 +1,7 @@
 {
  "supervisor": "r5-supervise",
  "version": 2,
- "target_bead": "fx-passless-fix-events",
+ "target_bead": "fx-checkpointed-bead",
  "started_at": "2000-01-01T00:00:00Z",
  "dry_run": false,
  "passes": [

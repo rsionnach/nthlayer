@@ -34,8 +34,8 @@ SYNTHETIC_BLOCKED_DISPATCHES = frozenset({
     ("fx-blocked-dispatch-before-launch", "correctness", "2000-01-01T00:00:01Z"),
 })
 SYNTHETIC_PASSLESS_EVENTS = {
-    ("fx-passless-fix-events", "fix_dispatched", "2000-01-01T00:00:42Z"): "scoped(correctness+edge)",
-    ("fx-passless-fix-events", "fixes_applied", "2000-01-01T00:00:43Z"): "scoped(correctness+edge)",
+    ("fx-checkpointed-bead", "fix_dispatched", "2000-01-01T00:00:42Z"): "scoped(correctness+edge)",
+    ("fx-checkpointed-bead", "fixes_applied", "2000-01-01T00:00:43Z"): "scoped(correctness+edge)",
 }
 
 
@@ -351,6 +351,9 @@ def test_the_published_table_folds_other_passes_and_follows_the_roster():
     # 11 have a reviewed correctness pass. With the exclusions skipped, either
     # number would rise.
     assert r["records"] == 11
+    # Two of those are checkpoints of one bead (passless-fix-events and
+    # re-run-passes share fx-checkpointed-bead), as checkpointed beads are.
+    assert r["beads"] == 10
     assert r["table"][0][r5_baseline.TABLE_COLUMNS.index("records")] == 11
     # Every row has a cell per column, or every later value shifts left.
     assert all(len(row) == len(r5_baseline.TABLE_COLUMNS) for row in r["table"])

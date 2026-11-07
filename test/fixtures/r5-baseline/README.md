@@ -3,7 +3,8 @@
 Synthetic gate records, one per structural pattern the archived
 `.claude/r5-state-*-completed.json` records show. Each has the structure and
 the numbers of a record that exhibits the pattern, with an invented bead id
-(`fx-<pattern>`) and invented timestamps (`2000-01-01T…`, in event order). They
+(`fx-<pattern>`, except that two share `fx-checkpointed-bead`, as a bead
+gated at two checkpoints has two records) and invented timestamps (`2000-01-01T…`, in event order). They
 carry no free text: no notes, rulings, briefs or session fields.
 
 They are synthetic, not trimmed copies of real records, so that nobody
