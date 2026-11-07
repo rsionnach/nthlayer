@@ -36,6 +36,7 @@ def test_fixtures_are_present():
     assert names == [
         "r5-state-1mja-completed.json",
         "r5-state-3ntg-completed.json",
+        "r5-state-bnal-completed.json",
         "r5-state-g32d-checkpointB-completed.json",
         "r5-state-g35i-completed.json",
         "r5-state-m7su-dryrun-completed.json",
@@ -119,7 +120,7 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
 def test_json_mode_reports_every_record(tmp_path, capsys):
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["records"]) == 7
+    assert len(out["records"]) == 8
     assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
@@ -182,3 +183,15 @@ def test_first_review_findings_are_never_below_the_logged_severities():
     # wo62-1-A records 0 everywhere but logged MINORs (1/5/3/2).
     lenses = _row("wo62-1-checkpointA-common")["lenses"]
     assert [lenses[k]["findings_first_review"] for k in ("correctness", "clarity", "edge-cases", "provenance")] == [1, 5, 3, 2]
+
+
+def test_a_re_sent_dispatch_counts_as_a_review():
+    # bnal correctness: three reviewer_dispatched, two findings_received (a
+    # stalled dispatch was re-sent).
+    assert _row("bnal")["lenses"]["correctness"]["iterations"] == 3
+
+
+def test_a_pass_started_but_never_reviewed_is_not_a_lens_run():
+    record = {"completed_passes": [], "audit_trail": [{"event": "pass_started", "pass": "clarity"}]}
+    row = r5_baseline.analyse_record(record)
+    assert row["lenses"] == {} and row["lens_order"] == [] and row["sequential_steps"] == 0

@@ -45,14 +45,14 @@ Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
 
 | pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR | other | unattributed | re-review findings | reviews | model steps |
 |---|---|---|---|---|---|---|---|---|---|---|
-| correctness | 87 | 196 | 10 | 49 | 113 | 0 | 24 | 71 | 136 | 193 |
-| clarity | 85 | 478 | 0 | 119 | 299 | 0 | 60 | 131 | 155 | 239 |
+| correctness | 86 | 196 | 10 | 49 | 113 | 0 | 24 | 71 | 139 | 196 |
+| clarity | 83 | 478 | 0 | 119 | 299 | 0 | 60 | 131 | 156 | 240 |
 | edge-cases | 83 | 319 | 14 | 59 | 183 | 0 | 63 | 108 | 164 | 255 |
-| provenance | 65 | 228 | 56 | 53 | 90 | 0 | 29 | 76 | 122 | 181 |
+| provenance | 65 | 228 | 56 | 53 | 90 | 0 | 29 | 76 | 124 | 183 |
 | excellence | 82 | 318 | 1 | 31 | 256 | 0 | 30 | 0 | 93 | 110 |
 | other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 0 | 7 | 8 |
 
-Sequential model steps per gate: total 986, median 10, max 27.
+Sequential model steps per gate: total 992, median 10, max 28.
 
 Each row adds up: *findings (first review)* = the four severity columns +
 *unattributed*. The severities are the first review's; findings a re-review
@@ -62,10 +62,11 @@ logged severity: many passes, most v1, recorded nothing else. Model steps are
 reviews plus fix rounds, summed over a gate's passes.
 
 The 2026-08-28 table this replaces showed 274 findings but only 152 across its
-severity columns. Its findings column summed the passes' recorded totals; its
-severity columns summed the severities logged at every review, re-reviews
-included. So the 122 were the unattributed findings less the re-review findings
-those severity columns also counted.
+severity columns. Over the 21 records it covered (the m7su dry run included),
+274 is the passes' recorded first-review totals, and 152 is every logged
+CRITICAL, IMPORTANT and MINOR: 124 from first reviews and 28 from re-reviews.
+274 − 124 − 28 = 122, the first-review findings whose severity was never
+logged.
 
 On 2026-08-28, over the 20 beads then recorded, all nine CRITICALs came from
 correctness and edge-cases, and excellence spent a blocking serial slot to

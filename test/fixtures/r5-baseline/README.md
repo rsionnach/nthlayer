@@ -1,6 +1,6 @@
 # r5_baseline fixtures
 
-Trimmed copies of seven real archived gate records from the workspace root's
+Trimmed copies of eight real archived gate records from the workspace root's
 `.claude/` (untracked, so they cannot be referenced in place). Each keeps the
 record's structure and every number the baseline reads; free text (notes,
 rulings, briefs) and session details are dropped, because the archives are
@@ -23,3 +23,4 @@ Kept: top-level `supervisor`, `version`, `target_bead`, `started_at`,
 | `r5-state-g32d-checkpointB-completed.json` | passes re-run after the first round: reviews, fixes and the dispatch sequence across runs |
 | `r5-state-g35i-completed.json` | a combined `clarity+edge-cases` pass that `completed_passes` lists as two |
 | `r5-state-wo62-1-checkpointA-common-completed.json` | fixes applied with `fix_iterations: 0`, and `findings_count_initial` counting only blocking findings |
+| `r5-state-bnal-completed.json` | a stalled reviewer re-dispatched: more `reviewer_dispatched` than `findings_received` |

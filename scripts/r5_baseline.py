@@ -152,7 +152,9 @@ def analyse_record(record: dict) -> dict:
             summary_fixes,
         )
         if found:
-            reviews, source = len(found), "events"
+            # A dispatch that stalled and was re-sent is a review spent with no
+            # findings_received of its own.
+            reviews, source = max(len(found), dispatched[lens]), "events"
         elif lens in runs:
             reviews, source = sum(n + 1 for n in runs[lens]), "pass_completed"
         elif summary:
@@ -164,6 +166,8 @@ def analyse_record(record: dict) -> dict:
         first = sum(found[0].values()) if found else 0
         if initial is None:
             initial = first
+        if reviews == 0:
+            continue  # started, never reviewed: no step, and not a lens run
         lenses[lens] = {
             "iterations": reviews,
             "fix_rounds": fixes,
