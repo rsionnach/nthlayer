@@ -40,9 +40,9 @@ there. The sequential gate runs passes one after another, so the critical path
 is the sum over every pass, advisory excellence included. ``steps_source`` says
 which derivation each pass used.
 
-Each ``--json`` record lists the known-data keys it used (``table_hits``); a
-known-data entry that no archived record used is a warning on stderr, since a
-mistyped key would silently change nothing.
+Each ``--json`` record lists the known-data keys it used (``table_hits``). A
+known-data entry whose bead is in the directory but which matches none of its
+events is refused (exit 2), since a mistyped key would miscount silently.
 
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
 library only.
@@ -50,8 +50,8 @@ library only.
 Usage:
     python3 scripts/r5_baseline.py [--archive-dir DIR] [--json | --markdown]
 
-Exit codes: 0 report printed · 2 usage error, no countable records, or a record
-it cannot count without guessing. One such record fails the whole report: a
+Exit codes: 0 report printed · 2 usage error, no countable records, a record it
+cannot count without guessing, or a known-data entry that matches nothing. One such record fails the whole report: a
 baseline quietly missing a gate would look as plausible as a correct one.
 """
 
@@ -301,14 +301,18 @@ def analyse_record(record: dict) -> dict:
 
 
 def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
-    """BLOCKED_DISPATCHES and PASSLESS_EVENTS keys no analysed record used.
+    """BLOCKED_DISPATCHES and PASSLESS_EVENTS keys whose bead was read but which
+    no event matched.
 
-    Run over the full archive, every entry should match: an unmatched one is a
-    mistyped key, which would silently exclude or place nothing, or an archive
-    gone missing. The tests cannot check the real keys (their fixtures are
-    synthetic), so main() warns on it."""
+    A key for a bead with no record here is skipped: the directory is a subset
+    of the archive. A key whose bead IS here but matched nothing is mistyped,
+    and would silently count a blocked dispatch as a review, so main() refuses
+    the report (exit 2). The tests cannot check the real keys, since their
+    fixtures are synthetic; this check does, every time the script runs."""
     hits = {tuple(key) for row in rows for key in row["table_hits"]}
-    return sorted((set(BLOCKED_DISPATCHES) | set(PASSLESS_EVENTS)) - hits, key=str)
+    beads = {row["bead"] for row in rows}
+    keys = set(BLOCKED_DISPATCHES) | set(PASSLESS_EVENTS)
+    return sorted((k for k in keys - hits if k[0] in beads), key=str)
 
 
 def load_records(archive_dir: Path) -> list[tuple[str, dict]]:
@@ -450,9 +454,12 @@ def main(argv: list[str] | None = None) -> int:
         except RecordError as exc:
             print(f"r5-baseline: {name}: {exc}", file=sys.stderr)
             return 2
-    for key in unmatched_table_entries(rows):
-        print(f"r5-baseline: warning: known-data entry {key} matched no archived event",
-              file=sys.stderr)
+    unmatched = unmatched_table_entries(rows)
+    for key in unmatched:
+        print(f"r5-baseline: known-data entry {key} matches no event in its bead's"
+              " record: a mistyped key would miscount silently", file=sys.stderr)
+    if unmatched:
+        return 2
     if not baseline_rows(rows):
         print(f"r5-baseline: no live, reviewed gate in {args.archive_dir}", file=sys.stderr)
         return 2

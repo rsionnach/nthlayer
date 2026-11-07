@@ -30,7 +30,9 @@ The script's known-data tables (`BLOCKED_DISPATCHES`, `PASSLESS_EVENTS`) hold
 real archive keys, which match none of these. The tests swap in the synthetic
 counterparts (`SYNTHETIC_BLOCKED_DISPATCHES`, `SYNTHETIC_PASSLESS_EVENTS` in
 `test_r5_baseline.py`); the real keys are checked against the archive when the
-script runs, by `unmatched_table_entries`.
+script runs, by `unmatched_table_entries`. So the CLI cannot be run over this
+directory (a pass-less event here matches no real key and is refused); only the
+tests can read these fixtures.
 
 To add one for a new pattern: write the record by hand as
 `r5-state-fx-<pattern>-completed.json`, with only the fields above, a bead id

@@ -403,9 +403,17 @@ def test_every_known_data_entry_matches_a_fixture_event():
     assert r5_baseline.unmatched_table_entries(rows) == []
 
 
-def test_an_entry_matching_no_event_is_reported():
-    # A mistyped key would silently exclude nothing; main() warns on it.
+def test_a_directory_without_a_key_s_bead_is_a_subset_not_an_error():
     rows = [_row("fx-v1-totals-only")]
-    assert len(r5_baseline.unmatched_table_entries(rows)) == (
-        len(SYNTHETIC_BLOCKED_DISPATCHES) + len(SYNTHETIC_PASSLESS_EVENTS)
-    )
+    assert r5_baseline.unmatched_table_entries(rows) == []
+
+
+def test_a_mistyped_key_for_a_bead_that_is_present_is_refused(tmp_path, monkeypatch):
+    # The bead's record is here but the key's ts is wrong: the blocked dispatch
+    # would count as a review. main() must refuse, not print a table.
+    bead, lens, _ts = sorted(SYNTHETIC_BLOCKED_DISPATCHES)[0]
+    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({(bead, lens, "1999-01-01T00:00:00Z")}))
+    shutil.copy(FIXTURES / f"r5-state-{bead}-completed.json", tmp_path)
+    rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in tmp_path.glob("*.json")]
+    assert r5_baseline.unmatched_table_entries(rows) == [(bead, lens, "1999-01-01T00:00:00Z")]
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
