@@ -164,7 +164,8 @@ examples, generator-specific scripts.
     Phase A, opensrm-6kqs.1): per bead and lens, reviews, findings by
     severity per review, model steps, lens order;
     `--json` for the replay corpus's `sequential_steps`. Standard library
-    only. Tests: `test/test_r5_baseline.py` (run by `ci.yml`). The
+    only. Tests: `test/test_r5_baseline.py` (run by `ci.yml`) over synthetic
+    fixtures, one per archive pattern (opensrm-6kqs.8). The
     workspace root's `.claude/bin/r5-baseline.sh` is a shim.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest

@@ -1,14 +1,18 @@
 # r5_baseline fixtures
 
-Trimmed copies of thirteen real archived gate records from the workspace root's
-`.claude/` (untracked, so they cannot be referenced in place). Each keeps the
-record's structure and every number the baseline reads; free text (notes,
-rulings, briefs) and session details are dropped, because the archives are
-internal and this repository is public.
+Synthetic gate records, one per structural pattern the archived
+`.claude/r5-state-*-completed.json` records show. Each has the structure and
+the numbers of a record that exhibits the pattern, with an invented bead id
+(`fx-<pattern>`) and invented timestamps (`2000-01-01T…`, in event order). They
+carry no free text: no notes, rulings, briefs or session fields.
 
-How each was made: load the archive, keep only these fields, write it back
-with `json.dump(..., indent=1)`. Nothing is edited by hand; to add one, apply
-the same filter to another archive.
+They are synthetic, not trimmed copies of real records, so that nobody
+"refreshes" them from the archive later with more fields in them (opensrm-6kqs.8).
+The rule for what may be published from gate work: content derived from public
+repositories (code, diffs, briefs in a repo, findings about that code) may be;
+a gate record's free-text notes, rulings and session fields may not.
+
+Fields present, and nothing else:
 
 - top level: `supervisor`, `version`, `target_bead`, `started_at`, `dry_run`,
   `passes`, `advisory_passes`, `status`;
@@ -17,20 +21,27 @@ the same filter to another archive.
 - `audit_trail[]` events `pass_started`, `findings_received`,
   `advisory_pass_completed`, `pass_completed`, `fixes_applied`,
   `fix_dispatched`, `reviewer_dispatched`, `reviewer_dispatch_blocked` and
-  `supervisor_blocked`, keeping `ts`, `event`, `pass`, `iteration`, `counts`
-  and `fix_iterations`.
+  `supervisor_blocked`, with `ts`, `event`, `pass`, `iteration`, `counts` and
+  `fix_iterations`.
 
-| file | why it is here |
+The script's known-data tables (`BLOCKED_DISPATCHES`, `PASSLESS_EVENTS`) hold
+real archive keys, which match none of these. The tests swap in the synthetic
+counterparts (`SYNTHETIC_BLOCKED_DISPATCHES`, `SYNTHETIC_PASSLESS_EVENTS` in
+`test_r5_baseline.py`); the real keys are checked against the archive when the
+script runs, by `unmatched_table_entries`.
+
+| fixture (`r5-state-fx-…-completed.json`) | pattern |
 |---|---|
-| `r5-state-3ntg-completed.json` | schema v2, severities logged per iteration, advisory excellence as `advisory_pass_completed` |
-| `r5-state-1mja-completed.json` | schema v1, no `findings_received` at all: pass totals only, so every finding is unattributed |
-| `r5-state-oh27-completed.json` | schema v1, the oh27 escape; totals only, multi-iteration fix loops |
-| `r5-state-m7su-dryrun-completed.json` | the one dry run (excluded from totals), and the one `counts` key outside the three severities (`missing_tests`) |
-| `r5-state-g32d-checkpointB-completed.json` | passes re-run after the first round: reviews, fixes and the dispatch sequence across runs |
-| `r5-state-g35i-completed.json` | a combined `clarity+edge-cases` pass that `completed_passes` lists as two |
-| `r5-state-wo62-1-checkpointA-common-completed.json` | fixes applied with `fix_iterations: 0`, and `findings_count_initial` counting only blocking findings |
-| `r5-state-bnal-completed.json` | a stalled reviewer re-dispatched: more `reviewer_dispatched` than `findings_received` |
-| `r5-state-ir5m-completed.json`, `r5-state-wo62-4-1-completed.json` | the two archived dispatches the hook blocked before a reviewer ran (`BLOCKED_DISPATCHES`), beside real stalls re-sent |
-| `r5-state-tu04.1.2.2-completed.json` | a gate abandoned after `pass_started` with nothing reviewed (excluded from the totals) |
-| `r5-state-g32d-checkpointA-completed.json` | the two counting events logged with no `pass` (`PASSLESS_EVENTS`) |
-| `r5-state-pnmv-checkpointB-completed.json` | a re-run pass whose fix rounds only the summed runs show (events and summary hold one each) |
+| `v2-per-review-severities` | schema v2: severities logged per review, advisory excellence as `advisory_pass_completed` |
+| `v1-totals-only` | schema v1 with no `findings_received`: pass totals only, so every finding is unattributed |
+| `v1-fix-loops` | schema v1, totals only, multi-iteration fix loops |
+| `dry-run-with-other-bucket` | a dry run (excluded from the totals), and a `counts` key outside the three severities (`missing_tests`) |
+| `combined-pass` | one review covering two passes (`clarity+edge-cases`) that `completed_passes` lists separately |
+| `re-run-passes` | passes re-run after the first round: reviews, fixes and the dispatch sequence across runs |
+| `re-run-fixes-only-in-runs` | a re-run pass whose fix rounds only the summed runs show (events and summary hold one each) |
+| `blocking-only-initial-count` | fixes applied with `fix_iterations: 0`, and `findings_count_initial` counting only blocking findings |
+| `stall-and-resend` | a stalled reviewer re-dispatched: more `reviewer_dispatched` than `findings_received` |
+| `blocked-dispatch-after-launch` | a dispatch the hook refused, followed by `reviewer_dispatch_blocked`, beside a real stall in another pass |
+| `blocked-dispatch-before-launch` | a dispatch the hook refused, followed by `supervisor_blocked` |
+| `passless-fix-events` | two counting events logged with no `pass`, and one-off re-check passes |
+| `abandoned-unreviewed` | a gate abandoned after `pass_started`, nothing reviewed (excluded from the totals) |

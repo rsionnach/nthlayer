@@ -1,8 +1,8 @@
 {
  "supervisor": "r5-supervise",
  "version": 1,
- "target_bead": "opensrm-oh27",
- "started_at": "2026-08-28T00:00:00Z",
+ "target_bead": "fx-v1-fix-loops",
+ "started_at": "2000-01-01T00:00:00Z",
  "dry_run": false,
  "passes": [
   "correctness",
@@ -39,51 +39,51 @@
  ],
  "audit_trail": [
   {
-   "ts": "2026-08-28T00:01:00Z",
+   "ts": "2000-01-01T00:00:00Z",
    "event": "pass_started",
    "pass": "correctness"
   },
   {
-   "ts": "2026-08-28T00:20:00Z",
+   "ts": "2000-01-01T00:00:01Z",
    "event": "pass_completed",
    "pass": "correctness",
    "fix_iterations": 1
   },
   {
-   "ts": "2026-08-28T00:21:00Z",
+   "ts": "2000-01-01T00:00:02Z",
    "event": "pass_started",
    "pass": "clarity"
   },
   {
-   "ts": "2026-08-28T00:45:00Z",
+   "ts": "2000-01-01T00:00:03Z",
    "event": "pass_completed",
    "pass": "clarity",
    "fix_iterations": 3
   },
   {
-   "ts": "2026-08-28T00:46:00Z",
+   "ts": "2000-01-01T00:00:04Z",
    "event": "pass_started",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-08-28T01:30:00Z",
+   "ts": "2000-01-01T00:00:05Z",
    "event": "fixes_applied",
    "pass": "edge-cases",
    "iteration": 3
   },
   {
-   "ts": "2026-08-28T02:10:00Z",
+   "ts": "2000-01-01T00:00:06Z",
    "event": "pass_completed",
    "pass": "edge-cases",
    "fix_iterations": 5
   },
   {
-   "ts": "2026-08-28T02:11:00Z",
+   "ts": "2000-01-01T00:00:07Z",
    "event": "pass_started",
    "pass": "excellence"
   },
   {
-   "ts": "2026-08-28T02:40:00Z",
+   "ts": "2000-01-01T00:00:08Z",
    "event": "pass_completed",
    "pass": "excellence",
    "fix_iterations": 1

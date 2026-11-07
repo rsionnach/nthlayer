@@ -1,8 +1,8 @@
 {
  "supervisor": "r5-supervise",
  "version": 2,
- "target_bead": "opensrm-ir5m",
- "started_at": "2026-10-02T21:12:26Z",
+ "target_bead": "fx-blocked-dispatch-before-launch",
+ "started_at": "2000-01-01T00:00:00Z",
  "dry_run": false,
  "passes": [
   "correctness",
@@ -17,226 +17,179 @@
  "completed_passes": [
   {
    "name": "correctness",
-   "findings_count_initial": 3,
+   "findings_count_initial": 2,
    "findings_count_final": 0,
    "fix_iterations": 1
   },
   {
    "name": "clarity",
-   "findings_count_initial": 6,
+   "findings_count_initial": 7,
    "findings_count_final": 0,
-   "fix_iterations": 2
+   "fix_iterations": 1
   },
   {
    "name": "edge-cases",
-   "findings_count_initial": 3,
+   "findings_count_initial": 5,
    "findings_count_final": 0,
-   "fix_iterations": 2
+   "fix_iterations": 1
   },
   {
    "name": "provenance",
-   "findings_count_initial": 5,
+   "findings_count_initial": 6,
    "findings_count_final": 0,
-   "fix_iterations": 3
+   "fix_iterations": 4
   }
  ],
  "audit_trail": [
   {
-   "ts": "2026-10-02T21:12:26Z",
+   "ts": "2000-01-01T00:00:00Z",
    "event": "pass_started",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-02T21:13:11Z",
+   "ts": "2000-01-01T00:00:01Z",
    "event": "reviewer_dispatched",
+   "pass": "correctness",
+   "iteration": 1
+  },
+  {
+   "ts": "2000-01-01T00:00:02Z",
+   "event": "supervisor_blocked",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-02T21:30:18Z",
+   "ts": "2000-01-01T00:00:03Z",
+   "event": "reviewer_dispatched",
+   "pass": "correctness",
+   "iteration": 1
+  },
+  {
+   "ts": "2000-01-01T00:00:04Z",
    "event": "findings_received",
    "pass": "correctness",
    "iteration": 1,
    "counts": {
     "critical": 0,
     "important": 1,
-    "minor": 2
+    "minor": 1
    }
   },
   {
-   "ts": "2026-10-02T21:32:57Z",
+   "ts": "2000-01-01T00:00:05Z",
+   "event": "fixes_applied",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2000-01-01T00:00:06Z",
    "event": "reviewer_dispatched",
    "pass": "correctness",
    "iteration": 2
   },
   {
-   "ts": "2026-10-02T21:33:50Z",
-   "event": "reviewer_dispatch_blocked",
-   "pass": "correctness",
-   "iteration": 2
-  },
-  {
-   "ts": "2026-10-02T21:34:23Z",
-   "event": "reviewer_dispatched",
-   "pass": "correctness",
-   "iteration": 2
-  },
-  {
-   "ts": "2026-10-02T21:42:34Z",
+   "ts": "2000-01-01T00:00:07Z",
    "event": "findings_received",
    "pass": "correctness",
    "iteration": 2,
    "counts": {
     "critical": 0,
     "important": 0,
-    "minor": 0
+    "minor": 2
    }
   },
   {
-   "ts": "2026-10-02T21:42:34Z",
+   "ts": "2000-01-01T00:00:08Z",
    "event": "pass_completed",
    "pass": "correctness",
    "fix_iterations": 1
   },
   {
-   "ts": "2026-10-02T21:42:34Z",
+   "ts": "2000-01-01T00:00:09Z",
    "event": "pass_started",
    "pass": "clarity"
   },
   {
-   "ts": "2026-10-02T21:43:09Z",
+   "ts": "2000-01-01T00:00:10Z",
    "event": "reviewer_dispatched",
    "pass": "clarity",
    "iteration": 1
   },
   {
-   "ts": "2026-10-05T19:30:24Z",
-   "event": "reviewer_dispatched",
-   "pass": "clarity",
-   "iteration": 1
-  },
-  {
-   "ts": "2026-10-05T19:32:21Z",
+   "ts": "2000-01-01T00:00:11Z",
    "event": "findings_received",
    "pass": "clarity",
    "iteration": 1,
    "counts": {
     "critical": 0,
-    "important": 2,
+    "important": 1,
+    "minor": 6
+   }
+  },
+  {
+   "ts": "2000-01-01T00:00:12Z",
+   "event": "fixes_applied",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2000-01-01T00:00:13Z",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 2
+  },
+  {
+   "ts": "2000-01-01T00:00:14Z",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2000-01-01T00:00:15Z",
+   "event": "pass_completed",
+   "pass": "clarity",
+   "fix_iterations": 1
+  },
+  {
+   "ts": "2000-01-01T00:00:16Z",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2000-01-01T00:00:17Z",
+   "event": "reviewer_dispatched",
+   "pass": "edge-cases",
+   "iteration": 1
+  },
+  {
+   "ts": "2000-01-01T00:00:18Z",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 1,
     "minor": 4
    }
   },
   {
-   "ts": "2026-10-05T19:38:14Z",
-   "event": "fixes_applied",
-   "pass": "clarity"
-  },
-  {
-   "ts": "2026-10-05T19:38:48Z",
-   "event": "reviewer_dispatched",
-   "pass": "clarity",
-   "iteration": 2
-  },
-  {
-   "ts": "2026-10-05T19:40:16Z",
-   "event": "findings_received",
-   "pass": "clarity",
-   "iteration": 2,
-   "counts": {
-    "critical": 0,
-    "important": 1,
-    "minor": 2
-   }
-  },
-  {
-   "ts": "2026-10-05T19:42:02Z",
-   "event": "fixes_applied",
-   "pass": "clarity",
-   "iteration": 2
-  },
-  {
-   "ts": "2026-10-05T19:42:37Z",
-   "event": "reviewer_dispatched",
-   "pass": "clarity",
-   "iteration": 3
-  },
-  {
-   "ts": "2026-10-05T19:45:52Z",
-   "event": "findings_received",
-   "pass": "clarity",
-   "iteration": 3,
-   "counts": {
-    "critical": 0,
-    "important": 0,
-    "minor": 1
-   }
-  },
-  {
-   "ts": "2026-10-05T19:45:52Z",
-   "event": "pass_completed",
-   "pass": "clarity",
-   "fix_iterations": 2
-  },
-  {
-   "ts": "2026-10-05T19:45:52Z",
-   "event": "pass_started",
-   "pass": "edge-cases"
-  },
-  {
-   "ts": "2026-10-05T19:46:37Z",
-   "event": "reviewer_dispatched",
-   "pass": "edge-cases",
-   "iteration": 1
-  },
-  {
-   "ts": "2026-10-05T19:51:48Z",
-   "event": "findings_received",
-   "pass": "edge-cases",
-   "iteration": 1,
-   "counts": {
-    "critical": 1,
-    "important": 0,
-    "minor": 2
-   }
-  },
-  {
-   "ts": "2026-10-05T19:55:17Z",
+   "ts": "2000-01-01T00:00:19Z",
    "event": "fixes_applied",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-05T19:55:55Z",
+   "ts": "2000-01-01T00:00:20Z",
    "event": "reviewer_dispatched",
    "pass": "edge-cases",
    "iteration": 2
   },
   {
-   "ts": "2026-10-05T20:04:11Z",
+   "ts": "2000-01-01T00:00:21Z",
    "event": "findings_received",
    "pass": "edge-cases",
    "iteration": 2,
-   "counts": {
-    "critical": 0,
-    "important": 2,
-    "minor": 1
-   }
-  },
-  {
-   "ts": "2026-10-05T20:04:11Z",
-   "event": "fixes_applied",
-   "pass": "edge-cases",
-   "iteration": 2
-  },
-  {
-   "ts": "2026-10-05T20:47:15Z",
-   "event": "reviewer_dispatched",
-   "pass": "edge-cases",
-   "iteration": 3
-  },
-  {
-   "ts": "2026-10-05T20:51:26Z",
-   "event": "findings_received",
-   "pass": "edge-cases",
-   "iteration": 3,
    "counts": {
     "critical": 0,
     "important": 0,
@@ -244,110 +197,132 @@
    }
   },
   {
-   "ts": "2026-10-05T20:51:26Z",
-   "event": "fixes_applied",
-   "pass": "edge-cases",
-   "iteration": 3
-  },
-  {
-   "ts": "2026-10-05T20:51:26Z",
+   "ts": "2000-01-01T00:00:22Z",
    "event": "pass_completed",
    "pass": "edge-cases",
-   "fix_iterations": 2
+   "fix_iterations": 1
   },
   {
-   "ts": "2026-10-05T20:51:26Z",
+   "ts": "2000-01-01T00:00:23Z",
    "event": "pass_started",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-05T20:52:33Z",
+   "ts": "2000-01-01T00:00:24Z",
    "event": "reviewer_dispatched",
    "pass": "provenance",
    "iteration": 1
   },
   {
-   "ts": "2026-10-05T21:17:18Z",
+   "ts": "2000-01-01T00:00:25Z",
    "event": "findings_received",
    "pass": "provenance",
    "iteration": 1,
    "counts": {
-    "critical": 0,
-    "important": 1,
-    "minor": 2
+    "critical": 6,
+    "important": 0,
+    "minor": 3
    }
   },
   {
-   "ts": "2026-10-05T21:17:18Z",
+   "ts": "2000-01-01T00:00:26Z",
    "event": "fixes_applied",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-05T21:18:05Z",
+   "ts": "2000-01-01T00:00:27Z",
    "event": "reviewer_dispatched",
    "pass": "provenance",
    "iteration": 2
   },
   {
-   "ts": "2026-10-05T21:26:27Z",
+   "ts": "2000-01-01T00:00:28Z",
    "event": "findings_received",
    "pass": "provenance",
    "iteration": 2,
    "counts": {
-    "critical": 0,
-    "important": 2,
+    "critical": 4,
+    "important": 0,
     "minor": 2
    }
   },
   {
-   "ts": "2026-10-05T21:26:27Z",
+   "ts": "2000-01-01T00:00:29Z",
    "event": "fixes_applied",
    "pass": "provenance",
    "iteration": 2
   },
   {
-   "ts": "2026-10-06T19:48:51Z",
+   "ts": "2000-01-01T00:00:30Z",
    "event": "reviewer_dispatched",
    "pass": "provenance",
    "iteration": 3
   },
   {
-   "ts": "2026-10-06T20:01:49Z",
+   "ts": "2000-01-01T00:00:31Z",
    "event": "findings_received",
    "pass": "provenance",
    "iteration": 3,
    "counts": {
-    "critical": 0,
-    "important": 2,
-    "minor": 1
+    "critical": 7,
+    "important": 0,
+    "minor": 4
    }
   },
   {
-   "ts": "2026-10-06T20:01:49Z",
+   "ts": "2000-01-01T00:00:32Z",
+   "event": "supervisor_blocked",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2000-01-01T00:00:33Z",
    "event": "fixes_applied",
    "pass": "provenance",
    "iteration": 3
   },
   {
-   "ts": "2026-10-06T20:01:49Z",
+   "ts": "2000-01-01T00:00:34Z",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 4
+  },
+  {
+   "ts": "2000-01-01T00:00:35Z",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 4
+  },
+  {
+   "ts": "2000-01-01T00:00:36Z",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 4
+  },
+  {
+   "ts": "2000-01-01T00:00:37Z",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 4,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2000-01-01T00:00:38Z",
    "event": "pass_completed",
    "pass": "provenance",
-   "fix_iterations": 3
+   "fix_iterations": 4
   },
   {
-   "ts": "2026-10-06T20:02:35Z",
-   "event": "reviewer_dispatched",
-   "pass": "excellence",
-   "iteration": 1
-  },
-  {
-   "ts": "2026-10-06T20:04:53Z",
+   "ts": "2000-01-01T00:00:39Z",
    "event": "advisory_pass_completed",
    "pass": "excellence",
    "counts": {
     "critical": 0,
-    "important": 2,
-    "minor": 0
+    "important": 0,
+    "minor": 5
    }
   }
  ]

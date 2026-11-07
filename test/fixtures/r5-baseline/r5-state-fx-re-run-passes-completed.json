@@ -1,8 +1,8 @@
 {
  "supervisor": "r5-supervise",
  "version": 2,
- "target_bead": "opensrm-g32d",
- "started_at": "2026-10-20T17:45:24+00:00",
+ "target_bead": "fx-re-run-passes",
+ "started_at": "2000-01-01T00:00:00Z",
  "dry_run": false,
  "passes": [
   "correctness",
@@ -42,18 +42,18 @@
  ],
  "audit_trail": [
   {
-   "ts": "2026-10-20T17:45:24+00:00",
+   "ts": "2000-01-01T00:00:00Z",
    "event": "pass_started",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-20T17:45:50+00:00",
+   "ts": "2000-01-01T00:00:01Z",
    "event": "reviewer_dispatched",
    "pass": "correctness",
    "iteration": 1
   },
   {
-   "ts": "2026-10-20T17:47:42+00:00",
+   "ts": "2000-01-01T00:00:02Z",
    "event": "findings_received",
    "pass": "correctness",
    "iteration": 1,
@@ -64,23 +64,23 @@
    }
   },
   {
-   "ts": "2026-10-20T17:47:42+00:00",
+   "ts": "2000-01-01T00:00:03Z",
    "event": "fix_dispatched",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-20T19:13:50+00:00",
+   "ts": "2000-01-01T00:00:04Z",
    "event": "fixes_applied",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-20T19:14:01+00:00",
+   "ts": "2000-01-01T00:00:05Z",
    "event": "reviewer_dispatched",
    "pass": "correctness",
    "iteration": 2
   },
   {
-   "ts": "2026-10-20T19:14:30+00:00",
+   "ts": "2000-01-01T00:00:06Z",
    "event": "findings_received",
    "pass": "correctness",
    "iteration": 2,
@@ -91,24 +91,24 @@
    }
   },
   {
-   "ts": "2026-10-20T19:14:30+00:00",
+   "ts": "2000-01-01T00:00:07Z",
    "event": "pass_completed",
    "pass": "correctness",
    "fix_iterations": 1
   },
   {
-   "ts": "2026-10-20T19:14:30+00:00",
+   "ts": "2000-01-01T00:00:08Z",
    "event": "pass_started",
    "pass": "clarity"
   },
   {
-   "ts": "2026-10-20T19:14:33+00:00",
+   "ts": "2000-01-01T00:00:09Z",
    "event": "reviewer_dispatched",
    "pass": "clarity",
    "iteration": 1
   },
   {
-   "ts": "2026-10-20T19:15:21+00:00",
+   "ts": "2000-01-01T00:00:10Z",
    "event": "findings_received",
    "pass": "clarity",
    "iteration": 1,
@@ -119,23 +119,23 @@
    }
   },
   {
-   "ts": "2026-10-20T19:15:21+00:00",
+   "ts": "2000-01-01T00:00:11Z",
    "event": "fix_dispatched",
    "pass": "clarity"
   },
   {
-   "ts": "2026-10-20T19:16:13+00:00",
+   "ts": "2000-01-01T00:00:12Z",
    "event": "fixes_applied",
    "pass": "clarity"
   },
   {
-   "ts": "2026-10-20T19:16:17+00:00",
+   "ts": "2000-01-01T00:00:13Z",
    "event": "reviewer_dispatched",
    "pass": "clarity",
    "iteration": 2
   },
   {
-   "ts": "2026-10-20T19:16:45+00:00",
+   "ts": "2000-01-01T00:00:14Z",
    "event": "findings_received",
    "pass": "clarity",
    "iteration": 2,
@@ -146,24 +146,24 @@
    }
   },
   {
-   "ts": "2026-10-20T19:16:45+00:00",
+   "ts": "2000-01-01T00:00:15Z",
    "event": "pass_completed",
    "pass": "clarity",
    "fix_iterations": 1
   },
   {
-   "ts": "2026-10-20T19:16:45+00:00",
+   "ts": "2000-01-01T00:00:16Z",
    "event": "pass_started",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T19:16:50+00:00",
+   "ts": "2000-01-01T00:00:17Z",
    "event": "reviewer_dispatched",
    "pass": "edge-cases",
    "iteration": 1
   },
   {
-   "ts": "2026-10-20T19:19:24+00:00",
+   "ts": "2000-01-01T00:00:18Z",
    "event": "findings_received",
    "pass": "edge-cases",
    "iteration": 1,
@@ -174,23 +174,23 @@
    }
   },
   {
-   "ts": "2026-10-20T19:19:24+00:00",
+   "ts": "2000-01-01T00:00:19Z",
    "event": "fix_dispatched",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T19:21:10+00:00",
+   "ts": "2000-01-01T00:00:20Z",
    "event": "fixes_applied",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T19:21:23+00:00",
+   "ts": "2000-01-01T00:00:21Z",
    "event": "reviewer_dispatched",
    "pass": "edge-cases",
    "iteration": 2
   },
   {
-   "ts": "2026-10-20T19:27:13+00:00",
+   "ts": "2000-01-01T00:00:22Z",
    "event": "findings_received",
    "pass": "edge-cases",
    "iteration": 2,
@@ -201,34 +201,34 @@
    }
   },
   {
-   "ts": "2026-10-20T19:27:13+00:00",
+   "ts": "2000-01-01T00:00:23Z",
    "event": "fix_dispatched",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T19:28:00+00:00",
+   "ts": "2000-01-01T00:00:24Z",
    "event": "fixes_applied",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T19:28:00+00:00",
+   "ts": "2000-01-01T00:00:25Z",
    "event": "pass_completed",
    "pass": "edge-cases",
    "fix_iterations": 2
   },
   {
-   "ts": "2026-10-20T19:28:00+00:00",
+   "ts": "2000-01-01T00:00:26Z",
    "event": "pass_started",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-20T19:28:16+00:00",
+   "ts": "2000-01-01T00:00:27Z",
    "event": "reviewer_dispatched",
    "pass": "provenance",
    "iteration": 1
   },
   {
-   "ts": "2026-10-20T19:31:14+00:00",
+   "ts": "2000-01-01T00:00:28Z",
    "event": "findings_received",
    "pass": "provenance",
    "iteration": 1,
@@ -239,23 +239,23 @@
    }
   },
   {
-   "ts": "2026-10-20T19:31:14+00:00",
+   "ts": "2000-01-01T00:00:29Z",
    "event": "fix_dispatched",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-20T19:32:35+00:00",
+   "ts": "2000-01-01T00:00:30Z",
    "event": "fixes_applied",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-20T19:32:48+00:00",
+   "ts": "2000-01-01T00:00:31Z",
    "event": "reviewer_dispatched",
    "pass": "provenance",
    "iteration": 2
   },
   {
-   "ts": "2026-10-20T19:33:54+00:00",
+   "ts": "2000-01-01T00:00:32Z",
    "event": "findings_received",
    "pass": "provenance",
    "iteration": 2,
@@ -266,18 +266,18 @@
    }
   },
   {
-   "ts": "2026-10-20T19:33:54+00:00",
+   "ts": "2000-01-01T00:00:33Z",
    "event": "pass_completed",
    "pass": "provenance",
    "fix_iterations": 1
   },
   {
-   "ts": "2026-10-20T19:34:06+00:00",
+   "ts": "2000-01-01T00:00:34Z",
    "event": "reviewer_dispatched",
    "pass": "excellence"
   },
   {
-   "ts": "2026-10-20T19:34:45+00:00",
+   "ts": "2000-01-01T00:00:35Z",
    "event": "advisory_pass_completed",
    "pass": "excellence",
    "counts": {
@@ -287,17 +287,17 @@
    }
   },
   {
-   "ts": "2026-10-20T20:28:42+00:00",
+   "ts": "2000-01-01T00:00:36Z",
    "event": "pass_started",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-20T20:28:55+00:00",
+   "ts": "2000-01-01T00:00:37Z",
    "event": "reviewer_dispatched",
    "pass": "correctness"
   },
   {
-   "ts": "2026-10-20T20:29:38+00:00",
+   "ts": "2000-01-01T00:00:38Z",
    "event": "findings_received",
    "pass": "correctness",
    "counts": {
@@ -307,23 +307,23 @@
    }
   },
   {
-   "ts": "2026-10-20T20:29:38+00:00",
+   "ts": "2000-01-01T00:00:39Z",
    "event": "pass_completed",
    "pass": "correctness",
    "fix_iterations": 0
   },
   {
-   "ts": "2026-10-20T20:29:38+00:00",
+   "ts": "2000-01-01T00:00:40Z",
    "event": "pass_started",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T20:29:47+00:00",
+   "ts": "2000-01-01T00:00:41Z",
    "event": "reviewer_dispatched",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T20:31:12+00:00",
+   "ts": "2000-01-01T00:00:42Z",
    "event": "findings_received",
    "pass": "edge-cases",
    "counts": {
@@ -333,28 +333,28 @@
    }
   },
   {
-   "ts": "2026-10-20T20:31:12+00:00",
+   "ts": "2000-01-01T00:00:43Z",
    "event": "fix_dispatched",
    "pass": "edge-cases"
   },
   {
-   "ts": "2026-10-20T20:31:53+00:00",
+   "ts": "2000-01-01T00:00:44Z",
    "event": "pass_completed",
    "pass": "edge-cases",
    "fix_iterations": 1
   },
   {
-   "ts": "2026-10-20T20:31:53+00:00",
+   "ts": "2000-01-01T00:00:45Z",
    "event": "pass_started",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-20T20:32:05+00:00",
+   "ts": "2000-01-01T00:00:46Z",
    "event": "reviewer_dispatched",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-20T20:34:06+00:00",
+   "ts": "2000-01-01T00:00:47Z",
    "event": "findings_received",
    "pass": "provenance",
    "counts": {
@@ -364,12 +364,12 @@
    }
   },
   {
-   "ts": "2026-10-20T20:34:06+00:00",
+   "ts": "2000-01-01T00:00:48Z",
    "event": "fixes_applied",
    "pass": "provenance"
   },
   {
-   "ts": "2026-10-20T20:34:06+00:00",
+   "ts": "2000-01-01T00:00:49Z",
    "event": "pass_completed",
    "pass": "provenance",
    "fix_iterations": 1

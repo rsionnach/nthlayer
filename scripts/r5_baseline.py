@@ -157,6 +157,7 @@ def _scan_events(record: dict) -> dict:
         "dispatched": Counter(),  # lens -> reviewer_dispatched, less BLOCKED_DISPATCHES
         "seen": [],  # first appearance of each pass in any event
         "sequence": [],  # pass_started in order, repeats kept
+        "table_hits": [],  # BLOCKED_DISPATCHES / PASSLESS_EVENTS keys used
     }
     advisory: dict[str, list[Counter]] = {}
     for event in record.get("audit_trail") or []:
@@ -165,7 +166,10 @@ def _scan_events(record: dict) -> dict:
         kind = event.get("event")
         lens = event.get("pass")
         if not isinstance(lens, str):
-            lens = PASSLESS_EVENTS.get((record.get("target_bead"), kind, event.get("ts")))
+            key = (record.get("target_bead"), kind, event.get("ts"))
+            lens = PASSLESS_EVENTS.get(key)
+            if lens is not None:
+                scan["table_hits"].append(key)
         if lens is None:
             if kind in COUNTING_EVENTS:
                 raise RecordError(f"{kind} at {event.get('ts')} has no pass")
@@ -187,11 +191,12 @@ def _scan_events(record: dict) -> dict:
             scan["runs"].setdefault(lens, []).append(
                 _count(event["fix_iterations"], f"{lens} pass_completed fix_iterations")
             )
-        elif (
-            kind == "reviewer_dispatched"
-            and (record.get("target_bead"), lens, event.get("ts")) not in BLOCKED_DISPATCHES
-        ):
-            scan["dispatched"][lens] += 1
+        elif kind == "reviewer_dispatched":
+            key = (record.get("target_bead"), lens, event.get("ts"))
+            if key in BLOCKED_DISPATCHES:
+                scan["table_hits"].append(key)
+            else:
+                scan["dispatched"][lens] += 1
     for lens, found in advisory.items():
         scan["reviews"].setdefault(lens, found)
     return scan
@@ -287,7 +292,19 @@ def analyse_record(record: dict) -> dict:
         "dispatch_sequence": [lens for lens in sequence if lens in lenses],
         "lenses": lenses,
         "sequential_steps": sum(v["steps"] for v in lenses.values()),
+        "table_hits": [list(key) for key in scan["table_hits"]],
     }
+
+
+def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
+    """BLOCKED_DISPATCHES and PASSLESS_EVENTS keys no analysed record used.
+
+    Run over the full archive, every entry should match: an unmatched one is a
+    mistyped key, which would silently exclude or place nothing, or an archive
+    gone missing. The tests cannot check this (their fixtures are synthetic),
+    so main() warns on it."""
+    hits = {tuple(key) for row in rows for key in row["table_hits"]}
+    return sorted((set(BLOCKED_DISPATCHES) | set(PASSLESS_EVENTS)) - hits, key=str)
 
 
 def load_records(archive_dir: Path) -> list[tuple[str, dict]]:
@@ -429,6 +446,9 @@ def main(argv: list[str] | None = None) -> int:
         except RecordError as exc:
             print(f"r5-baseline: {name}: {exc}", file=sys.stderr)
             return 2
+    for key in unmatched_table_entries(rows):
+        print(f"r5-baseline: warning: known-data entry {key} matched no archived event",
+              file=sys.stderr)
     if not baseline_rows(rows):
         print(f"r5-baseline: no live, reviewed gate in {args.archive_dir}", file=sys.stderr)
         return 2
