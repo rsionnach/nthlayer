@@ -340,7 +340,10 @@ def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
 
     def held_here(key: tuple) -> bool:
         moment = _instant(key[2])
-        return moment is not None and any(
+        if moment is None:
+            # An unparseable ts is itself a typo: refuse it if its bead is here.
+            return any(row["bead"] == key[0] for row in rows)
+        return any(
             row["bead"] == key[0] and row["ts_span"]
             and _instant(row["ts_span"][0]) <= moment <= _instant(row["ts_span"][1])
             for row in rows

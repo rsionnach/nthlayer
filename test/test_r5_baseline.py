@@ -429,3 +429,10 @@ def test_another_checkpoint_of_the_key_s_bead_is_a_subset_not_an_error(tmp_path)
     rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in tmp_path.glob("*.json")]
     assert r5_baseline.unmatched_table_entries(rows) == []
     assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 0
+
+
+def test_a_key_with_an_unparseable_ts_for_a_present_bead_is_refused(monkeypatch):
+    bead, lens, _ts = sorted(SYNTHETIC_BLOCKED_DISPATCHES)[0]
+    bad = (bead, lens, "2000-01-1T00:00:03Z")  # a dropped digit
+    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({bad}))
+    assert r5_baseline.unmatched_table_entries([_row(bead)]) == [bad]
