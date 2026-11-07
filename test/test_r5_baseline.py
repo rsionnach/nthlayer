@@ -43,6 +43,7 @@ def test_fixtures_are_present():
         "r5-state-ir5m-completed.json",
         "r5-state-m7su-dryrun-completed.json",
         "r5-state-oh27-completed.json",
+        "r5-state-pnmv-checkpointB-completed.json",
         "r5-state-tu04.1.2.2-completed.json",
         "r5-state-wo62-1-checkpointA-common-completed.json",
         "r5-state-wo62-4-1-completed.json",
@@ -125,7 +126,7 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
 def test_json_mode_reports_every_record(tmp_path, capsys):
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["records"]) == 12
+    assert len(out["records"]) == 13
     assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
@@ -266,10 +267,6 @@ def test_a_record_it_cannot_count_is_refused(tmp_path, record):
     assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
 
 
-def test_an_integral_float_count_is_accepted():
-    record = {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"critical": 2.0}}]}
-    assert r5_baseline.analyse_record(record)["lenses"]["c"]["findings_by_review"][0]["critical"] == 2
-
 
 def test_a_known_passless_fix_is_given_to_its_pass():
     # g32d-A logged the scoped(correctness+edge) re-check's fix_dispatched and
@@ -300,3 +297,41 @@ def test_an_unreadable_archive_is_refused(tmp_path, content):
     with pytest.raises(r5_baseline.RecordError):
         r5_baseline.load_records(tmp_path)
     assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
+
+
+def test_a_re_run_s_fixes_come_from_its_runs_when_events_and_summary_hold_one():
+    # pnmv-B provenance ran twice, each pass_completed fix_iterations 1, but
+    # logged one fix_dispatched and its summary holds the last run's 1.
+    lens = _row("pnmv-checkpointB")["lenses"]["provenance"]
+    assert (lens["reviews"], lens["fix_rounds"]) == (4, 2)
+
+
+def test_totals_take_the_first_review_s_severities_and_count_re_reviews_apart():
+    # 3ntg's findings_received, first review then the rest, per lens:
+    #   correctness 0/1/3 then 0/1/0, 0/0/1; clarity 0/2/9 then 0/0/1;
+    #   edge-cases 0/1/6 then 0/0/1; provenance 3/1/1 then 0/1/0, 0/0/1;
+    #   excellence (advisory) 0/0/4.
+    t = r5_baseline.totals([_row("3ntg")])
+    first = {k: (v["critical"], v["important"], v["minor"]) for k, v in t.items()}
+    assert first == {
+        "correctness": (0, 1, 3), "clarity": (0, 2, 9), "edge-cases": (0, 1, 6),
+        "provenance": (3, 1, 1), "excellence": (0, 0, 4),
+    }
+    assert {k: v["rereview_findings"] for k, v in t.items()} == {
+        "correctness": 2, "clarity": 1, "edge-cases": 1, "provenance": 2, "excellence": 0,
+    }
+
+
+def test_passes_outside_the_roster_fold_into_one_row():
+    # g35i's combined "clarity+edge-cases" review: first review 0/1/5.
+    folded = r5_baseline.fold_other_passes(r5_baseline.totals([_row("g35i")]))
+    assert "clarity+edge-cases" not in folded
+    other = folded["other passes"]
+    assert (other["critical"], other["important"], other["minor"], other["records"]) == (0, 1, 5, 1)
+
+
+def test_step_stats_use_a_true_median():
+    # The eight gates whose steps are hand-counted above: 17, 8, 24, 6, 19, 8,
+    # 22, 19. An even count, so the median is the mean of the middle two.
+    names = ["3ntg", "1mja", "oh27", "g35i", "g32d-checkpointB", "wo62-1-checkpointA-common", "ir5m", "wo62-4-1"]
+    assert r5_baseline.step_stats([_row(n) for n in names]) == {"total": 123, "median": 18, "max": 24}

@@ -111,10 +111,8 @@ class RecordError(ValueError):
 
 
 def _count(value: object, what: str) -> int:
-    """A non-negative integer count; an integral float (2.0) is accepted. Anything
-    else is refused rather than read as 0, which would undercount silently."""
-    if isinstance(value, float) and value.is_integer():
-        value = int(value)
+    """A non-negative integer count. Anything else is refused rather than read
+    as 0, which would undercount silently. Every archive writes integers."""
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise RecordError(f"{what} is {value!r}, not a non-negative count")
     return value
@@ -333,16 +331,29 @@ def baseline_rows(rows: list[dict]) -> list[dict]:
     return [r for r in rows if not r["dry_run"] and r["lenses"]]
 
 
+def fold_other_passes(agg: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+    """The totals with every pass outside the roster (one-off re-checks such as
+    "delta-clarity" or "scoped re-check") summed into one "other passes" row, as
+    the table shows them; --json keeps them by name."""
+    out = {lens: t for lens, t in agg.items() if lens in LENS_ORDER}
+    other: Counter = Counter()
+    for lens, t in agg.items():
+        if lens not in LENS_ORDER:
+            other.update(t)
+    if other:
+        out["other passes"] = dict(other)
+    return out
+
+
+def step_stats(rows: list[dict]) -> dict[str, float]:
+    """Total, median and maximum sequential steps per gate."""
+    steps = [r["sequential_steps"] for r in rows]
+    return {"total": sum(steps), "median": statistics.median(steps), "max": max(steps)}
+
+
 def render_markdown(all_rows: list[dict]) -> str:
     rows = baseline_rows(all_rows)
-    agg = totals(rows)
-    # Passes outside the roster (one-off re-checks such as "delta-clarity" or
-    # "scoped re-check") are folded into one row here; --json keeps them by name.
-    other: Counter = Counter()
-    for lens in [lens for lens in agg if lens not in LENS_ORDER]:
-        other.update(agg.pop(lens))
-    if other:
-        agg["other passes"] = dict(other)
+    agg = fold_other_passes(totals(rows))
     beads = {r["bead"] for r in rows}
     dry = sum(r["dry_run"] for r in all_rows)
     empty = sum(not r["dry_run"] and not r["lenses"] for r in all_rows)
@@ -363,11 +374,11 @@ def render_markdown(all_rows: list[dict]) -> str:
             f" | {t['unattributed']} | {t.get('rereview_findings', 0)}"
             f" | {t['reviews']} | {t['steps']} |"
         )
-    steps = [r["sequential_steps"] for r in rows]
+    stats = step_stats(rows)
     lines += [
         "",
-        f"Sequential model steps per gate: total {sum(steps)},"
-        f" median {statistics.median(steps):g}, max {max(steps)}.",
+        f"Sequential model steps per gate: total {stats['total']},"
+        f" median {stats['median']:g}, max {stats['max']}.",
     ]
     return "\n".join(lines)
 
