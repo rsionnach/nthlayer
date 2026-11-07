@@ -348,12 +348,28 @@ def test_the_published_table_folds_other_passes_and_follows_the_roster():
         "correctness", "clarity", "edge-cases", "provenance", "excellence", "other passes",
     ]
     assert (r["excluded_dry_runs"], r["excluded_unreviewed"]) == (1, 1)
-    other = r["table"][-1]
-    assert other[r5_baseline.TABLE_COLUMNS.index("records")] == 3
+    # 13 fixtures less the m7su dry run and tu04.1.2.2 (nothing reviewed); all
+    # 11 have a reviewed correctness pass. With the exclusions skipped, either
+    # number would rise.
+    assert r["records"] == 11
+    assert r["table"][0][r5_baseline.TABLE_COLUMNS.index("records")] == 11
+    # Every row has a cell per column, or every later value shifts left.
+    assert all(len(row) == len(r5_baseline.TABLE_COLUMNS) for row in r["table"])
+    # The three one-off passes, by hand from the fixtures' events:
+    #   g35i clarity+edge-cases     1 review, 0/1/5, 1 fix (fixes_applied)
+    #   g32d-A scoped(correctness+edge)  1 review, 0/3/7, 1 fix (PASSLESS_EVENTS)
+    #   g32d-A scoped re-check      1 review, 0/0/1, no fix
+    # No summaries, so findings = severities and nothing is unattributed.
+    assert r["table"][-1] == ["other passes", 3, 17, 0, 4, 13, 0, 0, 0, 3, 5]
 
 
 def test_render_markdown_prints_every_report_row():
     rows = [_row("3ntg"), _row("g35i")]
     markdown = r5_baseline.render_markdown(rows)
+    report = r5_baseline.report(rows)
     body = [line for line in markdown.splitlines() if line.startswith("| ") and "---" not in line][1:]
-    assert len(body) == len(r5_baseline.report(rows)["table"])
+    assert len(body) == len(report["table"])
+    # The step statistics line: each value the report holds is printed.
+    stats_line = [line for line in markdown.splitlines() if line.startswith("Sequential model steps")]
+    assert len(stats_line) == 1
+    assert all(f"{v:g}" in stats_line[0] for v in report["steps"].values())
