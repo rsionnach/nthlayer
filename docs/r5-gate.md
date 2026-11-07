@@ -7,6 +7,13 @@ it [opensrm-xf73]. The workspace-root `CLAUDE.md` and the skills that run the
 gate hold the operational detail; when they disagree with this file, one of
 them is wrong and should be fixed, not silently preferred.
 
+> **Pending change: R5 Gate v2.** The change request for this file is
+> [`superpowers/specs/2026-11-03-r5-gate-v2-nthlayer-spec.md`](superpowers/specs/2026-11-03-r5-gate-v2-nthlayer-spec.md).
+> Each of its phases amends this description. Until an amendment lands,
+> where the two disagree the spec wins (its section 2). The gate mechanism
+> moves to cúramóir; Phase A (baseline, replay corpus, finding schema, round
+> record, round 0, tree-keyed verdict) is the NthLayer work now.
+
 ## The roster (revised 2026-08-28)
 
 | # | Pass | Kind | Asks |
