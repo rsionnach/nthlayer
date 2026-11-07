@@ -38,7 +38,10 @@ tests can read these fixtures.
 To add one for a new pattern: write the record by hand as
 `r5-state-fx-<pattern>-completed.json`, with only the fields above, a bead id
 of `fx-<pattern>` and `2000-01-01T…` timestamps in event order; add its row
-below and its name to `test_fixtures_are_present`. If the pattern needs a
+below and its name to `test_fixtures_are_present`. Tests that pin counts over
+the whole directory then need updating by hand: the record count in
+`test_json_mode_reports_every_record`, and `records`, `beads` and the
+"other passes" row in `test_the_published_table_folds_other_passes_and_follows_the_roster`. If the pattern needs a
 known-data entry, add the synthetic key to `SYNTHETIC_BLOCKED_DISPATCHES` or
 `SYNTHETIC_PASSLESS_EVENTS` too. Never copy a record from the archive.
 
