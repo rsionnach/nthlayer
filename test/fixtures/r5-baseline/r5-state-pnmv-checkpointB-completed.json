@@ -1,0 +1,385 @@
+{
+ "supervisor": "r5-supervise",
+ "version": 2,
+ "target_bead": "opensrm-pnmv",
+ "started_at": "2026-10-22T15:56:33+00:00",
+ "dry_run": false,
+ "passes": [
+  "correctness",
+  "clarity",
+  "edge-cases",
+  "provenance"
+ ],
+ "advisory_passes": [
+  "excellence"
+ ],
+ "status": "completed",
+ "completed_passes": [
+  {
+   "name": "correctness",
+   "findings_count_initial": 2,
+   "findings_count_final": 0,
+   "fix_iterations": 0
+  },
+  {
+   "name": "clarity",
+   "findings_count_initial": 9,
+   "findings_count_final": 0,
+   "fix_iterations": 3
+  },
+  {
+   "name": "edge-cases",
+   "findings_count_initial": 4,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  },
+  {
+   "name": "provenance",
+   "findings_count_initial": 6,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  }
+ ],
+ "audit_trail": [
+  {
+   "ts": "2026-10-22T15:56:33+00:00",
+   "event": "pass_started",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-22T15:56:37+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "correctness",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-22T15:59:35+00:00",
+   "event": "findings_received",
+   "pass": "correctness",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-22T15:59:35+00:00",
+   "event": "pass_completed",
+   "pass": "correctness",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-22T15:59:35+00:00",
+   "event": "pass_started",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-22T16:00:36+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-22T16:00:36+00:00",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 4,
+    "minor": 5
+   }
+  },
+  {
+   "ts": "2026-10-22T16:00:36+00:00",
+   "event": "fix_dispatched",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-22T16:03:02+00:00",
+   "event": "fixes_applied",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-22T16:03:17+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-22T16:04:19+00:00",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2026-10-22T16:04:19+00:00",
+   "event": "fix_dispatched",
+   "pass": "clarity",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-22T16:05:57+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 3
+  },
+  {
+   "ts": "2026-10-22T16:07:59+00:00",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 3,
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-22T16:07:59+00:00",
+   "event": "fix_dispatched",
+   "pass": "clarity",
+   "iteration": 3
+  },
+  {
+   "ts": "2026-10-22T16:09:40+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 4
+  },
+  {
+   "ts": "2026-10-22T16:10:10+00:00",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 4,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+   }
+  },
+  {
+   "ts": "2026-10-22T16:10:10+00:00",
+   "event": "pass_completed",
+   "pass": "clarity",
+   "fix_iterations": 3
+  },
+  {
+   "ts": "2026-10-22T16:10:10+00:00",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-22T16:10:25+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "edge-cases",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-22T19:02:14+00:00",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2026-10-22T19:02:14+00:00",
+   "event": "fix_dispatched",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-22T19:04:08+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "edge-cases",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-22T19:04:31+00:00",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-10-22T19:04:31+00:00",
+   "event": "pass_completed",
+   "pass": "edge-cases",
+   "fix_iterations": 1
+  },
+  {
+   "ts": "2026-10-22T19:04:31+00:00",
+   "event": "pass_started",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-22T19:04:51+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-22T20:03:27+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 1,
+   "counts": {
+    "critical": 2,
+    "important": 3,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-10-22T20:03:50+00:00",
+   "event": "fix_dispatched",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-22T20:07:59+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-22T20:09:47+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-22T20:09:47+00:00",
+   "event": "pass_completed",
+   "pass": "provenance",
+   "fix_iterations": 1
+  },
+  {
+   "ts": "2026-10-22T20:09:59+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "excellence"
+  },
+  {
+   "ts": "2026-10-22T20:10:36+00:00",
+   "event": "advisory_pass_completed",
+   "pass": "excellence",
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 6
+   }
+  },
+  {
+   "ts": "2026-10-22T20:14:18+00:00",
+   "event": "pass_started",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-22T20:14:30+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-22T20:15:11+00:00",
+   "event": "findings_received",
+   "pass": "correctness",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+   }
+  },
+  {
+   "ts": "2026-10-22T20:15:11+00:00",
+   "event": "pass_completed",
+   "pass": "correctness",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-22T20:15:11+00:00",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-22T20:15:23+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-22T20:16:32+00:00",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-10-22T20:16:32+00:00",
+   "event": "pass_completed",
+   "pass": "edge-cases",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-22T20:16:32+00:00",
+   "event": "pass_started",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-22T20:16:48+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-22T20:20:44+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 1,
+   "counts": {
+    "critical": 2,
+    "important": 3,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-10-22T20:22:47+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-22T20:24:55+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+   }
+  },
+  {
+   "ts": "2026-10-22T20:24:55+00:00",
+   "event": "pass_completed",
+   "pass": "provenance",
+   "fix_iterations": 1
+  }
+ ]
+}

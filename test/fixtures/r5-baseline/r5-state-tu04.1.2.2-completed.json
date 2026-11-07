@@ -1,0 +1,22 @@
+{
+ "supervisor": "r5-supervise",
+ "version": 1,
+ "target_bead": "opensrm-tu04.1.2.2",
+ "started_at": "2026-06-15T00:00:00Z",
+ "dry_run": false,
+ "passes": [
+  "correctness",
+  "clarity",
+  "edge-cases",
+  "excellence"
+ ],
+ "status": "in_progress",
+ "completed_passes": [],
+ "audit_trail": [
+  {
+   "ts": "2026-06-15T00:00:00Z",
+   "event": "pass_started",
+   "pass": "correctness"
+  }
+ ]
+}

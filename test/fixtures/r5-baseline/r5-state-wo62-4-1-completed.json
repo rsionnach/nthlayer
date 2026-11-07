@@ -1,0 +1,329 @@
+{
+ "supervisor": "r5-supervise",
+ "version": 2,
+ "target_bead": "opensrm-wo62.4.1",
+ "started_at": "2026-10-27T17:10:04.925906+00:00",
+ "dry_run": false,
+ "passes": [
+  "correctness",
+  "clarity",
+  "edge-cases",
+  "provenance"
+ ],
+ "advisory_passes": [
+  "excellence"
+ ],
+ "status": "completed",
+ "completed_passes": [
+  {
+   "name": "correctness",
+   "findings_count_initial": 2,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  },
+  {
+   "name": "clarity",
+   "findings_count_initial": 7,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  },
+  {
+   "name": "edge-cases",
+   "findings_count_initial": 5,
+   "findings_count_final": 0,
+   "fix_iterations": 1
+  },
+  {
+   "name": "provenance",
+   "findings_count_initial": 6,
+   "findings_count_final": 0,
+   "fix_iterations": 4
+  }
+ ],
+ "audit_trail": [
+  {
+   "ts": "2026-10-27T17:10:04.979910+00:00",
+   "event": "pass_started",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-27T17:10:18.968444+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "correctness",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-27T17:10:30.618830+00:00",
+   "event": "supervisor_blocked",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-27T17:10:43.138316+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "correctness",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-27T17:12:40.953179+00:00",
+   "event": "findings_received",
+   "pass": "correctness",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-10-27T17:13:31.342347+00:00",
+   "event": "fixes_applied",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-27T17:13:34.868108+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "correctness",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-27T17:15:15.027314+00:00",
+   "event": "findings_received",
+   "pass": "correctness",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-27T17:15:15.056606+00:00",
+   "event": "pass_completed",
+   "pass": "correctness",
+   "fix_iterations": 1
+  },
+  {
+   "ts": "2026-10-27T17:15:15.144881+00:00",
+   "event": "pass_started",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-27T17:15:18.868418+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-27T17:16:08.233747+00:00",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 6
+   }
+  },
+  {
+   "ts": "2026-10-27T17:16:44.729659+00:00",
+   "event": "fixes_applied",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-27T17:16:48.410523+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "clarity",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-27T17:17:20.473422+00:00",
+   "event": "findings_received",
+   "pass": "clarity",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2026-10-27T17:17:20.499127+00:00",
+   "event": "pass_completed",
+   "pass": "clarity",
+   "fix_iterations": 1
+  },
+  {
+   "ts": "2026-10-27T17:17:20.575551+00:00",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-27T17:17:24.256209+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "edge-cases",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-27T17:19:37.668919+00:00",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "iteration": 1,
+   "counts": {
+    "critical": 0,
+    "important": 1,
+    "minor": 4
+   }
+  },
+  {
+   "ts": "2026-10-27T17:22:13.637795+00:00",
+   "event": "fixes_applied",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-27T17:22:17.388602+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "edge-cases",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-27T17:24:48.914336+00:00",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "iteration": 2,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-27T17:24:48.957156+00:00",
+   "event": "pass_completed",
+   "pass": "edge-cases",
+   "fix_iterations": 1
+  },
+  {
+   "ts": "2026-10-27T17:24:49.080178+00:00",
+   "event": "pass_started",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-27T17:24:52.751575+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 1
+  },
+  {
+   "ts": "2026-10-27T17:29:16.472956+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 1,
+   "counts": {
+    "critical": 6,
+    "important": 0,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2026-10-27T17:30:22.676074+00:00",
+   "event": "fixes_applied",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-27T17:30:26.675663+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-27T17:33:03.004533+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 2,
+   "counts": {
+    "critical": 4,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-27T17:33:44.134167+00:00",
+   "event": "fixes_applied",
+   "pass": "provenance",
+   "iteration": 2
+  },
+  {
+   "ts": "2026-10-27T17:33:50.332130+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 3
+  },
+  {
+   "ts": "2026-10-27T18:31:19.893102+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 3,
+   "counts": {
+    "critical": 7,
+    "important": 0,
+    "minor": 4
+   }
+  },
+  {
+   "ts": "2026-10-27T18:31:19.935176+00:00",
+   "event": "supervisor_blocked",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-27T18:33:32.032716+00:00",
+   "event": "fixes_applied",
+   "pass": "provenance",
+   "iteration": 3
+  },
+  {
+   "ts": "2026-10-27T18:33:36.913449+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 4
+  },
+  {
+   "ts": "2026-10-27T19:53:53.266943+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 4
+  },
+  {
+   "ts": "2026-10-27T19:54:11.635743+00:00",
+   "event": "reviewer_dispatched",
+   "pass": "provenance",
+   "iteration": 4
+  },
+  {
+   "ts": "2026-10-27T19:56:30.382921+00:00",
+   "event": "findings_received",
+   "pass": "provenance",
+   "iteration": 4,
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-27T19:56:30.509634+00:00",
+   "event": "pass_completed",
+   "pass": "provenance",
+   "fix_iterations": 4
+  },
+  {
+   "ts": "2026-10-27T19:57:10.461271+00:00",
+   "event": "advisory_pass_completed",
+   "pass": "excellence",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 5
+   }
+  }
+ ]
+}

@@ -1,0 +1,154 @@
+{
+ "supervisor": "r5-supervise",
+ "version": 2,
+ "target_bead": "opensrm-wo62.1",
+ "started_at": "2026-10-24T19:39:22Z",
+ "dry_run": false,
+ "passes": [
+  "correctness",
+  "clarity",
+  "edge-cases",
+  "provenance"
+ ],
+ "advisory_passes": [
+  "excellence"
+ ],
+ "status": "completed",
+ "completed_passes": [
+  {
+   "name": "correctness",
+   "findings_count_initial": 0,
+   "findings_count_final": 0,
+   "fix_iterations": 0
+  },
+  {
+   "name": "clarity",
+   "findings_count_initial": 0,
+   "findings_count_final": 0,
+   "fix_iterations": 0
+  },
+  {
+   "name": "edge-cases",
+   "findings_count_initial": 0,
+   "findings_count_final": 0,
+   "fix_iterations": 0
+  },
+  {
+   "name": "provenance",
+   "findings_count_initial": 0,
+   "findings_count_final": 0,
+   "fix_iterations": 0
+  }
+ ],
+ "audit_trail": [
+  {
+   "ts": "2026-10-24T19:39:22Z",
+   "event": "pass_started",
+   "pass": "correctness"
+  },
+  {
+   "ts": "2026-10-24T19:40:44Z",
+   "event": "findings_received",
+   "pass": "correctness",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 1
+   }
+  },
+  {
+   "ts": "2026-10-24T19:40:44Z",
+   "event": "pass_completed",
+   "pass": "correctness",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-24T19:40:44Z",
+   "event": "pass_started",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-24T19:41:15Z",
+   "event": "findings_received",
+   "pass": "clarity",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 5
+   }
+  },
+  {
+   "ts": "2026-10-24T19:41:51Z",
+   "event": "fixes_applied",
+   "pass": "clarity"
+  },
+  {
+   "ts": "2026-10-24T19:41:51Z",
+   "event": "pass_completed",
+   "pass": "clarity",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-24T19:41:51Z",
+   "event": "pass_started",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-24T19:43:00Z",
+   "event": "findings_received",
+   "pass": "edge-cases",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 3
+   }
+  },
+  {
+   "ts": "2026-10-24T19:44:22Z",
+   "event": "fixes_applied",
+   "pass": "edge-cases"
+  },
+  {
+   "ts": "2026-10-24T19:44:22Z",
+   "event": "pass_completed",
+   "pass": "edge-cases",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-24T19:44:22Z",
+   "event": "pass_started",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-24T19:47:12Z",
+   "event": "findings_received",
+   "pass": "provenance",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 2
+   }
+  },
+  {
+   "ts": "2026-10-24T19:47:52Z",
+   "event": "fixes_applied",
+   "pass": "provenance"
+  },
+  {
+   "ts": "2026-10-24T19:47:52Z",
+   "event": "pass_completed",
+   "pass": "provenance",
+   "fix_iterations": 0
+  },
+  {
+   "ts": "2026-10-24T19:48:24Z",
+   "event": "advisory_pass_completed",
+   "pass": "excellence",
+   "counts": {
+    "critical": 0,
+    "important": 0,
+    "minor": 5
+   }
+  }
+ ]
+}

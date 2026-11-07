@@ -37,20 +37,46 @@ a sign that a blocking lens has a gap.
 
 ### Why this order, and why excellence is advisory
 
-Until 2026-08-28 the fourth blocking slot was excellence. Measured across the
-20 beads then recorded in `.claude/r5-state-*.json` (274 findings):
+Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
+`scripts/r5_baseline.py` run over every archived gate record
+(`.claude/r5-state-*-completed.json`, 2026-11-07) [opensrm-6kqs.1]:
 
-| pass | findings | CRITICAL | IMPORTANT | MINOR |
-|---|---|---|---|---|
-| correctness | 47 | 5 | 17 | 17 |
-| clarity | 92 | 0 | 19 | 31 |
-| edge-cases | 86 | 4 | 15 | 22 |
-| excellence | 49 | 0 | 1 | 21 |
+86 archived gate records, 63 beads (20 schema v1, 66 v2); excluded: 1 dry run(s), 1 with no lens reviewed.
 
-All nine CRITICALs came from correctness and edge-cases; excellence spent a
-blocking serial slot to produce one IMPORTANT in 18 runs. Meanwhile the two
-known escapes cleared every lens, because none asked whether the tests touched
-reality:
+| pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR | other | unattributed | re-review findings | reviews | model steps |
+|---|---|---|---|---|---|---|---|---|---|---|
+| correctness | 86 | 196 | 10 | 49 | 113 | 0 | 24 | 71 | 137 | 194 |
+| clarity | 83 | 478 | 0 | 119 | 299 | 0 | 60 | 131 | 156 | 240 |
+| edge-cases | 83 | 319 | 14 | 59 | 183 | 0 | 63 | 108 | 164 | 255 |
+| provenance | 65 | 228 | 56 | 53 | 90 | 0 | 29 | 76 | 124 | 183 |
+| excellence | 82 | 318 | 1 | 31 | 256 | 0 | 30 | 0 | 93 | 110 |
+| other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 0 | 7 | 9 |
+
+Sequential model steps per gate: total 991, median 10.5, max 28.
+
+Each row adds up: *findings (first review)* = the four severity columns +
+*unattributed*. The severities are the first review's; findings a re-review
+raised are counted apart, so a finding re-raised is not counted twice.
+*Unattributed* is first-review findings recorded only as a pass total, with no
+logged severity: many passes, most v1, recorded nothing else. Model steps are
+reviews plus fix rounds, summed over a gate's passes. The script refuses a
+record it cannot count without guessing, and then prints no table at all.
+
+**Why the 2026-08-28 table showed 274 findings but 152 severities:** it summed
+the passes' first-review totals (274) but the severities logged at every review
+(152), so the 150 first-review findings with no logged severity were missing and
+the 28 that re-reviews found were added.[^gap]
+
+[^gap]: Over the 21 records that table covered (20 live beads plus the m7su dry
+    run), the first reviews logged 124 CRITICAL, IMPORTANT and MINOR:
+    274 − 124 = 150, and 150 − 28 = 122, the gap it showed.
+
+On 2026-08-28, over the 20 beads then recorded, all nine CRITICALs came from
+correctness and edge-cases, and excellence spent a blocking serial slot to
+produce one IMPORTANT in 18 runs. The full record bears it out: first reviews
+found 1 CRITICAL in 82 excellence runs and 56 in 65 provenance runs. Meanwhile
+the two known escapes cleared every lens, because none asked whether the tests
+touched reality:
 
 - **opensrm-oh27** tested `spec.slos` as a list. v1 writes a mapping and v2
   has no such key, so the branch never fired for a real manifest. It survived

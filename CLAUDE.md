@@ -159,6 +159,13 @@ examples, generator-specific scripts.
       `SIBLING-MISSING`, `PARSE-ERROR`
     - currency, logged only (`--fetch`) — `BEHIND`, `FETCH-FAILED`,
       `NO-UPSTREAM`
+  - `r5_baseline.py` — the baseline of the sequential R5 gate from the
+    archived `.claude/r5-state-*-completed.json` records (R5 Gate v2
+    Phase A, opensrm-6kqs.1): per bead and lens, reviews, findings by
+    severity per review, model steps, lens order;
+    `--json` for the replay corpus's `sequential_steps`. Standard library
+    only. Tests: `test/test_r5_baseline.py` (run by `ci.yml`). The
+    workspace root's `.claude/bin/r5-baseline.sh` is a shim.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest
     release is outside its range [opensrm-z1kq].
@@ -168,8 +175,8 @@ examples, generator-specific scripts.
   - `docs.yml` — docs site build + GitHub Pages deploy.
   - `ci.yml` — `bash -n` across `demo/`, `test/` and `scripts/` *.sh
     (opensrm-0buj); `ruff check` over the same three directories
-    (opensrm-u5dw.1); and the `test_eco_doctor.sh` regression suite
-    (opensrm-8hn3).
+    (opensrm-u5dw.1); the `test_eco_doctor.sh` regression suite
+    (opensrm-8hn3); and `test/test_r5_baseline.py` (opensrm-6kqs.1).
   - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
