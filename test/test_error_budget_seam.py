@@ -55,6 +55,11 @@ CORPUS_DIRS = (
 )
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
 EXPECTED_WITH_BUDGET = 24  # 2026-11-07, common 5.12.0 / generate 4.1.0 / workers 4.2.0
+# Budgets both sides agree on, counted per SLO, not per file: equal sets pass
+# when a change drops a budget from generate and measure at once (both classify
+# SLOs from the same parsed slo_type), and a file keeping one budget keeps the
+# file count. 27 availability + 15 latency + 1 error_rate on 2026-11-07.
+EXPECTED_AGREED_BUDGETS = 43
 
 # Budgets measure asks for and generate's guard deliberately does not write
 # (generate recording_rules `_budget_skip_reason`: no budget is better than a
@@ -83,7 +88,8 @@ EXPECTED_READ_NOT_WRITTEN = {
 }
 
 # One budget per request-ratio kind that both sides must agree on, named so
-# the check needs neither side's kind classifier. If a kind lost every budget
+# the check needs neither side's kind classifier. Each witness's declared
+# slo_type must still name its kind, or a retyped witness would pass as one. If a kind lost every budget
 # (as latency and error_rate had none before zo0o), the set comparison alone
 # would still pass.
 KIND_WITNESSES = {
@@ -171,6 +177,7 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     rejected = set()
     read_not_written: set[tuple[str, str]] = set()
     agreed: set[tuple[str, str]] = set()
+    agreed_budgets = 0
     problems: dict[str, object] = {}
     for i, path in enumerate(_corpus()):
         rel = str(path.relative_to(ROOT))
@@ -184,7 +191,12 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         except Exception as exc:  # name the file; a bare traceback does not
             problems[rel] = f"raised {exc!r}"
             continue
+        names = [s.name for s in manifest.slos]
+        if len(names) != len(set(names)):
+            # Selectors are keyed by name: two SLOs sharing one would merge.
+            problems[f"{rel} duplicate SLO names"] = sorted({n for n in names if names.count(n) > 1})
         unread, unwritten = written - read, read - written
+        agreed_budgets += len(written & read)
         # This file's pins, as the selector each would be read with.
         pinned = {
             slo: _selector(manifest, slo) for (f, slo) in EXPECTED_READ_NOT_WRITTEN if f == rel
@@ -201,10 +213,13 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         if file_problems:
             problems[rel] = file_problems
         read_not_written |= {(rel, slo) for slo, sel in pinned.items() if sel in unwritten}
+        slo_types = {s.name: (s.slo_type or "").lower() for s in manifest.slos}
         agreed |= {
             (f, slo)
-            for (f, slo) in KIND_WITNESSES.values()
-            if f == rel and _selector(manifest, slo) in written & read
+            for kind, (f, slo) in KIND_WITNESSES.items()
+            if f == rel
+            and _selector(manifest, slo) in written & read
+            and kind.split("_")[0] in slo_types.get(slo, "")
         }
         if written:
             with_budget.append(rel)
@@ -222,7 +237,11 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         )
     missing_kinds = sorted(k for k, w in KIND_WITNESSES.items() if w not in agreed)
     if missing_kinds:
-        problems["request-ratio kinds whose witness budget is not written and read"] = missing_kinds
+        problems["request-ratio kinds whose witness is not written, read and of its kind"] = missing_kinds
+    if agreed_budgets != EXPECTED_AGREED_BUDGETS:
+        problems[f"EXPECTED_AGREED_BUDGETS is {EXPECTED_AGREED_BUDGETS}, got {agreed_budgets}"] = (
+            "budgets written and read, counted per SLO"
+        )
     if len(with_budget) != EXPECTED_WITH_BUDGET:
         problems[f"EXPECTED_WITH_BUDGET is {EXPECTED_WITH_BUDGET}, got {len(with_budget)}"] = (
             with_budget
