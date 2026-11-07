@@ -39,9 +39,11 @@ def test_fixtures_are_present():
         "r5-state-bnal-completed.json",
         "r5-state-g32d-checkpointB-completed.json",
         "r5-state-g35i-completed.json",
+        "r5-state-ir5m-completed.json",
         "r5-state-m7su-dryrun-completed.json",
         "r5-state-oh27-completed.json",
         "r5-state-wo62-1-checkpointA-common-completed.json",
+        "r5-state-wo62-4-1-completed.json",
     ]
 
 
@@ -120,7 +122,7 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
 def test_json_mode_reports_every_record(tmp_path, capsys):
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["records"]) == 8
+    assert len(out["records"]) == 10
     assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
@@ -195,3 +197,31 @@ def test_a_pass_started_but_never_reviewed_is_not_a_lens_run():
     record = {"completed_passes": [], "audit_trail": [{"event": "pass_started", "pass": "clarity"}]}
     row = r5_baseline.analyse_record(record)
     assert row["lenses"] == {} and row["lens_order"] == [] and row["sequential_steps"] == 0
+
+
+# The two archived dispatches the hook blocked before any reviewer ran
+# (BLOCKED_DISPATCHES). Hand counts from each record's events, per lens
+# reviews + fix rounds:
+#   ir5m      correctness 2+1 (3 dispatched, 1 blocked), clarity 4+2 (a real
+#             stall re-sent), edge-cases 3+3, provenance 3+3, excellence 1.
+#   wo62-4-1  correctness 2+1 (3 dispatched, 1 blocked), clarity 2+1,
+#             edge-cases 2+1, provenance 5+4, excellence 1.
+@pytest.mark.parametrize(("name", "steps", "correctness_reviews"), [
+    ("ir5m", 22, 2),
+    ("wo62-4-1", 19, 2),
+])
+def test_a_dispatch_the_hook_blocked_is_not_a_model_step(name, steps, correctness_reviews):
+    row = _row(name)
+    assert row["lenses"]["correctness"]["iterations"] == correctness_reviews
+    assert row["sequential_steps"] == steps
+
+
+def test_the_blocked_dispatch_table_names_events_that_exist():
+    # An entry that matches no archived event would silently exclude nothing.
+    fixtures = {
+        (rec["target_bead"], e.get("pass"), e.get("ts"))
+        for p in FIXTURES.glob("*.json")
+        for rec in [json.loads(p.read_text())]
+        for e in rec["audit_trail"] if e.get("event") == "reviewer_dispatched"
+    }
+    assert fixtures >= r5_baseline.BLOCKED_DISPATCHES

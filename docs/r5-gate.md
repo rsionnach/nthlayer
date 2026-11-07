@@ -45,14 +45,14 @@ Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
 
 | pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR | other | unattributed | re-review findings | reviews | model steps |
 |---|---|---|---|---|---|---|---|---|---|---|
-| correctness | 86 | 196 | 10 | 49 | 113 | 0 | 24 | 71 | 139 | 196 |
+| correctness | 86 | 196 | 10 | 49 | 113 | 0 | 24 | 71 | 137 | 194 |
 | clarity | 83 | 478 | 0 | 119 | 299 | 0 | 60 | 131 | 156 | 240 |
 | edge-cases | 83 | 319 | 14 | 59 | 183 | 0 | 63 | 108 | 164 | 255 |
 | provenance | 65 | 228 | 56 | 53 | 90 | 0 | 29 | 76 | 124 | 183 |
 | excellence | 82 | 318 | 1 | 31 | 256 | 0 | 30 | 0 | 93 | 110 |
 | other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 0 | 7 | 8 |
 
-Sequential model steps per gate: total 992, median 10, max 28.
+Sequential model steps per gate: total 990, median 10, max 28.
 
 Each row adds up: *findings (first review)* = the four severity columns +
 *unattributed*. The severities are the first review's; findings a re-review

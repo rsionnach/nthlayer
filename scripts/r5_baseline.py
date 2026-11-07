@@ -26,7 +26,9 @@ columns summed every review's logged severities, so the gap was the
 unattributed findings less the re-review findings counted again. Here the
 severity columns are the first review's and re-reviews are reported apart.
 
-Model steps, per pass: reviews (one per ``findings_received`` event; failing
+Model steps, per pass: reviews (one per ``findings_received`` event, or per
+``reviewer_dispatched`` where more were sent than answered, less the known
+blocked dispatches in BLOCKED_DISPATCHES; failing
 that, one per run plus its fix iterations, from ``pass_completed`` events or the
 summary) plus fix rounds (the largest of the ``fixes_applied``/``fix_dispatched``
 events, the runs' ``fix_iterations`` summed, and the summary's). A pass reviewed
@@ -56,6 +58,24 @@ SEVERITIES = ("critical", "important", "minor")
 # Blocking lenses in roster order, then the advisory one. A lens a record names
 # that is not here (none today) sorts after these, by name.
 LENS_ORDER = ("correctness", "clarity", "edge-cases", "provenance", "excellence")
+
+# Archived reviewer_dispatched events for which no reviewer ran: the hook
+# refused the launch and the supervisor re-dispatched the same iteration. A
+# blocked dispatch is not a model step, but the archived state format cannot
+# tell one from a stalled review that was re-sent (wo62-4-2 logs a real stall
+# under the same event names), so the two known cases are listed here, keyed by
+# (bead, pass, ts), rather than inferred from free text. The archives are
+# frozen; Phase A.4's round record (opensrm-6kqs.4) records dispatches exactly,
+# so no entry is added for gates run after it. Found by the opensrm-6kqs.1 R5
+# correctness pass, iteration 3.
+BLOCKED_DISPATCHES = frozenset({
+    # reviewer_dispatch_blocked follows: the supervisor's own bookkeeping
+    # tripped the parallel-block hook; iteration 2 re-dispatched at 21:34:23Z.
+    ("opensrm-ir5m", "correctness", "2026-10-02T21:32:57Z"),
+    # supervisor_blocked follows: the dispatch was logged before launch and the
+    # hook refused it; iteration 1 re-dispatched at 17:10:43.
+    ("opensrm-wo62.4.1", "correctness", "2026-10-27T17:10:18.968444+00:00"),
+})
 
 # scripts/ -> the front-door repo -> the workspace root, whose .claude/ holds
 # the archives (they are untracked, so they cannot live in this repo).
@@ -123,7 +143,10 @@ def analyse_record(record: dict) -> dict:
             fix_events.setdefault(lens, Counter())[kind] += 1
         elif kind == "pass_completed" and isinstance(event.get("fix_iterations"), int):
             runs.setdefault(lens, []).append(event["fix_iterations"])
-        elif kind == "reviewer_dispatched":
+        elif (
+            kind == "reviewer_dispatched"
+            and (record.get("target_bead"), lens, event.get("ts")) not in BLOCKED_DISPATCHES
+        ):
             dispatched[lens] += 1
     for lens, found in advisory.items():
         iterations.setdefault(lens, found)
