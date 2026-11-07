@@ -10,14 +10,12 @@ These metrics are already OTel-aligned in generate templates.
 
 | OTel Semantic Convention | Prometheus Metric Name | Generate Recording Rule Reference |
 |--------------------------|----------------------|----------------------------------|
-| `http.server.request.duration` (histogram) | `http_request_duration_seconds_bucket` | Input to `slo:latency_requests_fast:30d`, `slo:http_request_duration_seconds:p50/p95/p99` |
-| `http.server.request.duration` (count) | `http_request_duration_seconds_count` | Input to `slo:latency_requests_total:30d` |
-| `http.server.requests` (counter) | `http_requests_total{service, status}` | Input to `slo:requests_total:30d`, `slo:requests_success:30d` |
+| `http.server.request.duration` (histogram) | `http_request_duration_seconds_bucket` | Input to `slo:latency_requests_fast:{w}`, `slo:http_request_duration_seconds:p50/p95/p99` |
+| `http.server.request.duration` (count) | `http_request_duration_seconds_count` | Input to `slo:latency_requests_total:{w}` |
+| `http.server.requests` (counter) | `http_requests_total{service, status}` | Input to `slo:requests_total:{w}`, `slo:requests_success:{w}` |
 
 ### Recording Rule Outputs (custom domain names — intentional)
 
-| Recording Rule | PromQL Expression | Purpose |
-|---------------|-------------------|---------|
 `{w}` is the SLO's own window (`30d` when it declares none). Every `slo:*`
 rule carries `service` and `slo`; the ratio rules also carry `objective`.
 
@@ -27,7 +25,7 @@ rule carries `service` and `slo`; the ratio rules also carry `objective`.
 | `slo:requests_success:{w}` | `sum(increase(http_requests_total{service="X",status!~"5.."}[{w}]))` | Availability numerator |
 | `slo:availability:ratio` | success / total | Availability SLO ratio (good) |
 | `slo:latency_requests_total:{w}` | `sum(increase(http_request_duration_seconds_count{...}[{w}]))` | Latency denominator |
-| `slo:latency_requests_fast:{w}` | `sum(increase(http_request_duration_seconds_bucket{...,le="<bound>"}[{w}]))` | Latency numerator: requests under the SLO's `threshold_ms` (see the budget note for SLOs that declare none) |
+| `slo:latency_requests_fast:{w}` | `sum(increase(http_request_duration_seconds_bucket{...,le="<bound>"}[{w}]))` | Latency numerator: requests under the SLO's `threshold_ms`. With none declared the rule is still written, against a guessed bound (500ms, or srm/v1's `target`), and the SLO gets no budget |
 | `slo:latency:ratio` | fast / total | Latency SLO ratio (good) |
 | `slo:error_requests_total:{w}`, `slo:error_requests_failed:{w}` | `sum(increase(http_requests_total{...}[{w}]))`, the same over `status=~"5.."` | Error-rate denominator and numerator |
 | `slo:error_rate:ratio` | failed / total | Error-rate SLO ratio (**bad**: the budget uses `1 - ratio`) |
@@ -78,8 +76,8 @@ Readers (nthlayer-workers 4.2.0):
 `test/test_error_budget_seam.py` checks, against the published packages, that
 for every real manifest generate writes exactly the budgets measure reads. It
 pins one witness per kind, and lists each budget measure asks for that
-generate's guard skips, with its bead (correlate and drift build their
-selectors from the same constant).
+generate's guard skips, with its bead. Correlate and drift build their
+selectors from the same constant, so the test covers them too.
 
 ### Alert Inputs
 

@@ -7,7 +7,7 @@ real manifest, the error-budget series generate writes and the error-budget
 queries measure sends must be the same set, in both directions.
 
 Since opensrm-zo0o (rulings Z1, D5; generate 4.1.0, workers 4.2.0) both sides
-cover every request-ratio SLO, availability, latency and error_rate, so the
+cover every request-ratio SLO (availability, latency, error_rate), so the
 seam is per SLO of each of those kinds, not availability alone. Each kind is
 pinned by a named witness that must be written and read. Where generate
 deliberately writes no budget that measure still asks for, the SLO is listed in
@@ -184,19 +184,24 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         except Exception as exc:  # name the file; a bare traceback does not
             problems[rel] = f"raised {exc!r}"
             continue
-        if written - read:
-            problems[rel] = {"written_not_read": sorted(written - read)}
-        expected_missing = {
-            _selector(manifest, slo) for (f, slo) in EXPECTED_READ_NOT_WRITTEN if f == rel
+        unread, unwritten = written - read, read - written
+        # This file's pins, as the selector each would be read with.
+        pinned = {
+            slo: _selector(manifest, slo) for (f, slo) in EXPECTED_READ_NOT_WRITTEN if f == rel
         }
-        if read - written != expected_missing:
-            problems[f"{rel} read_not_written"] = {
-                "unexpected": sorted(read - written - expected_missing),
-                "now_written_or_not_read": sorted(expected_missing - (read - written)),
-            }
-        read_not_written |= {(rel, slo) for (f, slo) in EXPECTED_READ_NOT_WRITTEN
-                             if f == rel and _selector(manifest, slo) in read - written}
-        agreed |= {(rel, slo) for (f, slo) in KIND_WITNESSES.values()
+        file_problems = {}
+        if unread:
+            file_problems["written_not_read"] = sorted(unread)
+        if unwritten - set(pinned.values()):
+            file_problems["read_not_written, unpinned"] = sorted(unwritten - set(pinned.values()))
+        if set(pinned.values()) - unwritten:
+            file_problems["pinned, now written or not read"] = sorted(
+                set(pinned.values()) - unwritten
+            )
+        if file_problems:
+            problems[rel] = file_problems
+        read_not_written |= {(rel, slo) for slo, sel in pinned.items() if sel in unwritten}
+        agreed |= {(f, slo) for (f, slo) in KIND_WITNESSES.values()
                    if f == rel and _selector(manifest, slo) in written & read}
         if written:
             with_budget.append(rel)
