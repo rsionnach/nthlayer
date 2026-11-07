@@ -42,6 +42,7 @@ def test_fixtures_are_present():
         "r5-state-ir5m-completed.json",
         "r5-state-m7su-dryrun-completed.json",
         "r5-state-oh27-completed.json",
+        "r5-state-tu04.1.2.2-completed.json",
         "r5-state-wo62-1-checkpointA-common-completed.json",
         "r5-state-wo62-4-1-completed.json",
     ]
@@ -106,7 +107,8 @@ def test_dry_runs_are_excluded_from_the_totals():
     rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in sorted(FIXTURES.glob("*.json"))]
     counted = r5_baseline.baseline_rows(rows)
     assert "opensrm-m7su" not in {r["bead"] for r in counted}
-    assert len(counted) == len(rows) - 1
+    # Excluded: the m7su dry run and tu04.1.2.2, abandoned with nothing reviewed.
+    assert len(counted) == len(rows) - 2
 
 
 def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
@@ -122,7 +124,7 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
 def test_json_mode_reports_every_record(tmp_path, capsys):
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["records"]) == 10
+    assert len(out["records"]) == 11
     assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
@@ -225,3 +227,38 @@ def test_the_blocked_dispatch_table_names_events_that_exist():
         for e in rec["audit_trail"] if e.get("event") == "reviewer_dispatched"
     }
     assert fixtures >= r5_baseline.BLOCKED_DISPATCHES
+
+
+def test_a_gate_with_no_lens_reviewed_is_not_counted():
+    # tu04.1.2.2 was abandoned after pass_started (status in_progress).
+    row = _row("tu04.1.2.2")
+    assert row["lenses"] == {} and row["sequential_steps"] == 0
+    assert row not in r5_baseline.baseline_rows([row])
+
+
+def test_only_excluded_records_is_a_usage_error_not_a_crash(tmp_path):
+    shutil.copy(FIXTURES / "r5-state-m7su-dryrun-completed.json", tmp_path)
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
+
+
+# Shapes no archive has today, so these probes are hand-built: each must be
+# refused, since counting it would print a plausible wrong total.
+@pytest.mark.parametrize("record", [
+    {"rounds": [], "audit_trail": []},  # a Phase A.4 round record
+    {"target_bead": "x"},  # neither audit_trail nor completed_passes
+    {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"critical": "1"}}]},
+    {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"minor": -1}}]},
+    {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": [1]}]},
+    {"completed_passes": [{"name": "c", "fix_iterations": -1}], "audit_trail": []},
+    {"completed_passes": [{"name": "c", "findings_count_initial": "3"}], "audit_trail": []},
+])
+def test_a_record_it_cannot_count_is_refused(tmp_path, record):
+    with pytest.raises(r5_baseline.RecordError):
+        r5_baseline.analyse_record(record)
+    (tmp_path / "r5-state-probe-completed.json").write_text(json.dumps(record))
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
+
+
+def test_an_integral_float_count_is_accepted():
+    record = {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"critical": 2.0}}]}
+    assert r5_baseline.analyse_record(record)["lenses"]["c"]["findings_by_review"][0]["critical"] == 2

@@ -1,6 +1,6 @@
 # r5_baseline fixtures
 
-Trimmed copies of ten real archived gate records from the workspace root's
+Trimmed copies of eleven real archived gate records from the workspace root's
 `.claude/` (untracked, so they cannot be referenced in place). Each keeps the
 record's structure and every number the baseline reads; free text (notes,
 rulings, briefs) and session details are dropped, because the archives are
@@ -31,3 +31,4 @@ the same filter to another archive.
 | `r5-state-wo62-1-checkpointA-common-completed.json` | fixes applied with `fix_iterations: 0`, and `findings_count_initial` counting only blocking findings |
 | `r5-state-bnal-completed.json` | a stalled reviewer re-dispatched: more `reviewer_dispatched` than `findings_received` |
 | `r5-state-ir5m-completed.json`, `r5-state-wo62-4-1-completed.json` | the two archived dispatches the hook blocked before a reviewer ran (`BLOCKED_DISPATCHES`), beside real stalls re-sent |
+| `r5-state-tu04.1.2.2-completed.json` | a gate abandoned after `pass_started` with nothing reviewed (excluded from the totals) |

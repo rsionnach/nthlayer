@@ -41,7 +41,7 @@ Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
 `scripts/r5_baseline.py` run over every archived gate record
 (`.claude/r5-state-*-completed.json`, 2026-11-07) [opensrm-6kqs.1]:
 
-87 archived gate records, 64 beads (21 schema v1, 66 v2; 1 dry run(s) excluded).
+86 archived gate records, 63 beads (20 schema v1, 66 v2); excluded: 1 dry run(s), 1 with no lens reviewed.
 
 | pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR | other | unattributed | re-review findings | reviews | model steps |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -52,7 +52,7 @@ Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
 | excellence | 82 | 318 | 1 | 31 | 256 | 0 | 30 | 0 | 93 | 110 |
 | other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 0 | 7 | 8 |
 
-Sequential model steps per gate: total 990, median 10, max 28.
+Sequential model steps per gate: total 990, median 10.5, max 28.
 
 Each row adds up: *findings (first review)* = the four severity columns +
 *unattributed*. The severities are the first review's; findings a re-review

@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import sys
 from collections import Counter
 from pathlib import Path
@@ -85,19 +86,33 @@ BLOCKED_DISPATCHES = frozenset({
 DEFAULT_ARCHIVE_DIR = Path(__file__).resolve().parents[2] / ".claude"
 
 
+class RecordError(ValueError):
+    """An archive this script cannot count without guessing."""
+
+
+def _count(value: object, what: str) -> int:
+    """A non-negative integer count; an integral float (2.0) is accepted. Anything
+    else is refused rather than read as 0, which would undercount silently."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RecordError(f"{what} is {value!r}, not a non-negative count")
+    return value
+
+
 def _counts(raw: object) -> Counter:
     """Severity counts from one findings_received ``counts`` value.
 
     Keys outside SEVERITIES (``missing_tests`` in one edge-cases record) go to
-    ``other``; non-integer values are ignored, as no record uses one for a count.
+    ``other``. A missing or null ``counts`` is no findings.
     """
     out: Counter = Counter()
-    if not isinstance(raw, dict):
+    if raw is None:
         return out
+    if not isinstance(raw, dict):
+        raise RecordError(f"counts is {raw!r}, not a mapping")
     for key, value in raw.items():
-        if isinstance(value, bool) or not isinstance(value, int):
-            continue
-        out[key if key in SEVERITIES else "other"] += value
+        out[key if key in SEVERITIES else "other"] += _count(value, f"counts[{key!r}]")
     return out
 
 
@@ -143,8 +158,10 @@ def _scan_events(record: dict) -> dict:
             advisory.setdefault(lens, []).append(_counts(event.get("counts")))
         elif kind in ("fixes_applied", "fix_dispatched"):
             scan["fix_events"].setdefault(lens, Counter())[kind] += 1
-        elif kind == "pass_completed" and isinstance(event.get("fix_iterations"), int):
-            scan["runs"].setdefault(lens, []).append(event["fix_iterations"])
+        elif kind == "pass_completed" and event.get("fix_iterations") is not None:
+            scan["runs"].setdefault(lens, []).append(
+                _count(event["fix_iterations"], f"{lens} pass_completed fix_iterations")
+            )
         elif (
             kind == "reviewer_dispatched"
             and (record.get("target_bead"), lens, event.get("ts")) not in BLOCKED_DISPATCHES
@@ -159,7 +176,7 @@ def _lens_row(lens: str, summary: dict, scan: dict) -> dict | None:
     """One lens's row, or None for a lens started but never reviewed."""
     found = scan["reviews"].get(lens, [])
     runs = scan["runs"].get(lens)
-    summary_fixes = summary.get("fix_iterations") or 0
+    summary_fixes = _count(summary.get("fix_iterations") or 0, f"{lens} fix_iterations")
     if found:
         # A dispatch that stalled and was re-sent is a review spent with no
         # findings_received of its own.
@@ -182,8 +199,7 @@ def _lens_row(lens: str, summary: dict, scan: dict) -> dict | None:
     )
     first = sum(found[0].values()) if found else 0
     recorded = summary.get("findings_count_initial")
-    if recorded is None:
-        recorded = first
+    recorded = first if recorded is None else _count(recorded, f"{lens} findings_count_initial")
     return {
         "reviews": reviews,
         "fix_rounds": fixes,
@@ -200,7 +216,19 @@ def _lens_row(lens: str, summary: dict, scan: dict) -> dict | None:
 
 
 def analyse_record(record: dict) -> dict:
-    """The baseline row for one archived gate record."""
+    """The baseline row for one archived gate record.
+
+    Raises RecordError for a shape it does not read: a ``rounds[]`` record (the
+    Phase A.4 round record, which this script must learn before it can count
+    one) or a record with neither ``audit_trail`` nor ``completed_passes``.
+    Counting either as a gate with no reviews would be a plausible wrong total.
+    """
+    if not isinstance(record, dict):
+        raise RecordError("not a JSON object")
+    if "rounds" in record:
+        raise RecordError("has rounds[] (round record): not yet read by this script")
+    if "audit_trail" not in record and "completed_passes" not in record:
+        raise RecordError("has neither audit_trail nor completed_passes")
     passes = [p for p in record.get("completed_passes", []) if isinstance(p, dict)]
     summaries = {p["name"]: p for p in passes if isinstance(p.get("name"), str)}
     scan = _scan_events(record)
@@ -261,9 +289,11 @@ def totals(rows: list[dict]) -> dict[str, dict[str, int]]:
 
 
 def baseline_rows(rows: list[dict]) -> list[dict]:
-    """The rows the baseline counts: live gates only. A dry run replays a bead
-    already gated, so counting it would count that bead twice."""
-    return [r for r in rows if not r["dry_run"]]
+    """The rows the baseline counts: live gates that reviewed something. A dry
+    run replays a bead already gated, so counting it would count that bead
+    twice; a record with no lens reviewed (a gate abandoned after pass_started)
+    would add a gate of zero steps."""
+    return [r for r in rows if not r["dry_run"] and r["lenses"]]
 
 
 def render_markdown(all_rows: list[dict]) -> str:
@@ -277,11 +307,13 @@ def render_markdown(all_rows: list[dict]) -> str:
     if other:
         agg["other passes"] = dict(other)
     beads = {r["bead"] for r in rows}
+    dry = sum(r["dry_run"] for r in all_rows)
+    empty = sum(not r["dry_run"] and not r["lenses"] for r in all_rows)
     lines = [
         f"{len(rows)} archived gate records, {len(beads)} beads"
         f" ({sum(r['version'] == 1 for r in rows)} schema v1,"
-        f" {sum(r['version'] != 1 for r in rows)} v2;"
-        f" {len(all_rows) - len(rows)} dry run(s) excluded).",
+        f" {sum(r['version'] != 1 for r in rows)} v2);"
+        f" excluded: {dry} dry run(s), {empty} with no lens reviewed.",
         "",
         "| pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR"
         " | other | unattributed | re-review findings | reviews | model steps |",
@@ -298,7 +330,7 @@ def render_markdown(all_rows: list[dict]) -> str:
     lines += [
         "",
         f"Sequential model steps per gate: total {sum(steps)},"
-        f" median {sorted(steps)[len(steps) // 2]}, max {max(steps)}.",
+        f" median {statistics.median(steps):g}, max {max(steps)}.",
     ]
     return "\n".join(lines)
 
@@ -318,7 +350,16 @@ def main(argv: list[str] | None = None) -> int:
     if not records:
         print(f"r5-baseline: no r5-state-*-completed.json in {args.archive_dir}", file=sys.stderr)
         return 2
-    rows = [dict(analyse_record(data), file=name) for name, data in records]
+    rows = []
+    for name, data in records:
+        try:
+            rows.append(dict(analyse_record(data), file=name))
+        except RecordError as exc:
+            print(f"r5-baseline: {name}: {exc}", file=sys.stderr)
+            return 2
+    if not baseline_rows(rows):
+        print(f"r5-baseline: no live, reviewed gate in {args.archive_dir}", file=sys.stderr)
+        return 2
     if args.json:
         json.dump({"records": rows, "totals": totals(baseline_rows(rows))}, sys.stdout, indent=1)
         print()
