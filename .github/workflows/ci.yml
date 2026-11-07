@@ -68,7 +68,7 @@ jobs:
         run: bash test/test_eco_doctor.sh
 
       # r5_baseline's tests (opensrm-6kqs.1). Standard library plus pytest, over
-      # trimmed real archives in test/fixtures/r5-baseline/; no network.
+      # synthetic fixtures, one per archive pattern (opensrm-6kqs.8); no network.
       - name: r5-baseline tests
         run: uv run --no-project --with pytest pytest -q test/test_r5_baseline.py
 
