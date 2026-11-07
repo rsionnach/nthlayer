@@ -50,16 +50,17 @@ Until 2026-08-28 the fourth blocking slot was excellence. The baseline below is
 | edge-cases | 83 | 319 | 14 | 59 | 183 | 0 | 63 | 108 | 164 | 255 |
 | provenance | 65 | 228 | 56 | 53 | 90 | 0 | 29 | 76 | 124 | 183 |
 | excellence | 82 | 318 | 1 | 31 | 256 | 0 | 30 | 0 | 93 | 110 |
-| other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 0 | 7 | 8 |
+| other passes | 7 | 30 | 0 | 7 | 23 | 0 | 0 | 0 | 7 | 9 |
 
-Sequential model steps per gate: total 990, median 10.5, max 28.
+Sequential model steps per gate: total 991, median 10.5, max 28.
 
 Each row adds up: *findings (first review)* = the four severity columns +
 *unattributed*. The severities are the first review's; findings a re-review
 raised are counted apart, so a finding re-raised is not counted twice.
 *Unattributed* is first-review findings recorded only as a pass total, with no
 logged severity: many passes, most v1, recorded nothing else. Model steps are
-reviews plus fix rounds, summed over a gate's passes.
+reviews plus fix rounds, summed over a gate's passes. The script refuses a
+record it cannot count without guessing, and then prints no table at all.
 
 The 2026-08-28 table this replaces showed 274 findings but only 152 across its
 severity columns. Over the 21 records it covered (20 live beads plus the m7su

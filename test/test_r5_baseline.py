@@ -37,6 +37,7 @@ def test_fixtures_are_present():
         "r5-state-1mja-completed.json",
         "r5-state-3ntg-completed.json",
         "r5-state-bnal-completed.json",
+        "r5-state-g32d-checkpointA-completed.json",
         "r5-state-g32d-checkpointB-completed.json",
         "r5-state-g35i-completed.json",
         "r5-state-ir5m-completed.json",
@@ -124,7 +125,7 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
 def test_json_mode_reports_every_record(tmp_path, capsys):
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["records"]) == 11
+    assert len(out["records"]) == 12
     assert "opensrm-m7su" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
@@ -251,6 +252,12 @@ def test_only_excluded_records_is_a_usage_error_not_a_crash(tmp_path):
     {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": [1]}]},
     {"completed_passes": [{"name": "c", "fix_iterations": -1}], "audit_trail": []},
     {"completed_passes": [{"name": "c", "findings_count_initial": "3"}], "audit_trail": []},
+    {"completed_passes": [{"name": "c", "fix_iterations": False}], "audit_trail": []},
+    {"audit_trail": [{"event": "findings_received", "counts": {"critical": 1}}]},  # no pass
+    {"audit_trail": [{"event": "findings_received", "pass": 3, "counts": {}}]},
+    {"audit_trail": {"event": "findings_received"}},  # a dict, not a list
+    {"audit_trail": ["findings_received"]},
+    {"completed_passes": [{"fix_iterations": 1}], "audit_trail": []},  # no name
 ])
 def test_a_record_it_cannot_count_is_refused(tmp_path, record):
     with pytest.raises(r5_baseline.RecordError):
@@ -262,3 +269,34 @@ def test_a_record_it_cannot_count_is_refused(tmp_path, record):
 def test_an_integral_float_count_is_accepted():
     record = {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"critical": 2.0}}]}
     assert r5_baseline.analyse_record(record)["lenses"]["c"]["findings_by_review"][0]["critical"] == 2
+
+
+def test_a_known_passless_fix_is_given_to_its_pass():
+    # g32d-A logged the scoped(correctness+edge) re-check's fix_dispatched and
+    # fixes_applied with no pass (PASSLESS_EVENTS): one review, one fix round.
+    lens = _row("g32d-checkpointA")["lenses"]["scoped(correctness+edge)"]
+    assert (lens["reviews"], lens["fix_rounds"]) == (1, 1)
+
+
+def test_the_passless_table_names_events_that_exist():
+    events = {
+        (rec["target_bead"], e.get("event"), e.get("ts"))
+        for p in FIXTURES.glob("*.json")
+        for rec in [json.loads(p.read_text())]
+        for e in rec["audit_trail"] if "pass" not in e
+    }
+    assert set(r5_baseline.PASSLESS_EVENTS) <= events
+
+
+def test_a_non_counting_event_without_a_pass_is_ignored():
+    # supervisor_started, commit_made and the like carry no pass in real records.
+    record = {"completed_passes": [], "audit_trail": [{"event": "supervisor_started"}]}
+    assert r5_baseline.analyse_record(record)["lenses"] == {}
+
+
+@pytest.mark.parametrize("content", [b"{not json", b"\xff\xfe\x00"])
+def test_an_unreadable_archive_is_refused(tmp_path, content):
+    (tmp_path / "r5-state-bad-completed.json").write_bytes(content)
+    with pytest.raises(r5_baseline.RecordError):
+        r5_baseline.load_records(tmp_path)
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2

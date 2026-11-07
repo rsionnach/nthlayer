@@ -46,7 +46,9 @@ library only.
 Usage:
     python3 scripts/r5_baseline.py [--archive-dir DIR] [--json | --markdown]
 
-Exit codes: 0 report printed · 2 usage error or no records found.
+Exit codes: 0 report printed · 2 usage error, no countable records, or a record
+it cannot count without guessing. One such record fails the whole report: a
+baseline quietly missing a gate would look as plausible as a correct one.
 """
 
 from __future__ import annotations
@@ -79,6 +81,24 @@ BLOCKED_DISPATCHES = frozenset({
     # supervisor_blocked follows: the dispatch was logged before launch and the
     # hook refused it; iteration 1 re-dispatched at 17:10:43.
     ("opensrm-wo62.4.1", "correctness", "2026-10-27T17:10:18.968444+00:00"),
+})
+
+# Archived counting events logged without a ``pass``, mapped to the pass they
+# belong to. Any other counting event with no string ``pass`` is refused, as
+# guessing its pass is the silent miscount this script exists to avoid; these
+# two are known data, as BLOCKED_DISPATCHES are. Found by the opensrm-6kqs.1 R5
+# edge-cases pass, iteration 2.
+PASSLESS_EVENTS = {
+    # The fix after the scoped(correctness+edge) re-check, dispatched and then
+    # applied; the preceding findings_received is that pass's.
+    ("opensrm-g32d", "fix_dispatched", "2026-10-20T13:58:06+00:00"): "scoped(correctness+edge)",
+    ("opensrm-g32d", "fixes_applied", "2026-10-20T14:04:07+00:00"): "scoped(correctness+edge)",
+}
+
+# Events that change a count. One of these without a pass cannot be placed.
+COUNTING_EVENTS = frozenset({
+    "pass_started", "findings_received", "advisory_pass_completed", "fixes_applied",
+    "fix_dispatched", "pass_completed", "reviewer_dispatched",
 })
 
 # scripts/ -> the front-door repo -> the workspace root, whose .claude/ holds
@@ -141,10 +161,17 @@ def _scan_events(record: dict) -> dict:
         "sequence": [],  # pass_started in order, repeats kept
     }
     advisory: dict[str, list[Counter]] = {}
-    for event in record.get("audit_trail", []):
-        if not isinstance(event, dict) or not isinstance(event.get("pass"), str):
+    for event in record.get("audit_trail") or []:
+        if not isinstance(event, dict):
+            raise RecordError(f"audit_trail entry {event!r} is not an object")
+        kind = event.get("event")
+        lens = event.get("pass")
+        if not isinstance(lens, str):
+            lens = PASSLESS_EVENTS.get((record.get("target_bead"), kind, event.get("ts")))
+        if lens is None:
+            if kind in COUNTING_EVENTS:
+                raise RecordError(f"{kind} at {event.get('ts')} has no pass")
             continue
-        lens, kind = event["pass"], event.get("event")
         if lens not in scan["seen"]:
             scan["seen"].append(lens)
         if kind == "pass_started":
@@ -176,7 +203,8 @@ def _lens_row(lens: str, summary: dict, scan: dict) -> dict | None:
     """One lens's row, or None for a lens started but never reviewed."""
     found = scan["reviews"].get(lens, [])
     runs = scan["runs"].get(lens)
-    summary_fixes = _count(summary.get("fix_iterations") or 0, f"{lens} fix_iterations")
+    raw_fixes = summary.get("fix_iterations")
+    summary_fixes = 0 if raw_fixes is None else _count(raw_fixes, f"{lens} fix_iterations")
     if found:
         # A dispatch that stalled and was re-sent is a review spent with no
         # findings_received of its own.
@@ -229,8 +257,14 @@ def analyse_record(record: dict) -> dict:
         raise RecordError("has rounds[] (round record): not yet read by this script")
     if "audit_trail" not in record and "completed_passes" not in record:
         raise RecordError("has neither audit_trail nor completed_passes")
-    passes = [p for p in record.get("completed_passes", []) if isinstance(p, dict)]
-    summaries = {p["name"]: p for p in passes if isinstance(p.get("name"), str)}
+    for key in ("audit_trail", "completed_passes"):
+        if record.get(key) is not None and not isinstance(record[key], list):
+            raise RecordError(f"{key} is a {type(record[key]).__name__}, not a list")
+    passes = record.get("completed_passes") or []
+    for p in passes:
+        if not isinstance(p, dict) or not isinstance(p.get("name"), str):
+            raise RecordError(f"completed_passes entry {p!r} has no name")
+    summaries = {p["name"]: p for p in passes}
     scan = _scan_events(record)
 
     # Lens order: first appearance in the audit trail, which follows dispatch;
@@ -262,8 +296,11 @@ def load_records(archive_dir: Path) -> list[tuple[str, dict]]:
     """Every archived record, by file name, sorted by name for a stable report."""
     out = []
     for path in sorted(archive_dir.glob("r5-state-*-completed.json")):
-        with path.open(encoding="utf-8") as handle:
-            out.append((path.name, json.load(handle)))
+        try:
+            with path.open(encoding="utf-8") as handle:
+                out.append((path.name, json.load(handle)))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RecordError(f"{path.name}: unreadable ({exc})") from exc
     return out
 
 
@@ -346,7 +383,11 @@ def main(argv: list[str] | None = None) -> int:
     if not args.archive_dir.is_dir():
         print(f"r5-baseline: no such directory {args.archive_dir}", file=sys.stderr)
         return 2
-    records = load_records(args.archive_dir)
+    try:
+        records = load_records(args.archive_dir)
+    except RecordError as exc:
+        print(f"r5-baseline: {exc}", file=sys.stderr)
+        return 2
     if not records:
         print(f"r5-baseline: no r5-state-*-completed.json in {args.archive_dir}", file=sys.stderr)
         return 2
