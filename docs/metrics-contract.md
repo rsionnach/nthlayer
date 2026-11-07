@@ -6,7 +6,8 @@ This is the integration contract between nthlayer-generate (produces rules), nth
 
 ## Traditional Service Metrics (API type)
 
-These metrics are already OTel-aligned in generate templates.
+These metrics are already OTel-aligned in generate templates. `{w}` is the
+SLO's own window (see the recording-rule outputs below).
 
 | OTel Semantic Convention | Prometheus Metric Name | Generate Recording Rule Reference |
 |--------------------------|----------------------|----------------------------------|

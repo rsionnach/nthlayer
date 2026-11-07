@@ -189,20 +189,23 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         pinned = {
             slo: _selector(manifest, slo) for (f, slo) in EXPECTED_READ_NOT_WRITTEN if f == rel
         }
+        pinned_selectors = set(pinned.values())
+        unpinned, resolved = unwritten - pinned_selectors, pinned_selectors - unwritten
         file_problems = {}
         if unread:
             file_problems["written_not_read"] = sorted(unread)
-        if unwritten - set(pinned.values()):
-            file_problems["read_not_written, unpinned"] = sorted(unwritten - set(pinned.values()))
-        if set(pinned.values()) - unwritten:
-            file_problems["pinned, now written or not read"] = sorted(
-                set(pinned.values()) - unwritten
-            )
+        if unpinned:
+            file_problems["read_not_written, unpinned"] = sorted(unpinned)
+        if resolved:
+            file_problems["pinned, now written or not read"] = sorted(resolved)
         if file_problems:
             problems[rel] = file_problems
         read_not_written |= {(rel, slo) for slo, sel in pinned.items() if sel in unwritten}
-        agreed |= {(f, slo) for (f, slo) in KIND_WITNESSES.values()
-                   if f == rel and _selector(manifest, slo) in written & read}
+        agreed |= {
+            (f, slo)
+            for (f, slo) in KIND_WITNESSES.values()
+            if f == rel and _selector(manifest, slo) in written & read
+        }
         if written:
             with_budget.append(rel)
 
