@@ -174,7 +174,8 @@ examples, generator-specific scripts.
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
     the published nthlayer-generate and nthlayer-workers, nightly and
-    on PRs (opensrm-h0at).
+    on PRs (opensrm-h0at); per request-ratio kind, with a witness per kind
+    and generate's deliberate skips pinned by bead (opensrm-zo0o).
   - `demo-paths.yml` — `cmd_start` path-resolution regression test
     (opensrm-oey5).
   - `demo-start-lock.yml` — `cmd_start` concurrent-invocation lock

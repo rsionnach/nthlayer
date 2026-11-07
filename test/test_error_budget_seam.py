@@ -6,6 +6,14 @@ checked that the reader asks for what the writer writes. This does: for every
 real manifest, the error-budget series generate writes and the error-budget
 queries measure sends must be the same set, in both directions.
 
+Since opensrm-zo0o (rulings Z1, D5; generate 4.1.0, workers 4.2.0) both sides
+cover every request-ratio SLO (availability, latency, error_rate), so the
+seam is per SLO of each of those kinds, not availability alone. Each kind is
+pinned by a named witness that must be written and read. Where generate
+deliberately writes no budget that measure still asks for, the SLO is listed in
+EXPECTED_READ_NOT_WRITTEN with the bead whose fix would give it one; a budget
+written but not read is never expected.
+
 The manifests are the spec's v2 examples and generate's shipped examples, not
 fixtures written for this test. Nothing drops out unseen: a missing checkout
 fails rather than skipping (the opensrm-oh27 lesson), every file the loader
@@ -46,7 +54,50 @@ CORPUS_DIRS = (
     ROOT / "nthlayer-generate" / "examples" / "opensrm",
 )
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-EXPECTED_WITH_BUDGET = 24  # 2026-11-02, common 5.10.1 / generate 4.0.10 / workers 4.0.2
+EXPECTED_WITH_BUDGET = 24  # 2026-11-07, common 5.12.0 / generate 4.1.0 / workers 4.2.0
+# Budgets both sides agree on, counted per SLO, not per file: equal sets pass
+# when a change drops a budget from generate and measure at once (both classify
+# SLOs from the same parsed slo_type), and a file keeping one budget keeps the
+# file count. 27 availability + 15 latency + 1 error_rate on 2026-11-07,
+# counted per kind from generate's written rules, separately from this test.
+EXPECTED_AGREED_BUDGETS = 43
+
+# Budgets measure asks for and generate's guard deliberately does not write
+# (generate recording_rules `_budget_skip_reason`: no budget is better than a
+# wrong one, and measure reports each as NO DATA). Keyed (corpus file, SLO
+# name), valued by the bead whose fix should give it a budget. Exact, as the
+# other pins: fixing a bead turns this red, and the entry goes.
+_T13C = "opensrm-t13c: srm/v1 keeps a latency bound or an error_rate maximum in target"
+_S7B1 = "opensrm-s7b1: legacy indicators[].threshold_ms is not read"
+EXPECTED_READ_NOT_WRITTEN = {
+    ("nthlayer-generate/examples/opensrm/ai-gate.reliability.yaml", "latency"): _T13C,
+    ("nthlayer-generate/examples/opensrm/api-basic.reliability.yaml", "latency"): _T13C,
+    ("nthlayer-generate/examples/opensrm/api-critical.reliability.yaml", "latency"): _T13C,
+    ("nthlayer-generate/examples/opensrm/api-critical.reliability.yaml", "error_rate"): _T13C,
+    ("nthlayer-generate/examples/opensrm/batch.reliability.yaml", "error_rate"): _T13C,
+    ("nthlayer-generate/examples/opensrm/stream.reliability.yaml", "error_rate"): _T13C,
+    ("nthlayer-generate/examples/opensrm/worker.reliability.yaml", "error_rate"): _T13C,
+    ("nthlayer-generate/examples/services/analytics-stream.yaml", "event-latency-p99"): _S7B1,
+    ("nthlayer-generate/examples/services/checkout-service.yaml", "latency-p95"): _S7B1,
+    ("nthlayer-generate/examples/services/checkout-service.yaml", "latency-p99"): _S7B1,
+    ("nthlayer-generate/examples/services/identity-service.yaml", "latency-p95"): _S7B1,
+    ("nthlayer-generate/examples/services/identity-service.yaml", "latency-p99"): _S7B1,
+    ("nthlayer-generate/examples/services/notification-worker.yaml", "processing-latency-p95"): _S7B1,
+    ("opensrm/spec/v2/examples/migration/api-full-v2.yaml", "payment-api-latency"): (
+        "opensrm-8jpp: a v2 latency bound is read from the objective"
+    ),
+}
+
+# One budget per request-ratio kind that both sides must agree on, named so
+# the check needs neither side's kind classifier. Each witness's declared
+# slo_type must still name its kind, or a retyped witness would pass as one. If a kind lost every budget
+# (as latency and error_rate had none before zo0o), the set comparison alone
+# would still pass.
+KIND_WITNESSES = {
+    "availability": ("nthlayer-generate/examples/opensrm/ai-gate.reliability.yaml", "availability"),
+    "latency": ("nthlayer-generate/examples/services/admin-dashboard-api.yaml", "latency-p95"),
+    "error_rate": ("opensrm/spec/v2/examples/migration/api-full-v2.yaml", "payment-api-error-rate"),
+}
 
 _TEMPLATE = "template or fragment, not a service manifest"
 # Every corpus file the loader rejects, with why. Spec examples that should
@@ -105,6 +156,10 @@ def _written(manifest: ReliabilityManifest) -> set[str]:
     }
 
 
+def _selector(manifest: ReliabilityManifest, slo: str) -> str:
+    return ERROR_BUDGET_REMAINING.selector(service=manifest.name, slo=slo)
+
+
 def _read(path: Path, spec_dir: Path) -> set[str]:
     """Each error-budget query measure sends for the manifest."""
     spec_dir.mkdir()
@@ -121,6 +176,9 @@ def _read(path: Path, spec_dir: Path) -> set[str]:
 def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     with_budget = []
     rejected = set()
+    read_not_written: set[tuple[str, str]] = set()
+    agreed_kinds: set[str] = set()
+    agreed_budgets = 0
     problems: dict[str, object] = {}
     for i, path in enumerate(_corpus()):
         rel = str(path.relative_to(ROOT))
@@ -134,11 +192,38 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         except Exception as exc:  # name the file; a bare traceback does not
             problems[rel] = f"raised {exc!r}"
             continue
-        if written != read:
-            problems[rel] = {
-                "written_not_read": sorted(written - read),
-                "read_not_written": sorted(read - written),
-            }
+        names = [s.name for s in manifest.slos]
+        if len(names) != len(set(names)):
+            # Selectors are keyed by name: two SLOs sharing one would merge.
+            problems[f"{rel} duplicate SLO names"] = sorted({n for n in names if names.count(n) > 1})
+        unread, unwritten = written - read, read - written
+        agreed_budgets += len(written & read)
+        # This file's pins, as the selector each would be read with.
+        pinned = {
+            slo: _selector(manifest, slo) for (f, slo) in EXPECTED_READ_NOT_WRITTEN if f == rel
+        }
+        pinned_selectors = set(pinned.values())
+        unpinned, resolved = unwritten - pinned_selectors, pinned_selectors - unwritten
+        file_problems = {}
+        if unread:
+            file_problems["written_not_read"] = sorted(unread)
+        if unpinned:
+            file_problems["read_not_written, unpinned"] = sorted(unpinned)
+        if resolved:
+            file_problems["pinned, now written or not read"] = sorted(resolved)
+        if file_problems:
+            problems[rel] = file_problems
+        read_not_written |= {(rel, slo) for slo, sel in pinned.items() if sel in unwritten}
+        slo_types = {s.name: (s.slo_type or "").lower() for s in manifest.slos}
+        # Keyed by kind, not by (file, SLO): a witness shared by two kinds must
+        # not satisfy the kind it does not declare.
+        agreed_kinds |= {
+            kind
+            for kind, (f, slo) in KIND_WITNESSES.items()
+            if f == rel
+            and _selector(manifest, slo) in written & read
+            and kind.split("_")[0] in slo_types.get(slo, "")
+        }
         if written:
             with_budget.append(rel)
 
@@ -148,6 +233,18 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
             "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
             "now_loads": sorted(set(EXPECTED_REJECTED) - rejected),
         }
+    # A pinned file that left the corpus or stopped loading must not pass.
+    if read_not_written != set(EXPECTED_READ_NOT_WRITTEN):
+        problems["EXPECTED_READ_NOT_WRITTEN entries not seen"] = sorted(
+            set(EXPECTED_READ_NOT_WRITTEN) - read_not_written
+        )
+    missing_kinds = sorted(set(KIND_WITNESSES) - agreed_kinds)
+    if missing_kinds:
+        problems["request-ratio kinds whose witness is not written, read and of its kind"] = missing_kinds
+    if agreed_budgets != EXPECTED_AGREED_BUDGETS:
+        problems[f"EXPECTED_AGREED_BUDGETS is {EXPECTED_AGREED_BUDGETS}, got {agreed_budgets}"] = (
+            "budgets written and read, counted per SLO"
+        )
     if len(with_budget) != EXPECTED_WITH_BUDGET:
         problems[f"EXPECTED_WITH_BUDGET is {EXPECTED_WITH_BUDGET}, got {len(with_budget)}"] = (
             with_budget
