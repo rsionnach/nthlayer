@@ -58,7 +58,8 @@ EXPECTED_WITH_BUDGET = 24  # 2026-11-07, common 5.12.0 / generate 4.1.0 / worker
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
-# file count. 27 availability + 15 latency + 1 error_rate on 2026-11-07.
+# file count. 27 availability + 15 latency + 1 error_rate on 2026-11-07,
+# counted per kind from generate's written rules, separately from this test.
 EXPECTED_AGREED_BUDGETS = 43
 
 # Budgets measure asks for and generate's guard deliberately does not write
@@ -176,7 +177,7 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     with_budget = []
     rejected = set()
     read_not_written: set[tuple[str, str]] = set()
-    agreed: set[tuple[str, str]] = set()
+    agreed_kinds: set[str] = set()
     agreed_budgets = 0
     problems: dict[str, object] = {}
     for i, path in enumerate(_corpus()):
@@ -214,8 +215,10 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
             problems[rel] = file_problems
         read_not_written |= {(rel, slo) for slo, sel in pinned.items() if sel in unwritten}
         slo_types = {s.name: (s.slo_type or "").lower() for s in manifest.slos}
-        agreed |= {
-            (f, slo)
+        # Keyed by kind, not by (file, SLO): a witness shared by two kinds must
+        # not satisfy the kind it does not declare.
+        agreed_kinds |= {
+            kind
             for kind, (f, slo) in KIND_WITNESSES.items()
             if f == rel
             and _selector(manifest, slo) in written & read
@@ -235,7 +238,7 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         problems["EXPECTED_READ_NOT_WRITTEN entries not seen"] = sorted(
             set(EXPECTED_READ_NOT_WRITTEN) - read_not_written
         )
-    missing_kinds = sorted(k for k, w in KIND_WITNESSES.items() if w not in agreed)
+    missing_kinds = sorted(set(KIND_WITNESSES) - agreed_kinds)
     if missing_kinds:
         problems["request-ratio kinds whose witness is not written, read and of its kind"] = missing_kinds
     if agreed_budgets != EXPECTED_AGREED_BUDGETS:
