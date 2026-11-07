@@ -351,30 +351,50 @@ def step_stats(rows: list[dict]) -> dict[str, float]:
     return {"total": sum(steps), "median": statistics.median(steps), "max": max(steps)}
 
 
-def render_markdown(all_rows: list[dict]) -> str:
+TABLE_COLUMNS = (
+    "pass", "records", "findings (first review)", "CRITICAL", "IMPORTANT", "MINOR",
+    "other", "unattributed", "re-review findings", "reviews", "model steps",
+)
+
+
+def report(all_rows: list[dict]) -> dict:
+    """Everything the published table shows, as data: the header counts, one
+    row per pass (TABLE_COLUMNS order, roster passes then "other passes"), and
+    the per-gate step statistics. render_markdown only formats this."""
     rows = baseline_rows(all_rows)
-    agg = fold_other_passes(totals(rows))
-    beads = {r["bead"] for r in rows}
-    dry = sum(r["dry_run"] for r in all_rows)
-    empty = sum(not r["dry_run"] and not r["lenses"] for r in all_rows)
-    lines = [
-        f"{len(rows)} archived gate records, {len(beads)} beads"
-        f" ({sum(r['version'] == 1 for r in rows)} schema v1,"
-        f" {sum(r['version'] != 1 for r in rows)} v2);"
-        f" excluded: {dry} dry run(s), {empty} with no lens reviewed.",
-        "",
-        "| pass | records | findings (first review) | CRITICAL | IMPORTANT | MINOR"
-        " | other | unattributed | re-review findings | reviews | model steps |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+    table = [
+        [
+            lens, t["records"], t["findings_first_review"], t.get("critical", 0),
+            t.get("important", 0), t.get("minor", 0), t.get("other", 0),
+            t["unattributed"], t.get("rereview_findings", 0), t["reviews"], t["steps"],
+        ]
+        for lens, t in fold_other_passes(totals(rows)).items()
     ]
-    for lens, t in agg.items():
-        lines.append(
-            f"| {lens} | {t['records']} | {t['findings_first_review']} | {t.get('critical', 0)}"
-            f" | {t.get('important', 0)} | {t.get('minor', 0)} | {t.get('other', 0)}"
-            f" | {t['unattributed']} | {t.get('rereview_findings', 0)}"
-            f" | {t['reviews']} | {t['steps']} |"
-        )
-    stats = step_stats(rows)
+    return {
+        "records": len(rows),
+        "beads": len({r["bead"] for r in rows}),
+        "v1": sum(r["version"] == 1 for r in rows),
+        "v2": sum(r["version"] != 1 for r in rows),
+        "excluded_dry_runs": sum(r["dry_run"] for r in all_rows),
+        "excluded_unreviewed": sum(not r["dry_run"] and not r["lenses"] for r in all_rows),
+        "table": table,
+        "steps": step_stats(rows),
+    }
+
+
+def render_markdown(all_rows: list[dict]) -> str:
+    r = report(all_rows)
+    lines = [
+        f"{r['records']} archived gate records, {r['beads']} beads"
+        f" ({r['v1']} schema v1, {r['v2']} v2);"
+        f" excluded: {r['excluded_dry_runs']} dry run(s),"
+        f" {r['excluded_unreviewed']} with no lens reviewed.",
+        "",
+        "| " + " | ".join(TABLE_COLUMNS) + " |",
+        "|" + "---|" * len(TABLE_COLUMNS),
+    ]
+    lines += ["| " + " | ".join(str(cell) for cell in row) + " |" for row in r["table"]]
+    stats = r["steps"]
     lines += [
         "",
         f"Sequential model steps per gate: total {stats['total']},"

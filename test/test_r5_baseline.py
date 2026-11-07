@@ -335,3 +335,25 @@ def test_step_stats_use_a_true_median():
     # 22, 19. An even count, so the median is the mean of the middle two.
     names = ["3ntg", "1mja", "oh27", "g35i", "g32d-checkpointB", "wo62-1-checkpointA-common", "ir5m", "wo62-4-1"]
     assert r5_baseline.step_stats([_row(n) for n in names]) == {"total": 123, "median": 18, "max": 24}
+
+
+def test_the_published_table_folds_other_passes_and_follows_the_roster():
+    # What docs/r5-gate.md publishes, as data. The fixtures' live, reviewed
+    # gates use the five roster passes plus three one-off names (g35i
+    # "clarity+edge-cases", g32d-A "scoped(correctness+edge)" and
+    # "scoped re-check"), which the table must show as one "other passes" row.
+    r = r5_baseline.report([_row(p.name.removeprefix("r5-state-").removesuffix("-completed.json"))
+                            for p in sorted(FIXTURES.glob("*.json"))])
+    assert [row[0] for row in r["table"]] == [
+        "correctness", "clarity", "edge-cases", "provenance", "excellence", "other passes",
+    ]
+    assert (r["excluded_dry_runs"], r["excluded_unreviewed"]) == (1, 1)
+    other = r["table"][-1]
+    assert other[r5_baseline.TABLE_COLUMNS.index("records")] == 3
+
+
+def test_render_markdown_prints_every_report_row():
+    rows = [_row("3ntg"), _row("g35i")]
+    markdown = r5_baseline.render_markdown(rows)
+    body = [line for line in markdown.splitlines() if line.startswith("| ") and "---" not in line][1:]
+    assert len(body) == len(r5_baseline.report(rows)["table"])
