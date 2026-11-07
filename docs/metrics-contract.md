@@ -31,7 +31,7 @@ rule carries `service` and `slo`; the ratio rules also carry `objective`.
 | `slo:latency:ratio` | fast / total | Latency SLO ratio (good) |
 | `slo:error_requests_total:{w}`, `slo:error_requests_failed:{w}` | `sum(increase(http_requests_total{...}[{w}]))`, the same over `status=~"5.."` | Error-rate denominator and numerator |
 | `slo:error_rate:ratio` | failed / total | Error-rate SLO ratio (**bad**: the budget uses `1 - ratio`) |
-| `slo:sli_good:rate`, `slo:sli_total:rate` | the SLO's own good and total queries, as written | Only for an SLO that declares them (OpenSLO `ratioMetric`, or a legacy `indicators[]` `success_ratio`; a bad query becomes `total - bad`) |
+| `slo:sli_good:rate`, `slo:sli_total:rate` | the SLO's own good and total queries, as written | Only for an availability, latency or error_rate SLO that declares them (OpenSLO `ratioMetric`, or a legacy `indicators[]` `success_ratio`; a bad query becomes `total - bad`) |
 | `slo:sli:ratio` | `sum_over_time(good[{w}]) / sum_over_time(total[{w}])` | That SLO's ratio (good); its budget comes from this, not from the canned ratio (ruling Z3) |
 | `slo:error_budget_remaining:ratio` | `1 - ((1 - good_ratio) / (1 - objective/100))` | Remaining error budget, one per availability, latency and error_rate SLO (signed; see note) |
 | `slo:throughput:rate5m`, `slo:throughput:compliance` | request rate; rate against the SLO's minimum | Throughput: written, but no budget (ruling D5) |
