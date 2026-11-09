@@ -704,3 +704,29 @@ def test_an_out_that_is_a_file_is_refused_before_bundles(workspace, tmp_path):
     assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--archive-dir",
                            str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not bundles.exists()
+
+
+
+@pytest.mark.parametrize("stdout", ["[]", json.dumps({"error": "x"}), json.dumps([{"id": "opensrm-x"}])])
+def test_bd_answering_with_no_bead_is_refused(tmp_path, monkeypatch, stdout):
+    (tmp_path / "opensrm").mkdir()
+    _fake_bd(monkeypatch, 0, stdout=stdout)
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm")
+
+
+def test_an_inherited_git_dir_does_not_redirect_source_repo_calls(workspace, monkeypatch, tmp_path):
+    other = tmp_path / "other"
+    run(tmp_path, "init", "-q", str(other))
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    assert r5_corpus.resolve(workspace["repo"], workspace["head"]) == workspace["head"]
+
+
+def test_bundles_that_is_a_file_is_refused(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "abc", record("opensrm-abc", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    (tmp_path / "bundles").write_text("a file\n")
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "bundles"),
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert not (tmp_path / "out").exists()

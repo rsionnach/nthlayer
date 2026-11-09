@@ -128,13 +128,18 @@ class CorpusError(ValueError):
     """An input this script cannot turn into a corpus entry without guessing."""
 
 
+# Variables that would point a "git -C <repo>" call at another repository.
+REPO_LOCATING_VARS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+                                "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"})
+
+
 def git(repo: Path, *args: str, env: dict | None = None, check: bool = True,
         isolated: bool = False) -> str:
     """Run git in ``repo``. ``isolated`` drops every inherited GIT_* variable
     (an inherited GIT_DIR would aim the command at the caller's repo) and the
     caller's config, so what it writes depends on its arguments alone."""
-    base = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} if isolated \
-        else dict(os.environ)
+    base = {k: v for k, v in os.environ.items()
+            if not (k.startswith("GIT_") if isolated else k in REPO_LOCATING_VARS)}
     result = subprocess.run(
         ["git", "-C", str(repo), *args], capture_output=True, text=True,
         env={**base, **(CLEAN_GIT_ENV if isolated else {}), **(env or {})},
@@ -631,8 +636,8 @@ def bead_description(bead: str, beads_repo: Path) -> str | None:
     except json.JSONDecodeError as exc:
         raise CorpusError(f"bd show {bead} printed no JSON: retry, or pass --no-bd") from exc
     item = data[0] if isinstance(data, list) and data else data
-    if not isinstance(item, dict):
-        return None
+    if not isinstance(item, dict) or "error" in item or not (item.get("title") or item.get("description")):
+        raise CorpusError(f"bd show {bead} returned no bead (got {str(data)[:80]}): retry, or pass --no-bd")
     parts = [f"# {item.get('id', bead)}: {item.get('title', '')}", item.get("description") or ""]
     if item.get("acceptance_criteria"):
         parts += ["## Acceptance", item["acceptance_criteria"]]
@@ -791,6 +796,8 @@ def main(argv: list[str] | None = None) -> int:
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         previous_entries(args.out)  # refuse a foreign --out before writing anything
+        if args.bundles and args.bundles.exists() and not args.bundles.is_dir():
+            raise CorpusError(f"--bundles {args.bundles} is not a directory")
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
         write_entries(entries, args.out)
