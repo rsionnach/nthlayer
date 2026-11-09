@@ -208,6 +208,7 @@ def test_a_record_whose_extraction_passes_is_recorded(workspace, tmp_path):
     assert e["meta"]["base"] == workspace["base"]  # the archive's short SHA, resolved
     assert e["meta"]["record_head"] is None  # no escape moved the head
     assert e["meta"]["escape"] is False
+    assert e["meta"]["archive"] == "r5-state-aaa-completed.json"
     assert (e["meta"]["record"], e["meta"]["part"], e["meta"]["record_repos"]) == ("aaa", None, ["demo"])
     assert e["meta"]["sequential_steps"] == e["meta"]["record_sequential_steps"]
 
@@ -1181,6 +1182,7 @@ def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(
     assert summary["located_findings"]["total"] == 1  # eee's derived finding; xrp's is cross-repo
     # eee's derived finding has a path, in its tree.
     assert summary["located_findings"]["path_not_in_tree"] == 0
+    assert summary["located_findings"]["no_path"] == 0  # eee's finding has a path
     # Blocking counts None (unk), 1 (eee), 2 and 2 (xrp's two sub-entries):
     # an unknown count is not clean.
     assert summary["clean_entries"] == 0
@@ -1198,6 +1200,8 @@ def test_a_fix_commit_two_record_repos_hold_names_no_repo(workspace, tmp_path):
     repos = {"demo": {"path": workspace["repo"], "head": workspace["head"]},
              "clone": {"path": clone, "head": workspace["head"]}}
     assert r5_corpus._fix_repo({"fix_repo": None, "fix_commit": workspace["fix"]}, repos) is None
+    # A logged record repo decides, where the commit alone cannot.
+    assert r5_corpus._fix_repo({"fix_repo": "demo", "fix_commit": workspace["fix"]}, repos) == "demo"
 
 
 def test_each_manifest_item_carries_the_release_tag(workspace, tmp_path):
@@ -1207,6 +1211,7 @@ def test_each_manifest_item_carries_the_release_tag(workspace, tmp_path):
     r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b")
     manifest = json.loads((tmp_path / "b" / "bundles.json").read_text())
     assert [i["release_tag"] for i in manifest["bundles"]] == [manifest["release_tag"]] == [r5_corpus.BUNDLE_TAG]
+    assert manifest["repository"] == "rsionnach/curamoir-replay-corpus"  # spec v1.1 section 6
 
 
 
