@@ -307,6 +307,8 @@ def reviews(record: dict) -> list[dict]:
     blocking = blocking_lenses(record)
     for event in record.get("audit_trail") or []:
         kind, lens = event.get("event"), event.get("pass")
+        if not isinstance(lens, str):  # placed as r5_baseline places it, or not at all
+            lens = r5_baseline.PASSLESS_EVENTS.get((record.get("target_bead"), kind, event.get("ts")))
         if kind == "findings_received" and isinstance(lens, str):
             iteration[lens] += 1
             pending = {"lens": lens, "iteration": iteration[lens], "ts": event.get("ts"),
@@ -428,6 +430,7 @@ def build_entry(name: str, stem: str, file: str, record: dict, row: dict, bead_s
     if not rounds:
         rounds = [_round(r, None) for r in revs]
     brief, brief_source = choose_brief(stem, bead, repo, private, use_bd)
+    brief = mask_workspace(brief, workspace) or ""
     meta = {
         "schema_version": SCHEMA_VERSION, "entry": name, "bead": bead, "record": file,
         "repo": repo_name, "base": base, "head": head,
@@ -484,11 +487,14 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
     Reviewers write paths as they saw them: repo-relative, prefixed with the
     repo or a worktree directory, absolute, or a bare file name. The path is
     the unique tree path the reported one ends with; failing that, a local
-    absolute path is cut to what follows the repo's directory, so no local
-    path is published. Nothing is chosen between two candidates."""
+    absolute path is cut to what follows the repo's directory, so the
+    finding's ``path`` is never a local one (``reported_path`` is masked by
+    mask_workspace). Nothing is chosen between two candidates."""
     if path is None or path in files:
         return path, path is not None
-    clean = path.strip().lstrip("./")
+    clean = path.strip()
+    while clean.startswith(("./", "/")):
+        clean = clean[2:] if clean.startswith("./") else clean[1:]
     matches = [f for f in files if clean == f or clean.endswith("/" + f) or f.endswith("/" + clean)]
     if len(matches) == 1:
         return matches[0], True
@@ -497,6 +503,17 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
         tail = [i for i, part in enumerate(parts) if part.startswith(repo_name)]
         path = "/".join(parts[tail[-1] + 1:]) if tail else Path(path).name
     return path, False
+
+
+def mask_workspace(text: str | None, workspace: Path) -> str | None:
+    """``text`` with the local workspace's absolute path written ``<workspace>``.
+    Reviewer reports and briefs name files by where they sat on one machine;
+    that path says nothing about the code and is not published."""
+    if text is None:
+        return None
+    for root in sorted({str(workspace), str(workspace.resolve())}, key=len, reverse=True):
+        text = text.replace(root, "<workspace>")
+    return text.replace(str(Path.home()), "~")
 
 
 def classify(file: str, revs: list[dict], private: Private, repo: Path, head: str | None,
@@ -518,7 +535,8 @@ def classify(file: str, revs: list[dict], private: Private, repo: Path, head: st
         for f in found:
             path, in_tree = repo_path(f.get("path"), files, repo.name)
             out.append(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
-                               f["claim"], **prov, fix_commit=fix, reported_path=f.get("path"),
+                               f["claim"], **prov, fix_commit=fix,
+                               reported_path=mask_workspace(f.get("path"), repo.parent),
                                path_in_tree=in_tree))
         recorded.append(_round(r, out))
     if recorded is not None:

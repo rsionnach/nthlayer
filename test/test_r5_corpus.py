@@ -446,3 +446,40 @@ def test_a_rerun_removes_entries_the_archive_no_longer_yields(workspace, tmp_pat
     (out / "README.md").write_text("kept\n")
     r5_corpus.write_entries([], out)
     assert sorted(p.name for p in out.iterdir()) == ["README.md"]
+
+
+# --- pass 1 (correctness), iteration 2 ----------------------------------------
+
+def test_no_local_path_is_published_in_a_finding_or_a_brief(workspace, tmp_path):
+    ws = workspace["ws"]
+    local = f"{ws}/demo-wt/app.py"
+    report = REPORT.replace("`app.py:2`", f"`{local}:2`")
+    extraction = [dict(EXTRACTION[0], path=local), EXTRACTION[1]]
+    rec = record("opensrm-ppp", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)])
+    stamps = write_record(ws, "ppp", rec)
+    private = private_archive(tmp_path / "p", "r5-state-ppp-completed.json", "correctness", stamps[0],
+                              report=report, extraction=extraction)
+    (private / "briefs").mkdir()
+    (private / "briefs" / "ppp.md").write_text(f"Review {ws}/demo for correctness.\n")
+    (private / "briefs" / "index.json").write_text(json.dumps({"ppp": {}}))
+    e = build(ws, private)["opensrm-ppp"]
+    assert e["meta"]["fidelity"] == "recorded"
+    published = json.dumps(e["recorded"]) + json.dumps(e["meta"]) + e["brief"]
+    assert str(ws) not in published and str(ws.resolve()) not in published
+    f = e["recorded"]["rounds"][0]["findings"][0]
+    assert (f["path"], f["path_in_tree"], f["reported_path"]) == ("app.py", True, "<workspace>/demo-wt/app.py")
+
+
+def test_a_dot_slash_prefix_is_removed_but_not_a_leading_dot():
+    files = {".github/workflows/ci.yml"}
+    assert r5_corpus.repo_path("./.github/workflows/ci.yml", files, "demo") == (".github/workflows/ci.yml", True)
+
+
+def test_a_passless_review_is_placed_as_the_baseline_places_it(monkeypatch):
+    trail = [{"ts": "2000-01-01T00:00:02Z", "event": "findings_received",
+              "counts": {"critical": 1, "important": 0, "minor": 0}}]
+    monkeypatch.setattr(r5_corpus.r5_baseline, "PASSLESS_EVENTS",
+                        {("opensrm-qqq", "findings_received", "2000-01-01T00:00:02Z"): "correctness"})
+    (r,) = r5_corpus.reviews({"version": 2, "target_bead": "opensrm-qqq", "audit_trail": trail})
+    assert (r["lens"], r5_corpus.is_blocking(r)) == ("correctness", True)
