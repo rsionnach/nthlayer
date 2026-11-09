@@ -1,79 +1,100 @@
-# R5 Gate v2 NthLayer Spec
+# R5 Gate v2 — NthLayer specification
 
-Nov 3, 2026 · @Rob
+**Status:** v1.0, 2026-11-09. Supersedes the 3 November hand-off and every inline amendment since, including the 9 November corpus-fidelity paragraph, which is folded into Phase A bead 2 below. From here, a change is a dated entry in §8, made in this file and mirrored in the cúramóir spec in the same pass.
+**Scope:** NthLayer's part of the move to the batched R5 gate: the baseline and corpus now (Phase A), a skill-level batched gate only if cúramóir's Epic 5 is far off (Phase B), and the hand-over (Phase D). The mechanism is specified in cúramóir's `docs/r5-gate-v2-curamoir-spec.md`.
+**Binds:** `docs/r5-gate.md` (the versioned gate description, `opensrm-xf73`), `r5-supervise`, `epic-executor` stage 2, the lens templates in `~/.claude/skills/rule-of-five-review/`, the ecosystem root's `.claude/hooks/r5-lock.sh`, `r5-parallel-block.sh` and `r5-state.json`, `scripts/r5_baseline.py` and `scripts/r5_corpus.py`. No file under any member repository's `src/`, `spec/` or `tests/`.
 
-cúramóir owns the R5 gate mechanism from here on; NthLayer's job is to measure the gate it has, hand cúramóir the material to prove the new one against, and later become a caller. Phase A is the work to do now: a baseline from the twenty archived gate records, a replay corpus built from them, and the finding schema and round record wired into the existing sequential skills. Phase B is a skill-level prototype of the batched gate, to be done only if cúramóir's Epic 5 is more than six weeks out. Phase D is the hand-over. Nothing here touches product code.
+---
+
+## 0. Assumptions still open
+
+| # | Assumption | Discharged by |
+|---|---|---|
+| A1 | The lens templates can emit `R5-FINDINGS:` on the last line without losing review quality. The bridge in cúramóir already parses that line; the NthLayer templates have not been changed yet. | Phase A bead 3, with a dry run over three recorded entries before and after. |
+| A2 | Synthetic per-repo bundles (base and head trees as synthetic commits) come out small enough for a corpus store without LFS. Full-history bundles measured 1 to 18 MB per repo and 112 MB for opensrm; the snapshot form is unmeasured. | Phase A bead 2 reports sizes with the corpus. |
+| A3 | The ~25 beads with surviving transcripts yield briefs that can be isolated verbatim from the reviewer prompt. Unmeasured. | Phase A bead 2 reports `brief_source` counts. |
+| A4 | Phase B's parallel dispatch from the main thread works with the existing `r5-parallel-block.sh` once rekeyed; Claude Code's 20-subagent limit is never reached (five reviewers at most). | Phase B bead 1 and 6, if Phase B runs. |
+| A5 | `cleanupPeriodDays` has been raised so the next twenty gates' reviewer outputs survive for the shadow period. | You, today; `/curamoir:doctor` will warn once the `harness` principle for it exists. |
 
 ## 1. Summary
 
-The gate as described in `opensrm-xf73` runs four blocking lenses one at a time, each in a review-fix-suite-commit-re-review loop, then excellence once, advisory. It is slow for a reason that no longer holds: the sequential order exists to stop fixes from different lenses colliding, and fixes collide only when each lens owns a fixer. cúramóir is building the batched form (four read-only reviews of one SHA, one fixer, every lens verifying the final tree, provenance mutations in worktrees). This agent's part is smaller and comes first.
+The gate described in `docs/r5-gate.md` runs four blocking lenses one at a time, each a review-fix-suite-commit-re-review loop, then excellence once, advisory. Over the full record (86 gate records, 991 sequential model steps, median 10.5 per gate) it is slow for a reason that no longer holds: the order exists to stop fixes from different lenses colliding, and fixes collide only when each lens owns a fixer. cúramóir is building the batched form. This agent's part is smaller and comes first.
 
-**Now (Phase A).** Extract the baseline from the archived `r5-state-*-completed.json` files at the ecosystem root, resolving the discrepancy in the gate description's own table (severity columns sum to 152, findings column to 274). Build the replay corpus from those twenty beads in the section 6 layout and hand it to cúramóir. Wire the section 6 finding schema into the reviewer templates and the round record into `r5-state.json`, keeping dispatch sequential, so the existing gate starts producing records the new one can be compared against. Add round 0 and the tree-keyed verdict.
+**Done (Phase A beads 1 and 8).** The baseline is published in `docs/r5-gate.md` from `scripts/r5_baseline.py`, with the 274-versus-152 discrepancy explained, and its fixtures are synthetic. Over the record, provenance produced 56 of the 81 first-review CRITICALs; clarity none in 478 findings. The "nine CRITICALs from correctness and edge-cases" was a 20-bead sample.
 
-**Conditional (Phase B).** If cúramóir's Epic 5 is more than six weeks from landing, prototype the batched gate in `r5-supervise` itself: parallel dispatch, a single fixer, a verify round, the hook rekey. Prompt-and-hook work, two or three evenings, replaced by cúramóir's gate in Phase D. Worth it only on that timeline; skip it otherwise.
+**In progress (Phase A bead 2).** The corpus. The archives hold severity counts, not findings, so every entry carries a fidelity (§6); over 66 beads the split is 14 recorded, 3 derived, 16 clean and 33 counts_only; the planned floor was not met and is dropped; the recall acceptance for Phase B is the ten-gate shadow period, and the corpus is a regression test. Entries are one per gate record and repository; bundles go to a separate store.
 
-**Later (Phase D).** When cúramóir's gate passes the replay test, `r5-supervise` becomes a thin call into `curamoir run gate`, the NthLayer hooks become compatibility shims that read cúramóir's record, and the gate description points at the cúramóir spec.
+**Next (Phase A beads 3 to 7).** The finding schema in the templates, the round record, round 0, the tree-keyed verdict, and the first amendment of the gate description, all with dispatch still sequential.
 
-**Not this agent's.** Phase C (the mutation runner, worktrees, the provenance reviewer rewrite): that is Python and is built once, in cúramóir. Anything that changes dispatch before Phase B is approved. Anything in the seven product repos' source trees.
+**Conditional (Phase B).** If cúramóir's Epic 5 is more than six weeks from landing when Phase A closes, prototype the batched gate in `r5-supervise`: parallel dispatch, a single fixer, a verify round, the hook rekey. Prompt-and-hook work, replaced in Phase D. Otherwise skip to Phase D.
+
+**Later (Phase D).** `r5-supervise` becomes a thin call into `curamoir run gate`; the hooks become compatibility shims that read cúramóir's record; the gate description points at the cúramóir spec.
+
+**Not this agent's.** Phase C (the mutation runner, worktrees, the provenance reviewer rewrite): Python, built once, in cúramóir. Anything that changes dispatch before Phase B is approved. Anything in the member repositories' source trees.
 
 ## 2. Constraints
 
-- **Skills, hooks and records only.** The files this spec may change: the gate description (`opensrm-xf73`), `r5-supervise` and `epic-executor` (stage 2 only), the pass templates in `~/.claude/skills/rule-of-five-review/`, `.claude/hooks/r5-lock.sh`, `.claude/hooks/r5-parallel-block.sh`, `.claude/r5-state.json` and its archive, and a new `scripts/r5_baseline.py` plus `scripts/r5_corpus.py` at the ecosystem root. No file under any member repo's `src/`, `spec/` or `tests/` changes under this spec.
+- **Skills, hooks, scripts and records only.** The files §Binds lists, plus `scripts/r5_provenance_checks.py`. The ecosystem root is not a git repository (front-door CLAUDE.md rule 5), so the hooks there stay unversioned; everything that can live in the `nthlayer` repository does.
 - **Sequential dispatch stays until Phase B is approved.** Phase A changes what the gate records, not how it runs. The parallel-block hook, the lock and the lens order are untouched in Phase A.
-- **The gate description is the versioned source.** Each phase amends it; this spec is the change request. Where this spec and the description disagree before the amendment lands, this spec wins.
+- **The gate description is the versioned source.** Each phase amends it; this spec is the change request, linked from the description's pending-change note. Where they disagree before an amendment lands, this spec wins.
 - **Pre-flight is untouched.** `eco_doctor --fetch` with its abort classes runs before any gate, in every phase.
 - **Gate before merge, gate before close.** Nothing here moves either.
-- **Lock scope is untouched in every phase.** `r5-lock.sh` keys on `git rev-parse --git-common-dir` and is held for the whole gate. Decided 2026-11-03; the concurrency that matters comes from the hook rekey in Phase B, not the lock.
-- **Record compatibility.** Every field the twenty archived records carry today is kept, so old and new records compare.
+- **Lock scope is untouched in every phase.** `r5-lock.sh` keys on `git rev-parse --git-common-dir` and is held for the whole gate. The concurrency that matters comes from the hook rekey in Phase B, not the lock.
+- **Record compatibility.** Every field the archived records carry today (`supervisor`, `version`, `target_bead`, `started_at`, `dry_run`, `passes`, `advisory_passes`, `status`, `completed_passes[]`, `audit_trail[]`) is kept, so old and new records compare and `r5_baseline.py` keeps reading both.
+- **Publication rule.** §6. Nothing from a gate record's notes, rulings or session fields reaches a public repository, in a fixture or in the corpus.
 
-## 3. Phase A, now
+## 3. Phase A
 
-Seven beads under one epic, `r5-v2-phase-a`, in this order. Each closes on the acceptance beside it. Requirement ids match the cúramóir spec so the two can be read together.
+Seven beads under `opensrm-6kqs`, in this order; beads 1 and 8 are closed. Each closes on the acceptance beside it. Requirement ids match the cúramóir spec.
 
-1. **Baseline (R5-R0).** `scripts/r5_baseline.py` reads every `.claude/r5-state-*-completed.json` and prints, per bead and per lens: iterations run, findings by severity per iteration, model steps on the critical path (reviews + fixes + re-reviews, in dispatch order), and the lens order used. It explains the 152-versus-274 discrepancy in the gate description's table: either a fourth severity bucket or a findings column that counts re-reviews. *Closed when* the table in the gate description is replaced by the script's output and the discrepancy has a one-sentence explanation beside it.
-2. **Replay corpus (section 6 layout).** `scripts/r5_corpus.py` writes `fixtures/r5-replay/<bead>/` for each archived bead (65 at the last count, not only the twenty in the gate description's table): `meta.json` (with `sequential_steps` from bead 1 and `escape: true` on `opensrm-oh27` and the `test_manifest_v2_archetypes.py` bead), `brief.md`, `bundle.git` (base and head reachable), `diff.patch`, `recorded.json` (the recorded findings re-encoded in the section 6 finding schema, grouped per lens per iteration, the escaped finding under `escaped` for the two marked beads). *Closed when* every entry's bundle checks out at its `head`, every recorded CRITICAL and IMPORTANT appears in `recorded.json` with a path and a range, and the directory is delivered to the cúramóir repository as `fixtures/r5-replay/` (one PR there, no other change). Publication rule (settled 2026-11-07): an entry carries only what is derived from public repository content (code, the diff, a brief already in the repo, the reviewer findings about that code); the gate record's free-text notes, rulings and session fields never enter the corpus or any fixture, and recorded.json is built from findings alone. Test fixtures in any public repo are synthetic (same structure and numbers, invented ids and timestamps), never trimmed real records. Fidelity (settled 2026-11-09): the archives hold severity counts only, so a finding's path and range come from the lens's fix commit for that iteration and its claim from the commit's severity bullet, one-to-one only; an entry whose counts cannot be mapped to commits without guessing is kept at fidelity counts\_only rather than excluded, because the step-ratio test needs only counts. Closed-when becomes: every derived entry's blocking findings carry path, range and claim; every entry carries counts and sequential\_steps; at least twenty entries (gate records, not beads) at fidelity recorded or derived carry at least one blocking finding (zero-finding entries never count toward the floor; both entry and bead counts are reported per fidelity); the count per fidelity is reported. Fallback (settled 2026-11-09): if the transcript spike cannot reach twenty, the floor is dropped, the bead closes with the counts reported, the replay becomes a regression test on what exists plus the two escape fixtures, and the recall acceptance for Phase B is the ten-bead shadow period (R5-R61). Clean beads are kept at their fidelity for the clean-bead blocking rate: a blocking finding the batched gate raises where the sequential gate found none is a catch or noise, adjudicated by a human for the first few.
-3. **Finding schema in the templates (R5-R11, R5-R12).** Each `<pass>-reviewer.md` ends its output with `R5-FINDINGS:` and a JSON array in the section 6 schema; `r5-supervise` parses it and refuses a reviewer whose last line is not that (`UNAVAILABLE`, retried once, then blocking). Severity-to-blocking policy stays as the description has it; excellence never blocks. *Closed when* a gate on a live bead produces parsable findings from all five lenses and `r5-supervise --dry-run` on three corpus entries reproduces their recorded findings through the new parser without loss.
-4. **Round record (R5-R48).** `r5-state.json` gains `rounds[]` in the section 6 shape; each sequential lens iteration is one `review` or `verify` round with one lens in `lenses`, and each fix is a `fix` round. Existing top-level fields are kept. The archive keeps its name. *Closed when* a completed gate's archive validates against the shape and bead 1's script reads old and new archives alike.
-5. **Round 0 (R5-R1).** Before the first reviewer, `r5-supervise` runs lint, the type check and the full suite on `BASE..HEAD` and ends the gate as `PREFLIGHT_FAILED` with the tool output in the record when any fails. The provenance mechanical checks (R5-R33: SKIPPED or deselected new tests, zero-collecting changed modules, collection-time parametrise without a minimum, module-level skips, layout-relative paths, early returns in test bodies, swallowing excepts) run here as a script, `scripts/r5_provenance_checks.py`, and any hit is a blocking provenance finding in the record. *Closed when* the two escape corpus entries fail round 0 with no model dispatched.
-6. **Tree-keyed verdict (R5-R49).** The record's `verdict` carries `tree_sha` (`git rev-parse HEAD^{tree}`) and `head_sha`. The close path in `r5-supervise` and `epic-executor` (`bd close`) and the PR merge check compare the branch's current tree to `tree_sha` and refuse on mismatch, naming it. *Closed when* a content-free rebase keeps a clean verdict and a one-line change after the gate refuses `bd close`.
-7. **Gate description amendment, part 1 (R5-R62).** The roster table gains the baseline from bead 1 in place of the 274-row table; a "Records" section states the finding schema and the round record by reference to section 6; the pre-flight section gains round 0; the "What a clean gate means" section gains the tree key. The "Sequential, not parallel" section is left as it is until Phase B or D. *Closed when* the description, `r5-supervise` and the templates agree, as the description itself requires.
+1. **Baseline (R5-R0).** Closed 2026-11-07. `scripts/r5_baseline.py` reads every `.claude/r5-state-*-completed.json` and prints, per record and per lens, reviews, findings by severity per review, model steps, lens order; `--json` feeds the corpus's `sequential_steps`. Known-data tables (`BLOCKED_DISPATCHES`, `PASSLESS_EVENTS`) hold the archive keys the format cannot distinguish; the script refuses a record it cannot count without guessing. The gate description carries the table.
+2. **Replay corpus (§6 layout).** `scripts/r5_corpus.py` writes one entry per gate record and per repository to `fixtures/r5-replay/<bead>[-<repo>][-<part>]/` and one synthetic bundle per repository to the corpus store. Rules, all settled:
+   - *Fidelity is provenance.* `recorded`: findings extracted from the reviewer's own report in the session transcript, by a cheap-tier extraction subagent, from the report text only, claim near-verbatim, path present in the report, range from line references or null, `extracted_by: model`, accepted only where every blocking iteration's extracted CRITICAL and IMPORTANT counts equal the archive's. `derived`: path and range from the lens's fix-commit hunks, claim from the commit's severity bullet, one-to-one only. `counts_only`: severity counts, lens order, iteration count and `sequential_steps`, nothing finer. `verification_level` is `asserted` at every fidelity. `blocking_findings` is an integer; 0 is a clean entry at whichever fidelity confirmed it.
+   - *Before extraction, the irreversible step.* The raw reviewer reports for every bead with a surviving transcript are copied to the private archive at the ecosystem root, beside the state files, with their hashes recorded. They never enter a repository.
+   - *Multi-repo records.* A record spanning repositories is one entry per repository, grouped by `record`; findings are assigned by path; unassignable ones are listed under `cross_repo_findings` in each sub-entry and excluded from that entry's recall; `record_sequential_steps` is carried on every sub-entry for the aggregate step ratio.
+   - *Bundles.* One synthetic bundle per repository (every base and head tree the corpus needs as synthetic commits via `git commit-tree`; tree SHAs exact, commit SHAs synthetic, originals in `meta.json`), stored in a separate public repository or release assets, never in the plugin repository; each entry records the bundle's sha256.
+   - *Briefs.* By `brief_source`: the reviewer prompt isolated verbatim from the transcript, else the bead's description and acceptance from `bd`, else a plan document already in the repository, else none. The corpus PR lists the transcript-derived briefs for a human to skim once before merge.
+   - *No floor.* The corpus is a regression test. Report entry and bead counts per fidelity, bundle sizes, and `brief_source` counts.
+   *Closed when* every entry's bundle checks out at its synthetic head with the recorded `tree_sha`; every recorded or derived entry's blocking findings carry path, range and claim; every entry carries counts and `sequential_steps`; the two escape beads carry `escape: true` and their missed finding under `escaped`; the publication check passes; and the entries and the store location are delivered to the cúramóir repository as one PR with no other change.
+3. **Finding schema in the templates (R5-R11).** Each lens template ends its output with `R5-FINDINGS:` and a JSON array in the §6 schema including `verification_level`; `r5-supervise` parses it with the same rules as cúramóir's bridge (`.claude/hooks/lib/r5_findings.py` there is the reference), refuses a reviewer whose last line is not the contract (`UNAVAILABLE`, retried once, then blocking), applies the closures rule in re-reviews, and holds a re-raise at the higher severity. Severity-to-blocking policy stays as the description has it. *Closed when* a live gate produces parsable findings from all five lenses, and `r5-supervise --dry-run` on three recorded corpus entries reproduces their recorded findings through the new parser without loss.
+4. **Round record (R5-R48).** `r5-state.json` gains `rounds[]` in the §6 shape; each sequential lens iteration is one `review` or `verify` round with one lens in `lenses`, and each fix is a `fix` round. Existing fields are kept; the archive keeps its name. *Closed when* a completed gate's archive validates against the shape and `r5_baseline.py` reads old and new archives alike.
+5. **Round 0 (R5-R1).** Before the first reviewer, `r5-supervise` runs lint, the type check and the full suite on `BASE..HEAD` and ends the gate `PREFLIGHT_FAILED` with the tool output in the record when any fails. The provenance mechanical checks (R5-R33: SKIPPED or deselected new tests, zero-collecting changed modules, collection-time parametrise without a minimum, module-level skips, layout-relative paths, early returns in test bodies, swallowing excepts) run here as `scripts/r5_provenance_checks.py`; any hit is a blocking provenance finding in the record. *Closed when* the two escape corpus entries fail round 0 with no model dispatched.
+6. **Tree-keyed verdict (R5-R49).** The record's `verdict` carries `tree_sha` (`git rev-parse HEAD^{tree}`) and `head_sha`. The close path in `r5-supervise` and `epic-executor` (`bd close`) and the PR merge check apply the §6 verdict check. *Closed when* a content-free rebase keeps a clean verdict and a one-line change after the gate refuses `bd close`.
+7. **Gate description amendment, part 1 (R5-R62).** Done in part: the baseline table landed 2026-11-07. Remaining: a "Records" section stating the finding schema and the round record by reference to §6; the pre-flight section gains round 0; "What a clean gate means" gains the tree key. The "Sequential, not parallel" section stays until Phase B or D. *Closed when* the description, `r5-supervise` and the templates agree, as the description itself requires.
+8. **Synthetic fixtures (closed 2026-11-07).** `test/fixtures/r5-baseline/`, one per archive pattern, no real records.
 
-**Phase A acceptance, as a whole.** `r5-supervise --dry-run` over all derived corpus entries, with the new parser and record, loses no recorded CRITICAL or IMPORTANT, with claim equivalence as the deciding test and a location mismatch logged rather than counted as a loss (R5-R58 in its schema-only form). Any loss blocks hand-over of the corpus until explained.
+**Phase A acceptance.** `r5-supervise --dry-run` over all recorded and derived corpus entries, with the new parser and record, loses no recorded CRITICAL or IMPORTANT, with claim equivalence as the deciding test and a location mismatch logged rather than counted as a loss.
 
 ## 4. Phase B, conditional
 
-Do this only if cúramóir's Epic 5 is more than six weeks from landing when Phase A closes. It is a prototype in the skill, replaced in Phase D; its value is the speed-up while NthLayer work continues daily and the live shadow evidence cúramóir will otherwise have to produce for itself. If Epic 5 is closer than that, skip to Phase D.
+Do this only if cúramóir's Epic 5 is more than six weeks from landing when Phase A closes. It is a prototype in the skill, replaced in Phase D; its value is the speed-up while NthLayer work continues daily and the live shadow evidence. If Epic 5 is closer, skip to Phase D.
 
-What Phase B changes in `r5-supervise`, in bead order:
-
-1. **Parallel round 1 (R5-R2).** The four blocking lenses are dispatched from the main thread as four `Agent` calls in one message, same `BASE`, `HEAD`, brief and plan, each with its template. Provenance in Phase B is the *judgment* reviewer only (R5-R35: mutation coverage, fixture tracing, spec-versus-implementation assertions), reading by SHA. Its kill checks stay as they are today, run in the real checkout with the commit-first and `git status` safeguards, but serialised *after* the other three lenses return and *before* the merge, so nothing mutates a checkout while reviewers read it. *Closed when* a live bead's round 1 record shows four lenses with overlapping `started`..`ended` windows.
-2. **Merge (R5-R13 to R5-R17).** A script, `scripts/r5_merge.py`: dedupe overlapping ranges with the same normalised claim; sort by severity then lens order correctness, edge-cases, provenance, clarity; MINOR to the deferred list; write the merge decisions into the round record. The supervisor never merges by reading. *Closed when* the merge of three corpus entries' round-1 output is byte-identical on two runs.
-3. **Single fixer (R5-R18 to R5-R23).** One fix subagent per fix round with the fix list, the deferred list, the brief, the plan and the full diff; never the raw reviewer text. It works in priority order, marks a conflicting lower-priority finding `superseded`, edits only files named in the fix list and their tests, adds no dependency and changes no public signature unless a finding's `fix` says so, and reports per finding `fixed`, `superseded`, `could_not_fix` or `disputed`. One commit per round after the suite passes, carrying the bead id and `r5-round: n`. In Phase B the scope check is the supervisor diffing the commit against the fix list's paths; the full `check_scope` lives in cúramóir. *Closed when* a planted finding naming a file the fixer then edits beyond is reported as `scope_breach` in the record.
-4. **Verify round (R5-R24 to R5-R29).** After a fix round, all four blocking lenses and excellence run in verify mode: full `BASE..HEAD` diff at the new HEAD, each lens's own prior findings with the fixer's statuses, the fix commit. Each prior finding comes back `resolves`-closed with cited lines or re-raised; new findings on the fix round's changes carry `regression: true`. The verify section is appended to each template by the supervisor, not a second template. Excellence runs here (or in round 1 when round 1 is clean), deferred, advisory. *Closed when* a planted regression in a fix commit is raised with `regression: true` by the lens whose domain it is.
-5. **Cap (R5-R7).** Three fix rounds without a clean verify ends the gate `ESCALATED` with every round in the record; nothing reverted. Replaces three iterations per lens.
+1. **Parallel round 1 (R5-R2).** The four blocking lenses are dispatched from the main thread as four `Agent` calls in one message, same `BASE`, `HEAD`, brief and plan, each with its template, with `subagentPromptCacheTtl: 1h` set so they share the cached prefix. Provenance in Phase B is the judgment reviewer only (R5-R35), reading by SHA. Its kill checks stay as today, in the real checkout with the commit-first and `git status` safeguards, serialised after the other three lenses return and before the merge, so nothing mutates a checkout while reviewers read it. *Closed when* a live gate's round-1 record shows four lenses with overlapping `started`..`ended` windows.
+2. **Merge (R5-R13 to R5-R17).** `scripts/r5_merge.py`: dedupe overlapping ranges with the same normalised claim; sort by severity then lens order correctness, edge-cases, provenance, clarity; MINOR to the deferred list; merge decisions into the round record. The supervisor never merges by reading. *Closed when* the merge of three corpus entries' round-1 output is byte-identical on two runs.
+3. **Single fixer (R5-R18 to R5-R23).** One fix subagent per fix round with the fix list, the deferred list, the brief, the plan and the full diff; never the raw reviewer text. Priority order; conflicting lower-priority finding marked `superseded`; edits only files named in the fix list and their tests; no dependency, no public signature change unless a finding's `fix` says so; reports per finding `fixed`, `superseded`, `could_not_fix` or `disputed`. One commit per round after the suite passes, carrying the bead id and `r5-round: n`. In Phase B the scope check is the supervisor diffing the commit against the fix list's paths. *Closed when* a planted finding naming a file the fixer then edits beyond is reported as `scope_breach`.
+4. **Verify round (R5-R24 to R5-R29).** All four blocking lenses and excellence in verify mode: full `BASE..HEAD` diff at the new HEAD, each lens's prior open set with the fixer's statuses, the fix commit. Closures, re-raises, unaccounted findings and refused downgrades per §6. Excellence runs here (or in round 1 when round 1 is clean), deferred, advisory. *Closed when* a planted regression in a fix commit is raised with `regression: true` by the lens whose domain it is.
+5. **Cap (R5-R7).** Three fix rounds without a clean verify ends the gate `ESCALATED` with every round in the record; nothing reverted.
 6. **Hook rekey (R5-R47).** `r5-parallel-block.sh` reads an `in_flight` set in `r5-state.json` recording (`bead`, `HEAD`, `lens`, `session`, `dispatched_at`) and refuses a dispatch only when a fix round is in progress for the same branch, or the same lens for the same bead and HEAD is already in flight. The lock is untouched. *Closed when* a second session can dispatch subagents on a different bead while a gate's round 1 is in flight, and cannot while its fix round is.
-7. **Tiers (R5-R55, R5-R56).** Per-lens `model` and `effort` in the subagent frontmatter: correctness, edge-cases, provenance and the fixer on the strong model; clarity and excellence on the cheaper one in both modes. `subagentPromptCacheTtl: 1h` in settings so the four reviewers share the cached prefix. Cross-vendor review is not available to Claude Code subagents, so no second model family is used in Phase B; that arrives as cúramóir's sampling audit in Phase D, when a provider adapter exists.
+7. **Tiers (R5-R55, R5-R56).** Per-lens `model` and `effort` in the subagent frontmatter: correctness, edge-cases, provenance and the fixer on the strong model; clarity and excellence on the cheaper one in both modes. No second model family in Phase B; that arrives as cúramóir's sampling audit when a provider adapter exists.
 8. **Gate description amendment, part 2.** The "Sequential, not parallel" section is replaced by a "Rounds" section stating beads 1 to 6; the lock-and-state section gains the `in_flight` set and the hook rule.
 
-**Phase B acceptance.** Replay (R5-R58): over all twenty corpus entries, batched round 1 reports every recorded CRITICAL and IMPORTANT with the same path, an overlapping range and an equivalent claim (judged by a cheap-tier call that has seen neither run). Steps (R5-R60): critical-path model steps at most a third of `sequential_steps`. Shadow (R5-R61): the first ten live beads run the sequential gate as well, after the batched one, on the same `BASE..HEAD`; the record carries both; any blocking finding the sequential gate raised that the batched one did not is an incident, explained before the next bead. No early stop on a clean run of five.
-
-**Telemetry added to the record in Phase B:** rounds to clean; per lens per round findings by severity, `UNAVAILABLE`, tokens, duration, MINOR against blocking; `superseded` per bead beside the correctness fix count; `regression: true` per bead by raising lens and causing lens.
+**Phase B acceptance.** Regression replay (R5-R58) over recorded and derived entries. Steps (R5-R60) as an aggregate: total batched steps at most a third of the total `sequential_steps`, median at most a third of the sequential median; per entry is telemetry. Shadow (R5-R61), the recall acceptance: the first ten live gates run the sequential gate as well, after the batched one, on the same `BASE..HEAD`; the record carries both; any blocking finding the sequential gate raised that the batched one did not is an incident, explained before the next gate. No early stop on a clean run of five.
 
 ## 5. Phase D, later
 
-Starts when cúramóir's gate passes the replay test on the corpus (its E5-R26 and R5-R58). From then there is one implementation and two callers.
+Starts when cúramóir's gate passes the regression replay (its E5-R26 and R5-R58). From then there is one implementation and two callers.
 
-1. **Thin supervisor.** `r5-supervise <bead>` resolves `BASE` and `HEAD` as today (explicit `--base`/`--head` still honoured), runs `eco_doctor --fetch` as today, then calls `curamoir run gate --repo <member repo> --bead <id> --base <sha> --head <sha> --branch <name> --brief <path>` and reads the record it writes. The fix loop, the merge, the templates and the kill checks are no longer in the skill. `epic-executor` stage 2 makes the same call. `--dry-run` becomes `curamoir run gate --dry-run --corpus`.
-2. **Hook shim (R5-R63).** `r5-parallel-block.sh` and the close and merge checks accept cúramóir's record (section 6 verdict check: `verdict.state` is `CLEAN` and the branch's `HEAD^{tree}` equals `verdict.tree_sha`) as equivalent to their own clean record, so whichever gate ran, `bd close` and the merge gate read one answer. During the overlap both NthLayer's hook and cúramóir's gate guard exist; the NthLayer hook defers to the cúramóir record when one is present for the tree.
-3. **Shadow period (R5-R61).** The first ten live beads gated through cúramóir also run NthLayer's sequential gate (or the Phase B batched one, if it was built) on the same `BASE..HEAD`; the record carries both. A blocking finding the NthLayer gate raised that cúramóir's did not is an incident, explained before the next bead.
-4. **Hook removal.** After ten clean shadow beads, `r5-parallel-block.sh` is removed, `r5-lock.sh` is removed (cúramóir's job lock covers the gate), the templates in `rule-of-five-review/` are archived with a pointer to cúramóir's, and `r5-state.json` stops being written; cúramóir's `.curamoir/state/r5/` is the record.
+1. **Thin supervisor.** `r5-supervise <bead>` resolves `BASE` and `HEAD` as today (explicit `--base`/`--head` still honoured), runs `eco_doctor --fetch` as today, then calls `curamoir run gate --repo <member repo> --bead <id> --base <sha> --head <sha> --branch <name> --brief <path>` and reads the record it writes. A bead spanning repositories is one call per repository. `epic-executor` stage 2 makes the same call. `--dry-run` becomes `curamoir run gate --dry-run --corpus`.
+2. **Hook shim (R5-R63).** `r5-parallel-block.sh` and the close and merge checks accept cúramóir's record (§6 verdict check) as equivalent to their own clean record, so whichever gate ran, `bd close` and the merge gate read one answer. During the overlap the NthLayer hook defers to the cúramóir record when one is present for the tree.
+3. **Shadow period (R5-R61).** The first ten live gates through cúramóir also run NthLayer's sequential gate (or the Phase B batched one, if it was built) on the same `BASE..HEAD`; the record carries both. A blocking finding the NthLayer gate raised that cúramóir's did not is an incident, explained before the next gate.
+4. **Hook removal.** After ten clean shadow gates, `r5-parallel-block.sh` and `r5-lock.sh` are removed (cúramóir's job lock covers the gate), the templates in `rule-of-five-review/` are archived with a pointer to cúramóir's lens files, and `r5-state.json` stops being written; `.curamoir/state/r5/` is the record.
 5. **Gate description, final amendment.** The description becomes a short page: roster, severities, gate-before-merge, the pre-flight, and a pointer to the cúramóir spec for the mechanism. The baseline table and the escape history stay, as the reason the gate exists.
 
 ## 6. Shared contract with cúramóir
 
-This section is word-for-word the same in the cúramóir spec. A change to it is made in both or in neither.
+This section is word for word the same in both specs. A change to it is a dated amendment made in both repositories in one pass, or in neither.
 
-**Finding.** One object per finding; a reviewer's last output line is `R5-FINDINGS:` followed by a JSON array of them.
+**Finding.** One object per finding. A reviewer's last non-empty output line is `R5-FINDINGS:` followed by a JSON array of them; anything else is `UNAVAILABLE`.
 
 ```json
 {
@@ -92,11 +113,14 @@ This section is word-for-word the same in the cúramóir spec. A change to it is
 }
 ```
 
-`status` is set by the fixer, never by a reviewer. `normalised claim` is lower-cased, whitespace-collapsed, with line numbers and SHAs removed. verification\_level is the E5-R11 ladder from the v0.4 spec, with evidence as its proof; a blocking finding below the configured floor (default script) is labelled UNPROVEN in the record and the brief, still blocks, and the fixer verifies or disputes it before fixing it.
+- `status` is set by the fixer, never by a reviewer.
+- `normalised claim` is lower-cased and whitespace-collapsed, with line references (`line 42`, `lines 4-9`, `:42`, `L42`) and SHA-like tokens removed. Other numbers stay: "exits 2" and "exits 4" are different claims.
+- `verification_level` is the E5-R11 ladder, weakest first; `evidence` is its proof. A blocking finding below the configured floor (default `script`) is labelled `UNPROVEN` in the record and the brief; it still blocks, and the fixer verifies or disputes it before fixing it. Excellence is advisory and has nothing to prove.
+- Severities are the only scale. cúramóir's earlier P0 to P3 maps P0 and P1 to CRITICAL and IMPORTANT and P2 and P3 to MINOR; the lines that used it (E5-R1, E5-R4) are amended rather than carrying a mapping.
 
-**Closures (verify mode).** A record with `resolves` set is a closure, not a finding. It is never counted toward termination, whatever `severity` it carries (copy the original's); its `path`, `start_line`, `end_line` and `evidence` are the resolving lines and its `claim` is why the prior finding no longer holds. A closure is valid only if `resolves` names a fingerprint in the previous round's open set and `evidence` is non-empty; an invalid closure is ignored and logged `closure_rejected` with the reason, and a second closure of the same fingerprint is dropped. The closure's own fingerprint is never compared to `resolves`. A re-raised finding is the prior record copied verbatim (path, claim, fingerprint) with no `resolves`. The next round's open set is the previous open set minus valid closures, plus new and re-raised findings. A prior open finding with neither a closure nor a re-raise is carried forward unchanged and tagged `unaccounted`: silence never closes. Unaccounted count per lens per round is a telemetry line, and a lens that closes every prior finding with empty `evidence` is `UNAVAILABLE` (R5-R25). (Settled 2026-11-07, from cm-70j.)
+**Closures (verify mode).** A record with `resolves` set is a closure, not a finding. It is never counted toward termination, whatever `severity` it carries (copy the original's); its `path`, `start_line`, `end_line` and `evidence` are the resolving lines and its `claim` is why the prior finding no longer holds. A closure is valid only if `resolves` names a fingerprint in the previous round's open set and `evidence` is non-empty; an invalid closure is ignored and logged `closure_rejected` with the reason, and a second closure of the same fingerprint is dropped. The closure's own fingerprint is never compared to `resolves`. A re-raised finding is the prior record copied verbatim (path and claim, so the same fingerprint) with no `resolves`; it keeps the more severe of its own and the prior severity, and the held-up ones are logged `downgrades_refused`, so severity goes down only through a valid closure. The next round's open set is the previous open set minus valid closures, plus new and re-raised findings. A prior open finding with neither a closure nor a re-raise is carried forward unchanged and tagged `unaccounted`: silence never closes. Unaccounted count per lens per round is a telemetry line, and a report that closes every prior finding with empty `evidence` is `UNAVAILABLE` (R5-R9, R5-R25).
 
-**Round record.** Existing top-level fields of NthLayer's `r5-state.json` are kept; these are added.
+**Round record.** Existing top-level fields of NthLayer's `r5-state.json` are kept; these are added. cúramóir writes the same shape to `.curamoir/state/r5/<bead>/record.json`.
 
 ```json
 {
@@ -110,7 +134,8 @@ This section is word-for-word the same in the cúramóir spec. A change to it is
         "correctness": {"model": "<id>", "tier": "deep", "mode": "review | verify",
                          "tokens_in": 0, "tokens_out": 0, "duration_s": 0,
                          "status": "ok | UNAVAILABLE | skipped", "skip_rule": null,
-                         "findings": []}
+                         "findings": [], "closures": [], "closure_rejected": [],
+                         "unaccounted": [], "downgrades_refused": []}
       },
       "merge": {"fix_list": ["<fingerprint>"], "deferred": ["<fingerprint>"], "deduped": [["<a>", "<b>"]]},
       "fix": {"commit": "<sha>", "statuses": {"<fingerprint>": "fixed"}, "scope_breaches": []},
@@ -122,9 +147,9 @@ This section is word-for-word the same in the cúramóir spec. A change to it is
 }
 ```
 
-**Verdict check.** A close, push or merge gate passes when `verdict.state` is `CLEAN` and `git rev-parse HEAD^{tree}` equals `verdict.tree_sha`. Anything else refuses, naming the state or the mismatch.
+**Verdict check.** A close, push or merge gate passes when `verdict.state` is `CLEAN` and `git rev-parse HEAD^{tree}` equals `verdict.tree_sha`. Anything else refuses, naming the state or the mismatch. A squash, reorder or message edit that leaves the tree identical keeps its verdict; a rebase onto a moved base changes the tree and re-gates.
 
-**Mutation block.** In the brief's markdown, one fenced block with the info string `r5-mutations`:
+**Mutation block.** In the brief's markdown, one fenced block with the info string `r5-mutations`; the runner extracts it at round 0, so the brief is the source and the extracted file is the record.
 
 ```yaml
 - path: src/opensrm/parser/v2.py
@@ -134,47 +159,64 @@ This section is word-for-word the same in the cúramóir spec. A change to it is
   expect_red: "python -m pytest tests/test_parser_v2.py::test_judgment_slo_mapping -q"
 ```
 
-**Replay corpus.** One directory per gate record: one bead, one repo, one checkpoint, one BASE..HEAD, which is the unit the gate itself runs on (R5-R8). A bead with checkpoints or spanning several repos has one entry per record, named by the archive's record stem; a record spanning several repos is one entry per repo, grouped by record. Bundles live outside the plugin repo (settled 2026-11-09: install clones the repo, and live fetches from the source repos are not durable once squash-merged branches are garbage-collected). For the step ratio, a multi-repo record's record\_sequential\_steps is compared with the sum of batched steps over its entries.
+**Replay corpus.** The unit is a gate record and a repository: one bead, one repo, one checkpoint, one `BASE..HEAD`, which is what the gate itself runs on (R5-R8). A bead with checkpoints or spanning several repos has one entry per record and repo, grouped by `record`. Bundles live outside the plugin repository, because `claude plugin marketplace add` clones it and because fetching commits from the source repositories is not durable once squash-merged branches are garbage-collected.
 
 ```
-<corpus store>                                 a separate public repo (curamoir-replay-corpus) or release assets, never the plugin repo, which every install clones
-  bundles/<repo>.bundle                        one synthetic bundle per repo holding every base and head tree the corpus needs as synthetic commits (tree SHAs
-                                               exact, commit SHAs synthetic); git delta-compresses across them; each entry records its sha256
+<corpus store>                                 a separate public repo (curamoir-replay-corpus) or release assets, never the plugin repo
+  bundles/<repo>.bundle                        one synthetic bundle per repo holding every base and head tree the corpus needs as synthetic commits
+                                               (tree SHAs exact, commit SHAs synthetic, built with git commit-tree); git delta-compresses across them;
+                                               each entry records its sha256
 
 fixtures/r5-replay/<bead>[-<repo>][-<part>]/   in the plugin repo, light files only: one entry per gate record AND per repo
   meta.json        bead, record (archive stem), record_repos, repo, part, base, head (original SHAs), synthetic_base, synthetic_head, tree_sha,
-                   bundle: {repo, sha256}, sequential_steps (this entry), record_sequential_steps (the whole record), fidelity: recorded | derived |
-                   counts_only, escape: true|false, brief_source: reviewer_prompt | bead | plan_doc | none
+                   bundle: {repo, sha256}, sequential_steps (this entry), record_sequential_steps (the whole record),
+                   fidelity: recorded | derived | counts_only (provenance of the findings, never their content),
+                   blocking_findings (integer; 0 is a clean entry, selected by the clean-bead blocking rate at any fidelity; recorded when the
+                   reviewer output confirmed none, counts_only when only the archive says so), escape: true|false,
+                   brief_source: reviewer_prompt | bead | plan_doc | none
   brief.md         what the reviewers were given, by brief_source: the reviewer prompt isolated verbatim from the transcript and nothing around it;
                    else the bead's description and acceptance from bd; else a plan document already in the repo; else absent
   diff.patch       git diff base..head for this repo
   recorded.json    the sequential gate's blocking findings per lens per iteration, with lens order and iteration count at every fidelity;
                    recorded: findings in the Finding schema taken from the reviewer's own output in the session transcript (derived_from:
-                   reviewer_transcript, extracted_by: model where a model did the extraction; the finding records only), fix_commit beside each
-                   where one exists; derived: path and range from that lens's fix-commit hunks and claim from the commit's severity bullet,
-                   one-to-one only (derived_from: fix_commit, fix_commit: <sha>, bullet: <text>); counts_only: severity counts per lens per
-                   iteration, no findings. verification_level is asserted at every fidelity. Findings are assigned to the entry whose repo their
-                   path belongs to; unassignable ones are listed under cross_repo_findings in each sub-entry and excluded from that entry's recall.
+                   reviewer_transcript, extracted_by: model where a model did the extraction, accepted only where every blocking iteration's
+                   extracted CRITICAL and IMPORTANT counts equal the archive's; the finding records only, never surrounding text), fix_commit
+                   beside each where one exists; derived: path and range from that lens's fix-commit hunks and claim from the commit's severity
+                   bullet, one-to-one only (derived_from: fix_commit, fix_commit: <sha>, bullet: <text>); counts_only: severity counts per lens
+                   per iteration and no findings. verification_level is asserted at every fidelity. Findings are assigned to the entry whose
+                   repo their path belongs to; unassignable ones are listed under cross_repo_findings in each sub-entry and excluded from that
+                   entry's recall.
 ```
 
-`escape: true` marks the two beads whose recorded findings missed something later found (`opensrm-oh27`; the `test_manifest_v2_archetypes.py` module skip); `recorded.json` for those also carries the missed finding under `escaped`.
+**Publication rule.** An entry carries only what is derived from public repository content: code, the diff, a brief as given to the reviewers, the reviewer findings about that code. A gate record's free-text notes, rulings and session fields never enter the corpus or any fixture. Test fixtures in any public repository are synthetic (same structure and numbers, invented ids and timestamps), never trimmed real records. The raw reviewer reports that `recorded` entries come from stay in NthLayer's private archive. cúramóir's intake refuses an entry that carries notes, rulings or session fields.
 
-## 7. Decisions already made
+## 7. Decisions
 
-Settled on 2026-11-03 against the full spec; not to be reopened during implementation.
+| Decision | Date | Binds |
+|---|---|---|
+| Verdict keyed to the tree SHA, not the commit | 11-03 | Phase A bead 6 |
+| A lens that fails twice is `UNAVAILABLE` and blocks; no waiver path | 11-03 | Phase A bead 3 |
+| Three fix rounds total, then escalate | 11-03 | Phase B bead 5 |
+| No in-checkout mutation path once cúramóir's runner exists; until then the old safeguards stay, serialised after the other lenses | 11-03 | Phase B bead 1, Phase D |
+| Clarity on the cheap tier in both modes, with the MINOR-rate telemetry line | 11-03 | Phase B bead 7 |
+| Lock held for the whole gate, keyed on the git common dir, in every phase | 11-03 | §2 |
+| Mutation list is a fenced `r5-mutations` block in the brief | 11-03 | §6 |
+| Shadow period of ten live gates, no early stop; it is the recall acceptance | 11-03, 11-09 | Phase B, Phase D |
+| Excellence stays advisory, runs once on the final tree | 11-03 | Phase B bead 4 |
+| No batching across beads; no landing on main before the gate | 11-03 | §2 |
+| Phase B only if cúramóir's Epic 5 is more than six weeks out | 11-03 | §4 |
+| No cross-vendor review on NthLayer in any phase; it arrives as cúramóir's sampling audit | 11-05 | Phase B bead 7 |
+| `verification_level` joins the schema; UNPROVEN still blocks; corpus entries carry `asserted` | 11-07 | §6, Phase A bead 3 |
+| Closures never count; silence never closes; re-raises keep the higher severity | 11-07, 11-09 | §6 |
+| Publication rule; synthetic fixtures; raw reports stay in the private archive | 11-07 | §6, Phase A bead 2 |
+| Blocked dispatches are known data in the baseline script, not a rule | 11-07 | Phase A bead 1 |
+| Corpus fidelity recorded / derived / counts_only with `blocking_findings`; no floor; corpus is a regression test | 11-09 | Phase A bead 2 |
+| Corpus unit is a gate record and repository; bundles in a separate store; briefs by source | 11-09 | §6, Phase A bead 2 |
+| Raw reports copied to the private archive before any extraction; `cleanupPeriodDays` raised | 11-09 | Phase A bead 2 |
+| Step ratio is an aggregate test, per entry telemetry | 11-09 | Phase B acceptance |
 
-| Decision | Binds |
-| --- | --- |
-| Verdict keyed to the tree SHA, not the commit | Phase A bead 6 |
-| A lens that fails twice is `UNAVAILABLE` and blocks; no waiver path | Phase A bead 3 |
-| Three fix rounds total, then escalate | Phase B bead 5 |
-| No in-checkout mutation path once cúramóir's runner exists; until then the old safeguards stay, serialised after the other lenses | Phase B bead 1, Phase D |
-| Clarity on the cheap tier in both modes, with the MINOR-rate telemetry line | Phase B bead 7 |
-| Lock held for the whole gate, keyed on the git common dir, in every phase | section 2 |
-| Mutation list is a fenced `r5-mutations` block in the brief | section 6 |
-| Shadow period of ten live beads, no early stop | Phase B and Phase D |
-| Excellence stays advisory, runs once on the final tree | Phase B bead 4 |
-| No batching across beads; no landing on main before the gate | section 2 |
-| Phase B is built only if cúramóir's Epic 5 is more than six weeks out | section 4 |
-| No cross-vendor review on NthLayer in any phase; it arrives as cúramóir's sampling audit (one gate in ten, never blocking) once a provider adapter exists. (Added 2026-11-05.) | Phase B bead 7, Phase D |
-| The v0.4 verification ladder (E5-R11) joins the shared finding schema as verification\_level; UNPROVEN findings still block. Phase A bead 3 adds the field to the templates; recorded.json entries without it carry asserted. (Added 2026-11-07.) | section 6, Phase A bead 3 |
+## 8. Changelog and amendment rule
+
+A change to this file after v1.0 is one dated line here, the edit it names, and the same change in the cúramóir spec when it touches §6 or a shared decision. Both agents are told in the same message. Nothing is edited in place without a line here.
+
+- **v1.0, 2026-11-09.** Consolidates the 3 November hand-off and the amendments of 5, 7 and 9 November, including the agent's corpus-fidelity paragraph, into one text. New against the amended text: §0 assumptions; the baseline stated from the full record; Phase A bead 1 and 8 marked closed and bead 7 part-done; bead 2 restated with every settled rule (fidelity as provenance with `blocking_findings`, private archive first, multi-repo split, per-repo synthetic bundles in a separate store, briefs by source, no floor); the step ratio made an aggregate; re-raises keep the higher severity (from the cúramóir bridge's implementation); the ecosystem-root hooks noted as unversioned by design.
