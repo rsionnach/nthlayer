@@ -626,6 +626,14 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> t
         (name,) = repos
         tree_path, in_tree = repo_path(path, files[name], name)
         return name, tree_path, in_tree
+    # A path that names one of the record's repos ("nthlayer-workers/x.py",
+    # or the bare name) is that repo's: suffix matching alone would find
+    # x.py in every sibling.
+    if path is not None:
+        first, _, rest = path.strip().lstrip("/").partition("/")
+        if first in repos:
+            tree_path, in_tree = repo_path(rest, files[first], first) if rest else (None, False)
+            return first, tree_path, in_tree
     hits = []
     for name in repos:
         tree_path, in_tree = repo_path(path, files[name], name)
@@ -895,7 +903,8 @@ def summary(entries: list[dict], bundles: Path | None = None) -> dict:
         "recorded_findings": {"total": len(blocking),
                               "no_path": sum(f["path"] is None for f in blocking),
                               "no_range": sum(f["start_line"] is None for f in blocking),
-                              "path_not_in_tree": sum(not f.get("path_in_tree", True) for f in blocking),
+                              "path_not_in_tree": sum(f["path"] is not None and not f.get("path_in_tree", True)
+                                                      for f in blocking),
                               # Listed in every sub-entry of its record: count each once.
                               "cross_repo": len({(e["meta"]["archive"], f["fingerprint"]) for e in entries
                                                  for f in e["recorded"]["cross_repo_findings"]})},

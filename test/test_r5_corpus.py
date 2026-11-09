@@ -940,3 +940,25 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
     (ws / ".claude" / "r5-state-unk-completed.json").write_text(json.dumps(rec))
     meta = build(ws)["opensrm-unk"]["meta"]
     assert (meta["fidelity"], meta["blocking_findings"]) == ("counts_only", None)
+
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("demo2/app.py", ("demo2", "app.py", True)),  # names its repo: not ambiguous
+    ("demo2", ("demo2", None, False)),  # the bare repo name: that repo, no file
+    ("app.py", (None, "app.py", False)),  # in both trees: no single repo
+])
+def test_a_path_naming_one_of_the_record_s_repos_is_that_repo_s(path, expected):
+    repos = {"demo": {}, "demo2": {}}
+    files = {"demo": {"app.py"}, "demo2": {"app.py"}}
+    assert r5_corpus.assign(path, repos, files) == expected
+
+
+def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
+    f = r5_corpus.finding("correctness", "IMPORTANT", None, None, None, "a claim", path_in_tree=False)
+    g = r5_corpus.finding("correctness", "IMPORTANT", "x.py", 1, 1, "b claim", path_in_tree=False)
+    entry = {"meta": {"bead": "b", "fidelity": "recorded", "blocking_findings": 2, "brief_source": "none",
+                      "unavailable": None, "entry": "e", "archive": "a"},
+             "recorded": {"rounds": [{"findings": [f, g]}], "cross_repo_findings": []}}
+    counts = r5_corpus.summary([entry])["recorded_findings"]
+    assert (counts["no_path"], counts["path_not_in_tree"]) == (1, 1)
