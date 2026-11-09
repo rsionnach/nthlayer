@@ -443,9 +443,20 @@ def test_a_one_off_pass_naming_a_blocking_lens_blocks_and_v1_excellence_blocks()
 def test_a_rerun_removes_entries_the_archive_no_longer_yields(workspace, tmp_path):
     out = tmp_path / "out"
     (out / "opensrm-stale").mkdir(parents=True)
+    (out / "opensrm-stale" / "meta.json").write_text(json.dumps({"schema_version": 1, "entry": "opensrm-stale"}))
     (out / "README.md").write_text("kept\n")
     r5_corpus.write_entries([], out)
     assert sorted(p.name for p in out.iterdir()) == ["README.md"]
+
+
+def test_an_out_holding_a_directory_it_did_not_write_is_refused_untouched(tmp_path):
+    # The private archive keeps raw reports in opensrm-<bead>/ directories.
+    out = tmp_path / "r5-handbacks"
+    (out / "opensrm-0i5h").mkdir(parents=True)
+    (out / "opensrm-0i5h" / "report.md").write_text("raw\n")
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_entries([], out)
+    assert (out / "opensrm-0i5h" / "report.md").read_text() == "raw\n"
 
 
 # --- no local path is published --------------------------------------------
@@ -509,3 +520,89 @@ def test_masking_stops_at_a_sibling_that_shares_the_workspace_name_prefix(tmp_pa
     ws.mkdir()
     text = f"{ws}/scripts/x.py and {tmp_path}/nthlayer-common/y.py"
     assert r5_corpus.mask_workspace(text, ws) == f"<workspace>/scripts/x.py and {tmp_path}/nthlayer-common/y.py"
+
+
+# --- malformed inputs, reproducible bundles -----------------------------------
+
+def test_two_builds_give_byte_identical_bundles(workspace, tmp_path):
+    ws, repo = workspace["ws"], workspace["repo"]
+    # Enough distinct objects for a delta search to have choices to make.
+    for i in range(30):
+        commit(repo, {f"m{i}.py": "\n".join(f"line {j} {i}" for j in range(200))}, f"more {i}")
+    head = run(repo, "rev-parse", "HEAD")
+    write_record(ws, "rrr", record("opensrm-rrr", {"demo": {"base": workspace["base"], "head": head}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    digests = []
+    for n in (1, 2):
+        entries = list(build(ws).values())
+        r5_corpus.write_bundles(entries, ws, tmp_path / f"b{n}")
+        digests.append(hashlib.sha256((tmp_path / f"b{n}" / "demo.bundle").read_bytes()).hexdigest())
+    assert digests[0] == digests[1]
+
+
+@pytest.mark.parametrize("index", [
+    "{not json",
+    json.dumps({"pairings": [{"record": "r", "lens": "correctness"}]}),  # keys missing
+    json.dumps({"pairings": "nope"}),
+])
+def test_an_unreadable_private_index_is_refused(tmp_path, index):
+    (tmp_path / "index.json").write_text(index)
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.PrivateArchive(tmp_path)
+
+
+def test_the_report_hash_covers_its_bytes(workspace, tmp_path):
+    # A CRLF report whose bytes match the index is accepted, not refused.
+    ws = workspace["ws"]
+    rec = record("opensrm-sss", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)])
+    stamps = write_record(ws, "sss", rec)
+    crlf = REPORT.replace("\n", "\r\n")
+    private = tmp_path / "p"
+    sha = hashlib.sha256(crlf.encode()).hexdigest()
+    (private / "bead").mkdir(parents=True)
+    (private / "extractions").mkdir()
+    (private / "bead" / f"{sha[:16]}.md").write_bytes(crlf.encode())
+    (private / "extractions" / f"{sha[:16]}.json").write_text(json.dumps(EXTRACTION))
+    (private / "index.json").write_text(json.dumps({"pairings": [{
+        "record": "r5-state-sss-completed.json", "lens": "correctness",
+        "findings_received_ts": stamps[0], "sha256": sha, "file": f"bead/{sha[:16]}.md"}]}))
+    assert build(ws, private)["opensrm-sss"]["meta"]["fidelity"] == "recorded"
+
+
+def test_a_hung_bd_gives_no_brief_rather_than_a_stall(tmp_path, monkeypatch):
+    (tmp_path / "opensrm").mkdir()
+    monkeypatch.setattr(r5_corpus.shutil, "which", lambda name: "/usr/bin/bd")
+
+    def hang(*args, **kwargs):
+        assert kwargs.get("timeout")  # bounded, never open-ended
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+    monkeypatch.setattr(r5_corpus.subprocess, "run", hang)
+    assert r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm") is None
+
+
+def test_a_record_without_a_bead_is_refused(workspace):
+    ws = workspace["ws"]
+    rec = record("opensrm-ttt", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 0, "minor": 1}, None)])
+    rec.pop("_stamps")
+    del rec["target_bead"]
+    (ws / ".claude" / "r5-state-ttt-completed.json").write_text(json.dumps(rec))
+    with pytest.raises(r5_corpus.CorpusError):
+        build(ws)
+    assert r5_corpus.r5_baseline.main(["--archive-dir", str(ws / ".claude"), "--json"]) == 2
+
+
+def test_the_bundle_is_packed_single_threaded(workspace, tmp_path, monkeypatch):
+    # A threaded delta search reorders objects run to run on a real repo (the
+    # synthetic one above is too small to show it), so the published sha256
+    # rests on this setting: assert it is passed.
+    ws = workspace["ws"]
+    write_record(ws, "uuu", record("opensrm-uuu", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    entries = list(build(ws).values())
+    calls, real = [], r5_corpus.git
+    monkeypatch.setattr(r5_corpus, "git", lambda repo, *a, **k: (calls.append(a), real(repo, *a, **k))[1])
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b")
+    (bundle,) = [a for a in calls if "bundle" in a]
+    assert bundle[:2] == ("-c", "pack.threads=1")

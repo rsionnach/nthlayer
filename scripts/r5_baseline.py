@@ -547,7 +547,11 @@ def main(argv: list[str] | None = None) -> int:
     rows = []
     for name, data in records:
         try:
-            rows.append(dict(analyse_record(data), file=name))
+            row = dict(analyse_record(data), file=name)
+            if not isinstance(row["bead"], str):
+                # beads{} and the corpus key on it; every archive names one.
+                raise RecordError("has no target_bead")
+            rows.append(row)
         except RecordError as exc:
             print(f"r5-baseline: {name}: {exc}", file=sys.stderr)
             return 2

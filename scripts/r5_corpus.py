@@ -85,6 +85,7 @@ FIDELITIES = ("recorded", "derived", "clean", "counts_only")
 BRIEF_SOURCES = ("reviewer_brief", "bead_description", "repo_plan", "none")
 BLOCKING = r5_baseline.LENS_ORDER[:4]  # the blocking roster; excellence is advisory
 BUNDLE_TAG = "r5-replay-corpus-v1"
+BD_TIMEOUT_S = 60
 BUNDLE_URL = "https://github.com/rsionnach/nthlayer/releases/download/{tag}/{name}"
 
 # Synthetic commits are fixed in identity and time, so the same trees give the
@@ -249,12 +250,18 @@ class PrivateArchive:
         self.briefs: dict[str, dict] = {}
         if root is None or not (root / "index.json").is_file():
             return
-        index = json.loads((root / "index.json").read_text(encoding="utf-8"))
-        for p in index.get("pairings", []):
-            self.pairings[(p["record"], p["lens"], p["findings_received_ts"])] = p
-        brief_index = root / "briefs" / "index.json"
-        if brief_index.is_file():
-            self.briefs = json.loads(brief_index.read_text(encoding="utf-8"))
+        try:
+            index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+            for p in index.get("pairings", []):
+                for key in ("record", "lens", "findings_received_ts", "sha256", "file"):
+                    if not isinstance(p.get(key), str):
+                        raise CorpusError(f"{root / 'index.json'}: a pairing has no string {key!r}")
+                self.pairings[(p["record"], p["lens"], p["findings_received_ts"])] = p
+            brief_index = root / "briefs" / "index.json"
+            if brief_index.is_file():
+                self.briefs = json.loads(brief_index.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError) as exc:
+            raise CorpusError(f"{root}: unreadable private archive index ({exc})") from exc
 
     def recorded(self, record: str, lens: str, ts: str, counts: Counter) -> tuple[list, dict] | None:
         """The accepted extraction for one review, with its provenance, or None."""
@@ -266,13 +273,17 @@ class PrivateArchive:
         extraction = self.root / "extractions" / f"{short}.json"
         if not report_path.is_file() or not extraction.is_file():
             return None
-        report = report_path.read_text(encoding="utf-8")
-        if hashlib.sha256(report.encode()).hexdigest() != pairing["sha256"]:
+        raw = report_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != pairing["sha256"]:
             raise CorpusError(f"{report_path}: content does not match its index sha256")
         try:
+            report = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise CorpusError(f"{report_path}: not UTF-8 ({exc})") from exc
+        try:
             found = json.loads(extraction.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None  # an unusable extraction: the review is not recorded
         if check_extraction(report, found):
             return None
         if blocking_counts(found) != (counts["critical"], counts["important"]):
@@ -284,7 +295,10 @@ class PrivateArchive:
         if self.root is None or stem not in self.briefs:
             return None
         path = self.root / "briefs" / f"{stem}.md"
-        return path.read_text(encoding="utf-8") if path.is_file() else None
+        try:
+            return path.read_text(encoding="utf-8") if path.is_file() else None
+        except UnicodeDecodeError as exc:
+            raise CorpusError(f"{path}: not UTF-8 ({exc})") from exc
 
 
 # --- the archived record ----------------------------------------------------
@@ -591,8 +605,11 @@ def choose_brief(stem: str, bead: str | None, repo: Path, private: PrivateArchiv
 def bead_description(bead: str, beads_repo: Path) -> str | None:
     if shutil.which("bd") is None or not beads_repo.is_dir():
         return None
-    result = subprocess.run(["bd", "show", bead, "--json"], cwd=beads_repo,
-                            capture_output=True, text=True)
+    try:
+        result = subprocess.run(["bd", "show", bead, "--json"], cwd=beads_repo,
+                                capture_output=True, text=True, timeout=BD_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return None  # a hung bd (a held Dolt lock) gives no brief, not a stalled build
     if result.returncode != 0:
         return None
     try:
@@ -638,7 +655,10 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
                 meta["bundle"] = {"asset": f"{repo_name}.bundle", "base_commit": base_commit,
                                   "head_commit": head_commit}
             target = out / f"{repo_name}.bundle"
-            git(scratch, "bundle", "create", "-q", str(target.resolve()), "--all")
+            # One pack thread: a threaded delta search orders objects
+            # differently run to run, and the published sha256 must hold.
+            git(scratch, "-c", "pack.threads=1", "bundle", "create", "-q",
+                str(target.resolve()), "--all")
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
         for e in group:
             e["meta"]["bundle"].update(
@@ -656,6 +676,8 @@ def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: b
     for name, record in records:
         if name not in counted:
             continue
+        if not isinstance(record.get("target_bead"), str):
+            raise CorpusError(f"{name}: has no target_bead")
         stem = name.removeprefix("r5-state-").removesuffix("-completed.json")
         ranges = record.get("diff_range")
         if not isinstance(ranges, dict) or not ranges:
@@ -672,12 +694,27 @@ def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: b
     return entries
 
 
+def is_corpus_entry(path: Path) -> bool:
+    """A directory this script wrote: its meta.json names it as an entry."""
+    try:
+        meta = json.loads((path / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(meta, dict) and "schema_version" in meta and meta.get("entry") == path.name
+
+
 def write_entries(entries: list[dict], out: Path) -> None:
-    """Write every entry, replacing the entries a previous run left."""
+    """Write every entry, replacing the entries a previous run left. Refuses
+    an --out holding an opensrm-* directory it did not write (the private
+    archive and sibling worktrees share that prefix) rather than delete it."""
     out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("opensrm-*"):
-        if old.is_dir():
-            shutil.rmtree(old)
+    olds = [p for p in out.glob("opensrm-*") if p.is_dir()]
+    strangers = [p.name for p in olds if not is_corpus_entry(p)]
+    if strangers:
+        raise CorpusError(f"{out} holds opensrm-* directories that are not corpus entries:"
+                          f" {strangers[:3]}; choose another --out")
+    for old in olds:
+        shutil.rmtree(old)
     for e in entries:
         target = out / e["meta"]["entry"]
         target.mkdir(parents=True, exist_ok=True)
@@ -714,10 +751,10 @@ def main(argv: list[str] | None = None) -> int:
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
+        write_entries(entries, args.out)
     except (CorpusError, r5_baseline.RecordError) as exc:
         print(f"r5-corpus: {exc}", file=sys.stderr)
         return 2
-    write_entries(entries, args.out)
     json.dump(summary(entries), sys.stdout, indent=1)
     print()
     return 0
