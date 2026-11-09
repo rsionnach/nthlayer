@@ -40,10 +40,24 @@ there. The sequential gate runs passes one after another, so the critical path
 is the sum over every pass, advisory excellence included. ``steps_source`` says
 which derivation each pass used.
 
-Each ``--json`` record lists the known-data keys it used (``table_hits``). A
-known-data entry that falls within a record here (same bead, inside its audit
-trail's time span) but matches none of its events is refused (exit 2), since a
-mistyped key would miscount silently.
+A known-data entry that falls within a record here (same bead, inside its
+audit trail's time span) but matches none of its events is refused (exit 2),
+since a mistyped key would miscount silently.
+
+``--json`` prints one object, ``schema_version`` 1 (JSON_SCHEMA_VERSION), read
+by the replay corpus (scripts/r5_corpus.py, opensrm-6kqs.2):
+
+- ``records``: one row per archive, by file name, each with ``counted`` (false
+  for a dry run or a gate with no lens reviewed: listed, never totalled),
+  ``table_hits`` (the BLOCKED_DISPATCHES and PASSLESS_EVENTS keys it used) and
+  ``ts_span`` (its audit trail's first and last timestamps, as ISO 8601 in UTC,
+  ``+00:00``; null with no timestamped event).
+- ``beads``: per bead, its counted records and ``sequential_steps``. A bead
+  gated at several checkpoints, or in several repos one gate at a time, has
+  one record each, run one after another, so its steps are their sum.
+- ``totals``: per lens over the counted records, as the table.
+- ``summary``: the table's data (report()): header counts, schema versions by
+  value, table rows and per-gate step statistics.
 
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
 library only.
@@ -51,9 +65,10 @@ library only.
 Usage:
     python3 scripts/r5_baseline.py [--archive-dir DIR] [--json | --markdown]
 
-Exit codes: 0 report printed · 2 usage error, no countable records, a record it
-cannot count without guessing, or a known-data entry that matches nothing. One such record fails the whole report: a
-baseline quietly missing a gate would look as plausible as a correct one.
+Exit codes: 0 report printed · 2 any one of these: a usage error, no countable
+record, a record it cannot count without guessing, or a known-data entry that
+matches nothing. One fails the whole report: a baseline quietly missing a gate
+would look as plausible as a correct one.
 """
 
 from __future__ import annotations
@@ -65,6 +80,9 @@ import statistics
 import sys
 from collections import Counter
 from pathlib import Path
+
+# The --json contract version; raised when a field changes meaning or goes.
+JSON_SCHEMA_VERSION = 1
 
 SEVERITIES = ("critical", "important", "minor")
 # Blocking lenses in roster order, then the advisory one. A lens a record names
@@ -178,7 +196,11 @@ def _scan_events(record: dict) -> dict:
                 scan["table_hits"].append(key)
         if lens is None:
             if kind in COUNTING_EVENTS:
-                raise RecordError(f"{kind} at {event.get('ts')} has no pass")
+                raise RecordError(
+                    f"{kind} at {event.get('ts')} has no pass: if its pass is known,"
+                    " add it to PASSLESS_EVENTS in scripts/r5_baseline.py, keyed"
+                    " (bead, event, ts)"
+                )
             continue
         if lens not in scan["seen"]:
             scan["seen"].append(lens)
@@ -263,7 +285,10 @@ def analyse_record(record: dict) -> dict:
     if not isinstance(record, dict):
         raise RecordError("not a JSON object")
     if "rounds" in record:
-        raise RecordError("has rounds[] (round record): not yet read by this script")
+        raise RecordError(
+            "has rounds[] (round record): not yet read by this script; teach"
+            " analyse_record the Phase A.4 shape (opensrm-6kqs.4) first"
+        )
     if "audit_trail" not in record and "completed_passes" not in record:
         raise RecordError("has neither audit_trail nor completed_passes")
     for key in ("audit_trail", "completed_passes"):
@@ -360,7 +385,7 @@ def load_records(archive_dir: Path) -> list[tuple[str, dict]]:
         try:
             with path.open(encoding="utf-8") as handle:
                 out.append((path.name, json.load(handle)))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RecordError(f"{path.name}: unreadable ({exc})") from exc
     return out
 
@@ -436,8 +461,7 @@ def report(all_rows: list[dict]) -> dict:
     return {
         "records": len(rows),
         "beads": len({r["bead"] for r in rows}),
-        "v1": sum(r["version"] == 1 for r in rows),
-        "v2": sum(r["version"] != 1 for r in rows),
+        "versions": schema_versions(rows),
         "excluded_dry_runs": sum(r["dry_run"] for r in all_rows),
         "excluded_unreviewed": sum(not r["dry_run"] and not r["lenses"] for r in all_rows),
         "table": table,
@@ -445,11 +469,45 @@ def report(all_rows: list[dict]) -> dict:
     }
 
 
+def schema_versions(rows: list[dict]) -> dict[str, int]:
+    """Records per schema version, by value, in version order. Keys are strings
+    so the mapping survives JSON unchanged."""
+    counts = Counter(str(r["version"]) for r in rows)
+    return {v: counts[v] for v in sorted(counts, key=lambda v: (len(v), v))}
+
+
+def bead_steps(rows: list[dict]) -> dict[str, dict]:
+    """Each bead's counted records and their summed sequential steps: a bead
+    gated at several checkpoints, or repo by repo, ran those gates in turn."""
+    out: dict[str, dict] = {}
+    for row in baseline_rows(rows):
+        bead = out.setdefault(row["bead"], {"records": [], "sequential_steps": 0})
+        bead["records"].append(row.get("file"))
+        bead["sequential_steps"] += row["sequential_steps"]
+    return dict(sorted(out.items()))
+
+
+def json_report(all_rows: list[dict]) -> dict:
+    """The --json object (JSON_SCHEMA_VERSION; see the module docstring)."""
+    counted = {id(r) for r in baseline_rows(all_rows)}
+    return {
+        "schema_version": JSON_SCHEMA_VERSION,
+        "records": [dict(r, counted=id(r) in counted) for r in all_rows],
+        "beads": bead_steps(all_rows),
+        "totals": totals(baseline_rows(all_rows)),
+        "summary": report(all_rows),
+    }
+
+
 def render_markdown(all_rows: list[dict]) -> str:
     r = report(all_rows)
+    # "20 schema v1, 66 v2", as the gate description publishes it.
+    versions = ", ".join(
+        f"{n} {'schema ' if i == 0 else ''}v{v}" for i, (v, n) in enumerate(r["versions"].items())
+    )
     lines = [
         f"{r['records']} archived gate records, {r['beads']} beads"
-        f" ({r['v1']} schema v1, {r['v2']} v2);"
+        f" ({versions});"
         f" excluded: {r['excluded_dry_runs']} dry run(s),"
         f" {r['excluded_unreviewed']} with no lens reviewed.",
         "",
@@ -494,15 +552,17 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     unmatched = unmatched_table_entries(rows)
     for key in unmatched:
+        table = "BLOCKED_DISPATCHES" if key in BLOCKED_DISPATCHES else "PASSLESS_EVENTS"
         print(f"r5-baseline: known-data entry {key} matches no event in its bead's"
-              " record: a mistyped key would miscount silently", file=sys.stderr)
+              f" record: correct it in {table} in scripts/r5_baseline.py (a mistyped"
+              " key would miscount silently)", file=sys.stderr)
     if unmatched:
         return 2
     if not baseline_rows(rows):
         print(f"r5-baseline: no live, reviewed gate in {args.archive_dir}", file=sys.stderr)
         return 2
     if args.json:
-        json.dump({"records": rows, "totals": totals(baseline_rows(rows))}, sys.stdout, indent=1)
+        json.dump(json_report(rows), sys.stdout, indent=1)
         print()
     else:
         print(render_markdown(rows))
