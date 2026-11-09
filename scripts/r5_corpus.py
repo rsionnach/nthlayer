@@ -912,7 +912,7 @@ def write_entries(entries: list[dict], out: Path) -> None:
 
 def summary(entries: list[dict], bundles: Path | None = None) -> dict:
     """What bead 2 reports: entry and bead counts per fidelity, clean entries,
-    the recorded findings' locations, brief_source counts and bundle sizes."""
+    the located (recorded or derived) findings' locations, brief_source counts and bundle sizes."""
     metas = [e["meta"] for e in entries]
     # Findings with a source (recorded or derived): their locations are what
     # the replay can match on.
