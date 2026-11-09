@@ -1158,8 +1158,12 @@ def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(
     run(ws, "clone", "-q", str(workspace["repo"]), str(ws / "demo2"))
     stamps = write_record(ws, "xrp", record("opensrm-xrp", {"demo": rng, "demo2": rng},
                                             [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)]))
-    private_archive(tmp_path / "p", "r5-state-xrp-completed.json", "correctness", stamps[0])
-    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+    private = private_archive(tmp_path / "p", "r5-state-xrp-completed.json", "correctness", stamps[0])
+    (private / "briefs").mkdir()
+    (private / "briefs" / "xrp.md").write_text("Review the diff.\n")
+    (private / "briefs" / "index.json").write_text(json.dumps({"xrp": {}}))
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "b"),
+                           "--archive-dir", str(ws / ".claude"),
                            "--workspace", str(ws), "--private-dir", str(tmp_path / "p"), "--no-bd"]) == 0
     summary = json.loads(capsys.readouterr().out)
     assert summary["blocking_findings_unknown"] == 1
@@ -1170,6 +1174,12 @@ def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(
     # Blocking counts None (unk), 1 (eee), 2 and 2 (xrp's two sub-entries):
     # an unknown count is not clean.
     assert summary["clean_entries"] == 0
+    assert summary["located_findings"]["no_range"] == 0  # eee's finding has its hunk's lines
+    # xrp's brief came from the reviewer's prompt, in both sub-entries.
+    assert summary["reviewer_prompts"] == ["opensrm-xrp-demo", "opensrm-xrp-demo2"]
+    assert summary["bundles"] == {name: (tmp_path / "b" / f"{name}.bundle").stat().st_size
+                                  for name in ("demo", "demo2")}
+    assert summary["unavailable"] == []
 
 
 def test_a_fix_commit_two_record_repos_hold_names_no_repo(workspace, tmp_path):
@@ -1187,3 +1197,27 @@ def test_each_manifest_item_carries_the_release_tag(workspace, tmp_path):
     r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b")
     manifest = json.loads((tmp_path / "b" / "bundles.json").read_text())
     assert [i["release_tag"] for i in manifest["bundles"]] == [manifest["release_tag"]] == [r5_corpus.BUNDLE_TAG]
+
+
+
+def test_the_summary_lists_unavailable_entries(workspace, capsys):
+    ws = workspace["ws"]
+    rng = {"base": workspace["base"], "head": workspace["head"]}
+    write_record(ws, "una", record("opensrm-una", {"demo": rng, "missing": rng},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(["--out", str(ws / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd"]) == 0
+    assert json.loads(capsys.readouterr().out)["unavailable"] == ["opensrm-una-missing"]
+
+
+def test_a_worktree_two_record_repos_share_names_neither(tmp_path):
+    # alpha and its worktree alpha-wt are both record repos (one git common
+    # dir); a path through a third worktree cannot say which one it is.
+    ws = tmp_path / "eco"
+    a = _member(ws, "alpha", {"a.py": "1\n"})
+    _member(ws, "beta", {"b.py": "1\n"})
+    run(a, "worktree", "add", "-q", str(ws / "alpha-wt"))
+    run(a, "worktree", "add", "-q", "-b", "third", str(ws / "alpha-third"))
+    w = r5_corpus.Workspace(ws)
+    assert w.repo_of("alpha-third", {"alpha": {}, "alpha-wt": {}}) is None
+    assert w.repo_of("alpha-third", {"alpha": {}, "beta": {}}) == "alpha"
