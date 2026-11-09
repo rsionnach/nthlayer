@@ -630,7 +630,10 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> t
     # or the bare name) is that repo's: suffix matching alone would find
     # x.py in every sibling.
     if path is not None:
-        first, _, rest = path.strip().lstrip("/").partition("/")
+        clean = path.strip()
+        while clean.startswith(("./", "/")):
+            clean = clean[2:] if clean.startswith("./") else clean[1:]
+        first, _, rest = clean.partition("/")
         if first in repos:
             tree_path, in_tree = repo_path(rest, files[first], first) if rest else (None, False)
             return first, tree_path, in_tree

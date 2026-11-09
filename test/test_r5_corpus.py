@@ -945,6 +945,7 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
 
 @pytest.mark.parametrize("path, expected", [
     ("demo2/app.py", ("demo2", "app.py", True)),  # names its repo: not ambiguous
+    ("./demo2/app.py", ("demo2", "app.py", True)),
     ("demo2", ("demo2", None, False)),  # the bare repo name: that repo, no file
     ("app.py", (None, "app.py", False)),  # in both trees: no single repo
 ])
