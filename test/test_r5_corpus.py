@@ -843,3 +843,24 @@ def test_the_caller_s_global_git_config_does_not_change_the_bundle(workspace, tm
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "configured")
     assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
+
+
+def test_a_bullet_naming_two_changed_files_is_not_derived(workspace):
+    # The one-to-one rule: a bullet naming both files of a two-file fix
+    # gives no single path, so nothing is chosen.
+    ws, repo = workspace["ws"], workspace["repo"]
+    fix = commit(repo, {"app.py": "a = 7\n", "other.py": "x = 7\n"},
+                 "r5(correctness): 1 finding\n\n- IMPORTANT: app.py and other.py disagree on x\n")
+    write_record(ws, "two", record("opensrm-two", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 1, "minor": 0}, fix)]))
+    assert build(ws)["opensrm-two"]["meta"]["fidelity"] == "counts_only"
+
+
+def test_a_deletion_only_hunk_gives_no_changed_line(workspace):
+    repo = workspace["repo"]
+    sha = commit(repo, {"app.py": "a = 1\n"}, "drop b")  # app.py loses its other lines
+    assert r5_corpus.changed_span(repo, sha, "app.py") is None
+
+
+def test_a_blank_line_ends_a_severity_bullet():
+    assert r5_corpus.severity_bullets("- IMPORTANT: one\n\nnot part of it\n") == [("IMPORTANT", "one")]
