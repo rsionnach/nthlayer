@@ -956,6 +956,10 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
     ("/Users/x/eco/demo2/app.py", ("demo2", "app.py", True)),  # absolute
     ("../demo2/app.py", ("demo2", "app.py", True)),
     ("demo2-wt/app.py", ("demo2", "app.py", True)),  # a worktree of demo2
+    ("docs/only-demo.md", ("demo", "docs/only-demo.md", True)),  # exactly in one tree first
+    ("examples/demo2/only-demo.md", ("demo", "examples/demo2/only-demo.md", True)),  # a dir named like a sibling
+    ("demo2-other/x.py", (None, "demo2-other/x.py", False)),  # starts with a name, not in its tree
+    ("demo-ws/notes.md", (None, "demo-ws/notes.md", False)),  # the workspace's own directory
     ("", (None, None, False)),
     ("./", (None, None, False)),
     ("demo2", ("demo2", None, False)),  # the bare repo name: that repo, no file
@@ -963,8 +967,9 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
 ])
 def test_a_path_naming_one_of_the_record_s_repos_is_that_repo_s(path, expected):
     repos = {"demo": {"head": "h1"}, "demo2": {"head": "h2"}}
-    files = {"demo": {"app.py"}, "demo2": {"app.py"}}
-    assert r5_corpus.assign(path, repos, files) == expected
+    files = {"demo": {"app.py", "docs/only-demo.md", "examples/demo2/only-demo.md", "notes.md"},
+             "demo2": {"app.py"}}
+    assert r5_corpus.assign(path, repos, files, workspace_name="demo-ws") == expected
 
 
 def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
@@ -1017,5 +1022,21 @@ def test_a_stale_bundle_is_removed_with_its_repo(workspace, tmp_path):
     out = tmp_path / "b"
     out.mkdir()
     (out / "old-repo.bundle").write_bytes(b"stale")
+    (out / "bundles.json").write_text(json.dumps({"bundles": [{"asset": "old-repo.bundle"}]}))
     r5_corpus.write_bundles(list(build(ws).values()), ws, out)
     assert sorted(p.name for p in out.iterdir()) == ["bundles.json", "demo.bundle"]
+
+
+def test_a_bundle_this_script_did_not_list_is_refused_untouched(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "stc", record("opensrm-stc", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "b"
+    out.mkdir()
+    (out / "my-backup.bundle").write_bytes(b"mine")
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_bundles(list(build(ws).values()), ws, out)
+    assert (out / "my-backup.bundle").read_bytes() == b"mine"
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(out), "--archive-dir",
+                           str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert not (tmp_path / "out").exists()

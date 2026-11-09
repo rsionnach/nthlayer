@@ -650,30 +650,49 @@ def _fix_repo(review: dict, repos: dict[str, dict]) -> str | None:
     return holders[0] if len(holders) == 1 else None
 
 
-def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> tuple[str | None, str | None, bool]:
+def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
+           workspace_name: str | None = None) -> tuple[str | None, str | None, bool]:
     """(repo, tree path, in_tree) for a reported path: the record's only repo,
-    or the one repo whose head tree holds it; (None, path, False) otherwise."""
+    or the one repo it can be placed in; (None, path, False) otherwise.
+
+    For a multi-repo record, in this order: a bare repo name; a path exactly
+    in one repo's head tree; a directory part that names a record repo
+    (exactly, as the path's first part, or as that repo or a worktree of it
+    ("<repo>-slug") with the rest of the path in its tree), the last such
+    part winning and never the workspace's own directory; one unique suffix
+    match, unless a record repo has no tree. A part that merely starts with
+    a repo's name ("nthlayer-generate" for nthlayer) is not enough."""
     if len(repos) == 1:
         (name,) = repos
         tree_path, in_tree = repo_path(path, files[name], name)
         return name, tree_path, in_tree
-    if path is None or not _strip_relative(path):
+    clean = _strip_relative(path) if path is not None else ""
+    if not clean:
         return None, None, False
-    # A path that names one of the record's repos, anywhere in it
-    # ("nthlayer-workers/x.py", "/.../nthlayer-workers/x.py", a worktree
-    # "nthlayer-workers-slug/x.py", or the bare name) is that repo's: suffix
-    # matching alone would find x.py in every sibling. The last such part
-    # wins; between repo names, the longest (nthlayer-common over nthlayer).
-    parts = _strip_relative(path).split("/")
-    for i in range(len(parts) - 1, -1, -1):
-        named = [n for n in repos if parts[i] == n or parts[i].startswith(n + "-")]
+    if clean in repos:
+        return clean, None, False  # the bare repo name: that repo, no file
+    # With a record repo's tree missing, neither an exact nor a suffix hit
+    # in a present one is safe: it could be the absent repo's file.
+    tree_missing = any(not st["head"] for st in repos.values())
+    exact = [name for name in repos if clean in files[name]]
+    if len(exact) == 1 and not tree_missing:
+        return exact[0], clean, True
+    parts = clean.split("/")
+    for i in range(len(parts) - 2, -1, -1):
+        part, rest = parts[i], "/".join(parts[i + 1:])
+        if part == workspace_name:
+            continue
+        named = [n for n in repos
+                 if (part == n and (i == 0 or rest in files[n]))
+                 or (part.startswith(n + "-") and rest in files[n])]
         if named:
             name = max(named, key=len)
-            rest = "/".join(parts[i + 1:])
-            tree_path, in_tree = repo_path(rest, files[name], name) if rest else (None, False)
+            tree_path, in_tree = repo_path(rest, files[name], name)
             return name, tree_path, in_tree
-    if any(not st["head"] for st in repos.values()):
-        return None, repo_path(path, set(), next(iter(repos)))[0], False  # a tree is missing: no suffix match
+    if tree_missing or (workspace_name and workspace_name in parts[:-1]):
+        # A tree is missing (see above), or the path is under the workspace
+        # but names no record repo: a suffix match would be a guess.
+        return None, repo_path(path, set(), next(iter(repos)))[0], False
     hits = []
     for name in repos:
         tree_path, in_tree = repo_path(path, files[name], name)
@@ -703,7 +722,7 @@ def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> lis
         for f in found:
             if f["severity"] not in ("CRITICAL", "IMPORTANT"):
                 continue  # the corpus carries the gate's blocking findings
-            repo_name, path, in_tree = assign(f.get("path"), repos, files)
+            repo_name, path, in_tree = assign(f.get("path"), repos, files, workspace.resolve().name)
             kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
                                      f["claim"], **prov, fix_commit=fix,
                                      reported_path=mask_workspace(f.get("path"), workspace),
@@ -787,11 +806,32 @@ CLEAN_GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "G
                  "GIT_CONFIG_PARAMETERS": ""}
 
 
+def previous_assets(out: Path) -> set[str]:
+    """The bundles a previous run's bundles.json lists in ``out``. Refuses an
+    --bundles holding any other *.bundle, rather than overwrite or delete a
+    file this script did not write (as --out refuses foreign entries)."""
+    if not out.exists():
+        return set()
+    if not out.is_dir():
+        raise CorpusError(f"--bundles {out} is not a directory")
+    manifest = out / "bundles.json"
+    try:
+        listed = {b["asset"] for b in json.loads(manifest.read_text(encoding="utf-8"))["bundles"]} \
+            if manifest.is_file() else set()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise CorpusError(f"{manifest}: unreadable ({exc}); choose another --bundles") from exc
+    foreign = sorted(p.name for p in out.glob("*.bundle") if p.name not in listed)
+    if foreign:
+        raise CorpusError(f"{out} holds bundles this script did not list: {foreign[:3]}; choose another --bundles")
+    return listed
+
+
 def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
     two-commit history under refs/r5/<entry>/{base,head}, and bundles.json,
     the manifest the corpus repository commits. Fills each meta's ``bundle``
     and synthetic commits."""
+    previous = previous_assets(out)  # refuses a foreign --bundles before writing anything
     out.mkdir(parents=True, exist_ok=True)
     manifest: list[dict] = []
     by_repo: dict[str, list[dict]] = {}
@@ -831,9 +871,8 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
                          "url": BUNDLE_URL.format(tag=BUNDLE_TAG, name=target.name),
                          "git_version": git(source, "--version").strip()})
     listed = {b["asset"] for b in manifest}
-    for stale in out.glob("*.bundle"):
-        if stale.name not in listed:
-            stale.unlink()  # a repo no longer in the corpus: bundles.json must list every bundle here
+    for stale in previous - listed:
+        (out / stale).unlink(missing_ok=True)  # a repo no longer in the corpus
     # The corpus repository's git content: the bundles are its release assets.
     (out / "bundles.json").write_text(json.dumps(
         {"schema_version": SCHEMA_VERSION, "repository": CORPUS_REPO, "release_tag": BUNDLE_TAG,
@@ -984,8 +1023,8 @@ def main(argv: list[str] | None = None) -> int:
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         previous_entries(args.out)  # refuse a foreign --out before writing anything
-        if args.bundles and args.bundles.exists() and not args.bundles.is_dir():
-            raise CorpusError(f"--bundles {args.bundles} is not a directory")
+        if args.bundles:
+            previous_assets(args.bundles)  # likewise for --bundles
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
         write_entries(entries, args.out)
