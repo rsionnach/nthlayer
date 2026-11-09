@@ -77,3 +77,11 @@ jobs:
       # timestamp, so the script's own normalisation is exercised only here.
       - name: r5-baseline tests (Python 3.9, as the shim runs)
         run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_baseline.py
+
+      # r5_corpus's tests (opensrm-6kqs.2): synthetic git repos, archive
+      # records and private-archive files built in tmp_path; no network. On
+      # 3.9 too, since it imports r5_baseline and runs under the same shim.
+      - name: r5-corpus tests
+        run: uv run --no-project --with pytest pytest -q test/test_r5_corpus.py
+      - name: r5-corpus tests (Python 3.9, as the shim runs)
+        run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_corpus.py

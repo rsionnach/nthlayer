@@ -168,6 +168,16 @@ examples, generator-specific scripts.
     Python and on 3.9 (as the shim runs), over synthetic fixtures, one per
     archive pattern (opensrm-6kqs.8). The
     workspace root's `.claude/bin/r5-baseline.sh` is a shim.
+  - `r5_corpus.py` — the replay corpus (R5 Gate v2 Phase A.2,
+    opensrm-6kqs.2): one entry per archived gate record and repo
+    (`meta.json`, `brief.md`, `diff.patch`, `recorded.json`), with a
+    per-entry fidelity (recorded / derived / clean / counts_only), and with
+    `--bundles` one synthetic git bundle per repo, published as release
+    assets under the `r5-replay-corpus-v1` tag, never committed. Reads
+    reviewer reports and their extractions from the private archive
+    `.claude/r5-handbacks/`; only findings and briefs leave it. Standard
+    library and git only. Tests: `test/test_r5_corpus.py`, on the runner's
+    Python and on 3.9.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest
     release is outside its range [opensrm-z1kq].
@@ -178,7 +188,8 @@ examples, generator-specific scripts.
   - `ci.yml` — `bash -n` across `demo/`, `test/` and `scripts/` *.sh
     (opensrm-0buj); `ruff check` over the same three directories
     (opensrm-u5dw.1); the `test_eco_doctor.sh` regression suite
-    (opensrm-8hn3); and `test/test_r5_baseline.py` (opensrm-6kqs.1).
+    (opensrm-8hn3); `test/test_r5_baseline.py` (opensrm-6kqs.1); and
+    `test/test_r5_corpus.py` (opensrm-6kqs.2).
   - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
