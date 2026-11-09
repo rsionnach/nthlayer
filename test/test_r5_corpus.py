@@ -71,13 +71,15 @@ def record(bead: str, ranges: dict, reviews: list[tuple[str, dict, str | None]])
         trail.append({"ts": f"2000-01-01T00:00:{ts:02d}Z", **kw})
         return trail[-1]["ts"]
 
-    stamps, started = [], set()
+    stamps, started, seen = [], set(), {}
     for lens, counts, fix in reviews:
         if lens not in started:
             started.add(lens)
             event(event="pass_started", **{"pass": lens})
         event(event="reviewer_dispatched", **{"pass": lens})
-        stamps.append(event(event="findings_received", counts=counts, **{"pass": lens}))
+        seen[lens] = seen.get(lens, 0) + 1
+        # Real v2 archives log the dispatch's iteration on the event.
+        stamps.append(event(event="findings_received", counts=counts, iteration=seen[lens], **{"pass": lens}))
         if fix:
             event(event="commit_made", sha=fix, repo=next(iter(ranges)))
     return {"version": 2, "target_bead": bead, "dry_run": False, "passes": sorted(started),
@@ -197,6 +199,7 @@ def test_a_record_whose_extraction_passes_is_recorded(workspace, tmp_path):
     assert first["findings"][0]["fix_commit"] == workspace["fix"]
     assert first["findings"][0]["derived_from"] == "reviewer_transcript"
     assert second["findings"] is None  # a clean re-review: nothing was extracted
+    assert (first["iteration"], second["iteration"]) == (1, 2)
     assert e["recorded"]["iterations"] == {"correctness": 2}
     assert e["meta"]["tree_sha"] == run(workspace["repo"], "rev-parse", workspace["head"] + "^{tree}")
     assert e["meta"]["base"] == workspace["base"]  # the archive's short SHA, resolved
@@ -614,13 +617,19 @@ def test_the_bundle_is_packed_single_threaded(workspace, tmp_path, monkeypatch):
 
 
 def test_the_caller_s_git_config_does_not_change_the_bundle(workspace, tmp_path, monkeypatch):
-    ws = workspace["ws"]
-    write_record(ws, "vvv", record("opensrm-vvv", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+    ws, repo = workspace["ws"], workspace["repo"]
+    # A large file that changes slightly, so the pack has a delta for an
+    # inherited setting to change.
+    big = "\n".join(f"line {i} of a long module" for i in range(5000))
+    base = commit(repo, {"big.py": big}, "big")
+    head = commit(repo, {"big.py": big.replace("line 2500 ", "line 2500 changed ")}, "big change")
+    write_record(ws, "vvv", record("opensrm-vvv", {"demo": {"base": base, "head": head}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
     entries = list(build(ws).values())
     r5_corpus.write_bundles(entries, ws, tmp_path / "plain")
-    for key, value in {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "pack.window",
-                       "GIT_CONFIG_VALUE_0": "50"}.items():
+    # A key PACK_CONFIG does not pin, so only the isolation keeps it out.
+    for key, value in {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.bigFileThreshold",
+                       "GIT_CONFIG_VALUE_0": "1"}.items():
         monkeypatch.setenv(key, value)
     again = list(build(ws).values())
     r5_corpus.write_bundles(again, ws, tmp_path / "configured")
@@ -730,3 +739,62 @@ def test_bundles_that_is_a_file_is_refused(workspace, tmp_path):
     assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "bundles"),
                            "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not (tmp_path / "out").exists()
+
+
+
+# --- review numbering, pairing, counted records, refusals ---------------------
+
+def test_rounds_are_numbered_per_lens_and_keep_the_archive_s_iteration():
+    trail = [
+        {"ts": "t1", "event": "findings_received", "pass": "correctness", "iteration": 1,
+         "counts": {"critical": 0, "important": 1, "minor": 0}},
+        {"ts": "t2", "event": "findings_received", "pass": "clarity", "iteration": 1,
+         "counts": {"critical": 0, "important": 0, "minor": 0}},
+        {"ts": "t3", "event": "findings_received", "pass": "correctness", "iteration": 1,  # a re-run restarts
+         "counts": {"critical": 0, "important": 0, "minor": 0}},
+    ]
+    revs = r5_corpus.reviews({"version": 2, "target_bead": "b", "audit_trail": trail})
+    assert [(r["lens"], r["iteration"], r["recorded_iteration"]) for r in revs] == [
+        ("correctness", 1, 1), ("clarity", 1, 1), ("correctness", 2, 1)]
+
+
+def test_the_first_commit_after_a_review_is_its_fix_not_a_later_one(workspace):
+    trail = [
+        {"ts": "t1", "event": "findings_received", "pass": "correctness",
+         "counts": {"critical": 0, "important": 1, "minor": 0}},
+        {"ts": "t2", "event": "commit_made", "sha": workspace["fix"], "repo": "demo"},
+        {"ts": "t3", "event": "commit_made", "sha": workspace["head"], "repo": "demo"},
+    ]
+    (r,) = r5_corpus.reviews({"version": 2, "target_bead": "b", "audit_trail": trail})
+    assert r["fix_commit"] == workspace["fix"]
+
+
+def test_a_dry_run_record_yields_no_entry(workspace):
+    ws = workspace["ws"]
+    rec = record("opensrm-dry", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 0}, None)])
+    rec["dry_run"] = True
+    write_record(ws, "dry", rec)
+    write_record(ws, "live", record("opensrm-live", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert set(build(ws)) == {"opensrm-live"}
+
+
+def test_a_record_with_no_diff_range_is_refused(workspace):
+    ws = workspace["ws"]
+    rec = record("opensrm-nod", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)])
+    rec["diff_range"] = {}
+    write_record(ws, "nod", rec)
+    with pytest.raises(r5_corpus.CorpusError):
+        build(ws)
+
+
+def test_a_v2_excellence_finding_never_makes_an_entry_blocking(workspace):
+    # Excellence is advisory from the 2026-08-28 roster on, so a v2 record
+    # whose only IMPORTANT is excellence's is clean.
+    ws = workspace["ws"]
+    write_record(ws, "exc", record("opensrm-exc", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 1}, None),
+                                    ("excellence", {"critical": 0, "important": 1, "minor": 0}, None)]))
+    assert build(ws)["opensrm-exc"]["meta"]["fidelity"] == "clean"

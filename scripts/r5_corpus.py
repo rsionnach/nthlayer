@@ -343,7 +343,11 @@ def reviews(record: dict) -> list[dict]:
             lens = r5_baseline.PASSLESS_EVENTS.get((record.get("target_bead"), kind, event.get("ts")))
         if kind == "findings_received" and isinstance(lens, str):
             iteration[lens] += 1
+            # "iteration" is this review's ordinal within its lens, which
+            # orders rounds; the archive's own iteration number, where it
+            # logged one, restarts on a re-run pass and is kept beside it.
             pending = {"lens": lens, "iteration": iteration[lens], "ts": event.get("ts"),
+                       "recorded_iteration": event.get("iteration"),
                        # r5_baseline's own reading of a counts value, so the two
                        # scripts can never disagree on one.
                        "counts": r5_baseline._counts(event.get("counts")), "fix_commit": None,
@@ -367,9 +371,9 @@ def severities_complete(row: dict) -> bool:
     """Whether every finding the baseline counts has a logged severity. A v1
     record that logged only totals (``unattributed``), or a lens with findings
     and no findings_received, may hide a blocking finding, so it is never
-    clean or recorded."""
-    return all(lens["unattributed"] == 0 and (lens["findings_by_review"] or not lens["findings_first_review"])
-               for lens in row["lenses"].values())
+    clean or recorded. (r5_baseline counts a lens with no findings_received
+    as wholly unattributed, so the one test covers both.)"""
+    return all(lens["unattributed"] == 0 for lens in row["lenses"].values())
 
 
 _BULLET = re.compile(r"^\s*(?:[-*]\s*)?(CRITICAL|IMPORTANT)(?:\s+\d+)?\s*(?:[:—-]|\()\s*(.*)$")
@@ -500,6 +504,7 @@ def build_entry(entry: str, stem: str, record_file: str, record: dict, row: dict
 
 def _round(review: dict, findings: list | None) -> dict:
     return {"lens": schema_lens(review["lens"]), "iteration": review["iteration"],
+            "recorded_iteration": review["recorded_iteration"],
             "counts": dict(review["counts"]), "findings": findings}
 
 

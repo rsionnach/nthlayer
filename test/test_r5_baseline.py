@@ -207,6 +207,8 @@ def test_schema_versions_are_counted_by_value():
     # A third version is its own bucket, not folded into v2.
     rows[0] = dict(rows[0], version=3)
     assert r5_baseline.schema_versions(rows)["3"] == 1
+    # In numeric order, not text order: "2" before "10".
+    assert list(r5_baseline.schema_versions([dict(rows[1], version=10), dict(rows[1], version=2)])) == ["2", "10"]
 
 
 def test_an_archive_that_cannot_be_opened_is_refused(tmp_path):
