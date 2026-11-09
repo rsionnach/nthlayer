@@ -206,6 +206,7 @@ def test_a_record_whose_extraction_passes_is_recorded(workspace, tmp_path):
     assert e["recorded"]["iterations"] == {"correctness": 2}
     assert e["meta"]["tree_sha"] == run(workspace["repo"], "rev-parse", workspace["head"] + "^{tree}")
     assert e["meta"]["base"] == workspace["base"]  # the archive's short SHA, resolved
+    assert e["meta"]["record_head"] is None  # no escape moved the head
     assert (e["meta"]["record"], e["meta"]["part"], e["meta"]["record_repos"]) == ("aaa", None, ["demo"])
     assert e["meta"]["sequential_steps"] == e["meta"]["record_sequential_steps"]
 
@@ -1164,6 +1165,11 @@ def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(
     assert summary["blocking_findings_unknown"] == 1
     assert summary["located_findings"]["cross_repo"] == 1
     assert summary["located_findings"]["total"] == 1  # eee's derived finding; xrp's is cross-repo
+    # eee's derived finding has a path, in its tree.
+    assert summary["located_findings"]["path_not_in_tree"] == 0
+    # Blocking counts None (unk), 1 (eee), 2 and 2 (xrp's two sub-entries):
+    # an unknown count is not clean.
+    assert summary["clean_entries"] == 0
 
 
 def test_a_fix_commit_two_record_repos_hold_names_no_repo(workspace, tmp_path):
