@@ -650,18 +650,44 @@ def _fix_repo(review: dict, repos: dict[str, dict]) -> str | None:
     return holders[0] if len(holders) == 1 else None
 
 
+class Workspace:
+    """The workspace's top-level directories, and which record repo each one
+    is (the repo itself, or a worktree of it sharing its git common dir)."""
+
+    def __init__(self, root: Path | None):
+        self.root = root.resolve() if root else None
+        self.dirs = {p.name for p in self.root.iterdir() if p.is_dir()} if self.root and self.root.is_dir() else set()
+        self._common: dict[str, str | None] = {}
+
+    def common_dir(self, name: str) -> str | None:
+        if name not in self._common:
+            path = self.root / name if self.root else None
+            out = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False) \
+                if path and path.is_dir() else ""
+            self._common[name] = out.strip() or None
+        return self._common[name]
+
+    def repo_of(self, name: str, repos: dict[str, dict]) -> str | None:
+        """The record repo a workspace directory is, or None if it is none
+        of them (another member, a non-repo directory)."""
+        if name in repos:
+            return name
+        mine = self.common_dir(name)
+        hits = [n for n in repos if mine and self.common_dir(n) == mine]
+        return hits[0] if len(hits) == 1 else None
+
+
 def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
-           workspace_name: str | None = None) -> tuple[str | None, str | None, bool]:
+           workspace: Workspace | None = None) -> tuple[str | None, str | None, bool]:
     """(repo, tree path, in_tree) for a reported path: the record's only repo,
     or the one repo it can be placed in; (None, path, False) otherwise.
 
-    For a multi-repo record, in this order: a bare repo name; a path exactly
-    in one repo's head tree; a directory part that names a record repo
-    (exactly, as the path's first part, or as that repo or a worktree of it
-    ("<repo>-slug") with the rest of the path in its tree), the last such
-    part winning and never the workspace's own directory; one unique suffix
-    match, unless a record repo has no tree. A part that merely starts with
-    a repo's name ("nthlayer-generate" for nthlayer) is not enough."""
+    For a multi-repo record, in this order: a path exactly in one repo's head
+    tree (when every record repo has a tree); then the last part of the path
+    that is a top-level workspace directory decides, being a record repo or a
+    worktree of one (that repo, whether or not the rest is in its tree) or
+    anything else (cross-repo, never guessed into a record repo); then, for a
+    path naming no workspace directory, one unique suffix match."""
     if len(repos) == 1:
         (name,) = repos
         tree_path, in_tree = repo_path(path, files[name], name)
@@ -669,8 +695,6 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
     clean = _strip_relative(path) if path is not None else ""
     if not clean:
         return None, None, False
-    if clean in repos:
-        return clean, None, False  # the bare repo name: that repo, no file
     # With a record repo's tree missing, neither an exact nor a suffix hit
     # in a present one is safe: it could be the absent repo's file.
     tree_missing = any(not st["head"] for st in repos.values())
@@ -678,20 +702,17 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
     if len(exact) == 1 and not tree_missing:
         return exact[0], clean, True
     parts = clean.split("/")
-    for i in range(len(parts) - 2, -1, -1):
-        part, rest = parts[i], "/".join(parts[i + 1:])
-        if part == workspace_name:
+    known = (workspace.dirs if workspace else set()) | set(repos)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] not in known or (workspace and workspace.root and parts[i] == workspace.root.name):
             continue
-        named = [n for n in repos
-                 if (part == n and (i == 0 or rest in files[n]))
-                 or (part.startswith(n + "-") and rest in files[n])]
-        if named:
-            name = max(named, key=len)
-            tree_path, in_tree = repo_path(rest, files[name], name)
-            return name, tree_path, in_tree
-    if tree_missing or (workspace_name and workspace_name in parts[:-1]):
-        # A tree is missing (see above), or the path is under the workspace
-        # but names no record repo: a suffix match would be a guess.
+        name = workspace.repo_of(parts[i], repos) if workspace else (parts[i] if parts[i] in repos else None)
+        rest = "/".join(parts[i + 1:])
+        if name is None:  # another member, or a workspace directory that is no record repo
+            return None, repo_path(path, set(), next(iter(repos)))[0], False
+        tree_path, in_tree = repo_path(rest, files[name], name) if rest else (None, False)
+        return name, tree_path, in_tree
+    if tree_missing:
         return None, repo_path(path, set(), next(iter(repos)))[0], False
     hits = []
     for name in repos:
@@ -722,7 +743,7 @@ def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> lis
         for f in found:
             if f["severity"] not in ("CRITICAL", "IMPORTANT"):
                 continue  # the corpus carries the gate's blocking findings
-            repo_name, path, in_tree = assign(f.get("path"), repos, files, workspace.resolve().name)
+            repo_name, path, in_tree = assign(f.get("path"), repos, files, Workspace(workspace))
             kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
                                      f["claim"], **prov, fix_commit=fix,
                                      reported_path=mask_workspace(f.get("path"), workspace),
@@ -820,9 +841,16 @@ def previous_assets(out: Path) -> set[str]:
             if manifest.is_file() else set()
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise CorpusError(f"{manifest}: unreadable ({exc}); choose another --bundles") from exc
+    # Only plain bundle names: a listed "../x" or absolute path would be
+    # deleted outside --bundles.
+    bad = sorted(str(a) for a in listed if not isinstance(a, str) or Path(a).name != a or not a.endswith(".bundle"))
+    if bad:
+        raise CorpusError(f"{manifest} lists assets that are not plain bundle names: {bad[:3]}")
     foreign = sorted(p.name for p in out.glob("*.bundle") if p.name not in listed)
     if foreign:
-        raise CorpusError(f"{out} holds bundles this script did not list: {foreign[:3]}; choose another --bundles")
+        raise CorpusError(f"{out} holds bundles bundles.json does not list: {foreign[:3]} (an earlier run"
+                          " interrupted before writing bundles.json leaves these); choose another --bundles,"
+                          " or remove them if they are that run's")
     return listed
 
 

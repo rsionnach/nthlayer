@@ -955,11 +955,12 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
     ("./demo2/app.py", ("demo2", "app.py", True)),
     ("/Users/x/eco/demo2/app.py", ("demo2", "app.py", True)),  # absolute
     ("../demo2/app.py", ("demo2", "app.py", True)),
-    ("demo2-wt/app.py", ("demo2", "app.py", True)),  # a worktree of demo2
+    # A worktree of demo2 is known only from the workspace (tested with a
+    # real one below); without it, "demo2-wt" names no record repo.
+    ("demo2-wt/app.py", (None, "demo2-wt/app.py", False)),
     ("docs/only-demo.md", ("demo", "docs/only-demo.md", True)),  # exactly in one tree first
     ("examples/demo2/only-demo.md", ("demo", "examples/demo2/only-demo.md", True)),  # a dir named like a sibling
     ("demo2-other/x.py", (None, "demo2-other/x.py", False)),  # starts with a name, not in its tree
-    ("demo-ws/notes.md", (None, "demo-ws/notes.md", False)),  # the workspace's own directory
     ("", (None, None, False)),
     ("./", (None, None, False)),
     ("demo2", ("demo2", None, False)),  # the bare repo name: that repo, no file
@@ -969,7 +970,7 @@ def test_a_path_naming_one_of_the_record_s_repos_is_that_repo_s(path, expected):
     repos = {"demo": {"head": "h1"}, "demo2": {"head": "h2"}}
     files = {"demo": {"app.py", "docs/only-demo.md", "examples/demo2/only-demo.md", "notes.md"},
              "demo2": {"app.py"}}
-    assert r5_corpus.assign(path, repos, files, workspace_name="demo-ws") == expected
+    assert r5_corpus.assign(path, repos, files) == expected
 
 
 def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
@@ -1040,3 +1041,50 @@ def test_a_bundle_this_script_did_not_list_is_refused_untouched(workspace, tmp_p
     assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(out), "--archive-dir",
                            str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not (tmp_path / "out").exists()
+
+
+
+def _member(ws: Path, name: str, files: dict[str, str]) -> Path:
+    repo = ws / name
+    repo.mkdir(parents=True)
+    run(repo, "init", "-q")
+    commit(repo, files, "init")
+    return repo
+
+
+def test_a_path_naming_a_member_outside_the_record_is_cross_repo(tmp_path):
+    # Record repos nthlayer and nthlayer-workers; nthlayer-common is another
+    # member. Its CLAUDE.md must not land in nthlayer, whose tree also has one.
+    ws = tmp_path / "eco"
+    for name in ("nthlayer", "nthlayer-workers", "nthlayer-common"):
+        _member(ws, name, {"CLAUDE.md": f"{name}\n", "pyproject.toml": "x\n"})
+    repos = {n: {"path": ws / n, "head": run(ws / n, "rev-parse", "HEAD")} for n in ("nthlayer", "nthlayer-workers")}
+    files = {n: r5_corpus.tree_paths(st["path"], st["head"]) for n, st in repos.items()}
+    w = r5_corpus.Workspace(ws)
+    assert r5_corpus.assign("nthlayer-common/CLAUDE.md", repos, files, w)[0] is None
+    assert r5_corpus.assign("nthlayer-common/pyproject.toml", repos, files, w)[0] is None
+    # An absolute path into a record repo, file not (yet) in its tree, is that repo's.
+    assert r5_corpus.assign(f"{ws}/nthlayer-workers/src/new.py", repos, files, w) == \
+        ("nthlayer-workers", "src/new.py", False)
+    # The bare repo after the workspace path: that repo, no file.
+    assert r5_corpus.assign(f"{ws}/nthlayer-workers", repos, files, w) == ("nthlayer-workers", None, False)
+    # The workspace's own top-level file names no record repo: cross-repo.
+    assert r5_corpus.assign(f"{ws}/CLAUDE.md", repos, files, w)[0] is None
+
+
+def test_a_worktree_of_a_record_repo_is_that_repo(tmp_path):
+    ws = tmp_path / "eco"
+    a = _member(ws, "alpha", {"a.py": "1\n", "shared.md": "a\n"})
+    _member(ws, "beta", {"b.py": "1\n", "shared.md": "b\n"})
+    run(a, "worktree", "add", "-q", str(ws / "alpha-fix"))
+    repos = {n: {"path": ws / n, "head": run(ws / n, "rev-parse", "HEAD")} for n in ("alpha", "beta")}
+    files = {n: r5_corpus.tree_paths(st["path"], st["head"]) for n, st in repos.items()}
+    assert r5_corpus.assign("alpha-fix/shared.md", repos, files, r5_corpus.Workspace(ws)) == \
+        ("alpha", "shared.md", True)
+
+
+@pytest.mark.parametrize("assets", [["../outside.bundle"], ["/abs/x.bundle"], [3]])
+def test_a_manifest_listing_a_non_plain_asset_is_refused(tmp_path, assets):
+    (tmp_path / "bundles.json").write_text(json.dumps({"bundles": [{"asset": a} for a in assets]}))
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.previous_assets(tmp_path)
