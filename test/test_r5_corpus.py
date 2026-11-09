@@ -992,6 +992,7 @@ def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
              "recorded": {"rounds": [{"findings": [f, g]}], "cross_repo_findings": []}}
     counts = r5_corpus.summary([entry])["located_findings"]
     assert (counts["no_path"], counts["path_not_in_tree"]) == (1, 1)
+    assert counts["no_range"] == 1  # f has no start line; g has one
 
 
 
