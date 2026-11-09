@@ -502,3 +502,10 @@ def test_masking_home_respects_the_path_boundary(monkeypatch):
     monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/Users/rob")))
     assert r5_corpus.mask_workspace("/Users/rob/x and /Users/robert/y", Path("/nowhere")) == \
         "~/x and /Users/robert/y"
+
+
+def test_masking_stops_at_a_sibling_that_shares_the_workspace_name_prefix(tmp_path):
+    ws = tmp_path / "nthlayer"
+    ws.mkdir()
+    text = f"{ws}/scripts/x.py and {tmp_path}/nthlayer-common/y.py"
+    assert r5_corpus.mask_workspace(text, ws) == f"<workspace>/scripts/x.py and {tmp_path}/nthlayer-common/y.py"

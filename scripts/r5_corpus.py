@@ -513,9 +513,13 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
         return None
     # Absolute forms only: a relative workspace ("..") would match every "..".
     for root in sorted({str(workspace.resolve()), str(workspace.absolute())}, key=len, reverse=True):
-        text = re.sub(re.escape(root) + r"(?=/|\b|$)", "<workspace>", text)
-    home = str(Path.home())
-    return re.sub(re.escape(home) + r"(?=/|$|[^\w.-])", "~", text)
+        text = re.sub(re.escape(root) + _PATH_END, "<workspace>", text)
+    return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
+
+
+# The end of a path component: a sibling sharing a name prefix ("nthlayer"
+# and "nthlayer-common") is a different path.
+_PATH_END = r"(?=/|$|[^\w.-])"
 
 
 def classify(file: str, revs: list[dict], private: Private, repo: Path, head: str | None,
