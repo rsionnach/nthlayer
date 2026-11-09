@@ -46,6 +46,7 @@ severities are incomplete) is what it found, and 0 is a clean entry:
 - ``derived``: path and range from the lens's fix-commit hunks, claim from
   its severity bullet, one-to-one only.
 - ``counts_only``: counts, lens order, iterations and steps; nothing finer.
+  Every clean record is counts_only: no extraction is made of a clean review.
 
 A multi-repo record's findings go to the entry whose repo holds their path
 (for a derived one, the repo its fix commit was made in); one no single repo
@@ -85,6 +86,7 @@ import sys
 import tempfile
 from collections import Counter
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import r5_baseline  # noqa: E402  (a sibling script, not a package)
@@ -468,18 +470,16 @@ def record_part(stem: str, bead: str) -> str | None:
     raise CorpusError(f"record stem {stem!r} does not start with its bead {bead}")
 
 
-def build_entry(stem: str, record_file: str, record: dict, row: dict, bead_steps: int,
-                repo_name: str, repo_state: dict, ranges: dict, classified: tuple,
+def build_entry(stem: str, record_file: str, record: dict, row: dict, revs: list[dict], bead_steps: int,
+                repo_name: str, repo_state: dict, ranges: dict, classified: Classified,
                 workspace: Path, private: PrivateArchive, use_bd: bool) -> dict:
     """One entry's light files, as data, plus the trees its bundle needs.
-    ``classified`` is the record's (fidelity, rounds, blocking_findings), with
-    each finding tagged by the repo it was assigned to."""
+    ``classified`` is the record's, decided once for all its repos."""
     multi = len(ranges) > 1
     repo, base, head, record_head = (repo_state[k] for k in ("path", "base", "head", "record_head"))
     bead = record["target_bead"]
     escape = KNOWN_ESCAPES.get((bead, repo_name))
     fidelity, record_rounds, blocking = classified
-    revs = reviews(record)
     rounds = [dict(r, findings=None if r["findings"] is None else
                    [_published(f) for f in r["findings"] if f["_repo"] == repo_name])
               for r in record_rounds] if record_rounds else [_round(r, None) for r in revs]
@@ -553,6 +553,15 @@ def tree_paths(repo: Path, head: str) -> set[str]:
     return {p for p in git(repo, "ls-tree", "-r", "--name-only", head).split("\n") if p}
 
 
+def _strip_relative(path: str) -> str:
+    """``path`` without leading "./" and "/" (removed literally, so a leading
+    dot such as ".github" stays)."""
+    clean = path.strip()
+    while clean.startswith(("./", "/")):
+        clean = clean[2:] if clean.startswith("./") else clean[1:]
+    return clean
+
+
 def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | None, bool]:
     """A reported path as a path in the head tree, and whether it is one.
 
@@ -564,9 +573,7 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
     mask_workspace). Nothing is chosen between two candidates."""
     if path is None or path in files:
         return path, path is not None
-    clean = path.strip()
-    while clean.startswith(("./", "/")):
-        clean = clean[2:] if clean.startswith("./") else clean[1:]
+    clean = _strip_relative(path)
     matches = [f for f in files if clean == f or clean.endswith("/" + f) or f.endswith("/" + clean)]
     if len(matches) == 1:
         return matches[0], True
@@ -594,8 +601,17 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
 
 
+class Classified(NamedTuple):
+    """A record's fidelity, its rounds (findings tagged ``_repo``) or None,
+    and its blocking-finding count (None when the archive's severities are
+    incomplete)."""
+    fidelity: str
+    rounds: list | None
+    blocking_findings: int | None
+
+
 def classify_record(record_file: str, revs: list[dict], row: dict, private: PrivateArchive,
-                    repos: dict[str, dict]) -> tuple[str, list | None, int | None]:
+                    repos: dict[str, dict], workspace: Path) -> Classified:
     """The record's (fidelity, rounds, blocking_findings), decided once for all
     its repos. ``recorded`` when every blocking review's extraction is accepted,
     else ``derived`` when every one derives from its fix commit, else
@@ -603,20 +619,28 @@ def classify_record(record_file: str, revs: list[dict], row: dict, private: Priv
     ``_repo``: the repo whose head tree holds its path, the record's only repo,
     or None (cross-repo) when no single repo does."""
     if not severities_complete(row):
-        return "counts_only", None, None  # severities unknown: blocking count too
+        return Classified("counts_only", None, None)  # severities unknown: blocking count too
     blocking = sum(r["counts"]["critical"] + r["counts"]["important"]
                    for r in revs if r["blocking_lens"])
     if not blocking:
-        return "counts_only", None, 0  # clean; no extraction was made of a clean review
+        return Classified("counts_only", None, 0)  # clean; no extraction was made of a clean review
     files = {name: tree_paths(st["path"], st["head"]) if st["head"] else set()
              for name, st in repos.items()}
-    recorded = _recorded_rounds(record_file, revs, private, repos, files)
+    recorded = _recorded_rounds(record_file, revs, private, repos, files, workspace)
     if recorded is not None:
-        return "recorded", recorded, blocking
+        return Classified("recorded", recorded, blocking)
     derived = _derived_rounds(revs, repos)
     if derived is not None:
-        return "derived", derived, blocking
-    return "counts_only", None, blocking
+        return Classified("derived", derived, blocking)
+    return Classified("counts_only", None, blocking)
+
+
+def _fix_repo(review: dict, repos: dict[str, dict]) -> str | None:
+    """The repo a review's fix commit was made in: the one the archive logged,
+    else the record's only repo, else unknown."""
+    if review["fix_repo"] in repos:
+        return review["fix_repo"]
+    return next(iter(repos)) if len(repos) == 1 else None
 
 
 def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> tuple[str | None, str | None, bool]:
@@ -630,10 +654,7 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> t
     # or the bare name) is that repo's: suffix matching alone would find
     # x.py in every sibling.
     if path is not None:
-        clean = path.strip()
-        while clean.startswith(("./", "/")):
-            clean = clean[2:] if clean.startswith("./") else clean[1:]
-        first, _, rest = clean.partition("/")
+        first, _, rest = _strip_relative(path).partition("/")
         if first in repos:
             tree_path, in_tree = repo_path(rest, files[first], first) if rest else (None, False)
             return first, tree_path, in_tree
@@ -644,10 +665,12 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> t
             hits.append((name, tree_path))
     if len(hits) == 1:
         return hits[0][0], hits[0][1], True
+    # No single repo: the path normalised as repo_path would (with no tree to
+    # match, so a local absolute path is still cut).
     return None, repo_path(path, set(), next(iter(repos)))[0], False
 
 
-def _recorded_rounds(record_file, revs, private, repos, files) -> list | None:
+def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> list | None:
     out = []
     for r in revs:
         if not raised_blocking_finding(r):
@@ -657,7 +680,7 @@ def _recorded_rounds(record_file, revs, private, repos, files) -> list | None:
         if got is None:  # no accepted extraction: the record cannot be recorded
             return None
         found, prov = got
-        fix_repo = r["fix_repo"] if r["fix_repo"] in repos else (next(iter(repos)) if len(repos) == 1 else None)
+        fix_repo = _fix_repo(r, repos)
         fix = resolve(repos[fix_repo]["path"], r["fix_commit"]) \
             if r["fix_commit"] and fix_repo and repos[fix_repo]["path"].is_dir() else None
         kept = []
@@ -667,7 +690,7 @@ def _recorded_rounds(record_file, revs, private, repos, files) -> list | None:
             repo_name, path, in_tree = assign(f.get("path"), repos, files)
             kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
                                      f["claim"], **prov, fix_commit=fix,
-                                     reported_path=mask_workspace(f.get("path"), next(iter(repos.values()))["path"].parent),
+                                     reported_path=mask_workspace(f.get("path"), workspace),
                                      path_in_tree=in_tree), _repo=repo_name))
         out.append(_round(r, kept))
     return out
@@ -679,7 +702,7 @@ def _derived_rounds(revs, repos) -> list | None:
         if not raised_blocking_finding(r):
             out.append(_round(r, None))
             continue
-        name = r["fix_repo"] if r["fix_repo"] in repos else (next(iter(repos)) if len(repos) == 1 else None)
+        name = _fix_repo(r, repos)
         repo = repos[name]["path"] if name else None
         found = derive_from_commit(repo, r) if repo and repo.is_dir() else None
         if found is None:
@@ -832,10 +855,10 @@ def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: b
         repos = {repo_name: repo_state(workspace / repo_name, rng, KNOWN_ESCAPES.get((record["target_bead"], repo_name)))
                  for repo_name, rng in ranges.items()}
         revs = reviews(record)
-        classified = classify_record(name, revs, rows[name], private, repos)
+        classified = classify_record(name, revs, rows[name], private, repos, workspace)
         bead_total = beads[record["target_bead"]]["sequential_steps"]
         for repo_name in ranges:
-            entries.append(build_entry(stem, name, record, rows[name], bead_total, repo_name,
+            entries.append(build_entry(stem, name, record, rows[name], revs, bead_total, repo_name,
                                        repos[repo_name], ranges, classified, workspace, private, use_bd))
     found = {(e["meta"]["bead"], e["meta"]["repo"]) for e in entries}
     missing = sorted(set(KNOWN_ESCAPES) - found)
@@ -891,8 +914,10 @@ def summary(entries: list[dict], bundles: Path | None = None) -> dict:
     """What bead 2 reports: entry and bead counts per fidelity, clean entries,
     the recorded findings' locations, brief_source counts and bundle sizes."""
     metas = [e["meta"] for e in entries]
-    blocking = [f for e in entries if e["meta"]["fidelity"] != "counts_only"
-                for r in e["recorded"]["rounds"] for f in (r["findings"] or [])]
+    # Findings with a source (recorded or derived): their locations are what
+    # the replay can match on.
+    located = [f for e in entries if e["meta"]["fidelity"] != "counts_only"
+               for r in e["recorded"]["rounds"] for f in (r["findings"] or [])]
     manifest = json.loads((bundles / "bundles.json").read_text(encoding="utf-8")) \
         if bundles and (bundles / "bundles.json").is_file() else None
     return {
@@ -903,14 +928,14 @@ def summary(entries: list[dict], bundles: Path | None = None) -> dict:
                      for f in FIDELITIES},
         "clean_entries": sum(m["blocking_findings"] == 0 for m in metas),
         "blocking_findings_unknown": sum(m["blocking_findings"] is None for m in metas),
-        "recorded_findings": {"total": len(blocking),
-                              "no_path": sum(f["path"] is None for f in blocking),
-                              "no_range": sum(f["start_line"] is None for f in blocking),
-                              "path_not_in_tree": sum(f["path"] is not None and not f.get("path_in_tree", True)
-                                                      for f in blocking),
-                              # Listed in every sub-entry of its record: count each once.
-                              "cross_repo": len({(e["meta"]["archive"], f["fingerprint"]) for e in entries
-                                                 for f in e["recorded"]["cross_repo_findings"]})},
+        "located_findings": {"total": len(located),
+                             "no_path": sum(f["path"] is None for f in located),
+                             "no_range": sum(f["start_line"] is None for f in located),
+                             "path_not_in_tree": sum(f["path"] is not None and not f.get("path_in_tree", True)
+                                                     for f in located),
+                             # Listed in every sub-entry of its record: count each once.
+                             "cross_repo": len({(e["meta"]["archive"], f["fingerprint"]) for e in entries
+                                                for f in e["recorded"]["cross_repo_findings"]})},
         "brief_source": {s: sum(m["brief_source"] == s for m in metas) for s in BRIEF_SOURCES},
         "bundles": {b["repo"]: b["size"] for b in manifest["bundles"]} if manifest else None,
         "unavailable": sorted(m["entry"] for m in metas if m["unavailable"]),

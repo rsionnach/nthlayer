@@ -956,10 +956,12 @@ def test_a_path_naming_one_of_the_record_s_repos_is_that_repo_s(path, expected):
 
 
 def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
+    # repo_path(None) says path_in_tree=False: the summary must not read that
+    # as a path outside the tree.
     f = r5_corpus.finding("correctness", "IMPORTANT", None, None, None, "a claim", path_in_tree=False)
     g = r5_corpus.finding("correctness", "IMPORTANT", "x.py", 1, 1, "b claim", path_in_tree=False)
     entry = {"meta": {"bead": "b", "fidelity": "recorded", "blocking_findings": 2, "brief_source": "none",
                       "unavailable": None, "entry": "e", "archive": "a"},
              "recorded": {"rounds": [{"findings": [f, g]}], "cross_repo_findings": []}}
-    counts = r5_corpus.summary([entry])["recorded_findings"]
+    counts = r5_corpus.summary([entry])["located_findings"]
     assert (counts["no_path"], counts["path_not_in_tree"]) == (1, 1)
