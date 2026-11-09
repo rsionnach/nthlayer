@@ -274,7 +274,10 @@ def test_bullets_that_do_not_match_the_counts_are_not_derived(workspace):
     rec = record("opensrm-fff", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                  [("correctness", {"critical": 1, "important": 1, "minor": 0}, workspace["fix"])])
     write_record(ws, "fff", rec)
-    assert build(ws)["opensrm-fff"]["meta"]["fidelity"] == "counts_only"
+    meta = build(ws)["opensrm-fff"]["meta"]
+    # Neither recorded nor derived, but the archive's counts still give the
+    # blocking count: 1 CRITICAL + 1 IMPORTANT.
+    assert (meta["fidelity"], meta["blocking_findings"]) == ("counts_only", 2)
 
 
 def test_a_record_with_no_blocking_finding_is_clean_at_counts_only(workspace):
@@ -300,6 +303,7 @@ def test_a_multi_repo_record_assigns_its_findings_by_path(workspace, tmp_path):
     # demo, so its finding is demo's; steps are the record's only.
     for e in entries.values():
         assert (e["meta"]["fidelity"], e["meta"]["sequential_steps"]) == ("derived", None)
+        assert e["meta"]["blocking_findings"] == 1  # the record's, on every sub-entry
         assert e["meta"]["record_sequential_steps"] is not None
         assert e["meta"]["record_repos"] == ["demo", "missing"]
     assert [f["path"] for f in entries["opensrm-hhh-demo"]["recorded"]["rounds"][0]["findings"]] == ["app.py"]
@@ -1112,3 +1116,68 @@ def test_the_first_workspace_directory_in_a_path_decides_not_an_inner_one(tmp_pa
             ("nthlayer-generate", "examples/opensrm/batch.yaml", True)
         assert r5_corpus.assign(f"{ws}/nthlayer-generate/.claude/settings.json", repos, files, w) == \
             ("nthlayer-generate", ".claude/settings.json", True)
+        # Exactly in one tree wins before the workspace-directory rule, which
+        # would read the workspace's own .claude/ and give cross-repo.
+        assert r5_corpus.assign(".claude/settings.json", repos, files, w) == \
+            ("nthlayer-generate", ".claude/settings.json", True)
+
+
+
+# --- blocking counts, parts, summary fields -----------------------------------
+
+def test_a_critical_only_record_counts_its_critical(workspace):
+    ws = workspace["ws"]
+    write_record(ws, "crit", record("opensrm-crit", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                    [("correctness", {"critical": 1, "important": 0, "minor": 0}, None)]))
+    assert build(ws)["opensrm-crit"]["meta"]["blocking_findings"] == 1
+
+
+def test_a_record_stem_s_suffix_is_its_part(workspace):
+    ws = workspace["ws"]
+    write_record(ws, "aaa-ckptA", record("opensrm-aaa", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                         [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    meta = build(ws)["opensrm-aaa-ckptA"]["meta"]
+    assert (meta["record"], meta["part"]) == ("aaa-ckptA", "ckptA")
+
+
+def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(workspace, tmp_path, capsys):
+    ws = workspace["ws"]
+    rng = {"base": workspace["base"], "head": workspace["head"]}
+    # A v1 record with totals only: blocking count unknown.
+    (ws / ".claude" / "r5-state-unk-completed.json").write_text(json.dumps(
+        {"version": 1, "target_bead": "opensrm-unk", "dry_run": False, "passes": ["correctness"],
+         "diff_range": {"demo": rng},
+         "audit_trail": [{"ts": "2000-01-01T00:00:01Z", "event": "pass_started", "pass": "correctness"}],
+         "completed_passes": [{"name": "correctness", "findings_count_initial": 2, "fix_iterations": 0}]}))
+    # A derived entry (opensrm-eee's shape): its finding is located.
+    write_record(ws, "eee", record("opensrm-eee", {"demo": rng},
+                                   [("correctness", {"critical": 0, "important": 1, "minor": 0}, workspace["fix"])]))
+    # A two-repo record whose finding no single repo holds: listed in both
+    # sub-entries, counted once.
+    run(ws, "clone", "-q", str(workspace["repo"]), str(ws / "demo2"))
+    stamps = write_record(ws, "xrp", record("opensrm-xrp", {"demo": rng, "demo2": rng},
+                                            [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)]))
+    private_archive(tmp_path / "p", "r5-state-xrp-completed.json", "correctness", stamps[0])
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--private-dir", str(tmp_path / "p"), "--no-bd"]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["blocking_findings_unknown"] == 1
+    assert summary["located_findings"]["cross_repo"] == 1
+    assert summary["located_findings"]["total"] == 1  # eee's derived finding; xrp's is cross-repo
+
+
+def test_a_fix_commit_two_record_repos_hold_names_no_repo(workspace, tmp_path):
+    clone = tmp_path / "clone"
+    run(tmp_path, "clone", "-q", str(workspace["repo"]), str(clone))
+    repos = {"demo": {"path": workspace["repo"], "head": workspace["head"]},
+             "clone": {"path": clone, "head": workspace["head"]}}
+    assert r5_corpus._fix_repo({"fix_repo": None, "fix_commit": workspace["fix"]}, repos) is None
+
+
+def test_each_manifest_item_carries_the_release_tag(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "tag", record("opensrm-tag", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b")
+    manifest = json.loads((tmp_path / "b" / "bundles.json").read_text())
+    assert [i["release_tag"] for i in manifest["bundles"]] == [manifest["release_tag"]] == [r5_corpus.BUNDLE_TAG]
