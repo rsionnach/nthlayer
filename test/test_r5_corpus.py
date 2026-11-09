@@ -864,3 +864,12 @@ def test_a_deletion_only_hunk_gives_no_changed_line(workspace):
 
 def test_a_blank_line_ends_a_severity_bullet():
     assert r5_corpus.severity_bullets("- IMPORTANT: one\n\nnot part of it\n") == [("IMPORTANT", "one")]
+
+
+def test_a_one_off_pass_naming_a_lens_by_its_first_word_blocks():
+    assert r5_corpus.lens_blocks("scoped(correctness+edge)", {"edge-cases"})
+
+
+def test_an_absolute_path_is_cut_after_the_last_part_naming_the_repo():
+    # A worktree "demo-wt" inside a workspace that also holds "demo".
+    assert r5_corpus.repo_path("/ws/demo/../demo-wt/src/x.py", set(), "demo") == ("src/x.py", False)
