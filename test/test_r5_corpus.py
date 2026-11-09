@@ -798,3 +798,48 @@ def test_a_v2_excellence_finding_never_makes_an_entry_blocking(workspace):
                                    [("correctness", {"critical": 0, "important": 0, "minor": 1}, None),
                                     ("excellence", {"critical": 0, "important": 1, "minor": 0}, None)]))
     assert build(ws)["opensrm-exc"]["meta"]["fidelity"] == "clean"
+
+
+
+def test_a_built_round_keeps_the_archive_s_iteration_where_it_differs(workspace):
+    # A re-run pass restarts the archive's count: the second correctness
+    # review logs iteration 1 again, as 41 real reviews do.
+    ws = workspace["ws"]
+    rec = record("opensrm-rit", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 0, "minor": 1}, None),
+                  ("correctness", {"critical": 0, "important": 0, "minor": 0}, None)])
+    reviews = [e for e in rec["audit_trail"] if e["event"] == "findings_received"]
+    reviews[1]["iteration"] = 1
+    write_record(ws, "rit", rec)
+    rounds = build(ws)["opensrm-rit"]["recorded"]["rounds"]
+    assert [(r["iteration"], r["recorded_iteration"]) for r in rounds] == [(1, 1), (2, 1)]
+
+
+def test_a_commit_with_no_sha_names_no_fix_and_ends_the_window(workspace):
+    trail = [
+        {"ts": "t1", "event": "findings_received", "pass": "correctness",
+         "counts": {"critical": 0, "important": 1, "minor": 0}},
+        {"ts": "t2", "event": "commit_made"},  # as one real archive logs it
+        {"ts": "t3", "event": "commit_made", "sha": workspace["fix"], "repo": "demo"},
+    ]
+    (r,) = r5_corpus.reviews({"version": 2, "target_bead": "b", "audit_trail": trail})
+    assert r["fix_commit"] is None
+
+
+def test_the_caller_s_global_git_config_does_not_change_the_bundle(workspace, tmp_path, monkeypatch):
+    ws, repo = workspace["ws"], workspace["repo"]
+    big = "\n".join(f"line {i} of a long module" for i in range(5000))
+    base = commit(repo, {"big.py": big}, "big")
+    head = commit(repo, {"big.py": big.replace("line 2500 ", "line 2500 changed ")}, "big change")
+    write_record(ws, "gcf", record("opensrm-gcf", {"demo": {"base": base, "head": head}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "plain")
+    home = tmp_path / "home"
+    (home / ".config" / "git").mkdir(parents=True)
+    hostile = "[core]\n\tbigFileThreshold = 1\n"
+    (home / ".gitconfig").write_text(hostile)
+    (home / ".config" / "git" / "config").write_text(hostile)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "configured")
+    assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()

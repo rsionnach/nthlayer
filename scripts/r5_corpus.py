@@ -351,11 +351,13 @@ def reviews(record: dict) -> list[dict]:
                        # r5_baseline's own reading of a counts value, so the two
                        # scripts can never disagree on one.
                        "counts": r5_baseline._counts(event.get("counts")), "fix_commit": None,
-                       "fix_repo": None, "blocking_lens": lens_blocks(lens, blocking)}
+                       "blocking_lens": lens_blocks(lens, blocking)}
             out.append(pending)
         elif kind == "commit_made" and pending is not None:
+            # One archive logs a bare commit_made with no sha: it names no
+            # fix, and still ends the review's window.
             if isinstance(event.get("sha"), str):
-                pending["fix_commit"], pending["fix_repo"] = event["sha"], event.get("repo")
+                pending["fix_commit"] = event["sha"]
             pending = None
         elif kind in ("pass_started", "pass_completed", "advisory_pass_completed"):
             pending = None  # a commit after the pass ends is not this review's fix
