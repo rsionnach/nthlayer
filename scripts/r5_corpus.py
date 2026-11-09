@@ -79,6 +79,7 @@ import difflib
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -583,7 +584,7 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
         parts = Path(path).parts
         tail = [i for i, part in enumerate(parts) if part.startswith(repo_name)]
         path = "/".join(parts[tail[-1] + 1:]) if tail else Path(path).name
-    return path, False
+    return path or None, False
 
 
 # The end of a path component: a sibling sharing a name prefix ("nthlayer"
@@ -717,7 +718,8 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
     exact = [name for name in repos if clean in files[name]]
     if len(exact) == 1 and not tree_missing:
         return exact[0], clean, True
-    parts = clean.split("/")
+    # "x/../y" is y; a leading ".." (a sibling of the reviewer's repo) stays.
+    parts = posixpath.normpath(clean).split("/")
     known = (workspace.dirs if workspace else set()) | set(repos)
     root_name = workspace.root.name if workspace and workspace.root else None
     # The one part that can name a workspace directory: the one after the

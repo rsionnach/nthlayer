@@ -958,6 +958,7 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
     # (with the workspace given, it is; see the member tests below).
     ("/Users/x/eco/demo2/app.py", (None, "app.py", False)),  # a local absolute path is cut
     ("../demo2/app.py", ("demo2", "app.py", True)),
+    ("demo/../demo2/app.py", ("demo2", "app.py", True)),  # x/../y is y
     # A worktree of demo2 is known only from the workspace (tested with a
     # real one below); without it, "demo2-wt" names no record repo.
     ("demo2-wt/app.py", (None, "demo2-wt/app.py", False)),
