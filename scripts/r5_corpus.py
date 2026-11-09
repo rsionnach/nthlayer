@@ -282,31 +282,58 @@ class Private:
 
 # --- the archived record ----------------------------------------------------
 
+def blocking_lenses(record: dict) -> set[str]:
+    """The lenses that blocked in this record's roster: the four, and in a v1
+    record excellence too when it ran as a pass (the roster before 2026-08-28)."""
+    lenses = set(BLOCKING)
+    if record.get("version", 1) == 1 and "excellence" in (record.get("passes") or []):
+        lenses.add("excellence")
+    return lenses
+
+
+def lens_blocks(lens: str, blocking: set[str]) -> bool:
+    """A roster lens, or a one-off pass that names one ("clarity+edge-cases",
+    "delta-clarity", "scoped(correctness+edge)")."""
+    return lens in blocking or any(name in lens or name.split("-")[0] in lens for name in blocking)
+
+
 def reviews(record: dict) -> list[dict]:
-    """Every blocking-lens review in dispatch order, with the commit that
-    followed it (the lens's fix for that iteration, if one was made)."""
+    """Every review the record logs (findings_received), in dispatch order, with
+    the commit that followed it before the next review or the pass's end: that
+    lens's fix for that iteration, if one was made."""
     out: list[dict] = []
     iteration: Counter = Counter()
     pending: dict | None = None
+    blocking = blocking_lenses(record)
     for event in record.get("audit_trail") or []:
         kind, lens = event.get("event"), event.get("pass")
-        if kind == "findings_received" and lens in BLOCKING:
+        if kind == "findings_received" and isinstance(lens, str):
             iteration[lens] += 1
             pending = {"lens": lens, "iteration": iteration[lens], "ts": event.get("ts"),
                        "counts": r5_baseline._counts(event.get("counts")), "fix_commit": None,
-                       "fix_repo": None}
+                       "fix_repo": None, "blocking_lens": lens_blocks(lens, blocking)}
             out.append(pending)
-        elif kind == "commit_made" and pending is not None and pending["fix_commit"] is None:
+        elif kind == "commit_made" and pending is not None:
             if isinstance(event.get("sha"), str):
                 pending["fix_commit"], pending["fix_repo"] = event["sha"], event.get("repo")
             pending = None
-        elif kind == "pass_started":
-            pending = None  # a commit after the next pass starts is not this fix
+        elif kind in ("pass_started", "pass_completed", "advisory_pass_completed"):
+            pending = None  # a commit after the pass ends is not this review's fix
     return out
 
 
 def is_blocking(review: dict) -> bool:
-    return review["counts"]["critical"] + review["counts"]["important"] > 0
+    """A review in a blocking lens that raised a CRITICAL or IMPORTANT."""
+    return review["blocking_lens"] and review["counts"]["critical"] + review["counts"]["important"] > 0
+
+
+def severities_complete(row: dict) -> bool:
+    """Whether every finding the baseline counts has a logged severity. A v1
+    record that logged only totals (``unattributed``), or a lens with findings
+    and no findings_received, may hide a blocking finding, so it is never
+    clean or recorded."""
+    return all(lens["unattributed"] == 0 and (lens["findings_by_review"] or not lens["findings_first_review"])
+               for lens in row["lenses"].values())
 
 
 _BULLET = re.compile(r"^\s*(?:[-*]\s*)?(CRITICAL|IMPORTANT)(?:\s+\d+)?\s*(?:[:—-]|\()\s*(.*)$")
@@ -381,20 +408,30 @@ def build_entry(name: str, stem: str, file: str, record: dict, row: dict, bead_s
     repo = workspace / repo_name
     base, head = (resolve(repo, rng.get("base") or ""), resolve(repo, rng.get("head") or "")) \
         if repo.is_dir() else (None, None)
-    revs = reviews(record)
-    rounds, fidelity = [], "clean"
-    if any(is_blocking(r) for r in revs):
-        fidelity = "counts_only"
-        if not multi:
-            fidelity = classify(file, revs, private, repo, rounds)
-    if not rounds:
-        rounds = [_round(r, None) for r in revs]
     bead = record.get("target_bead")
     escape = KNOWN_ESCAPES.get((bead, repo_name))
+    record_head = head
+    if escape and repo.is_dir():
+        # The escaped code can be in the gate's last tree rather than the
+        # recorded head (oh27's predicate came in during its fix loop), so the
+        # entry carries that tree, or replay could not reach it.
+        head = resolve(repo, escape["at_commit"])
+        check_escape(repo, head, escape)
+    revs = reviews(record)
+    rounds, fidelity = [], "clean"
+    if not severities_complete(row):
+        fidelity = "counts_only"
+    elif any(is_blocking(r) for r in revs):
+        fidelity = "counts_only"
+        if not multi:
+            fidelity = classify(file, revs, private, repo, head, rounds)
+    if not rounds:
+        rounds = [_round(r, None) for r in revs]
     brief, brief_source = choose_brief(stem, bead, repo, private, use_bd)
     meta = {
         "schema_version": SCHEMA_VERSION, "entry": name, "bead": bead, "record": file,
         "repo": repo_name, "base": base, "head": head,
+        "record_head": record_head if record_head != head else None,
         "base_tree": git(repo, "rev-parse", f"{base}^{{tree}}").strip() if base else None,
         "tree_sha": git(repo, "rev-parse", f"{head}^{{tree}}").strip() if head else None,
         "unavailable": None if base and head else "base or head is not in the local repo",
@@ -404,6 +441,11 @@ def build_entry(name: str, stem: str, file: str, record: dict, row: dict, bead_s
         "fidelity": fidelity, "brief_source": brief_source,
         "counts": {lens: [dict(r["counts"]) for r in revs if r["lens"] == lens]
                    for lens in dict.fromkeys(r["lens"] for r in revs)},
+        # The baseline's per-lens view, which has the totals a v1 record kept
+        # when it logged no severities.
+        "baseline": {lens: {k: v[k] for k in ("reviews", "fix_rounds", "findings_first_review",
+                                              "unattributed", "steps")}
+                     for lens, v in row["lenses"].items()},
         "bundle": None,
     }
     recorded = {
@@ -424,7 +466,41 @@ def _round(review: dict, findings: list | None) -> dict:
             "counts": dict(review["counts"]), "findings": findings}
 
 
-def classify(file: str, revs: list[dict], private: Private, repo: Path, rounds: list) -> str:
+def check_escape(repo: Path, head: str | None, escape: dict) -> None:
+    """Refuse an escape whose lines are not in the tree the entry carries."""
+    text = git(repo, "show", f"{head}:{escape['path']}", check=False) if head else ""
+    if not text or len(text.splitlines()) < escape["end_line"]:
+        raise CorpusError(f"KNOWN_ESCAPES {escape['path']}:{escape['end_line']} is not in"
+                          f" {escape['at_commit']} of {repo.name}")
+
+
+def tree_paths(repo: Path, head: str) -> set[str]:
+    return {p for p in git(repo, "ls-tree", "-r", "--name-only", head).split("\n") if p}
+
+
+def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | None, bool]:
+    """A reported path as a path in the head tree, and whether it is one.
+
+    Reviewers write paths as they saw them: repo-relative, prefixed with the
+    repo or a worktree directory, absolute, or a bare file name. The path is
+    the unique tree path the reported one ends with; failing that, a local
+    absolute path is cut to what follows the repo's directory, so no local
+    path is published. Nothing is chosen between two candidates."""
+    if path is None or path in files:
+        return path, path is not None
+    clean = path.strip().lstrip("./")
+    matches = [f for f in files if clean == f or clean.endswith("/" + f) or f.endswith("/" + clean)]
+    if len(matches) == 1:
+        return matches[0], True
+    if path.startswith("/"):
+        parts = Path(path).parts
+        tail = [i for i, part in enumerate(parts) if part.startswith(repo_name)]
+        path = "/".join(parts[tail[-1] + 1:]) if tail else Path(path).name
+    return path, False
+
+
+def classify(file: str, revs: list[dict], private: Private, repo: Path, head: str | None,
+             rounds: list) -> str:
     """recorded, derived or counts_only, filling ``rounds`` for the first two."""
     recorded = []
     for r in revs:
@@ -437,9 +513,14 @@ def classify(file: str, revs: list[dict], private: Private, repo: Path, rounds: 
             continue
         found, prov = got
         fix = resolve(repo, r["fix_commit"]) if r["fix_commit"] and repo.is_dir() else None
-        recorded.append(_round(r, [
-            finding(r["lens"], f["severity"], f.get("path"), f.get("start_line"), f.get("end_line"),
-                    f["claim"], **prov, fix_commit=fix) for f in found]))
+        files = tree_paths(repo, head) if head else set()
+        out = []
+        for f in found:
+            path, in_tree = repo_path(f.get("path"), files, repo.name)
+            out.append(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
+                               f["claim"], **prov, fix_commit=fix, reported_path=f.get("path"),
+                               path_in_tree=in_tree))
+        recorded.append(_round(r, out))
     if recorded is not None:
         rounds += recorded
         return "recorded"
@@ -556,13 +637,18 @@ def build(archive_dir: Path, workspace: Path, private: Private, use_bd: bool) ->
 
 
 def write_entries(entries: list[dict], out: Path) -> None:
+    """Write every entry, replacing the entries a previous run left."""
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("opensrm-*"):
+        if old.is_dir():
+            shutil.rmtree(old)
     for e in entries:
         target = out / e["meta"]["entry"]
         target.mkdir(parents=True, exist_ok=True)
-        (target / "meta.json").write_text(json.dumps(e["meta"], indent=1) + "\n")
-        (target / "recorded.json").write_text(json.dumps(e["recorded"], indent=1) + "\n")
-        (target / "brief.md").write_text(e["brief"])
-        (target / "diff.patch").write_text(e["diff"])
+        for file, text in (("meta.json", json.dumps(e["meta"], indent=1) + "\n"),
+                           ("recorded.json", json.dumps(e["recorded"], indent=1) + "\n"),
+                           ("brief.md", e["brief"]), ("diff.patch", e["diff"])):
+            (target / file).write_text(text, encoding="utf-8")
 
 
 def summary(entries: list[dict]) -> dict:

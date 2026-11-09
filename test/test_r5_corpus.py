@@ -366,3 +366,83 @@ def test_main_writes_the_light_files_and_a_summary(workspace, capsys):
     assert (summary["entries"], summary["fidelity"]["clean"]) == (1, 1)
     assert sorted(p.name for p in (out / "opensrm-mmm").iterdir()) == \
         ["brief.md", "diff.patch", "meta.json", "recorded.json"]
+
+
+# --- pass 1 (correctness) findings -------------------------------------------
+
+def test_a_v1_record_that_logged_only_totals_is_counts_only_not_clean(workspace):
+    # No findings_received at all; completed_passes says correctness found 3
+    # (as v1 records did), so its severities are unknown.
+    ws = workspace["ws"]
+    rec = {"version": 1, "target_bead": "opensrm-nnn", "dry_run": False, "passes": ["correctness"],
+           "diff_range": {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+           "audit_trail": [{"ts": "2000-01-01T00:00:01Z", "event": "pass_started", "pass": "correctness"}],
+           "completed_passes": [{"name": "correctness", "findings_count_initial": 3, "fix_iterations": 1}]}
+    (ws / ".claude" / "r5-state-nnn-completed.json").write_text(json.dumps(rec))
+    e = build(ws)["opensrm-nnn"]
+    assert e["meta"]["fidelity"] == "counts_only"
+    assert e["meta"]["baseline"]["correctness"]["findings_first_review"] == 3
+    assert e["meta"]["baseline"]["correctness"]["unattributed"] == 3
+
+
+def test_an_escape_in_the_gate_s_last_tree_moves_the_entry_head(workspace, monkeypatch):
+    # The escaped line exists only from the fix commit on (app.py line 3).
+    ws = workspace["ws"]
+    write_record(ws, "ooo", record("opensrm-ooo", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    escape = {"lens": "provenance", "severity": "CRITICAL", "path": "app.py", "start_line": 3,
+              "end_line": 3, "at_commit": workspace["fix"][:7], "claim": "c is never read"}
+    monkeypatch.setattr(r5_corpus, "KNOWN_ESCAPES", {("opensrm-ooo", "demo"): escape})
+    meta = build(ws)["opensrm-ooo"]["meta"]
+    assert (meta["head"], meta["record_head"]) == (workspace["fix"], workspace["head"])
+    assert meta["tree_sha"] == run(workspace["repo"], "rev-parse", workspace["fix"] + "^{tree}")
+    # Lines the carried tree does not have are refused, not published.
+    monkeypatch.setattr(r5_corpus, "KNOWN_ESCAPES", {("opensrm-ooo", "demo"): dict(escape, end_line=9)})
+    with pytest.raises(r5_corpus.CorpusError):
+        build(ws)
+
+
+@pytest.mark.parametrize("reported, expected", [
+    ("app.py", ("app.py", True)),
+    ("/Users/someone/ws/demo-worktree/src/pkg/app.py", ("src/pkg/app.py", True)),
+    ("demo/src/pkg/app.py", ("src/pkg/app.py", True)),
+    ("loader.py", ("src/pkg/loader.py", True)),
+    ("util.py", ("util.py", False)),  # two candidates: none is chosen
+    ("/Users/someone/ws/demo/nowhere.py", ("nowhere.py", False)),  # no local path leaks
+    (None, (None, False)),
+])
+def test_a_reported_path_becomes_a_tree_path_or_is_flagged(reported, expected):
+    files = {"app.py", "src/pkg/app.py", "src/pkg/loader.py", "a/util.py", "b/util.py"}
+    if reported == "app.py":
+        assert r5_corpus.repo_path(reported, files, "demo") == expected
+    else:
+        assert r5_corpus.repo_path(reported, files - {"app.py"}, "demo") == expected
+
+
+def test_a_commit_after_a_later_review_or_pass_end_is_not_the_earlier_fix(workspace):
+    trail = [
+        {"ts": "2000-01-01T00:00:01Z", "event": "pass_started", "pass": "correctness"},
+        {"ts": "2000-01-01T00:00:02Z", "event": "findings_received", "pass": "correctness",
+         "counts": {"critical": 0, "important": 1, "minor": 0}},
+        {"ts": "2000-01-01T00:00:03Z", "event": "pass_completed", "pass": "correctness", "fix_iterations": 0},
+        {"ts": "2000-01-01T00:00:04Z", "event": "commit_made", "sha": workspace["fix"], "repo": "demo"},
+    ]
+    (r,) = r5_corpus.reviews({"version": 2, "audit_trail": trail})
+    assert r["fix_commit"] is None
+
+
+def test_a_one_off_pass_naming_a_blocking_lens_blocks_and_v1_excellence_blocks():
+    v2 = {"version": 2, "passes": ["correctness"]}
+    v1 = {"version": 1, "passes": ["correctness", "clarity", "edge-cases", "excellence"]}
+    assert r5_corpus.lens_blocks("clarity+edge-cases", r5_corpus.blocking_lenses(v2))
+    assert r5_corpus.lens_blocks("delta-clarity", r5_corpus.blocking_lenses(v2))
+    assert not r5_corpus.lens_blocks("excellence", r5_corpus.blocking_lenses(v2))
+    assert r5_corpus.lens_blocks("excellence", r5_corpus.blocking_lenses(v1))
+
+
+def test_a_rerun_removes_entries_the_archive_no_longer_yields(workspace, tmp_path):
+    out = tmp_path / "out"
+    (out / "opensrm-stale").mkdir(parents=True)
+    (out / "README.md").write_text("kept\n")
+    r5_corpus.write_entries([], out)
+    assert sorted(p.name for p in out.iterdir()) == ["README.md"]
