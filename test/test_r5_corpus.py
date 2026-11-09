@@ -483,3 +483,22 @@ def test_a_passless_review_is_placed_as_the_baseline_places_it(monkeypatch):
                         {("opensrm-qqq", "findings_received", "2000-01-01T00:00:02Z"): "correctness"})
     (r,) = r5_corpus.reviews({"version": 2, "target_bead": "opensrm-qqq", "audit_trail": trail})
     assert (r["lens"], r5_corpus.is_blocking(r)) == ("correctness", True)
+
+
+# --- pass 1 (correctness), iteration 3 ----------------------------------------
+
+def test_masking_a_relative_workspace_touches_only_its_absolute_path(tmp_path, monkeypatch):
+    ws = tmp_path / "eco"
+    ws.mkdir()
+    monkeypatch.chdir(ws / "..")
+    text = f"range f42ce8d..28d7add, ../x.py and a.b, file {ws}/demo/app.py"
+    masked = r5_corpus.mask_workspace(text, Path("eco"))
+    assert masked == "range f42ce8d..28d7add, ../x.py and a.b, file <workspace>/demo/app.py"
+    monkeypatch.chdir(ws)
+    assert r5_corpus.mask_workspace("a..b a.b", Path(".")) == "a..b a.b"
+
+
+def test_masking_home_respects_the_path_boundary(monkeypatch):
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/Users/rob")))
+    assert r5_corpus.mask_workspace("/Users/rob/x and /Users/robert/y", Path("/nowhere")) == \
+        "~/x and /Users/robert/y"

@@ -511,9 +511,11 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     that path says nothing about the code and is not published."""
     if text is None:
         return None
-    for root in sorted({str(workspace), str(workspace.resolve())}, key=len, reverse=True):
-        text = text.replace(root, "<workspace>")
-    return text.replace(str(Path.home()), "~")
+    # Absolute forms only: a relative workspace ("..") would match every "..".
+    for root in sorted({str(workspace.resolve()), str(workspace.absolute())}, key=len, reverse=True):
+        text = re.sub(re.escape(root) + r"(?=/|\b|$)", "<workspace>", text)
+    home = str(Path.home())
+    return re.sub(re.escape(home) + r"(?=/|$|[^\w.-])", "~", text)
 
 
 def classify(file: str, revs: list[dict], private: Private, repo: Path, head: str | None,
