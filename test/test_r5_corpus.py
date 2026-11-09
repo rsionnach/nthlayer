@@ -207,6 +207,7 @@ def test_a_record_whose_extraction_passes_is_recorded(workspace, tmp_path):
     assert e["meta"]["tree_sha"] == run(workspace["repo"], "rev-parse", workspace["head"] + "^{tree}")
     assert e["meta"]["base"] == workspace["base"]  # the archive's short SHA, resolved
     assert e["meta"]["record_head"] is None  # no escape moved the head
+    assert e["meta"]["escape"] is False
     assert (e["meta"]["record"], e["meta"]["part"], e["meta"]["record_repos"]) == ("aaa", None, ["demo"])
     assert e["meta"]["sequential_steps"] == e["meta"]["record_sequential_steps"]
 
@@ -990,9 +991,12 @@ def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
     entry = {"meta": {"bead": "b", "fidelity": "recorded", "blocking_findings": 2, "brief_source": "none",
                       "unavailable": None, "entry": "e", "archive": "a"},
              "recorded": {"rounds": [{"findings": [f, g]}], "cross_repo_findings": []}}
-    counts = r5_corpus.summary([entry])["located_findings"]
+    summary = r5_corpus.summary([entry])
+    counts = summary["located_findings"]
     assert (counts["no_path"], counts["path_not_in_tree"]) == (1, 1)
     assert counts["no_range"] == 1  # f has no start line; g has one
+    # The other summary test pins each of these at another value.
+    assert (counts["total"], counts["cross_repo"], summary["blocking_findings_unknown"]) == (2, 0, 0)
 
 
 
@@ -1169,6 +1173,11 @@ def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(
     summary = json.loads(capsys.readouterr().out)
     assert summary["blocking_findings_unknown"] == 1
     assert summary["located_findings"]["cross_repo"] == 1
+    # Four entries over three beads; xrp's two sub-entries share one bead.
+    assert (summary["entries"], summary["beads"]) == (4, 3)
+    assert summary["fidelity"] == {"recorded": {"entries": 2, "beads": 1},
+                                   "derived": {"entries": 1, "beads": 1},
+                                   "counts_only": {"entries": 1, "beads": 1}}
     assert summary["located_findings"]["total"] == 1  # eee's derived finding; xrp's is cross-repo
     # eee's derived finding has a path, in its tree.
     assert summary["located_findings"]["path_not_in_tree"] == 0
