@@ -651,3 +651,56 @@ def test_a_symlink_named_like_an_entry_is_refused(tmp_path):
     with pytest.raises(r5_corpus.CorpusError):
         r5_corpus.write_entries([], out)
     assert (real / "meta.json").exists()
+
+
+
+def _fake_bd(monkeypatch, returncode: int, stdout: str = "", stderr: str = ""):
+    monkeypatch.setattr(r5_corpus.shutil, "which", lambda name: "/usr/bin/bd")
+    monkeypatch.setattr(r5_corpus.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        a[0], returncode, stdout=stdout, stderr=stderr))
+
+
+def test_a_failing_bd_is_refused_but_a_missing_bead_is_not(tmp_path, monkeypatch):
+    (tmp_path / "opensrm").mkdir()
+    _fake_bd(monkeypatch, 1, stderr="Error: database is locked")
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm")
+    _fake_bd(monkeypatch, 0, stdout="not json")
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm")
+    _fake_bd(monkeypatch, 1, stderr="Error: no issue found matching \"opensrm-x\"")
+    assert r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm") is None
+
+
+def test_bd_absent_without_no_bd_is_refused(tmp_path, monkeypatch):
+    (tmp_path / "opensrm").mkdir()
+    monkeypatch.setattr(r5_corpus.shutil, "which", lambda name: None)
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm")
+
+
+def test_a_config_reaching_commit_tree_does_not_change_the_bundle(workspace, tmp_path, monkeypatch):
+    ws = workspace["ws"]
+    write_record(ws, "yyy", record("opensrm-yyy", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    entries = list(build(ws).values())
+    r5_corpus.write_bundles(entries, ws, tmp_path / "plain")
+    for key, value in {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "i18n.commitEncoding",
+                       "GIT_CONFIG_VALUE_0": "ISO-8859-1", "GIT_DIR": str(workspace["repo"] / ".git")}.items():
+        monkeypatch.setenv(key, value)
+    again = list(build(ws).values())
+    r5_corpus.write_bundles(again, ws, tmp_path / "configured")
+    assert again[0]["meta"]["bundle"]["head_commit"] == entries[0]["meta"]["bundle"]["head_commit"]
+    assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
+    assert not run(workspace["repo"], "for-each-ref", "refs/r5")  # nothing written to the caller's repo
+
+
+def test_an_out_that_is_a_file_is_refused_before_bundles(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "zzz", record("opensrm-zzz", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out, bundles = tmp_path / "out", tmp_path / "bundles"
+    out.write_text("a file\n")
+    assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--archive-dir",
+                           str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert not bundles.exists()

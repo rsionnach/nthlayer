@@ -128,10 +128,16 @@ class CorpusError(ValueError):
     """An input this script cannot turn into a corpus entry without guessing."""
 
 
-def git(repo: Path, *args: str, env: dict | None = None, check: bool = True) -> str:
+def git(repo: Path, *args: str, env: dict | None = None, check: bool = True,
+        isolated: bool = False) -> str:
+    """Run git in ``repo``. ``isolated`` drops every inherited GIT_* variable
+    (an inherited GIT_DIR would aim the command at the caller's repo) and the
+    caller's config, so what it writes depends on its arguments alone."""
+    base = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} if isolated \
+        else dict(os.environ)
     result = subprocess.run(
         ["git", "-C", str(repo), *args], capture_output=True, text=True,
-        env={**os.environ, **(env or {})},
+        env={**base, **(CLEAN_GIT_ENV if isolated else {}), **(env or {})},
     )
     if check and result.returncode != 0:
         raise CorpusError(f"git {' '.join(args)} in {repo}: {result.stderr.strip()}")
@@ -603,8 +609,11 @@ def choose_brief(stem: str, bead: str | None, repo: Path, private: PrivateArchiv
 
 
 def bead_description(bead: str, beads_repo: Path) -> str | None:
+    """The bead's title, description and acceptance criteria, or None when bd
+    has no such bead. Any other failure is refused: falling back to a lesser
+    brief would make the corpus depend on the machine and the moment."""
     if shutil.which("bd") is None or not beads_repo.is_dir():
-        return None
+        raise CorpusError(f"bd or the beads checkout {beads_repo} is missing: pass --no-bd")
     try:
         result = subprocess.run(["bd", "show", bead, "--json"], cwd=beads_repo,
                                 capture_output=True, text=True, timeout=BD_TIMEOUT_S)
@@ -614,11 +623,13 @@ def bead_description(bead: str, beads_repo: Path) -> str | None:
         raise CorpusError(f"bd show {bead} timed out after {BD_TIMEOUT_S}s (a held Dolt"
                           " lock?): retry, or pass --no-bd") from exc
     if result.returncode != 0:
-        return None
+        if "no issue found" in (result.stderr + result.stdout).lower():
+            return None  # bd answered: there is no such bead
+        raise CorpusError(f"bd show {bead} failed ({result.stderr.strip()[:200]}): retry, or pass --no-bd")
     try:
         data = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        raise CorpusError(f"bd show {bead} printed no JSON: retry, or pass --no-bd") from exc
     item = data[0] if isinstance(data, list) and data else data
     if not isinstance(item, dict):
         return None
@@ -653,24 +664,26 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
         objects = git(source, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
         with tempfile.TemporaryDirectory() as tmp:
             scratch = Path(tmp)
-            git(scratch, "init", "-q", "--bare")
+            git(scratch, "init", "-q", "--bare", isolated=True)
             (scratch / "objects" / "info").mkdir(parents=True, exist_ok=True)
             (scratch / "objects" / "info" / "alternates").write_text(f"{objects}/objects\n")
             for e in group:
                 meta = e["meta"]
                 base_commit = git(scratch, "commit-tree", meta["base_tree"], "-m",
-                                  f"{meta['entry']} base {meta['base']}", env=SYNTHETIC_ENV).strip()
+                                  f"{meta['entry']} base {meta['base']}", env=SYNTHETIC_ENV,
+                                  isolated=True).strip()
                 head_commit = git(scratch, "commit-tree", meta["tree_sha"], "-p", base_commit, "-m",
-                                  f"{meta['entry']} head {meta['head']}", env=SYNTHETIC_ENV).strip()
-                git(scratch, "update-ref", f"refs/r5/{meta['entry']}/base", base_commit)
-                git(scratch, "update-ref", f"refs/r5/{meta['entry']}/head", head_commit)
+                                  f"{meta['entry']} head {meta['head']}", env=SYNTHETIC_ENV,
+                                  isolated=True).strip()
+                git(scratch, "update-ref", f"refs/r5/{meta['entry']}/base", base_commit, isolated=True)
+                git(scratch, "update-ref", f"refs/r5/{meta['entry']}/head", head_commit, isolated=True)
                 meta["bundle"] = {"asset": f"{repo_name}.bundle", "base_commit": base_commit,
                                   "head_commit": head_commit}
             target = out / f"{repo_name}.bundle"
             # One pack thread: a threaded delta search orders objects
             # differently run to run, and the published sha256 must hold.
             git(scratch, *PACK_CONFIG, "bundle", "create", "-q", str(target.resolve()), "--all",
-                env=CLEAN_GIT_ENV)
+                isolated=True)
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
         version = git(source, "--version").strip()
         for e in group:
@@ -726,6 +739,8 @@ def previous_entries(out: Path) -> list[Path]:
     rather than delete it."""
     if not out.exists():
         return []
+    if not out.is_dir():
+        raise CorpusError(f"--out {out} is not a directory")
     names = sorted(out.glob("opensrm-*"))
     strangers = [p.name for p in names
                  if p.is_symlink() or not p.is_dir() or not is_corpus_entry(p)]
