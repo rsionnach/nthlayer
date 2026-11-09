@@ -195,7 +195,9 @@ def test_a_record_whose_extraction_passes_is_recorded(workspace, tmp_path):
     e = build(ws, private)["opensrm-aaa"]
     assert e["meta"]["fidelity"] == "recorded"
     first, second = e["recorded"]["rounds"]
-    assert [f["severity"] for f in first["findings"]] == ["IMPORTANT", "MINOR"]
+    # The corpus carries the gate's blocking findings: the MINOR is not kept.
+    assert [f["severity"] for f in first["findings"]] == ["IMPORTANT"]
+    assert e["meta"]["blocking_findings"] == 1
     assert first["findings"][0]["fix_commit"] == workspace["fix"]
     assert first["findings"][0]["derived_from"] == "reviewer_transcript"
     assert second["findings"] is None  # a clean re-review: nothing was extracted
@@ -203,6 +205,8 @@ def test_a_record_whose_extraction_passes_is_recorded(workspace, tmp_path):
     assert e["recorded"]["iterations"] == {"correctness": 2}
     assert e["meta"]["tree_sha"] == run(workspace["repo"], "rev-parse", workspace["head"] + "^{tree}")
     assert e["meta"]["base"] == workspace["base"]  # the archive's short SHA, resolved
+    assert (e["meta"]["record"], e["meta"]["part"], e["meta"]["record_repos"]) == ("aaa", None, ["demo"])
+    assert e["meta"]["sequential_steps"] == e["meta"]["record_sequential_steps"]
 
 
 def test_an_extraction_whose_counts_differ_from_the_archive_is_not_recorded(workspace, tmp_path):
@@ -272,25 +276,58 @@ def test_bullets_that_do_not_match_the_counts_are_not_derived(workspace):
     assert build(ws)["opensrm-fff"]["meta"]["fidelity"] == "counts_only"
 
 
-def test_a_record_with_no_blocking_finding_is_clean(workspace):
+def test_a_record_with_no_blocking_finding_is_clean_at_counts_only(workspace):
+    # blocking_findings 0 marks it clean; with no extraction of its reviews,
+    # only the archive says so, so the fidelity is counts_only.
     ws = workspace["ws"]
     rec = record("opensrm-ggg", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                  [("correctness", {"critical": 0, "important": 0, "minor": 3}, None)])
     write_record(ws, "ggg", rec)
-    assert build(ws)["opensrm-ggg"]["meta"]["fidelity"] == "clean"
+    meta = build(ws)["opensrm-ggg"]["meta"]
+    assert (meta["fidelity"], meta["blocking_findings"]) == ("counts_only", 0)
 
 
-def test_a_multi_repo_record_splits_into_counts_only_entries(workspace):
+def test_a_multi_repo_record_assigns_its_findings_by_path(workspace, tmp_path):
     ws = workspace["ws"]
     rng = {"base": workspace["base"], "head": workspace["head"]}
     rec = record("opensrm-hhh", {"demo": rng, "missing": rng},
-                 [("correctness", {"critical": 0, "important": 1, "minor": 0}, workspace["fix"])])
-    write_record(ws, "hhh", rec)
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, workspace["fix"])])
+    stamps = write_record(ws, "hhh", rec)
     entries = build(ws)
-    assert set(entries) == {"opensrm-hhh--demo", "opensrm-hhh--missing"}
-    # Derivable on its own (as opensrm-eee), but not attributable to one repo.
-    assert {e["meta"]["fidelity"] for e in entries.values()} == {"counts_only"}
-    assert entries["opensrm-hhh--missing"]["meta"]["unavailable"]
+    assert set(entries) == {"opensrm-hhh-demo", "opensrm-hhh-missing"}
+    # No extraction: derived from the fix commit, which the archive logs in
+    # demo, so its finding is demo's; steps are the record's only.
+    for e in entries.values():
+        assert (e["meta"]["fidelity"], e["meta"]["sequential_steps"]) == ("derived", None)
+        assert e["meta"]["record_sequential_steps"] is not None
+        assert e["meta"]["record_repos"] == ["demo", "missing"]
+    assert [f["path"] for f in entries["opensrm-hhh-demo"]["recorded"]["rounds"][0]["findings"]] == ["app.py"]
+    assert entries["opensrm-hhh-missing"]["recorded"]["rounds"][0]["findings"] == []
+    assert entries["opensrm-hhh-missing"]["meta"]["unavailable"]
+    # With an accepted extraction, app.py's finding goes to demo, whose head
+    # tree holds it; the missing repo's entry gets none of it.
+    private = private_archive(tmp_path / "p", "r5-state-hhh-completed.json", "correctness", stamps[0])
+    entries = build(ws, private)
+    demo, missing = entries["opensrm-hhh-demo"], entries["opensrm-hhh-missing"]
+    assert demo["meta"]["fidelity"] == missing["meta"]["fidelity"] == "recorded"
+    assert [f["path"] for f in demo["recorded"]["rounds"][0]["findings"]] == ["app.py"]
+    assert missing["recorded"]["rounds"][0]["findings"] == []
+    assert demo["recorded"]["cross_repo_findings"] == missing["recorded"]["cross_repo_findings"] == []
+
+
+def test_a_finding_no_single_repo_holds_is_listed_cross_repo(workspace, tmp_path):
+    ws = workspace["ws"]
+    rng = {"base": workspace["base"], "head": workspace["head"]}
+    rec = record("opensrm-xrp", {"demo": rng, "demo2": rng},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)])
+    stamps = write_record(ws, "xrp", rec)
+    # demo2 is a second clone: app.py is in both head trees, so neither is chosen.
+    run(ws, "clone", "-q", str(workspace["repo"]), str(ws / "demo2"))
+    private = private_archive(tmp_path / "p", "r5-state-xrp-completed.json", "correctness", stamps[0])
+    entries = build(ws, private)
+    for e in entries.values():
+        assert e["recorded"]["rounds"][0]["findings"] == []
+        assert [f["claim"] for f in e["recorded"]["cross_repo_findings"]] == [EXTRACTION[0]["claim"]]
 
 
 # --- escapes, briefs, bundles ----------------------------------------------
@@ -325,14 +362,15 @@ def test_the_brief_prefers_the_reviewer_s_own(workspace, tmp_path):
     rec = record("opensrm-kkk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)])
     write_record(ws, "kkk", rec)
-    assert build(ws)["opensrm-kkk"]["meta"]["brief_source"] == "none"
+    none = build(ws)["opensrm-kkk"]
+    assert (none["meta"]["brief_source"], none["brief"]) == ("none", None)  # no brief.md is written
     private = tmp_path / "p"
     (private / "briefs").mkdir(parents=True)
     (private / "index.json").write_text(json.dumps({"pairings": []}))
     (private / "briefs" / "kkk.md").write_text("Review the diff for correctness.\n")
     (private / "briefs" / "index.json").write_text(json.dumps({"kkk": {"sha256": "x"}}))
     e = build(ws, private)["opensrm-kkk"]
-    assert (e["meta"]["brief_source"], e["brief"]) == ("reviewer_brief", "Review the diff for correctness.\n")
+    assert (e["meta"]["brief_source"], e["brief"]) == ("reviewer_prompt", "Review the diff for correctness.\n")
 
 
 def test_a_bundle_carries_each_entry_s_exact_trees_and_is_reproducible(workspace, tmp_path):
@@ -349,13 +387,19 @@ def test_a_bundle_carries_each_entry_s_exact_trees_and_is_reproducible(workspace
     run(clone, "fetch", "-q", str(bundle), "refs/r5/*:refs/r5/*")
     assert run(clone, "rev-parse", "refs/r5/opensrm-lll/head^{tree}") == meta["tree_sha"]
     assert run(clone, "rev-parse", "refs/r5/opensrm-lll/base^{tree}") == meta["base_tree"]
-    assert run(clone, "rev-parse", "refs/r5/opensrm-lll/head^") == meta["bundle"]["base_commit"]
+    assert run(clone, "rev-parse", "refs/r5/opensrm-lll/head^") == meta["synthetic_base"]
+    assert run(clone, "rev-parse", "refs/r5/opensrm-lll/head") == meta["synthetic_head"]
+    assert meta["bundle"]["repo"] == "demo"
+    manifest = json.loads((tmp_path / "b1" / "bundles.json").read_text())
+    (item,) = manifest["bundles"]
+    assert (item["repo"], item["sha256"], item["size"]) == ("demo", meta["bundle"]["sha256"], bundle.stat().st_size)
+    assert item["url"].endswith(f"/releases/download/{manifest['release_tag']}/demo.bundle")
     # The diff the replay sees is the diff the gate saw.
     assert run(clone, "diff", "refs/r5/opensrm-lll/base", "refs/r5/opensrm-lll/head") == \
         run(workspace["repo"], "diff", workspace["base"], workspace["head"])
     again = list(build(ws).values())
     r5_corpus.write_bundles(again, ws, tmp_path / "b2")
-    assert again[0]["meta"]["bundle"]["head_commit"] == meta["bundle"]["head_commit"]
+    assert again[0]["meta"]["synthetic_head"] == meta["synthetic_head"]
 
 
 def test_main_writes_the_light_files_and_a_summary(workspace, capsys):
@@ -366,9 +410,11 @@ def test_main_writes_the_light_files_and_a_summary(workspace, capsys):
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"),
                            "--workspace", str(ws), "--no-bd"]) == 0
     summary = json.loads(capsys.readouterr().out)
-    assert (summary["entries"], summary["fidelity"]["clean"]) == (1, 1)
-    assert sorted(p.name for p in (out / "opensrm-mmm").iterdir()) == \
-        ["brief.md", "diff.patch", "meta.json", "recorded.json"]
+    assert (summary["entries"], summary["clean_entries"]) == (1, 1)
+    assert summary["fidelity"]["counts_only"] == {"entries": 1, "beads": 1}
+    assert summary["brief_source"]["none"] == 1
+    # brief_source none: no brief.md.
+    assert sorted(p.name for p in (out / "opensrm-mmm").iterdir()) == ["diff.patch", "meta.json", "recorded.json"]
 
 
 # --- severities, escapes, tree paths, review pairing, rosters, reruns ---------
@@ -634,7 +680,8 @@ def test_the_caller_s_git_config_does_not_change_the_bundle(workspace, tmp_path,
     again = list(build(ws).values())
     r5_corpus.write_bundles(again, ws, tmp_path / "configured")
     assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
-    assert again[0]["meta"]["bundle"]["git_version"].startswith("git version")
+    manifest = json.loads((tmp_path / "configured" / "bundles.json").read_text())
+    assert manifest["bundles"][0]["git_version"].startswith("git version")
 
 
 def test_a_foreign_out_is_refused_before_any_bundle_is_written(workspace, tmp_path):
@@ -699,7 +746,7 @@ def test_a_config_reaching_commit_tree_does_not_change_the_bundle(workspace, tmp
         monkeypatch.setenv(key, value)
     again = list(build(ws).values())
     r5_corpus.write_bundles(again, ws, tmp_path / "configured")
-    assert again[0]["meta"]["bundle"]["head_commit"] == entries[0]["meta"]["bundle"]["head_commit"]
+    assert again[0]["meta"]["synthetic_head"] == entries[0]["meta"]["synthetic_head"]
     assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
     assert not run(workspace["repo"], "for-each-ref", "refs/r5")  # nothing written to the caller's repo
 
@@ -797,7 +844,7 @@ def test_a_v2_excellence_finding_never_makes_an_entry_blocking(workspace):
     write_record(ws, "exc", record("opensrm-exc", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 1}, None),
                                     ("excellence", {"critical": 0, "important": 1, "minor": 0}, None)]))
-    assert build(ws)["opensrm-exc"]["meta"]["fidelity"] == "clean"
+    assert build(ws)["opensrm-exc"]["meta"]["blocking_findings"] == 0
 
 
 
@@ -873,3 +920,23 @@ def test_a_one_off_pass_naming_a_lens_by_its_first_word_blocks():
 def test_an_absolute_path_is_cut_after_the_last_part_naming_the_repo():
     # A worktree "demo-wt" inside a workspace that also holds "demo".
     assert r5_corpus.repo_path("/ws/demo/../demo-wt/src/x.py", set(), "demo") == ("src/x.py", False)
+
+
+
+def test_the_part_is_the_stem_s_suffix_after_the_bead():
+    assert r5_corpus.record_part("zo0o-workers", "opensrm-zo0o") == "workers"
+    assert r5_corpus.record_part("wo62-1-checkpointA-floors", "opensrm-wo62.1") == "checkpointA-floors"
+    assert r5_corpus.record_part("jmy.7", "opensrm-jmy.7") is None
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.record_part("other-x", "opensrm-zo0o")
+
+
+def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
+    ws = workspace["ws"]
+    rec = {"version": 1, "target_bead": "opensrm-unk", "dry_run": False, "passes": ["correctness"],
+           "diff_range": {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+           "audit_trail": [{"ts": "2000-01-01T00:00:01Z", "event": "pass_started", "pass": "correctness"}],
+           "completed_passes": [{"name": "correctness", "findings_count_initial": 2, "fix_iterations": 0}]}
+    (ws / ".claude" / "r5-state-unk-completed.json").write_text(json.dumps(rec))
+    meta = build(ws)["opensrm-unk"]["meta"]
+    assert (meta["fidelity"], meta["blocking_findings"]) == ("counts_only", None)

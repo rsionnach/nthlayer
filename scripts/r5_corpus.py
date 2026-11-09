@@ -6,47 +6,56 @@ R5 Gate v2 Phase A.2 (opensrm-6kqs.2; nthlayer/docs/superpowers/specs/
 batched gate is replayed against this corpus to show it catches what the
 sequential gate caught.
 
-One entry per archived gate record and repo (rulings on opensrm-6kqs.2,
-2026-11-09): ``<out>/opensrm-<stem>/``, or ``opensrm-<stem>--<repo>/`` when the
-record gated several repos. Each holds the light files:
+One entry per archived gate record and repo (spec v1.1, section 6):
+``<out>/opensrm-<stem>/``, the record's stem as the directory, with
+``-<repo>`` appended when one record gated several repos. Each holds the light
+files:
 
-- ``meta.json``: bead, record, repo, base and head (full SHAs) and their trees
-  (``record_head`` when an escape moved the head, ``unavailable`` when the
-  local repo lacks one), the roster, ``sequential_steps`` for the record and
-  ``bead_sequential_steps`` for its bead (r5_baseline), ``escape``,
-  ``fidelity``, ``brief_source``, per-lens severity counts per review,
-  r5_baseline's per-lens totals (``baseline``), and the synthetic bundle
-  commits that carry base's and head's trees.
-- ``brief.md``: what the reviewers were given, by source (BRIEF_SOURCES).
+- ``meta.json``: bead, ``record`` (the stem), ``archive`` (its file),
+  ``record_repos``, repo, ``part`` (the stem's suffix after the bead id), base
+  and head (full SHAs) and their trees (``record_head`` when an escape moved
+  the head, ``unavailable`` when the local repo lacks one), ``synthetic_base``
+  and ``synthetic_head`` and ``bundle: {repo, sha256}`` (with --bundles),
+  ``sequential_steps`` (null on a multi-repo sub-entry, which the archive
+  cannot split) and ``record_sequential_steps``, ``bead_sequential_steps``,
+  ``fidelity``, ``blocking_findings``, ``escape``, ``brief_source``, the
+  roster, lens order, per-lens severity counts per review and r5_baseline's
+  per-lens totals (``baseline``).
+- ``brief.md``: what the reviewers were given, by BRIEF_SOURCES; absent when
+  the source is none.
 - ``diff.patch``: ``git diff base head``.
-- ``recorded.json``: the gate's rounds per lens, with findings in the section 6
-  schema where they are known, and the escaped finding for the two escapes.
+- ``recorded.json``: the gate's rounds per lens, with its blocking findings
+  in the section 6 schema where they are known, ``cross_repo_findings``, and
+  the escaped finding for the two escapes.
 
-The heavy part, one git bundle per repo, is written to ``--bundles``: each
+With ``--bundles``, the heavy part: one git bundle per repo holding each
 entry's base and head trees as two synthetic commits (tree SHAs exact, commit
-SHAs synthetic and deterministic), published as release assets under
-BUNDLE_TAG, never committed. meta.json carries the asset's name, URL
-and sha256.
+SHAs synthetic and deterministic), and ``bundles.json`` (repo, sha256, size,
+release tag, URL). The bundles are release assets on CORPUS_REPO, whose git
+content is bundles.json; they are never committed.
 
-Fidelity, per entry (FIDELITIES), never an exclusion:
+Fidelity is provenance (FIDELITIES), decided once per record, never an
+exclusion; ``blocking_findings`` (an integer, null when the archive's
+severities are incomplete) is what it found, and 0 is a clean entry:
 
 - ``recorded``: the reviewer's own findings, extracted from its report (the
   private archive below) and accepted only if every blocking iteration's
   extraction passes check_extraction and its CRITICAL and IMPORTANT counts
-  equal the archive's.
+  equal the archive's. A finding carries a claim, and a path and range only
+  where the report gave them.
 - ``derived``: path and range from the lens's fix-commit hunks, claim from
   its severity bullet, one-to-one only.
-- ``clean``: no CRITICAL or IMPORTANT finding in any blocking lens.
 - ``counts_only``: counts, lens order, iterations and steps; nothing finer.
-  An entry split from a multi-repo record is counts_only (or clean): a finding
-  cannot be given to one of its repos without guessing.
+
+A multi-repo record's findings go to the entry whose repo holds their path
+(for a derived one, the repo its fix commit was made in); one no single repo
+holds is listed under ``cross_repo_findings`` in every sub-entry.
 
 Inputs: the archives (``--archive-dir``, the workspace's ``.claude/``), the
 member repos (``--workspace``), and the private archive (``--private-dir``,
 ``.claude/r5-handbacks/``): reviewer reports, their extractions and briefs,
 taken from session transcripts. Only findings and briefs leave it; the
-conversation around them never does. Without it every entry is derived, clean
-or counts_only.
+conversation around them never does. Without it no entry is recorded.
 
 Standard library only (and git), like r5_baseline.py, which it imports.
 
@@ -81,12 +90,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import r5_baseline  # noqa: E402  (a sibling script, not a package)
 
 SCHEMA_VERSION = 1
-FIDELITIES = ("recorded", "derived", "clean", "counts_only")
-BRIEF_SOURCES = ("reviewer_brief", "bead_description", "repo_plan", "none")
+FIDELITIES = ("recorded", "derived", "counts_only")
+BRIEF_SOURCES = ("reviewer_prompt", "bead", "plan_doc", "none")
 BLOCKING = r5_baseline.LENS_ORDER[:4]  # the blocking roster; excellence is advisory
-BUNDLE_TAG = "r5-replay-corpus-v1"
+BUNDLE_TAG = "v1"  # one release per corpus version on the corpus repository
 BD_TIMEOUT_S = 60
-BUNDLE_URL = "https://github.com/rsionnach/nthlayer/releases/download/{tag}/{name}"
+CORPUS_REPO = "rsionnach/curamoir-replay-corpus"
+BUNDLE_URL = "https://github.com/" + CORPUS_REPO + "/releases/download/{tag}/{name}"
 
 # Synthetic commits are fixed in identity and time, so the same trees give the
 # same commit SHAs on every run.
@@ -351,13 +361,13 @@ def reviews(record: dict) -> list[dict]:
                        # r5_baseline's own reading of a counts value, so the two
                        # scripts can never disagree on one.
                        "counts": r5_baseline._counts(event.get("counts")), "fix_commit": None,
-                       "blocking_lens": lens_blocks(lens, blocking)}
+                       "fix_repo": None, "blocking_lens": lens_blocks(lens, blocking)}
             out.append(pending)
         elif kind == "commit_made" and pending is not None:
             # One archive logs a bare commit_made with no sha: it names no
             # fix, and still ends the review's window.
             if isinstance(event.get("sha"), str):
-                pending["fix_commit"] = event["sha"]
+                pending["fix_commit"], pending["fix_repo"] = event["sha"], event.get("repo")
             pending = None
         elif kind in ("pass_started", "pass_completed", "advisory_pass_completed"):
             pending = None  # a commit after the pass ends is not this review's fix
@@ -440,48 +450,63 @@ def changed_span(repo: Path, sha: str, path: str) -> tuple[int, int] | None:
 # --- entries ----------------------------------------------------------------
 
 def entry_name(stem: str, repo: str, repos: int) -> str:
-    return f"opensrm-{stem}" + (f"--{repo}" if repos > 1 else "")
+    """The record's stem as the directory (spec section 6), with the repo
+    appended only when one record spans several."""
+    return f"opensrm-{stem}" + (f"-{repo}" if repos > 1 else "")
 
 
-def build_entry(entry: str, stem: str, record_file: str, record: dict, row: dict, bead_steps: int,
-                repo_name: str, rng: dict, multi: bool, workspace: Path,
-                private: PrivateArchive, use_bd: bool) -> dict:
-    """The light files of one entry, as data, plus the trees its bundle needs."""
-    repo = workspace / repo_name
-    base, head = (resolve(repo, rng.get("base") or ""), resolve(repo, rng.get("head") or "")) \
-        if repo.is_dir() else (None, None)
-    bead = record.get("target_bead")
+def record_part(stem: str, bead: str) -> str | None:
+    """The suffix the record's stem carries after the bead id (a checkpoint,
+    or the repo it was named for), or None. Stems write a bead's dots as
+    dashes; a stem that starts with neither form is refused."""
+    short = bead.removeprefix("opensrm-")
+    for form in dict.fromkeys((short, short.replace(".", "-"))):
+        if stem == form:
+            return None
+        if stem.startswith(form + "-"):
+            return stem[len(form) + 1:]
+    raise CorpusError(f"record stem {stem!r} does not start with its bead {bead}")
+
+
+def build_entry(stem: str, record_file: str, record: dict, row: dict, bead_steps: int,
+                repo_name: str, repo_state: dict, ranges: dict, classified: tuple,
+                workspace: Path, private: PrivateArchive, use_bd: bool) -> dict:
+    """One entry's light files, as data, plus the trees its bundle needs.
+    ``classified`` is the record's (fidelity, rounds, blocking_findings), with
+    each finding tagged by the repo it was assigned to."""
+    multi = len(ranges) > 1
+    repo, base, head, record_head = (repo_state[k] for k in ("path", "base", "head", "record_head"))
+    bead = record["target_bead"]
     escape = KNOWN_ESCAPES.get((bead, repo_name))
-    record_head = head
-    if escape and repo.is_dir():
-        # The escaped code can be in the gate's last tree rather than the
-        # recorded head (oh27's predicate came in during its fix loop), so the
-        # entry carries that tree, or replay could not reach it.
-        head = resolve(repo, escape["at_commit"])
-        check_escape(repo, head, escape)
+    fidelity, record_rounds, blocking = classified
     revs = reviews(record)
-    if not severities_complete(row):
-        fidelity, rounds = "counts_only", None
-    elif not any(raised_blocking_finding(r) for r in revs):
-        fidelity, rounds = "clean", None
-    elif multi:
-        fidelity, rounds = "counts_only", None  # a finding cannot be given to one repo
-    else:
-        fidelity, rounds = classify(record_file, revs, private, repo, head)
-    rounds = rounds or [_round(r, None) for r in revs]
+    rounds = [dict(r, findings=None if r["findings"] is None else
+                   [_published(f) for f in r["findings"] if f["_repo"] == repo_name])
+              for r in record_rounds] if record_rounds else [_round(r, None) for r in revs]
+    cross = [_published(f) for r in (record_rounds or []) for f in (r["findings"] or [])
+             if f["_repo"] is None]
     brief, brief_source = choose_brief(stem, bead, repo, private, use_bd)
-    brief = mask_workspace(brief, workspace) or ""
     meta = {
-        "schema_version": SCHEMA_VERSION, "entry": entry, "bead": bead, "record": record_file,
-        "repo": repo_name, "base": base, "head": head,
+        "schema_version": SCHEMA_VERSION, "entry": entry_name(stem, repo_name, len(ranges)),
+        "bead": bead, "record": stem, "archive": record_file, "record_repos": list(ranges),
+        "repo": repo_name, "part": record_part(stem, bead),
+        "base": base, "head": head,
         "record_head": record_head if record_head != head else None,
+        "synthetic_base": None, "synthetic_head": None,
         "base_tree": git(repo, "rev-parse", f"{base}^{{tree}}").strip() if base else None,
         "tree_sha": git(repo, "rev-parse", f"{head}^{{tree}}").strip() if head else None,
         "unavailable": None if base and head else "base or head is not in the local repo",
+        "bundle": None,
+        # The archive cannot split a multi-repo record's steps by repo.
+        "sequential_steps": None if multi else row["sequential_steps"],
+        "record_sequential_steps": row["sequential_steps"],
+        "bead_sequential_steps": bead_steps,
+        "fidelity": fidelity,
+        # Record-level: on a multi-repo sub-entry, the record's total.
+        "blocking_findings": blocking,
+        "escape": escape is not None, "brief_source": brief_source,
         "roster": {"record_version": record.get("version", 1), "passes": record.get("passes")},
-        "lens_order": row["lens_order"], "sequential_steps": row["sequential_steps"],
-        "bead_sequential_steps": bead_steps, "escape": escape is not None,
-        "fidelity": fidelity, "brief_source": brief_source,
+        "lens_order": row["lens_order"],
         "counts": {lens: [dict(r["counts"]) for r in revs if r["lens"] == lens]
                    for lens in dict.fromkeys(r["lens"] for r in revs)},
         # The baseline's per-lens view, which has the totals a v1 record kept
@@ -489,19 +514,25 @@ def build_entry(entry: str, stem: str, record_file: str, record: dict, row: dict
         "baseline": {lens: {k: v[k] for k in ("reviews", "fix_rounds", "findings_first_review",
                                               "unattributed", "steps")}
                      for lens, v in row["lenses"].items()},
-        "bundle": None,
     }
     recorded = {
-        "schema_version": SCHEMA_VERSION, "entry": entry, "fidelity": fidelity,
+        "schema_version": SCHEMA_VERSION, "entry": meta["entry"], "fidelity": fidelity,
         "lens_order": row["lens_order"],
         "iterations": {lens: len(v) for lens, v in meta["counts"].items()},
         "rounds": rounds,
+        "cross_repo_findings": cross if multi else [],
         "escaped": [finding(escape["lens"], escape["severity"], escape["path"], escape["start_line"],
                             escape["end_line"], escape["claim"], derived_from="known_escape",
                             at_commit=escape["at_commit"])] if escape else [],
     }
     diff = git(repo, "diff", base, head) if base and head else ""
-    return {"meta": meta, "recorded": recorded, "brief": brief, "diff": diff}
+    return {"meta": meta, "recorded": recorded,
+            "brief": mask_workspace(brief, workspace) if brief_source != "none" else None, "diff": diff}
+
+
+def _published(f: dict) -> dict:
+    """A finding without the builder's repo tag."""
+    return {k: v for k, v in f.items() if k != "_repo"}
 
 
 def _round(review: dict, findings: list | None) -> dict:
@@ -563,43 +594,87 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
 
 
-def classify(record_file: str, revs: list[dict], private: PrivateArchive, repo: Path,
-             head: str | None) -> tuple[str, list | None]:
-    """A single-repo entry with blocking findings: ("recorded", rounds) when
-    every blocking review's extraction is accepted, else ("derived", rounds)
-    when every one derives from its fix commit, else ("counts_only", None)."""
-    recorded = []
+def classify_record(record_file: str, revs: list[dict], row: dict, private: PrivateArchive,
+                    repos: dict[str, dict]) -> tuple[str, list | None, int | None]:
+    """The record's (fidelity, rounds, blocking_findings), decided once for all
+    its repos. ``recorded`` when every blocking review's extraction is accepted,
+    else ``derived`` when every one derives from its fix commit, else
+    ``counts_only``. Only CRITICAL and IMPORTANT findings are kept, each tagged
+    ``_repo``: the repo whose head tree holds its path, the record's only repo,
+    or None (cross-repo) when no single repo does."""
+    if not severities_complete(row):
+        return "counts_only", None, None  # severities unknown: blocking count too
+    blocking = sum(r["counts"]["critical"] + r["counts"]["important"]
+                   for r in revs if r["blocking_lens"])
+    if not blocking:
+        return "counts_only", None, 0  # clean; no extraction was made of a clean review
+    files = {name: tree_paths(st["path"], st["head"]) if st["head"] else set()
+             for name, st in repos.items()}
+    recorded = _recorded_rounds(record_file, revs, private, repos, files)
+    if recorded is not None:
+        return "recorded", recorded, blocking
+    derived = _derived_rounds(revs, repos)
+    if derived is not None:
+        return "derived", derived, blocking
+    return "counts_only", None, blocking
+
+
+def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> tuple[str | None, str | None, bool]:
+    """(repo, tree path, in_tree) for a reported path: the record's only repo,
+    or the one repo whose head tree holds it; (None, path, False) otherwise."""
+    if len(repos) == 1:
+        (name,) = repos
+        tree_path, in_tree = repo_path(path, files[name], name)
+        return name, tree_path, in_tree
+    hits = []
+    for name in repos:
+        tree_path, in_tree = repo_path(path, files[name], name)
+        if in_tree:
+            hits.append((name, tree_path))
+    if len(hits) == 1:
+        return hits[0][0], hits[0][1], True
+    return None, repo_path(path, set(), next(iter(repos)))[0], False
+
+
+def _recorded_rounds(record_file, revs, private, repos, files) -> list | None:
+    out = []
     for r in revs:
         if not raised_blocking_finding(r):
-            recorded.append(_round(r, None))
+            out.append(_round(r, None))
             continue
         got = private.recorded(record_file, r["lens"], r["ts"], r["counts"])
-        if got is None:  # no accepted extraction: the entry cannot be recorded
-            recorded = None
-            break
+        if got is None:  # no accepted extraction: the record cannot be recorded
+            return None
         found, prov = got
-        fix = resolve(repo, r["fix_commit"]) if r["fix_commit"] and repo.is_dir() else None
-        files = tree_paths(repo, head) if head else set()
-        out = []
+        fix_repo = r["fix_repo"] if r["fix_repo"] in repos else (next(iter(repos)) if len(repos) == 1 else None)
+        fix = resolve(repos[fix_repo]["path"], r["fix_commit"]) \
+            if r["fix_commit"] and fix_repo and repos[fix_repo]["path"].is_dir() else None
+        kept = []
         for f in found:
-            path, in_tree = repo_path(f.get("path"), files, repo.name)
-            out.append(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
-                               f["claim"], **prov, fix_commit=fix,
-                               reported_path=mask_workspace(f.get("path"), repo.parent),
-                               path_in_tree=in_tree))
-        recorded.append(_round(r, out))
-    if recorded is not None:
-        return "recorded", recorded
-    derived = []
+            if f["severity"] not in ("CRITICAL", "IMPORTANT"):
+                continue  # the corpus carries the gate's blocking findings
+            repo_name, path, in_tree = assign(f.get("path"), repos, files)
+            kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
+                                     f["claim"], **prov, fix_commit=fix,
+                                     reported_path=mask_workspace(f.get("path"), next(iter(repos.values()))["path"].parent),
+                                     path_in_tree=in_tree), _repo=repo_name))
+        out.append(_round(r, kept))
+    return out
+
+
+def _derived_rounds(revs, repos) -> list | None:
+    out = []
     for r in revs:
         if not raised_blocking_finding(r):
-            derived.append(_round(r, None))
+            out.append(_round(r, None))
             continue
-        found = derive_from_commit(repo, r) if repo.is_dir() else None
+        name = r["fix_repo"] if r["fix_repo"] in repos else (next(iter(repos)) if len(repos) == 1 else None)
+        repo = repos[name]["path"] if name else None
+        found = derive_from_commit(repo, r) if repo and repo.is_dir() else None
         if found is None:
-            return "counts_only", None
-        derived.append(_round(r, found))
-    return "derived", derived
+            return None
+        out.append(_round(r, [dict(f, _repo=name) for f in found]))
+    return out
 
 
 def choose_brief(stem: str, bead: str | None, repo: Path, private: PrivateArchive,
@@ -607,16 +682,16 @@ def choose_brief(stem: str, bead: str | None, repo: Path, private: PrivateArchiv
     """What the reviewers were given, by BRIEF_SOURCES order."""
     text = private.brief(stem)
     if text:
-        return text, "reviewer_brief"
+        return text, "reviewer_prompt"
     if use_bd and bead:
         desc = bead_description(bead, repo.parent / "opensrm")
         if desc:
-            return desc, "bead_description"
+            return desc, "bead"
     if bead and repo.is_dir():
         plans = sorted(p for p in (repo / "docs" / "superpowers" / "plans").glob("*.md")
                        if bead in p.read_text(encoding="utf-8", errors="replace"))
         if plans:
-            return plans[0].read_text(encoding="utf-8"), "repo_plan"
+            return plans[0].read_text(encoding="utf-8"), "plan_doc"
     return "", "none"
 
 
@@ -664,9 +739,11 @@ CLEAN_GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "G
 
 def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
-    two-commit history under refs/r5/<entry>/{base,head}. Fills each meta's
-    ``bundle``."""
+    two-commit history under refs/r5/<entry>/{base,head}, and bundles.json,
+    the manifest the corpus repository commits. Fills each meta's ``bundle``
+    and synthetic commits."""
     out.mkdir(parents=True, exist_ok=True)
+    manifest: list[dict] = []
     by_repo: dict[str, list[dict]] = {}
     for e in entries:
         if e["meta"]["base_tree"] and e["meta"]["tree_sha"]:
@@ -689,22 +766,40 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
                                   isolated=True).strip()
                 git(scratch, "update-ref", f"refs/r5/{meta['entry']}/base", base_commit, isolated=True)
                 git(scratch, "update-ref", f"refs/r5/{meta['entry']}/head", head_commit, isolated=True)
-                meta["bundle"] = {"asset": f"{repo_name}.bundle", "base_commit": base_commit,
-                                  "head_commit": head_commit}
+                meta["synthetic_base"], meta["synthetic_head"] = base_commit, head_commit
+                meta["bundle"] = {"repo": repo_name}
             target = out / f"{repo_name}.bundle"
             # One pack thread: a threaded delta search orders objects
             # differently run to run, and the published sha256 must hold.
             git(scratch, *PACK_CONFIG, "bundle", "create", "-q", str(target.resolve()), "--all",
                 isolated=True)
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        version = git(source, "--version").strip()
         for e in group:
-            e["meta"]["bundle"].update(
-                sha256=digest, git_version=version,
-                url=BUNDLE_URL.format(tag=BUNDLE_TAG, name=f"{repo_name}.bundle"))
+            e["meta"]["bundle"]["sha256"] = digest
+        manifest.append({"repo": repo_name, "asset": target.name, "sha256": digest,
+                         "size": target.stat().st_size, "release_tag": BUNDLE_TAG,
+                         "url": BUNDLE_URL.format(tag=BUNDLE_TAG, name=target.name),
+                         "git_version": git(source, "--version").strip()})
+    # The corpus repository's git content: the bundles are its release assets.
+    (out / "bundles.json").write_text(json.dumps(
+        {"schema_version": SCHEMA_VERSION, "repository": CORPUS_REPO, "release_tag": BUNDLE_TAG,
+         "bundles": manifest}, indent=1) + "\n", encoding="utf-8")
 
 
 # --- the corpus -------------------------------------------------------------
+
+def repo_state(repo: Path, rng: dict, escape: dict | None) -> dict:
+    """A record's base and head in one repo, resolved. An escape whose code
+    came in during the gate's own fix loop (oh27) moves the head to the
+    escape's tree, or replay could not reach it."""
+    base, head = (resolve(repo, rng.get("base") or ""), resolve(repo, rng.get("head") or "")) \
+        if repo.is_dir() else (None, None)
+    record_head = head
+    if escape and repo.is_dir():
+        head = resolve(repo, escape["at_commit"])
+        check_escape(repo, head, escape)
+    return {"path": repo, "base": base, "head": head, "record_head": record_head}
+
 
 def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: bool) -> list[dict]:
     records = r5_baseline.load_records(archive_dir)
@@ -723,11 +818,14 @@ def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: b
         ranges = record.get("diff_range")
         if not isinstance(ranges, dict) or not ranges:
             raise CorpusError(f"{name}: no diff_range")
-        bead_total = beads[record.get("target_bead")]["sequential_steps"]
-        for repo_name, rng in ranges.items():
-            entries.append(build_entry(entry_name(stem, repo_name, len(ranges)), stem, name, record,
-                                       rows[name], bead_total, repo_name, rng, len(ranges) > 1,
-                                       workspace, private, use_bd))
+        repos = {repo_name: repo_state(workspace / repo_name, rng, KNOWN_ESCAPES.get((record["target_bead"], repo_name)))
+                 for repo_name, rng in ranges.items()}
+        revs = reviews(record)
+        classified = classify_record(name, revs, rows[name], private, repos)
+        bead_total = beads[record["target_bead"]]["sequential_steps"]
+        for repo_name in ranges:
+            entries.append(build_entry(stem, name, record, rows[name], bead_total, repo_name,
+                                       repos[repo_name], ranges, classified, workspace, private, use_bd))
     found = {(e["meta"]["bead"], e["meta"]["repo"]) for e in entries}
     missing = sorted(set(KNOWN_ESCAPES) - found)
     if missing:
@@ -774,18 +872,37 @@ def write_entries(entries: list[dict], out: Path) -> None:
         for file, text in (("meta.json", json.dumps(e["meta"], indent=1) + "\n"),
                            ("recorded.json", json.dumps(e["recorded"], indent=1) + "\n"),
                            ("brief.md", e["brief"]), ("diff.patch", e["diff"])):
-            (target / file).write_text(text, encoding="utf-8")
+            if text is not None:  # no brief.md when brief_source is none
+                (target / file).write_text(text, encoding="utf-8")
 
 
-def summary(entries: list[dict]) -> dict:
-    by_fidelity = Counter(e["meta"]["fidelity"] for e in entries)
+def summary(entries: list[dict], bundles: Path | None = None) -> dict:
+    """What bead 2 reports: entry and bead counts per fidelity, clean entries,
+    the recorded findings' locations, brief_source counts and bundle sizes."""
+    metas = [e["meta"] for e in entries]
+    blocking = [f for e in entries if e["meta"]["fidelity"] != "counts_only"
+                for r in e["recorded"]["rounds"] for f in (r["findings"] or [])]
+    manifest = json.loads((bundles / "bundles.json").read_text(encoding="utf-8")) \
+        if bundles and (bundles / "bundles.json").is_file() else None
     return {
-        "entries": len(entries),
-        "beads": len({e["meta"]["bead"] for e in entries}),
-        "fidelity": {f: by_fidelity[f] for f in FIDELITIES},
-        "unavailable": sorted(e["meta"]["entry"] for e in entries if e["meta"]["unavailable"]),
-        "reviewer_briefs": sorted(e["meta"]["entry"] for e in entries
-                                  if e["meta"]["brief_source"] == "reviewer_brief"),
+        "entries": len(metas),
+        "beads": len({m["bead"] for m in metas}),
+        "fidelity": {f: {"entries": sum(m["fidelity"] == f for m in metas),
+                         "beads": len({m["bead"] for m in metas if m["fidelity"] == f})}
+                     for f in FIDELITIES},
+        "clean_entries": sum(m["blocking_findings"] == 0 for m in metas),
+        "blocking_findings_unknown": sum(m["blocking_findings"] is None for m in metas),
+        "recorded_findings": {"total": len(blocking),
+                              "no_path": sum(f["path"] is None for f in blocking),
+                              "no_range": sum(f["start_line"] is None for f in blocking),
+                              "path_not_in_tree": sum(not f.get("path_in_tree", True) for f in blocking),
+                              # Listed in every sub-entry of its record: count each once.
+                              "cross_repo": len({(e["meta"]["archive"], f["fingerprint"]) for e in entries
+                                                 for f in e["recorded"]["cross_repo_findings"]})},
+        "brief_source": {s: sum(m["brief_source"] == s for m in metas) for s in BRIEF_SOURCES},
+        "bundles": {b["repo"]: b["size"] for b in manifest["bundles"]} if manifest else None,
+        "unavailable": sorted(m["entry"] for m in metas if m["unavailable"]),
+        "reviewer_prompts": sorted(m["entry"] for m in metas if m["brief_source"] == "reviewer_prompt"),
     }
 
 
@@ -811,7 +928,7 @@ def main(argv: list[str] | None = None) -> int:
     except (CorpusError, r5_baseline.RecordError) as exc:
         print(f"r5-corpus: {exc}", file=sys.stderr)
         return 2
-    json.dump(summary(entries), sys.stdout, indent=1)
+    json.dump(summary(entries, args.bundles), sys.stdout, indent=1)
     print()
     return 0
 

@@ -169,12 +169,13 @@ examples, generator-specific scripts.
     archive pattern (opensrm-6kqs.8). The
     workspace root's `.claude/bin/r5-baseline.sh` is a shim.
   - `r5_corpus.py` — the replay corpus (R5 Gate v2 Phase A.2,
-    opensrm-6kqs.2): one entry per archived gate record and repo
-    (`meta.json`, `brief.md`, `diff.patch`, `recorded.json`), with a
-    per-entry fidelity (recorded / derived / clean / counts_only), and with
-    `--bundles` one synthetic git bundle per repo, published as release
-    assets under the `r5-replay-corpus-v1` tag, never committed. Reads
-    reviewer reports and their extractions from the private archive
+    opensrm-6kqs.2; spec section 6): one entry per archived gate record and
+    repo (`meta.json`, `brief.md`, `diff.patch`, `recorded.json`), with a
+    fidelity (recorded / derived / counts_only) and `blocking_findings`,
+    and with `--bundles` one synthetic git bundle per repo plus
+    `bundles.json`, published as release assets on
+    `rsionnach/curamoir-replay-corpus`, never committed. Reads reviewer
+    reports and their extractions from the private archive
     `.claude/r5-handbacks/`; only findings and briefs leave it. Standard
     library and git only. Tests: `test/test_r5_corpus.py`, on the runner's
     Python and on 3.9.
