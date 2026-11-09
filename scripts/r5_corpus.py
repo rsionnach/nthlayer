@@ -466,7 +466,7 @@ def record_part(stem: str, bead: str) -> str | None:
         if stem == form:
             return None
         if stem.startswith(form + "-"):
-            return stem[len(form) + 1:]
+            return stem[len(form) + 1:] or None
     raise CorpusError(f"record stem {stem!r} does not start with its bead {bead}")
 
 
@@ -571,8 +571,10 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
     absolute path is cut to what follows the repo's directory, so the
     finding's ``path`` is never a local one (``reported_path`` is masked by
     mask_workspace). Nothing is chosen between two candidates."""
-    if path is None or path in files:
-        return path, path is not None
+    if path is None or not _strip_relative(path):
+        return None, False  # no path, or one that is only "./" or "/"
+    if path in files:
+        return path, True
     clean = _strip_relative(path)
     matches = [f for f in files if clean == f or clean.endswith("/" + f) or f.endswith("/" + clean)]
     if len(matches) == 1:
@@ -636,11 +638,16 @@ def classify_record(record_file: str, revs: list[dict], row: dict, private: Priv
 
 
 def _fix_repo(review: dict, repos: dict[str, dict]) -> str | None:
-    """The repo a review's fix commit was made in: the one the archive logged,
-    else the record's only repo, else unknown."""
+    """The repo a review's fix commit was made in: the record's repo the
+    archive logged, else the one record repo that holds the commit, else
+    unknown. A logged repo outside the record is not taken on trust."""
     if review["fix_repo"] in repos:
         return review["fix_repo"]
-    return next(iter(repos)) if len(repos) == 1 else None
+    if not review["fix_commit"]:
+        return None
+    holders = [name for name, st in repos.items()
+               if st["path"].is_dir() and resolve(st["path"], review["fix_commit"])]
+    return holders[0] if len(holders) == 1 else None
 
 
 def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> tuple[str | None, str | None, bool]:
@@ -650,14 +657,23 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set]) -> t
         (name,) = repos
         tree_path, in_tree = repo_path(path, files[name], name)
         return name, tree_path, in_tree
-    # A path that names one of the record's repos ("nthlayer-workers/x.py",
-    # or the bare name) is that repo's: suffix matching alone would find
-    # x.py in every sibling.
-    if path is not None:
-        first, _, rest = _strip_relative(path).partition("/")
-        if first in repos:
-            tree_path, in_tree = repo_path(rest, files[first], first) if rest else (None, False)
-            return first, tree_path, in_tree
+    if path is None or not _strip_relative(path):
+        return None, None, False
+    # A path that names one of the record's repos, anywhere in it
+    # ("nthlayer-workers/x.py", "/.../nthlayer-workers/x.py", a worktree
+    # "nthlayer-workers-slug/x.py", or the bare name) is that repo's: suffix
+    # matching alone would find x.py in every sibling. The last such part
+    # wins; between repo names, the longest (nthlayer-common over nthlayer).
+    parts = _strip_relative(path).split("/")
+    for i in range(len(parts) - 1, -1, -1):
+        named = [n for n in repos if parts[i] == n or parts[i].startswith(n + "-")]
+        if named:
+            name = max(named, key=len)
+            rest = "/".join(parts[i + 1:])
+            tree_path, in_tree = repo_path(rest, files[name], name) if rest else (None, False)
+            return name, tree_path, in_tree
+    if any(not st["head"] for st in repos.values()):
+        return None, repo_path(path, set(), next(iter(repos)))[0], False  # a tree is missing: no suffix match
     hits = []
     for name in repos:
         tree_path, in_tree = repo_path(path, files[name], name)
@@ -814,6 +830,10 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
                          "size": target.stat().st_size, "release_tag": BUNDLE_TAG,
                          "url": BUNDLE_URL.format(tag=BUNDLE_TAG, name=target.name),
                          "git_version": git(source, "--version").strip()})
+    listed = {b["asset"] for b in manifest}
+    for stale in out.glob("*.bundle"):
+        if stale.name not in listed:
+            stale.unlink()  # a repo no longer in the corpus: bundles.json must list every bundle here
     # The corpus repository's git content: the bundles are its release assets.
     (out / "bundles.json").write_text(json.dumps(
         {"schema_version": SCHEMA_VERSION, "repository": CORPUS_REPO, "release_tag": BUNDLE_TAG,
@@ -860,6 +880,13 @@ def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: b
         for repo_name in ranges:
             entries.append(build_entry(stem, name, record, rows[name], revs, bead_total, repo_name,
                                        repos[repo_name], ranges, classified, workspace, private, use_bd))
+    names = Counter(e["meta"]["entry"] for e in entries)
+    clashes = sorted(n for n, k in names.items() if k > 1)
+    if clashes:
+        # A multi-repo record's sub-entry can share a name with a single-repo
+        # record whose stem ends in that repo's name; one would overwrite
+        # the other's files and bundle refs.
+        raise CorpusError(f"entry names {clashes[:3]} come from more than one record")
     found = {(e["meta"]["bead"], e["meta"]["repo"]) for e in entries}
     missing = sorted(set(KNOWN_ESCAPES) - found)
     if missing:

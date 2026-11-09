@@ -304,15 +304,22 @@ def test_a_multi_repo_record_assigns_its_findings_by_path(workspace, tmp_path):
     assert [f["path"] for f in entries["opensrm-hhh-demo"]["recorded"]["rounds"][0]["findings"]] == ["app.py"]
     assert entries["opensrm-hhh-missing"]["recorded"]["rounds"][0]["findings"] == []
     assert entries["opensrm-hhh-missing"]["meta"]["unavailable"]
-    # With an accepted extraction, app.py's finding goes to demo, whose head
-    # tree holds it; the missing repo's entry gets none of it.
+    # With an accepted extraction: the missing repo has no tree, so a bare
+    # app.py cannot be placed by suffix and is listed cross-repo in both...
     private = private_archive(tmp_path / "p", "r5-state-hhh-completed.json", "correctness", stamps[0])
     entries = build(ws, private)
     demo, missing = entries["opensrm-hhh-demo"], entries["opensrm-hhh-missing"]
     assert demo["meta"]["fidelity"] == missing["meta"]["fidelity"] == "recorded"
-    assert [f["path"] for f in demo["recorded"]["rounds"][0]["findings"]] == ["app.py"]
-    assert missing["recorded"]["rounds"][0]["findings"] == []
-    assert demo["recorded"]["cross_repo_findings"] == missing["recorded"]["cross_repo_findings"] == []
+    assert demo["recorded"]["rounds"][0]["findings"] == missing["recorded"]["rounds"][0]["findings"] == []
+    assert [f["path"] for f in demo["recorded"]["cross_repo_findings"]] == ["app.py"]
+    # ...while one that names its repo is that repo's.
+    named = REPORT.replace("`app.py:2`", "`demo/app.py:2`")
+    extraction = [dict(EXTRACTION[0], path="demo/app.py"), EXTRACTION[1]]
+    private = private_archive(tmp_path / "p2", "r5-state-hhh-completed.json", "correctness", stamps[0],
+                              report=named, extraction=extraction)
+    entries = build(ws, private)
+    assert [f["path"] for f in entries["opensrm-hhh-demo"]["recorded"]["rounds"][0]["findings"]] == ["app.py"]
+    assert entries["opensrm-hhh-missing"]["recorded"]["cross_repo_findings"] == []
 
 
 def test_a_finding_no_single_repo_holds_is_listed_cross_repo(workspace, tmp_path):
@@ -946,11 +953,16 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
 @pytest.mark.parametrize("path, expected", [
     ("demo2/app.py", ("demo2", "app.py", True)),  # names its repo: not ambiguous
     ("./demo2/app.py", ("demo2", "app.py", True)),
+    ("/Users/x/eco/demo2/app.py", ("demo2", "app.py", True)),  # absolute
+    ("../demo2/app.py", ("demo2", "app.py", True)),
+    ("demo2-wt/app.py", ("demo2", "app.py", True)),  # a worktree of demo2
+    ("", (None, None, False)),
+    ("./", (None, None, False)),
     ("demo2", ("demo2", None, False)),  # the bare repo name: that repo, no file
     ("app.py", (None, "app.py", False)),  # in both trees: no single repo
 ])
 def test_a_path_naming_one_of_the_record_s_repos_is_that_repo_s(path, expected):
-    repos = {"demo": {}, "demo2": {}}
+    repos = {"demo": {"head": "h1"}, "demo2": {"head": "h2"}}
     files = {"demo": {"app.py"}, "demo2": {"app.py"}}
     assert r5_corpus.assign(path, repos, files) == expected
 
@@ -965,3 +977,45 @@ def test_the_summary_does_not_count_a_pathless_finding_as_outside_the_tree():
              "recorded": {"rounds": [{"findings": [f, g]}], "cross_repo_findings": []}}
     counts = r5_corpus.summary([entry])["located_findings"]
     assert (counts["no_path"], counts["path_not_in_tree"]) == (1, 1)
+
+
+
+def test_two_records_yielding_one_entry_name_are_refused(workspace):
+    ws = workspace["ws"]
+    rng = {"base": workspace["base"], "head": workspace["head"]}
+    # A multi-repo record "kk" spanning demo makes opensrm-kk-demo, as does a
+    # single-repo record whose stem is kk-demo.
+    write_record(ws, "kk", record("opensrm-kk", {"demo": rng, "other": rng},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    write_record(ws, "kk-demo", record("opensrm-kk", {"demo": rng},
+                                       [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    with pytest.raises(r5_corpus.CorpusError):
+        build(ws)
+
+
+def test_a_fix_repo_outside_the_record_is_found_by_its_commit(workspace):
+    repos = {"demo": {"path": workspace["repo"], "head": workspace["head"]}}
+    review = {"fix_repo": "elsewhere", "fix_commit": workspace["fix"]}
+    assert r5_corpus._fix_repo(review, repos) == "demo"
+    assert r5_corpus._fix_repo(dict(review, fix_commit="0" * 40), repos) is None
+
+
+def test_no_suffix_match_when_a_record_repo_has_no_tree():
+    repos = {"demo": {"head": "h"}, "gone": {"head": None}}
+    files = {"demo": {"app.py"}, "gone": set()}
+    assert r5_corpus.assign("app.py", repos, files) == (None, "app.py", False)
+
+
+def test_an_empty_part_is_no_part():
+    assert r5_corpus.record_part("a-", "opensrm-a") is None
+
+
+def test_a_stale_bundle_is_removed_with_its_repo(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "stb", record("opensrm-stb", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "b"
+    out.mkdir()
+    (out / "old-repo.bundle").write_bytes(b"stale")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out)
+    assert sorted(p.name for p in out.iterdir()) == ["bundles.json", "demo.bundle"]
