@@ -40,6 +40,7 @@ def run(repo: Path, *args: str) -> str:
 
 def commit(repo: Path, files: dict[str, str], message: str) -> str:
     for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
         (repo / name).write_text(text)
     run(repo, "add", "-A")
     run(repo, "commit", "-q", "-m", message)
@@ -953,7 +954,9 @@ def test_a_record_whose_severities_are_unknown_has_no_blocking_count(workspace):
 @pytest.mark.parametrize("path, expected", [
     ("demo2/app.py", ("demo2", "app.py", True)),  # names its repo: not ambiguous
     ("./demo2/app.py", ("demo2", "app.py", True)),
-    ("/Users/x/eco/demo2/app.py", ("demo2", "app.py", True)),  # absolute
+    # Absolute, with no workspace to say where its root is: not placed
+    # (with the workspace given, it is; see the member tests below).
+    ("/Users/x/eco/demo2/app.py", (None, "app.py", False)),  # a local absolute path is cut
     ("../demo2/app.py", ("demo2", "app.py", True)),
     # A worktree of demo2 is known only from the workspace (tested with a
     # real one below); without it, "demo2-wt" names no record repo.
@@ -1088,3 +1091,23 @@ def test_a_manifest_listing_a_non_plain_asset_is_refused(tmp_path, assets):
     (tmp_path / "bundles.json").write_text(json.dumps({"bundles": [{"asset": a} for a in assets]}))
     with pytest.raises(r5_corpus.CorpusError):
         r5_corpus.previous_assets(tmp_path)
+
+
+
+def test_the_first_workspace_directory_in_a_path_decides_not_an_inner_one(tmp_path):
+    # generate holds examples/opensrm/ and .claude/, both named like
+    # workspace directories; a path through them stays generate's.
+    ws = tmp_path / "eco"
+    _member(ws, "opensrm", {"spec.md": "s\n"})
+    _member(ws, "nthlayer-common", {"lib.py": "l\n"})
+    _member(ws, "nthlayer-generate", {"examples/opensrm/batch.yaml": "b\n", ".claude/settings.json": "{}\n",
+                                      "x.py": "x\n"})
+    (ws / ".claude").mkdir()
+    w = r5_corpus.Workspace(ws)
+    for names in (("nthlayer-generate", "opensrm"), ("nthlayer-generate", "nthlayer-common")):
+        repos = {n: {"path": ws / n, "head": run(ws / n, "rev-parse", "HEAD")} for n in names}
+        files = {n: r5_corpus.tree_paths(st["path"], st["head"]) for n, st in repos.items()}
+        assert r5_corpus.assign("nthlayer-generate/examples/opensrm/batch.yaml", repos, files, w) == \
+            ("nthlayer-generate", "examples/opensrm/batch.yaml", True)
+        assert r5_corpus.assign(f"{ws}/nthlayer-generate/.claude/settings.json", repos, files, w) == \
+            ("nthlayer-generate", ".claude/settings.json", True)

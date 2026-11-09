@@ -650,6 +650,18 @@ def _fix_repo(review: dict, repos: dict[str, dict]) -> str | None:
     return holders[0] if len(holders) == 1 else None
 
 
+def workspace_layout(root: Path) -> Workspace:
+    """One Workspace per workspace root for the run: it lists the directories
+    and caches their git common dirs, which are fixed while the corpus builds."""
+    key = str(root.resolve())
+    if key not in _LAYOUTS:
+        _LAYOUTS[key] = Workspace(root)
+    return _LAYOUTS[key]
+
+
+_LAYOUTS: dict[str, Workspace] = {}  # cleared by build(): one per run
+
+
 class Workspace:
     """The workspace's top-level directories, and which record repo each one
     is (the repo itself, or a worktree of it sharing its git common dir)."""
@@ -683,11 +695,15 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
     or the one repo it can be placed in; (None, path, False) otherwise.
 
     For a multi-repo record, in this order: a path exactly in one repo's head
-    tree (when every record repo has a tree); then the last part of the path
-    that is a top-level workspace directory decides, being a record repo or a
-    worktree of one (that repo, whether or not the rest is in its tree) or
-    anything else (cross-repo, never guessed into a record repo); then, for a
-    path naming no workspace directory, one unique suffix match."""
+    tree (when every record repo has a tree); then the path's FIRST part that
+    is a top-level workspace directory decides (the part right after the
+    workspace's own name when the path carries it, else the first part): a
+    record repo or a worktree of one is that repo, whether or not the rest is
+    in its tree, and anything else is cross-repo, never guessed into a record
+    repo. The first, because a repo may hold a directory named like another
+    workspace directory (nthlayer's .claude/, generate's examples/opensrm/).
+    Then, for a path naming no workspace directory, one unique suffix match.
+    (Settled by Rob, 2026-11-09, after the edge-cases pass's fourth review.)"""
     if len(repos) == 1:
         (name,) = repos
         tree_path, in_tree = repo_path(path, files[name], name)
@@ -703,9 +719,13 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
         return exact[0], clean, True
     parts = clean.split("/")
     known = (workspace.dirs if workspace else set()) | set(repos)
-    for i in range(len(parts) - 1, -1, -1):
-        if parts[i] not in known or (workspace and workspace.root and parts[i] == workspace.root.name):
-            continue
+    root_name = workspace.root.name if workspace and workspace.root else None
+    # The one part that can name a workspace directory: the one after the
+    # workspace's own name, else the first.
+    i = parts.index(root_name) + 1 if root_name in parts[:-1] else 0
+    while i < len(parts) - 1 and parts[i] == "..":
+        i += 1  # "../x/...": a sibling of the repo the reviewer stood in
+    if parts[i] in known:
         name = workspace.repo_of(parts[i], repos) if workspace else (parts[i] if parts[i] in repos else None)
         rest = "/".join(parts[i + 1:])
         if name is None:  # another member, or a workspace directory that is no record repo
@@ -728,6 +748,7 @@ def assign(path: str | None, repos: dict[str, dict], files: dict[str, set],
 
 def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> list | None:
     out = []
+    layout = workspace_layout(workspace)
     for r in revs:
         if not raised_blocking_finding(r):
             out.append(_round(r, None))
@@ -743,7 +764,7 @@ def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> lis
         for f in found:
             if f["severity"] not in ("CRITICAL", "IMPORTANT"):
                 continue  # the corpus carries the gate's blocking findings
-            repo_name, path, in_tree = assign(f.get("path"), repos, files, Workspace(workspace))
+            repo_name, path, in_tree = assign(f.get("path"), repos, files, layout)
             kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
                                      f["claim"], **prov, fix_commit=fix,
                                      reported_path=mask_workspace(f.get("path"), workspace),
@@ -923,6 +944,7 @@ def repo_state(repo: Path, rng: dict, escape: dict | None) -> dict:
 
 
 def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: bool) -> list[dict]:
+    _LAYOUTS.clear()  # the workspace's layout is read afresh for each build
     records = r5_baseline.load_records(archive_dir)
     for name, record in records:
         # Before bead_steps, which keys and sorts on it.
