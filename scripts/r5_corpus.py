@@ -83,7 +83,7 @@ import r5_baseline  # noqa: E402  (a sibling script, not a package)
 SCHEMA_VERSION = 1
 FIDELITIES = ("recorded", "derived", "clean", "counts_only")
 BRIEF_SOURCES = ("reviewer_brief", "bead_description", "repo_plan", "none")
-BLOCKING = ("correctness", "clarity", "edge-cases", "provenance")
+BLOCKING = r5_baseline.LENS_ORDER[:4]  # the blocking roster; excellence is advisory
 BUNDLE_TAG = "r5-replay-corpus-v1"
 BUNDLE_URL = "https://github.com/rsionnach/nthlayer/releases/download/{tag}/{name}"
 
@@ -371,8 +371,8 @@ def derive_from_commit(repo: Path, review: dict) -> list[dict] | None:
     One severity bullet per counted CRITICAL and IMPORTANT, each given a path:
     the changed file its text names, else the only file the commit changed.
     Its range is that file's changed lines on the new side."""
-    sha = review["fix_commit"]
-    if not sha or resolve(repo, sha) is None:
+    sha = resolve(repo, review["fix_commit"]) if review["fix_commit"] else None
+    if sha is None:
         return None
     bullets = severity_bullets(git(repo, "log", "-1", "--format=%B", sha))
     want = (review["counts"]["critical"], review["counts"]["important"])
@@ -388,7 +388,7 @@ def derive_from_commit(repo: Path, review: dict) -> list[dict] | None:
             return None
         span = changed_span(repo, sha, path)
         out.append(finding(review["lens"], sev, path, *(span or (None, None)), text,
-                           derived_from="fix_commit", fix_commit=resolve(repo, sha), bullet=text))
+                           derived_from="fix_commit", fix_commit=sha, bullet=text))
     return out
 
 
@@ -531,7 +531,6 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
 
 
-
 def classify(record_file: str, revs: list[dict], private: PrivateArchive, repo: Path,
              head: str | None) -> tuple[str, list | None]:
     """A single-repo entry with blocking findings: ("recorded", rounds) when
@@ -539,14 +538,13 @@ def classify(record_file: str, revs: list[dict], private: PrivateArchive, repo: 
     when every one derives from its fix commit, else ("counts_only", None)."""
     recorded = []
     for r in revs:
-        got = private.recorded(record_file, r["lens"], r["ts"], r["counts"]) \
-            if raised_blocking_finding(r) else None
-        if raised_blocking_finding(r) and got is None:
-            recorded = None
-            break
-        if got is None:
+        if not raised_blocking_finding(r):
             recorded.append(_round(r, None))
             continue
+        got = private.recorded(record_file, r["lens"], r["ts"], r["counts"])
+        if got is None:  # no accepted extraction: the entry cannot be recorded
+            recorded = None
+            break
         found, prov = got
         fix = resolve(repo, r["fix_commit"]) if r["fix_commit"] and repo.is_dir() else None
         files = tree_paths(repo, head) if head else set()
@@ -562,8 +560,11 @@ def classify(record_file: str, revs: list[dict], private: PrivateArchive, repo: 
         return "recorded", recorded
     derived = []
     for r in revs:
-        found = derive_from_commit(repo, r) if raised_blocking_finding(r) and repo.is_dir() else None
-        if raised_blocking_finding(r) and found is None:
+        if not raised_blocking_finding(r):
+            derived.append(_round(r, None))
+            continue
+        found = derive_from_commit(repo, r) if repo.is_dir() else None
+        if found is None:
             return "counts_only", None
         derived.append(_round(r, found))
     return "derived", derived
