@@ -570,7 +570,7 @@ def test_the_report_hash_covers_its_bytes(workspace, tmp_path):
     assert build(ws, private)["opensrm-sss"]["meta"]["fidelity"] == "recorded"
 
 
-def test_a_hung_bd_gives_no_brief_rather_than_a_stall(tmp_path, monkeypatch):
+def test_a_hung_bd_is_refused_not_a_silently_lesser_brief(tmp_path, monkeypatch):
     (tmp_path / "opensrm").mkdir()
     monkeypatch.setattr(r5_corpus.shutil, "which", lambda name: "/usr/bin/bd")
 
@@ -578,11 +578,15 @@ def test_a_hung_bd_gives_no_brief_rather_than_a_stall(tmp_path, monkeypatch):
         assert kwargs.get("timeout")  # bounded, never open-ended
         raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
     monkeypatch.setattr(r5_corpus.subprocess, "run", hang)
-    assert r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm") is None
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm")
 
 
 def test_a_record_without_a_bead_is_refused(workspace):
     ws = workspace["ws"]
+    # A second record, so the baseline's per-bead sort has keys to compare.
+    write_record(ws, "tt2", record("opensrm-tt2", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 1}, None)]))
     rec = record("opensrm-ttt", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                  [("correctness", {"critical": 0, "important": 0, "minor": 1}, None)])
     rec.pop("_stamps")
@@ -606,3 +610,44 @@ def test_the_bundle_is_packed_single_threaded(workspace, tmp_path, monkeypatch):
     r5_corpus.write_bundles(entries, ws, tmp_path / "b")
     (bundle,) = [a for a in calls if "bundle" in a]
     assert bundle[:2] == ("-c", "pack.threads=1")
+    assert set(r5_corpus.PACK_CONFIG) <= set(bundle)
+
+
+def test_the_caller_s_git_config_does_not_change_the_bundle(workspace, tmp_path, monkeypatch):
+    ws = workspace["ws"]
+    write_record(ws, "vvv", record("opensrm-vvv", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    entries = list(build(ws).values())
+    r5_corpus.write_bundles(entries, ws, tmp_path / "plain")
+    for key, value in {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "pack.window",
+                       "GIT_CONFIG_VALUE_0": "50"}.items():
+        monkeypatch.setenv(key, value)
+    again = list(build(ws).values())
+    r5_corpus.write_bundles(again, ws, tmp_path / "configured")
+    assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
+    assert again[0]["meta"]["bundle"]["git_version"].startswith("git version")
+
+
+def test_a_foreign_out_is_refused_before_any_bundle_is_written(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "www", record("opensrm-www", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out, bundles = tmp_path / "out", tmp_path / "bundles"
+    out.mkdir()
+    (out / "opensrm-www").write_text("a file, not an entry\n")
+    assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--archive-dir",
+                           str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert not bundles.exists()
+    assert (out / "opensrm-www").read_text() == "a file, not an entry\n"
+
+
+def test_a_symlink_named_like_an_entry_is_refused(tmp_path):
+    real = tmp_path / "elsewhere" / "opensrm-xxx"
+    real.mkdir(parents=True)
+    (real / "meta.json").write_text(json.dumps({"schema_version": 1, "entry": "opensrm-xxx"}))
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "opensrm-xxx").symlink_to(real)
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_entries([], out)
+    assert (real / "meta.json").exists()

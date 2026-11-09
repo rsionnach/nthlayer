@@ -608,8 +608,11 @@ def bead_description(bead: str, beads_repo: Path) -> str | None:
     try:
         result = subprocess.run(["bd", "show", bead, "--json"], cwd=beads_repo,
                                 capture_output=True, text=True, timeout=BD_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        return None  # a hung bd (a held Dolt lock) gives no brief, not a stalled build
+    except subprocess.TimeoutExpired as exc:
+        # Falling back to a lesser brief would make the corpus depend on
+        # whether a Dolt lock happened to be held: refuse instead.
+        raise CorpusError(f"bd show {bead} timed out after {BD_TIMEOUT_S}s (a held Dolt"
+                          " lock?): retry, or pass --no-bd") from exc
     if result.returncode != 0:
         return None
     try:
@@ -626,6 +629,15 @@ def bead_description(bead: str, beads_repo: Path) -> str | None:
 
 
 # --- bundles ----------------------------------------------------------------
+
+# Bundle bytes depend on pack settings, so the bundle is made with none of the
+# caller's git config and with every setting that shapes the pack pinned; the
+# git version is recorded beside the sha256.
+PACK_CONFIG = ("-c", "pack.threads=1", "-c", "pack.window=10", "-c", "pack.depth=50",
+               "-c", "pack.compression=9", "-c", "core.compression=9")
+CLEAN_GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_COUNT": "0",
+                 "GIT_CONFIG_PARAMETERS": ""}
+
 
 def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
@@ -657,18 +669,24 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
             target = out / f"{repo_name}.bundle"
             # One pack thread: a threaded delta search orders objects
             # differently run to run, and the published sha256 must hold.
-            git(scratch, "-c", "pack.threads=1", "bundle", "create", "-q",
-                str(target.resolve()), "--all")
+            git(scratch, *PACK_CONFIG, "bundle", "create", "-q", str(target.resolve()), "--all",
+                env=CLEAN_GIT_ENV)
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        version = git(source, "--version").strip()
         for e in group:
             e["meta"]["bundle"].update(
-                sha256=digest, url=BUNDLE_URL.format(tag=BUNDLE_TAG, name=f"{repo_name}.bundle"))
+                sha256=digest, git_version=version,
+                url=BUNDLE_URL.format(tag=BUNDLE_TAG, name=f"{repo_name}.bundle"))
 
 
 # --- the corpus -------------------------------------------------------------
 
 def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: bool) -> list[dict]:
     records = r5_baseline.load_records(archive_dir)
+    for name, record in records:
+        # Before bead_steps, which keys and sorts on it.
+        if not isinstance(record, dict) or not isinstance(record.get("target_bead"), str):
+            raise CorpusError(f"{name}: has no target_bead")
     rows = {name: dict(r5_baseline.analyse_record(data), file=name) for name, data in records}
     beads = r5_baseline.bead_steps(list(rows.values()))
     counted = {r["file"] for r in r5_baseline.baseline_rows(list(rows.values()))}
@@ -676,8 +694,6 @@ def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: b
     for name, record in records:
         if name not in counted:
             continue
-        if not isinstance(record.get("target_bead"), str):
-            raise CorpusError(f"{name}: has no target_bead")
         stem = name.removeprefix("r5-state-").removesuffix("-completed.json")
         ranges = record.get("diff_range")
         if not isinstance(ranges, dict) or not ranges:
@@ -703,16 +719,26 @@ def is_corpus_entry(path: Path) -> bool:
     return isinstance(meta, dict) and "schema_version" in meta and meta.get("entry") == path.name
 
 
-def write_entries(entries: list[dict], out: Path) -> None:
-    """Write every entry, replacing the entries a previous run left. Refuses
-    an --out holding an opensrm-* directory it did not write (the private
-    archive and sibling worktrees share that prefix) rather than delete it."""
-    out.mkdir(parents=True, exist_ok=True)
-    olds = [p for p in out.glob("opensrm-*") if p.is_dir()]
-    strangers = [p.name for p in olds if not is_corpus_entry(p)]
+def previous_entries(out: Path) -> list[Path]:
+    """The entries a previous run left in ``out``, to be replaced. Refuses an
+    --out holding any other opensrm-* name (the private archive and sibling
+    worktrees share that prefix; a file or symlink is never one of ours)
+    rather than delete it."""
+    if not out.exists():
+        return []
+    names = sorted(out.glob("opensrm-*"))
+    strangers = [p.name for p in names
+                 if p.is_symlink() or not p.is_dir() or not is_corpus_entry(p)]
     if strangers:
-        raise CorpusError(f"{out} holds opensrm-* directories that are not corpus entries:"
+        raise CorpusError(f"{out} holds opensrm-* names that are not corpus entries:"
                           f" {strangers[:3]}; choose another --out")
+    return names
+
+
+def write_entries(entries: list[dict], out: Path) -> None:
+    """Write every entry, replacing the entries a previous run left."""
+    olds = previous_entries(out)
+    out.mkdir(parents=True, exist_ok=True)
     for old in olds:
         shutil.rmtree(old)
     for e in entries:
@@ -749,6 +775,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
+        previous_entries(args.out)  # refuse a foreign --out before writing anything
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
         write_entries(entries, args.out)
