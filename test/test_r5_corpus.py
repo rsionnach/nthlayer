@@ -121,7 +121,7 @@ def private_archive(root: Path, record_file: str, lens: str, ts: str,
 
 
 def build(ws: Path, private: Path | None = None) -> dict[str, dict]:
-    entries = r5_corpus.build(ws / ".claude", ws, r5_corpus.Private(private), use_bd=False)
+    entries = r5_corpus.build(ws / ".claude", ws, r5_corpus.PrivateArchive(private), use_bd=False)
     return {e["meta"]["entry"]: e for e in entries}
 
 
@@ -368,7 +368,7 @@ def test_main_writes_the_light_files_and_a_summary(workspace, capsys):
         ["brief.md", "diff.patch", "meta.json", "recorded.json"]
 
 
-# --- pass 1 (correctness) findings -------------------------------------------
+# --- severities, escapes, tree paths, review pairing, rosters, reruns ---------
 
 def test_a_v1_record_that_logged_only_totals_is_counts_only_not_clean(workspace):
     # No findings_received at all; completed_passes says correctness found 3
@@ -402,8 +402,11 @@ def test_an_escape_in_the_gate_s_last_tree_moves_the_entry_head(workspace, monke
         build(ws)
 
 
+def test_a_path_already_in_the_tree_is_kept():
+    assert r5_corpus.repo_path("app.py", {"app.py", "src/pkg/app.py"}, "demo") == ("app.py", True)
+
+
 @pytest.mark.parametrize("reported, expected", [
-    ("app.py", ("app.py", True)),
     ("/Users/someone/ws/demo-worktree/src/pkg/app.py", ("src/pkg/app.py", True)),
     ("demo/src/pkg/app.py", ("src/pkg/app.py", True)),
     ("loader.py", ("src/pkg/loader.py", True)),
@@ -412,11 +415,8 @@ def test_an_escape_in_the_gate_s_last_tree_moves_the_entry_head(workspace, monke
     (None, (None, False)),
 ])
 def test_a_reported_path_becomes_a_tree_path_or_is_flagged(reported, expected):
-    files = {"app.py", "src/pkg/app.py", "src/pkg/loader.py", "a/util.py", "b/util.py"}
-    if reported == "app.py":
-        assert r5_corpus.repo_path(reported, files, "demo") == expected
-    else:
-        assert r5_corpus.repo_path(reported, files - {"app.py"}, "demo") == expected
+    files = {"src/pkg/app.py", "src/pkg/loader.py", "a/util.py", "b/util.py"}
+    assert r5_corpus.repo_path(reported, files, "demo") == expected
 
 
 def test_a_commit_after_a_later_review_or_pass_end_is_not_the_earlier_fix(workspace):
@@ -448,7 +448,7 @@ def test_a_rerun_removes_entries_the_archive_no_longer_yields(workspace, tmp_pat
     assert sorted(p.name for p in out.iterdir()) == ["README.md"]
 
 
-# --- pass 1 (correctness), iteration 2 ----------------------------------------
+# --- no local path is published --------------------------------------------
 
 def test_no_local_path_is_published_in_a_finding_or_a_brief(workspace, tmp_path):
     ws = workspace["ws"]
@@ -482,10 +482,10 @@ def test_a_passless_review_is_placed_as_the_baseline_places_it(monkeypatch):
     monkeypatch.setattr(r5_corpus.r5_baseline, "PASSLESS_EVENTS",
                         {("opensrm-qqq", "findings_received", "2000-01-01T00:00:02Z"): "correctness"})
     (r,) = r5_corpus.reviews({"version": 2, "target_bead": "opensrm-qqq", "audit_trail": trail})
-    assert (r["lens"], r5_corpus.is_blocking(r)) == ("correctness", True)
+    assert (r["lens"], r5_corpus.raised_blocking_finding(r)) == ("correctness", True)
 
 
-# --- pass 1 (correctness), iteration 3 ----------------------------------------
+# --- masking the workspace and home ----------------------------------------
 
 def test_masking_a_relative_workspace_touches_only_its_absolute_path(tmp_path, monkeypatch):
     ws = tmp_path / "eco"

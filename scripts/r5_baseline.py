@@ -473,6 +473,7 @@ def schema_versions(rows: list[dict]) -> dict[str, int]:
     """Records per schema version, by value, in version order. Keys are strings
     so the mapping survives JSON unchanged."""
     counts = Counter(str(r["version"]) for r in rows)
+    # (len, text) sorts integer strings in numeric order: "2" before "10".
     return {v: counts[v] for v in sorted(counts, key=lambda v: (len(v), v))}
 
 

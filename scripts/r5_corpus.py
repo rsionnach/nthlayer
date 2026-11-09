@@ -10,10 +10,13 @@ One entry per archived gate record and repo (rulings on opensrm-6kqs.2,
 2026-11-09): ``<out>/opensrm-<stem>/``, or ``opensrm-<stem>--<repo>/`` when the
 record gated several repos. Each holds the light files:
 
-- ``meta.json``: bead, record, repo, base and head (full SHAs) and their trees,
-  the roster, ``sequential_steps`` (r5_baseline), ``escape``, ``fidelity``,
-  ``brief_source``, per-lens severity counts per iteration, and the synthetic
-  bundle commits that carry base's and head's trees.
+- ``meta.json``: bead, record, repo, base and head (full SHAs) and their trees
+  (``record_head`` when an escape moved the head, ``unavailable`` when the
+  local repo lacks one), the roster, ``sequential_steps`` for the record and
+  ``bead_sequential_steps`` for its bead (r5_baseline), ``escape``,
+  ``fidelity``, ``brief_source``, per-lens severity counts per review,
+  r5_baseline's per-lens totals (``baseline``), and the synthetic bundle
+  commits that carry base's and head's trees.
 - ``brief.md``: what the reviewers were given, by source (BRIEF_SOURCES).
 - ``diff.patch``: ``git diff base head``.
 - ``recorded.json``: the gate's rounds per lens, with findings in the section 6
@@ -22,7 +25,7 @@ record gated several repos. Each holds the light files:
 The heavy part, one git bundle per repo, is written to ``--bundles``: each
 entry's base and head trees as two synthetic commits (tree SHAs exact, commit
 SHAs synthetic and deterministic), published as release assets under
-BUNDLE_TAG, never in a plugin repo. meta.json carries the asset's name, URL
+BUNDLE_TAG, never committed. meta.json carries the asset's name, URL
 and sha256.
 
 Fidelity, per entry (FIDELITIES), never an exclusion:
@@ -52,7 +55,11 @@ Usage:
         [--workspace DIR] [--private-dir DIR] [--no-bd]
 
 Exit codes: 0 corpus written · 2 any one of these: a usage error, a record
-r5_baseline refuses, or a known-escape entry that matches no record.
+r5_baseline refuses (RecordError), or an input it cannot turn into an entry
+without guessing (CorpusError): a record with no diff_range, a reviewer report
+whose sha256 differs from its index, a KNOWN_ESCAPES key matching no corpus
+entry or whose lines are not in the tree the entry carries, or a git command
+that fails.
 """
 
 from __future__ import annotations
@@ -233,7 +240,7 @@ def blocking_counts(findings: list) -> tuple[int, int]:
 
 # --- the private archive ----------------------------------------------------
 
-class Private:
+class PrivateArchive:
     """The reviewer reports, extractions and briefs kept outside every repo."""
 
     def __init__(self, root: Path | None):
@@ -312,6 +319,8 @@ def reviews(record: dict) -> list[dict]:
         if kind == "findings_received" and isinstance(lens, str):
             iteration[lens] += 1
             pending = {"lens": lens, "iteration": iteration[lens], "ts": event.get("ts"),
+                       # r5_baseline's own reading of a counts value, so the two
+                       # scripts can never disagree on one.
                        "counts": r5_baseline._counts(event.get("counts")), "fix_commit": None,
                        "fix_repo": None, "blocking_lens": lens_blocks(lens, blocking)}
             out.append(pending)
@@ -324,7 +333,7 @@ def reviews(record: dict) -> list[dict]:
     return out
 
 
-def is_blocking(review: dict) -> bool:
+def raised_blocking_finding(review: dict) -> bool:
     """A review in a blocking lens that raised a CRITICAL or IMPORTANT."""
     return review["blocking_lens"] and review["counts"]["critical"] + review["counts"]["important"] > 0
 
@@ -403,9 +412,9 @@ def entry_name(stem: str, repo: str, repos: int) -> str:
     return f"opensrm-{stem}" + (f"--{repo}" if repos > 1 else "")
 
 
-def build_entry(name: str, stem: str, file: str, record: dict, row: dict, bead_steps: int,
+def build_entry(entry: str, stem: str, record_file: str, record: dict, row: dict, bead_steps: int,
                 repo_name: str, rng: dict, multi: bool, workspace: Path,
-                private: Private, use_bd: bool) -> dict:
+                private: PrivateArchive, use_bd: bool) -> dict:
     """The light files of one entry, as data, plus the trees its bundle needs."""
     repo = workspace / repo_name
     base, head = (resolve(repo, rng.get("base") or ""), resolve(repo, rng.get("head") or "")) \
@@ -420,19 +429,19 @@ def build_entry(name: str, stem: str, file: str, record: dict, row: dict, bead_s
         head = resolve(repo, escape["at_commit"])
         check_escape(repo, head, escape)
     revs = reviews(record)
-    rounds, fidelity = [], "clean"
     if not severities_complete(row):
-        fidelity = "counts_only"
-    elif any(is_blocking(r) for r in revs):
-        fidelity = "counts_only"
-        if not multi:
-            fidelity = classify(file, revs, private, repo, head, rounds)
-    if not rounds:
-        rounds = [_round(r, None) for r in revs]
+        fidelity, rounds = "counts_only", None
+    elif not any(raised_blocking_finding(r) for r in revs):
+        fidelity, rounds = "clean", None
+    elif multi:
+        fidelity, rounds = "counts_only", None  # a finding cannot be given to one repo
+    else:
+        fidelity, rounds = classify(record_file, revs, private, repo, head)
+    rounds = rounds or [_round(r, None) for r in revs]
     brief, brief_source = choose_brief(stem, bead, repo, private, use_bd)
     brief = mask_workspace(brief, workspace) or ""
     meta = {
-        "schema_version": SCHEMA_VERSION, "entry": name, "bead": bead, "record": file,
+        "schema_version": SCHEMA_VERSION, "entry": entry, "bead": bead, "record": record_file,
         "repo": repo_name, "base": base, "head": head,
         "record_head": record_head if record_head != head else None,
         "base_tree": git(repo, "rev-parse", f"{base}^{{tree}}").strip() if base else None,
@@ -452,7 +461,7 @@ def build_entry(name: str, stem: str, file: str, record: dict, row: dict, bead_s
         "bundle": None,
     }
     recorded = {
-        "schema_version": SCHEMA_VERSION, "entry": name, "fidelity": fidelity,
+        "schema_version": SCHEMA_VERSION, "entry": entry, "fidelity": fidelity,
         "lens_order": row["lens_order"],
         "iterations": {lens: len(v) for lens, v in meta["counts"].items()},
         "rounds": rounds,
@@ -505,6 +514,11 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
     return path, False
 
 
+# The end of a path component: a sibling sharing a name prefix ("nthlayer"
+# and "nthlayer-common") is a different path.
+_PATH_END = r"(?=/|$|[^\w.-])"
+
+
 def mask_workspace(text: str | None, workspace: Path) -> str | None:
     """``text`` with the local workspace's absolute path written ``<workspace>``.
     Reviewer reports and briefs name files by where they sat on one machine;
@@ -517,18 +531,17 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
 
 
-# The end of a path component: a sibling sharing a name prefix ("nthlayer"
-# and "nthlayer-common") is a different path.
-_PATH_END = r"(?=/|$|[^\w.-])"
 
-
-def classify(file: str, revs: list[dict], private: Private, repo: Path, head: str | None,
-             rounds: list) -> str:
-    """recorded, derived or counts_only, filling ``rounds`` for the first two."""
+def classify(record_file: str, revs: list[dict], private: PrivateArchive, repo: Path,
+             head: str | None) -> tuple[str, list | None]:
+    """A single-repo entry with blocking findings: ("recorded", rounds) when
+    every blocking review's extraction is accepted, else ("derived", rounds)
+    when every one derives from its fix commit, else ("counts_only", None)."""
     recorded = []
     for r in revs:
-        got = private.recorded(file, r["lens"], r["ts"], r["counts"]) if is_blocking(r) else None
-        if is_blocking(r) and got is None:
+        got = private.recorded(record_file, r["lens"], r["ts"], r["counts"]) \
+            if raised_blocking_finding(r) else None
+        if raised_blocking_finding(r) and got is None:
             recorded = None
             break
         if got is None:
@@ -546,19 +559,17 @@ def classify(file: str, revs: list[dict], private: Private, repo: Path, head: st
                                path_in_tree=in_tree))
         recorded.append(_round(r, out))
     if recorded is not None:
-        rounds += recorded
-        return "recorded"
+        return "recorded", recorded
     derived = []
     for r in revs:
-        found = derive_from_commit(repo, r) if is_blocking(r) and repo.is_dir() else None
-        if is_blocking(r) and found is None:
-            return "counts_only"
+        found = derive_from_commit(repo, r) if raised_blocking_finding(r) and repo.is_dir() else None
+        if raised_blocking_finding(r) and found is None:
+            return "counts_only", None
         derived.append(_round(r, found))
-    rounds += derived
-    return "derived"
+    return "derived", derived
 
 
-def choose_brief(stem: str, bead: str | None, repo: Path, private: Private,
+def choose_brief(stem: str, bead: str | None, repo: Path, private: PrivateArchive,
                  use_bd: bool) -> tuple[str, str]:
     """What the reviewers were given, by BRIEF_SOURCES order."""
     text = private.brief(stem)
@@ -635,7 +646,7 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
 
 # --- the corpus -------------------------------------------------------------
 
-def build(archive_dir: Path, workspace: Path, private: Private, use_bd: bool) -> list[dict]:
+def build(archive_dir: Path, workspace: Path, private: PrivateArchive, use_bd: bool) -> list[dict]:
     records = r5_baseline.load_records(archive_dir)
     rows = {name: dict(r5_baseline.analyse_record(data), file=name) for name, data in records}
     beads = r5_baseline.bead_steps(list(rows.values()))
@@ -699,7 +710,7 @@ def main(argv: list[str] | None = None) -> int:
     private_dir = args.private_dir or args.archive_dir / "r5-handbacks"
     try:
         entries = build(args.archive_dir, args.workspace,
-                        Private(private_dir if private_dir.is_dir() else None), not args.no_bd)
+                        PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
     except (CorpusError, r5_baseline.RecordError) as exc:
