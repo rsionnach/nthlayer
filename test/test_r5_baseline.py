@@ -147,11 +147,77 @@ def test_an_advisory_event_never_double_counts_a_lens_with_findings_received():
     assert lens["reviews"] == 1
 
 
-def test_json_mode_reports_every_record(tmp_path, capsys):
+def _json_out(capsys) -> dict:
     assert r5_baseline.main(["--archive-dir", str(FIXTURES), "--json"]) == 0
-    out = json.loads(capsys.readouterr().out)
+    return json.loads(capsys.readouterr().out)
+
+
+def test_json_mode_reports_every_record(capsys):
+    out = _json_out(capsys)
+    assert out["schema_version"] == 1
     assert len(out["records"]) == 13
     assert "fx-dry-run-with-other-bucket" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
+
+
+def test_json_marks_the_records_the_totals_leave_out(capsys):
+    # The two excluded fixtures (a dry run; a gate abandoned before any
+    # review) are listed but not counted; the other eleven are.
+    out = _json_out(capsys)
+    uncounted = sorted(r["file"] for r in out["records"] if not r["counted"])
+    assert uncounted == [
+        "r5-state-fx-abandoned-unreviewed-completed.json",
+        "r5-state-fx-dry-run-with-other-bucket-completed.json",
+    ]
+    assert sum(r["counted"] for r in out["records"]) == 11
+
+
+def test_a_bead_with_two_records_sums_their_steps(capsys):
+    # fx-checkpointed-bead is gated twice. By hand from the fixtures:
+    #   fx-passless-fix-events: correctness 3 reviews + 2 fixes = 5; clarity
+    #   2 + 1 = 3; edge-cases 3 + 3 (fix_dispatched) = 6; provenance 2 + 1 = 3;
+    #   excellence 1; scoped(correctness+edge) 1 + 1 = 2; scoped re-check 1.
+    #   Total 21.
+    #   fx-re-run-passes: 19 (test_step_stats_use_a_true_median).
+    out = _json_out(capsys)
+    bead = out["beads"]["fx-checkpointed-bead"]
+    assert sorted(bead["records"]) == [
+        "r5-state-fx-passless-fix-events-completed.json",
+        "r5-state-fx-re-run-passes-completed.json",
+    ]
+    assert bead["sequential_steps"] == 40
+    # Uncounted records give their bead no entry.
+    assert "fx-dry-run-with-other-bucket" not in out["beads"]
+    assert "fx-abandoned-unreviewed" not in out["beads"]
+    assert len(out["beads"]) == 10
+
+
+def test_json_carries_the_table_summary(capsys):
+    out = _json_out(capsys)
+    rows = [_row(p.name.removeprefix("r5-state-").removesuffix("-completed.json"))
+            for p in sorted(FIXTURES.glob("*.json"))]
+    assert out["summary"] == json.loads(json.dumps(r5_baseline.report(rows)))
+
+
+def test_schema_versions_are_counted_by_value():
+    # Counted fixtures: 2 of version 1 (the other two v1 files are the
+    # excluded ones), 9 of version 2; read off the files' "version" fields.
+    rows = [_row(p.name.removeprefix("r5-state-").removesuffix("-completed.json"))
+            for p in sorted(FIXTURES.glob("*.json"))]
+    assert r5_baseline.report(rows)["versions"] == {"1": 2, "2": 9}
+    # A third version is its own bucket, not folded into v2.
+    rows[0] = dict(rows[0], version=3)
+    assert r5_baseline.schema_versions(rows)["3"] == 1
+    # In numeric order, not text order: "2" before "10".
+    assert list(r5_baseline.schema_versions([dict(rows[1], version=10), dict(rows[1], version=2)])) == ["2", "10"]
+
+
+def test_an_archive_that_cannot_be_opened_is_refused(tmp_path):
+    # A directory where a record should be: open() raises IsADirectoryError,
+    # an OSError, which is a refusal (exit 2), not a traceback.
+    (tmp_path / "r5-state-probe-completed.json").mkdir()
+    with pytest.raises(r5_baseline.RecordError):
+        r5_baseline.load_records(tmp_path)
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
 
 
 @pytest.mark.parametrize("make", ["missing", "empty"])
