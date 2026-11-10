@@ -173,8 +173,9 @@ examples, generator-specific scripts.
     repo (`meta.json`, `brief.md`, `diff.patch`, `recorded.json`), with a
     fidelity (recorded / derived / counts_only) and `blocking_findings`,
     and with `--bundles` one synthetic git bundle per repo plus
-    `bundles.json`, published as release assets on
-    `rsionnach/curamoir-replay-corpus`, never committed. Reads reviewer
+    `bundles.json`, published as release assets on this
+    repo under a `corpus-v*` tag (rule 4), never committed; `bundles.json`
+    also goes beside the entries. Reads reviewer
     reports and their extractions from the private archive
     `.claude/r5-handbacks/`; only findings and briefs leave it. Standard
     library and git only. Tests: `test/test_r5_corpus.py`, on the runner's
@@ -274,6 +275,11 @@ hub with implementation drift.
    - `v0.1.0a*` — legacy generator releases (historical).
    - `meta-v*` — PyPI meta-package releases. Triggers `release.yml`.
    - Sub-package `v*` tags live in their own repos.
+   - `corpus-v*` — R5 replay corpus releases: the synthetic per-repo
+     bundles `scripts/r5_corpus.py --bundles` writes, as release assets
+     (opensrm-6kqs.2). One release per corpus version, never edited after
+     publication, created with `--latest=false` so the meta-package stays
+     the latest release. No workflow runs on it.
 
    Do not push a tag in the wrong namespace.
 

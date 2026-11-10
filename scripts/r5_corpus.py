@@ -31,8 +31,10 @@ files:
 With ``--bundles``, the heavy part: one git bundle per repo holding each
 entry's base and head trees as two synthetic commits (tree SHAs exact, commit
 SHAs synthetic and deterministic), and ``bundles.json`` (repo, sha256, size,
-release tag, URL). The bundles are release assets on CORPUS_REPO, whose git
-content is bundles.json; they are never committed.
+release tag, URL), written to --bundles and, beside the entries, to --out.
+The bundles are release assets on CORPUS_REPO under a ``corpus-v*`` tag (one
+release per corpus version, never edited after publication); they are never
+committed, and the harness needs nothing of that repo's git content.
 
 Fidelity is provenance (FIDELITIES), decided once per record, never an
 exclusion; ``blocking_findings`` (an integer, null when the archive's
@@ -96,9 +98,11 @@ SCHEMA_VERSION = 1
 FIDELITIES = ("recorded", "derived", "counts_only")
 BRIEF_SOURCES = ("reviewer_prompt", "bead", "plan_doc", "none")
 BLOCKING = r5_baseline.LENS_ORDER[:4]  # the blocking roster; excellence is advisory
-BUNDLE_TAG = "v1"  # one release per corpus version on the corpus repository
+# One release per corpus version, in the front door's corpus-v* tag namespace
+# (its CLAUDE.md rule 4); no workflow there runs on it.
+BUNDLE_TAG = "corpus-v1"
 BD_TIMEOUT_S = 60
-CORPUS_REPO = "rsionnach/curamoir-replay-corpus"
+CORPUS_REPO = "rsionnach/nthlayer"
 BUNDLE_URL = "https://github.com/" + CORPUS_REPO + "/releases/download/{tag}/{name}"
 
 # Synthetic commits are fixed in identity and time, so the same trees give the
@@ -1012,12 +1016,21 @@ def previous_entries(out: Path) -> list[Path]:
     return names
 
 
-def write_entries(entries: list[dict], out: Path) -> None:
-    """Write every entry, replacing the entries a previous run left."""
+def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -> None:
+    """Write every entry, replacing the entries a previous run left, and with
+    --bundles the manifest beside them (spec section 6: bundles.json in
+    fixtures/r5-replay/, so the harness needs only that directory and the
+    release). A run without --bundles leaves no manifest: its entries name
+    no bundle."""
     olds = previous_entries(out)
     out.mkdir(parents=True, exist_ok=True)
     for old in olds:
         shutil.rmtree(old)
+    manifest = out / "bundles.json"
+    if bundles is not None:
+        shutil.copyfile(bundles / "bundles.json", manifest)
+    elif manifest.is_file():
+        manifest.unlink()
     for e in entries:
         target = out / e["meta"]["entry"]
         target.mkdir(parents=True, exist_ok=True)
@@ -1079,7 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
             previous_assets(args.bundles)  # likewise for --bundles
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
-        write_entries(entries, args.out)
+        write_entries(entries, args.out, args.bundles)
     except (CorpusError, r5_baseline.RecordError) as exc:
         print(f"r5-corpus: {exc}", file=sys.stderr)
         return 2

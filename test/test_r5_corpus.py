@@ -1211,7 +1211,8 @@ def test_each_manifest_item_carries_the_release_tag(workspace, tmp_path):
     r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b")
     manifest = json.loads((tmp_path / "b" / "bundles.json").read_text())
     assert [i["release_tag"] for i in manifest["bundles"]] == [manifest["release_tag"]] == [r5_corpus.BUNDLE_TAG]
-    assert manifest["repository"] == "rsionnach/curamoir-replay-corpus"  # spec v1.1 section 6
+    assert manifest["repository"] == "rsionnach/nthlayer"  # spec v1.3: front-door release assets
+    assert r5_corpus.BUNDLE_TAG.startswith("corpus-v")
 
 
 
@@ -1236,3 +1237,32 @@ def test_a_worktree_two_record_repos_share_names_neither(tmp_path):
     w = r5_corpus.Workspace(ws)
     assert w.repo_of("alpha-third", {"alpha": {}, "alpha-wt": {}}) is None
     assert w.repo_of("alpha-third", {"alpha": {}, "beta": {}}) == "alpha"
+
+
+
+def test_the_manifest_goes_beside_the_entries_and_only_with_bundles(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "mfs", record("opensrm-mfs", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out, bundles = tmp_path / "out", tmp_path / "b"
+    args = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
+    assert r5_corpus.main(args + ["--bundles", str(bundles)]) == 0
+    assert (out / "bundles.json").read_bytes() == (bundles / "bundles.json").read_bytes()
+    # A later run without --bundles names no bundle, so it leaves no manifest.
+    assert r5_corpus.main(args) == 0
+    assert not (out / "bundles.json").exists()
+
+
+def test_no_workflow_runs_on_a_corpus_tag():
+    # corpus-v* releases carry assets only (CLAUDE.md rule 4): no workflow's
+    # tag filter may match one, release.yml's meta-v* above all.
+    import fnmatch
+    import re as _re
+    workflows = HERE.parent / ".github" / "workflows"
+    patterns = []
+    for wf in sorted(workflows.glob("*.yml")):
+        text = wf.read_text()
+        for block in _re.findall(r"^\s+tags:\s*\n((?:\s+- .+\n)+)", text, _re.M):
+            patterns += [p.strip().strip("'\"") for p in _re.findall(r"- (.+)", block)]
+    assert "meta-v*" in patterns  # the parse sees release.yml's filter
+    assert not [p for p in patterns if fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p)]
