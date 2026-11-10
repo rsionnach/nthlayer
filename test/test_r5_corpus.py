@@ -1619,3 +1619,46 @@ def test_one_new_directory_for_both_is_refused_before_it_is_created(workspace, t
     assert r5_corpus.main(["--out", str(d), "--bundles", str(d), "--release-tag", TAG,
                            "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not d.exists()
+
+
+def test_a_recorded_claim_is_masked(workspace, tmp_path):
+    ws = workspace["ws"]
+    rec = record("opensrm-cl", {"demo": {"base": workspace["base"][:7], "head": workspace["head"][:7]}},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, workspace["fix"])])
+    stamps = write_record(ws, "cl", rec)
+    scratch = "/private/tmp/claude-501/-Users-rob-eco/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab/scratchpad/p.txt"
+    report = REPORT.replace("third field.", f"third field (probe in {scratch}).")
+    extraction = [dict(EXTRACTION[0], claim=f"drops c on the write path, so a saved record loses its third"
+                                            f" field (probe in {scratch})."), EXTRACTION[1]]
+    private = private_archive(tmp_path / "p", "r5-state-cl-completed.json", "correctness", stamps[0],
+                              report=report, extraction=extraction)
+    e = build(ws, private)["opensrm-cl"]
+    assert e["meta"]["fidelity"] == "recorded"
+    (f,) = e["recorded"]["rounds"][0]["findings"]
+    assert f["claim"].endswith("(probe in <claude-tmp>/scratchpad/p.txt).")
+
+
+@pytest.mark.parametrize("brief", [
+    "see /Users/rob/notes.txt",                       # a path ~ masking would have caught
+    "under /private/var/folders/x/T/claude-501/-Users-rob-eco/s",  # a temp root it does not know
+    "probe in /private/tmp/claude-501/-Users-rob-\neco/s",       # a slug split by a line wrap
+])
+def test_an_entry_still_naming_home_is_refused(monkeypatch, brief):
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/Users/rob")))
+    entry = {"meta": {"entry": "opensrm-x"}, "brief": brief, "recorded": {"rounds": []}}
+    clean = {"meta": {"entry": "opensrm-y"}, "brief": "see ~/notes.txt", "recorded": {"rounds": []}}
+    assert r5_corpus.local_path_leaks([entry, clean]) == ["opensrm-x"]
+    claim = {"meta": {"entry": "opensrm-z"}, "brief": None,
+             "recorded": {"rounds": [{"findings": [{"claim": "in /Users/rob/x"}]}]}}
+    assert r5_corpus.local_path_leaks([claim]) == ["opensrm-z"]
+
+
+def test_main_refuses_to_publish_a_leaking_entry(workspace, tmp_path, monkeypatch):
+    ws = workspace["ws"]
+    write_record(ws, "lk", record("opensrm-lk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    monkeypatch.setattr(r5_corpus, "local_path_leaks", lambda entries: ["opensrm-lk"])
+    out = tmp_path / "out"
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd"]) == 2
+    assert not out.exists()

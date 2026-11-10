@@ -625,6 +625,19 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
 
 
+def local_path_leaks(entries: list[dict]) -> list[str]:
+    """The entries whose transcript-derived text (brief, recorded findings)
+    still names the home directory, as a path or as the dash-spelled slug
+    Claude Code makes of it, after masking: a form mask_workspace does not
+    know (a $TMPDIR root, a JSON-escaped or line-wrapped path) is refused
+    here rather than published. diff.patch is not checked: it is a public
+    repository's own content."""
+    home = str(Path.home())
+    slug = re.sub(r"[^A-Za-z0-9]", "-", home)
+    return [e["meta"]["entry"] for e in entries
+            if any(home in t or slug in t for t in (e["brief"] or "", json.dumps(e["recorded"])))]
+
+
 class Classified(NamedTuple):
     """A record's fidelity, its rounds (findings tagged ``_repo``) or None,
     and its blocking-finding count (None when the archive's severities are
@@ -789,7 +802,7 @@ def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> lis
                 continue  # the corpus carries the gate's blocking findings
             repo_name, path, in_tree = assign(f.get("path"), repos, files, layout)
             kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
-                                     f["claim"], **prov, fix_commit=fix,
+                                     mask_workspace(f["claim"], workspace), **prov, fix_commit=fix,
                                      reported_path=mask_workspace(f.get("path"), workspace),
                                      path_in_tree=in_tree), _repo=repo_name))
         out.append(_round(r, kept))
@@ -1186,6 +1199,10 @@ def main(argv: list[str] | None = None) -> int:
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         # Every refusal main can make comes before the first write; SAME_DIRECTORY
         # names the one it cannot.
+        leaking = local_path_leaks(entries)
+        if leaking:
+            raise CorpusError(f"{len(leaking)} entries still name the home directory after masking"
+                              f" ({leaking[:3]}); extend mask_workspace before publishing")
         previous_entries(args.out)  # a foreign --out
         published = previous_manifest(args.out)  # or a foreign manifest in it
         if args.release_tag is not None and not args.bundles:
