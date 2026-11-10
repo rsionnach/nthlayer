@@ -884,8 +884,8 @@ def previous_assets(out: Path) -> set[str]:
 def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
     two-commit history under refs/r5/<entry>/{base,head}, and bundles.json,
-    the manifest write_entries copies beside the entries. Fills each meta's ``bundle``
-    and synthetic commits."""
+    the manifest write_entries copies beside the entries. Fills each meta's
+    ``bundle`` and synthetic commits."""
     previous = previous_assets(out)  # refuses a foreign --bundles before writing anything
     out.mkdir(parents=True, exist_ok=True)
     manifest: list[dict] = []
@@ -1017,6 +1017,13 @@ def previous_entries(out: Path) -> list[Path]:
     return names
 
 
+# --bundles and --out must differ, since the manifest is copied from one to the
+# other. main refuses that before writing anything, but it can only compare
+# directories that exist; two spellings of one directory that neither run had
+# created yet (./c and ./C on a case-insensitive disk) surface in write_entries.
+SAME_DIRECTORY = "--bundles and --out are the same directory; give the bundles their own"
+
+
 def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -> None:
     """Write every entry, replacing the entries a previous run left, and with
     --bundles the manifest beside them (spec section 6: bundles.json in
@@ -1031,8 +1038,8 @@ def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -
     if bundles is not None:
         try:
             shutil.copyfile(bundles / "bundles.json", manifest)
-        except shutil.SameFileError:  # one directory under two spellings, created this run
-            raise CorpusError("--bundles and --out name the same directory; give the bundles their own") from None
+        except shutil.SameFileError:  # see SAME_DIRECTORY
+            raise CorpusError(SAME_DIRECTORY) from None
     elif manifest.is_file():
         manifest.unlink()
     for e in entries:
@@ -1091,14 +1098,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
-        previous_entries(args.out)  # refuse a foreign --out before writing anything
+        # Every refusal comes before the first write.
+        previous_entries(args.out)  # a foreign --out
         if args.bundles:
-            previous_assets(args.bundles)  # likewise for --bundles
+            previous_assets(args.bundles)  # a foreign --bundles
             if args.bundles.resolve() == args.out.resolve() or (
                     args.bundles.is_dir() and args.out.is_dir() and os.path.samefile(args.bundles, args.out)):
-                raise CorpusError("--bundles and --out are the same directory; the manifest is"
-                                  " copied beside the entries, so give the bundles their own")
-        if args.bundles:
+                raise CorpusError(SAME_DIRECTORY)
             write_bundles(entries, args.workspace, args.bundles)
         write_entries(entries, args.out, args.bundles)
     except (CorpusError, r5_baseline.RecordError) as exc:

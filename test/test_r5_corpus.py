@@ -12,6 +12,7 @@ Run: uv run --no-project --with pytest pytest -q test/test_r5_corpus.py
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -1261,25 +1262,24 @@ def _workflow_triggers(text):
     """The `on:` triggers of a workflow, as {event: {key: [values]}}, read with
     the standard library: flow (`[a, b]`) and block (`- a`) lists alike, and the
     scalar and list forms of `on:` itself."""
-    lines = text.splitlines()
-    i = next(n for n, line in enumerate(lines) if line.split("#")[0].rstrip().startswith(("on:", '"on":', "'on':")))
-    inline = lines[i].split(":", 1)[1].split("#")[0].strip()
+    lines = [_strip_comment(line) for line in text.splitlines()]
+    i = next(n for n, line in enumerate(lines) if line.startswith(("on:", '"on":', "'on':")))
+    inline = lines[i].split(":", 1)[1].strip()
     if inline:
         assert not inline.startswith("{"), "a flow-mapping on: is not read here; write it as a block"
         return {e: {} for e in _flow(inline)}
-    events, event, key = {}, None, None
-    for line in lines[i + 1:]:
-        body = line.split(" #")[0].rstrip()
-        if not body.strip() or body.lstrip().startswith("#"):
+    events, event_indent, event, key = {}, {}, None, None
+    for body in lines[i + 1:]:
+        if not body.strip():
             continue
         indent = len(body) - len(body.lstrip())
         if indent == 0 and not body.startswith("- "):
             break  # the next top-level key; a column-0 "- " is still an on: item
         item = body.strip()
-        if event is None or indent <= events[event]["_indent"]:
+        if event is None or indent <= event_indent[event]:
             event = item[2:] if item.startswith("- ") else item  # a block-sequence on:
             event = event.split(":", 1)[0].strip()
-            events[event] = {"_indent": indent}
+            events[event], event_indent[event] = {}, indent
             key = None
             continue
         if item.startswith("- ") and key is not None:
@@ -1291,7 +1291,15 @@ def _workflow_triggers(text):
             events[event][key] = _flow(value) if value else []
     # An unrecognised shape must fail the guard, not pass it with odd names.
     assert events and all(e.replace("_", "").isalpha() and e.islower() for e in events), sorted(events)
-    return {e: {k: v for k, v in keys.items() if k != "_indent"} for e, keys in events.items()}
+    return events
+
+
+def _strip_comment(line):
+    # A comment is a whole-line `#` or a ` #` after a value; a `#` with no space
+    # before it is part of the value, as in YAML.
+    if line.lstrip().startswith("#"):
+        return ""
+    return line.split(" #")[0].rstrip()
 
 
 def _flow(value):
@@ -1320,9 +1328,8 @@ def test_workflow_trigger_parse_reads_every_list_form():
 
 def test_no_workflow_runs_on_a_corpus_tag():
     # corpus-v* releases carry assets only (CLAUDE.md rule 4): publishing one
-    # must start no workflow. A `release` trigger fires on any release, an
-    # unfiltered push on any tag, and a tag filter on a matching one.
-    import fnmatch
+    # must start no workflow. A `release` or `create` trigger fires on any
+    # release, an unfiltered push on any tag, and a tag filter on a matching one.
     workflows = sorted((HERE.parent / ".github" / "workflows").glob("*.y*ml"))
     assert workflows
     fires, tag_filters = [], []
@@ -1339,7 +1346,7 @@ def test_no_workflow_runs_on_a_corpus_tag():
                 fires.append((wf.name, "push.tags"))
             if "tags-ignore" in keys and not any(fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p) for p in keys["tags-ignore"]):
                 fires.append((wf.name, "push.tags-ignore"))
-            if not {"branches", "tags", "branches-ignore"} & set(keys) and "tags-ignore" not in keys:
+            if not {"branches", "branches-ignore", "tags", "tags-ignore"} & set(keys):
                 fires.append((wf.name, "push"))  # unfiltered: runs on every tag
     assert "meta-v*" in tag_filters  # the parse sees release.yml's filter
     assert fires == []

@@ -173,9 +173,9 @@ examples, generator-specific scripts.
     repo (`meta.json`, `brief.md`, `diff.patch`, `recorded.json`), with a
     fidelity (recorded / derived / counts_only) and `blocking_findings`,
     and with `--bundles` one synthetic git bundle per repo plus
-    `bundles.json`, published as release assets on this
-    repo under a `corpus-v*` tag (rule 4), never committed; `bundles.json`
-    also goes beside the entries. Reads reviewer
+    `bundles.json`. The bundles are release assets on this repo under a
+    `corpus-v*` tag (rule 4), never committed; `bundles.json` is copied
+    beside the entries, in cúramóir's `fixtures/r5-replay/`. Reads reviewer
     reports and their extractions from the private archive
     `.claude/r5-handbacks/`; only findings and briefs leave it. Standard
     library and git only. Tests: `test/test_r5_corpus.py`, on the runner's
@@ -279,7 +279,8 @@ hub with implementation drift.
      bundles `scripts/r5_corpus.py --bundles` writes, as release assets
      (opensrm-6kqs.2). One release per corpus version, never edited after
      publication, created with `--latest=false` so the meta-package stays
-     the latest release. No workflow runs on it.
+     the latest release. No workflow runs on it, which
+     `test/test_r5_corpus.py::test_no_workflow_runs_on_a_corpus_tag` checks.
 
    Do not push a tag in the wrong namespace.
 
