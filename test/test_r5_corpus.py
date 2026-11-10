@@ -581,6 +581,20 @@ def test_masking_home_respects_the_path_boundary(monkeypatch):
         "~/x and /Users/robert/y"
 
 
+# The shapes Claude Code gives a session's scratchpad and task output: the
+# temp root, a project slug spelling the home path, then the session id.
+@pytest.mark.parametrize("path,masked", [
+    ("/private/tmp/claude-501/-Users-rob-Documents-GitHub-eco/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab/scratchpad/b.md",
+     "<claude-tmp>/scratchpad/b.md"),
+    ("/tmp/claude-501/-Users-rob-Documents-GitHub-eco/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab/tasks/x.output",
+     "<claude-tmp>/tasks/x.output"),
+    ("/private/tmp/claude-501/-Users-rob-Documents-GitHub-eco/x.py", "<claude-tmp>/x.py"),
+    ("/private/tmp/claude-501/", "/private/tmp/claude-501/"),
+])
+def test_masking_claude_temp_directories(path, masked):
+    assert r5_corpus.mask_workspace(f"read `{path}` and go", Path("/nowhere")) == f"read `{masked}` and go"
+
+
 def test_masking_stops_at_a_sibling_that_shares_the_workspace_name_prefix(tmp_path):
     ws = tmp_path / "nthlayer"
     ws.mkdir()

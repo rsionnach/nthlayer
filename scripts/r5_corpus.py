@@ -598,14 +598,21 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
 # The end of a path component: a sibling sharing a name prefix ("nthlayer"
 # and "nthlayer-common") is a different path.
 _PATH_END = r"(?=/|$|[^\w.-])"
+# Claude Code's per-user temp root, /private/tmp/claude-<uid>/<project slug>/
+# <session id>/...: the slug spells the user's home path and the session id is
+# session material, so both go, through the session id when there is one.
+_CLAUDE_TMP = re.compile(r"(?:/private)?/tmp/claude-\d+/[^/\s'\"`)\]]+"
+                         r"(?:/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?")
 
 
 def mask_workspace(text: str | None, workspace: Path) -> str | None:
-    """``text`` with the local workspace's absolute path written ``<workspace>``.
+    """``text`` with the local workspace's absolute path written ``<workspace>``,
+    home ``~`` and Claude Code's temp directories ``<claude-tmp>``.
     Reviewer reports and briefs name files by where they sat on one machine;
     that path says nothing about the code and is not published."""
     if text is None:
         return None
+    text = _CLAUDE_TMP.sub("<claude-tmp>", text)
     # Absolute forms only: a relative workspace ("..") would match every "..".
     for root in sorted({str(workspace.resolve()), str(workspace.absolute())}, key=len, reverse=True):
         text = re.sub(re.escape(root) + _PATH_END, "<workspace>", text)
