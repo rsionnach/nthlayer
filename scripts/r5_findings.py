@@ -298,10 +298,12 @@ def _replay_findings(state: dict) -> list:
 
     A dry run reviews the frozen pre-gate tree once per lens (it commits no
     fixes, so there is nothing to re-review); a second ``findings_received``
-    for a lens would be a retry, and only the first is the review."""
+    for a lens would be a retry, and only the first is the review. An event
+    without a ``findings`` list is not a parsed review (r5-supervise logs a
+    provenance reviewer that left the tree dirty that way) and is skipped."""
     seen, out = set(), []
     for event in state.get("audit_trail") or ():
-        if event.get("event") != "findings_received":
+        if event.get("event") != "findings_received" or not isinstance(event.get("findings"), list):
             continue
         lens = _schema_lens(event.get("pass", ""))
         if lens in ADVISORY_LENSES or lens in seen:

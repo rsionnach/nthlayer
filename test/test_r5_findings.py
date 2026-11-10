@@ -330,3 +330,14 @@ def test_compare_reads_only_the_first_review_of_a_lens():
     rep = replay(("correctness", []), ("correctness", [finding()]))
     out = r5_findings.compare_records(rec, rep)
     assert len(out["unmatched"]) == 1 and out["replay_only"] == []
+
+
+def test_compare_skips_an_event_that_is_not_a_parsed_review():
+    """r5-supervise Step 3: a provenance reviewer that left the tree dirty is
+    logged as findings_received with reviewer_left_tree_dirty and no findings."""
+    rec = recorded(("provenance", 1, [finding(lens="provenance", **STALE)]))
+    rep = {"audit_trail": [
+        {"event": "findings_received", "pass": "provenance", "reviewer_left_tree_dirty": True},
+        {"event": "findings_received", "pass": "provenance", "findings": [finding(lens="provenance")]}]}
+    out = r5_findings.compare_records(rec, rep)
+    assert len(out["matched"]) == 1 and out["unmatched"] == []
