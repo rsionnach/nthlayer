@@ -1040,8 +1040,8 @@ def test_a_stale_bundle_is_removed_with_its_repo(workspace, tmp_path):
     out = tmp_path / "b"
     out.mkdir()
     (out / "old-repo.bundle").write_bytes(b"stale")
-    (out / "bundles.json").write_text(json.dumps({"bundles": [{"asset": "old-repo.bundle"}]}))
-    r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
+    (out / "bundles.json").write_text(json.dumps({"release_tag": TAG, "bundles": [{"asset": "old-repo.bundle"}]}))
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, "corpus-v2")
     assert sorted(p.name for p in out.iterdir()) == ["bundles.json", "demo.bundle"]
 
 
@@ -1249,9 +1249,11 @@ def test_the_manifest_goes_beside_the_entries_and_only_with_bundles(workspace, t
     args = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
     assert r5_corpus.main(args + ["--bundles", str(bundles), "--release-tag", TAG]) == 0
     assert (out / "bundles.json").read_bytes() == (bundles / "bundles.json").read_bytes()
-    # A later run without --bundles names no bundle, so it leaves no manifest.
-    assert r5_corpus.main(args) == 0
-    assert not (out / "bundles.json").exists()
+    # A later run without --bundles would drop the committed record of a
+    # published release, which a fresh --bundles is checked against: refused.
+    kept = (out / "bundles.json").read_bytes()
+    assert r5_corpus.main(args) == 2
+    assert (out / "bundles.json").read_bytes() == kept
     # One directory for both is refused before anything is written.
     before = {f.name: f.read_bytes() for f in bundles.iterdir()}
     assert r5_corpus.main(["--out", str(bundles)] + args[2:] + ["--bundles", str(bundles), "--release-tag", TAG]) == 2
@@ -1359,7 +1361,7 @@ def test_no_workflow_runs_on_a_corpus_tag():
     assert fires == []
 
 
-@pytest.mark.parametrize("tag", ["corpus-v0", "corpus-v01", "corpus-v", "corpus-v1a", "meta-v1", "corpus-v١"])
+@pytest.mark.parametrize("tag", ["corpus-v0", "corpus-v01", "corpus-v", "corpus-v1a", "meta-v1", "corpus-v١", 1, None])
 def test_a_release_tag_outside_corpus_v_n_is_refused(tag):
     with pytest.raises(r5_corpus.CorpusError):
         r5_corpus.check_release_tag(tag)
@@ -1477,3 +1479,36 @@ def test_a_killed_runs_staging_directory_is_cleared(workspace, tmp_path):
     (out / ".staging-killed" / "demo.bundle").write_bytes(b"partial")
     r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
     assert not list(out.glob(".staging-*"))
+
+
+def test_an_older_tag_than_a_known_manifest_is_refused(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "old", record("opensrm-old", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    base = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b1"), "--release-tag", "corpus-v2"]) == 0
+    committed = (out / "bundles.json").read_bytes()
+    # An old command replayed into a fresh --bundles, against the committed v2.
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b2"), "--release-tag", "corpus-v1"]) == 2
+    assert (out / "bundles.json").read_bytes() == committed
+    assert not list((tmp_path / "b2").glob("*.bundle"))
+    # And against a --bundles manifest at a later N.
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b1", "corpus-v1")
+
+
+@pytest.mark.parametrize("manifest", [
+    {"repository": "rsionnach/nthlayer", "release_tag": "corpus-v1", "bundles": ["x"]},
+    {"repository": "rsionnach/nthlayer", "release_tag": "v1", "bundles": []},
+    {"repository": "rsionnach/nthlayer", "release_tag": 1, "bundles": []},
+])
+def test_a_malformed_out_manifest_is_refused_not_a_traceback(workspace, tmp_path, manifest):
+    ws = workspace["ws"]
+    write_record(ws, "mal", record("opensrm-mal", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "bundles.json").write_text(json.dumps(manifest))
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2

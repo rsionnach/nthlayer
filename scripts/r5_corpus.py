@@ -886,12 +886,12 @@ def previous_assets(out: Path) -> tuple[set[str], dict]:
     return listed, prior if manifest.is_file() else {}
 
 
-def check_release_tag(tag: str) -> str:
-    """``tag`` if it is corpus-v<N>, N a positive integer with no leading zero."""
-    number = tag[len(TAG_PREFIX):]
-    if not (tag.startswith(TAG_PREFIX) and number.isdigit() and number.isascii() and number[0] != "0"):
+def check_release_tag(tag: str) -> int:
+    """N, when ``tag`` is corpus-v<N> with N a positive integer and no leading zero."""
+    number = tag[len(TAG_PREFIX):] if isinstance(tag, str) else ""
+    if not (number and tag.startswith(TAG_PREFIX) and number.isdigit() and number.isascii() and number[0] != "0"):
         raise CorpusError(f"--release-tag {tag!r} is not {TAG_PREFIX}<N> (CLAUDE.md rule 4)")
-    return tag
+    return int(number)
 
 
 def write_bundles(entries: list[dict], workspace: Path, out: Path, release_tag: str,
@@ -958,6 +958,16 @@ def _write_bundles(entries: list[dict], workspace: Path, out: Path, staging: Pat
                          "git_version": git(source, "--version").strip()})
     now = {b["asset"]: b["sha256"] for b in manifest}
     for prior in priors:
+        try:
+            prior_n = check_release_tag(prior.get("release_tag"))
+        except CorpusError:
+            raise CorpusError(f"a manifest in {out} or --out names no {TAG_PREFIX}<N> release tag"
+                              f" ({prior.get('release_tag')!r}); choose another directory") from None
+        # A known manifest at a later N means this tag is published and behind
+        # it: an old command replayed, not a new version.
+        if prior_n > check_release_tag(release_tag):
+            raise CorpusError(f"a manifest already names {prior['release_tag']}, later than {release_tag};"
+                              " a published release is never rebuilt, so give a new --release-tag")
         if prior.get("release_tag") != release_tag:
             continue
         was = {b.get("asset"): b.get("sha256") for b in prior.get("bundles", [])}
@@ -1076,8 +1086,10 @@ def previous_manifest(out: Path) -> dict:
     if manifest.is_file():
         try:
             found = json.loads(manifest.read_text(encoding="utf-8"))
-            ours = found.get("repository") == CORPUS_REPO and isinstance(found.get("bundles"), list)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            ours = (found.get("repository") == CORPUS_REPO and isinstance(found.get("bundles"), list)
+                    and all(isinstance(b, dict) for b in found["bundles"]))
+            check_release_tag(found.get("release_tag", ""))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError, CorpusError):
             ours = False
         if not ours:
             raise CorpusError(f"{manifest} is not a manifest this script wrote; choose another --out")
@@ -1089,8 +1101,8 @@ def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -
     """Write every entry, replacing the entries a previous run left, and with
     --bundles the manifest beside them (spec section 6: bundles.json in
     fixtures/r5-replay/, so the harness needs only that directory and the
-    release). A run without --bundles leaves no manifest: its entries name
-    no bundle."""
+    release). Without --bundles there is no manifest; main refuses that
+    run when --out already holds one."""
     olds = previous_entries(out)
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "bundles.json"
@@ -1166,6 +1178,11 @@ def main(argv: list[str] | None = None) -> int:
         published = previous_manifest(args.out)  # or a foreign manifest in it
         if args.release_tag is not None and not args.bundles:
             raise CorpusError("--release-tag names the release --bundles go to; give --bundles too")
+        if published and not args.bundles:
+            # It is the committed record of a published release, and the only
+            # one a fresh --bundles is checked against; never drop it quietly.
+            raise CorpusError(f"{args.out / 'bundles.json'} records {published['release_tag']}; rebuild with"
+                              " --bundles and --release-tag, or remove it yourself if that is intended")
         if args.bundles:
             if args.release_tag is None:
                 raise CorpusError("--bundles needs --release-tag corpus-v<N>, the release the bundles go to")
