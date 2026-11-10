@@ -909,9 +909,20 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path, release_tag: 
     out.mkdir(parents=True, exist_ok=True)
     for leftover in out.glob(STAGING_PREFIX + "*"):  # a killed run's; ours by name
         shutil.rmtree(leftover, ignore_errors=True)
+    priors = [m for m in (prior, published or {}) if m]
+    for known in priors:  # before minutes of packing, not after
+        try:
+            known_n = check_release_tag(known.get("release_tag"))
+        except CorpusError:
+            raise CorpusError(f"a manifest in {out} or --out names no {TAG_PREFIX}<N> release tag"
+                              f" ({known.get('release_tag')!r}); choose another directory") from None
+        # A known manifest at a later N means this tag is published and behind
+        # it: an old command replayed, not a new version.
+        if known_n > check_release_tag(release_tag):
+            raise CorpusError(f"a manifest already names {known['release_tag']}, later than {release_tag};"
+                              " a published release is never rebuilt, so give a new --release-tag")
     with tempfile.TemporaryDirectory(dir=out, prefix=STAGING_PREFIX) as staging:
-        _write_bundles(entries, workspace, out, Path(staging), release_tag, previous,
-                       [m for m in (prior, published or {}) if m])
+        _write_bundles(entries, workspace, out, Path(staging), release_tag, previous, priors)
 
 
 STAGING_PREFIX = ".staging-"
@@ -958,16 +969,6 @@ def _write_bundles(entries: list[dict], workspace: Path, out: Path, staging: Pat
                          "git_version": git(source, "--version").strip()})
     now = {b["asset"]: b["sha256"] for b in manifest}
     for prior in priors:
-        try:
-            prior_n = check_release_tag(prior.get("release_tag"))
-        except CorpusError:
-            raise CorpusError(f"a manifest in {out} or --out names no {TAG_PREFIX}<N> release tag"
-                              f" ({prior.get('release_tag')!r}); choose another directory") from None
-        # A known manifest at a later N means this tag is published and behind
-        # it: an old command replayed, not a new version.
-        if prior_n > check_release_tag(release_tag):
-            raise CorpusError(f"a manifest already names {prior['release_tag']}, later than {release_tag};"
-                              " a published release is never rebuilt, so give a new --release-tag")
         if prior.get("release_tag") != release_tag:
             continue
         was = {b.get("asset"): b.get("sha256") for b in prior.get("bundles", [])}
