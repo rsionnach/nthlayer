@@ -31,8 +31,13 @@ files:
 With ``--bundles``, the heavy part: one git bundle per repo holding each
 entry's base and head trees as two synthetic commits (tree SHAs exact, commit
 SHAs synthetic and deterministic), and ``bundles.json`` (repo, sha256, size,
-release tag, URL). The bundles are release assets on CORPUS_REPO, whose git
-content is bundles.json; they are never committed.
+release tag, URL), written to --bundles and, beside the entries, to --out.
+The bundles are release assets on CORPUS_REPO under the --release-tag
+``corpus-v<N>`` (one release per corpus version, never edited after
+publication); they are never committed, and the harness needs nothing of that
+repo's git content. A rebuild under a tag that the manifest in --bundles or
+beside the entries in --out already names must reproduce its bundles byte for
+byte; a changed corpus is a new N.
 
 Fidelity is provenance (FIDELITIES), decided once per record, never an
 exclusion; ``blocking_findings`` (an integer, null when the archive's
@@ -61,7 +66,7 @@ conversation around them never does. Without it no entry is recorded.
 Standard library only (and git), like r5_baseline.py, which it imports.
 
 Usage:
-    python3 scripts/r5_corpus.py --out DIR [--bundles DIR] [--archive-dir DIR]
+    python3 scripts/r5_corpus.py --out DIR [--bundles DIR --release-tag corpus-vN] [--archive-dir DIR]
         [--workspace DIR] [--private-dir DIR] [--no-bd]
 
 Exit codes: 0 corpus written · 2 any one of these: a usage error, a record
@@ -96,9 +101,12 @@ SCHEMA_VERSION = 1
 FIDELITIES = ("recorded", "derived", "counts_only")
 BRIEF_SOURCES = ("reviewer_prompt", "bead", "plan_doc", "none")
 BLOCKING = r5_baseline.LENS_ORDER[:4]  # the blocking roster; excellence is advisory
-BUNDLE_TAG = "v1"  # one release per corpus version on the corpus repository
+# One release per corpus version, in the front door's corpus-v* tag namespace
+# (its CLAUDE.md rule 4); no workflow there runs on it. --release-tag names the
+# version, corpus-v<N>.
+TAG_PREFIX = "corpus-v"
 BD_TIMEOUT_S = 60
-CORPUS_REPO = "rsionnach/curamoir-replay-corpus"
+CORPUS_REPO = "rsionnach/nthlayer"
 BUNDLE_URL = "https://github.com/" + CORPUS_REPO + "/releases/download/{tag}/{name}"
 
 # Synthetic commits are fixed in identity and time, so the same trees give the
@@ -850,18 +858,19 @@ CLEAN_GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "G
                  "GIT_CONFIG_PARAMETERS": ""}
 
 
-def previous_assets(out: Path) -> set[str]:
-    """The bundles a previous run's bundles.json lists in ``out``. Refuses an
-    --bundles holding any other *.bundle, rather than overwrite or delete a
-    file this script did not write (as --out refuses foreign entries)."""
+def previous_assets(out: Path) -> tuple[set[str], dict]:
+    """The bundles a previous run's bundles.json lists in ``out``, and that
+    manifest ({} when there is none). Refuses an --bundles holding any other
+    *.bundle, rather than overwrite or delete a file this script did not write
+    (as --out refuses foreign entries)."""
     if not out.exists():
-        return set()
+        return set(), {}
     if not out.is_dir():
         raise CorpusError(f"--bundles {out} is not a directory")
     manifest = out / "bundles.json"
     try:
-        listed = {b["asset"] for b in json.loads(manifest.read_text(encoding="utf-8"))["bundles"]} \
-            if manifest.is_file() else set()
+        prior = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {"bundles": []}
+        listed = {b["asset"] for b in prior["bundles"]}
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise CorpusError(f"{manifest}: unreadable ({exc}); choose another --bundles") from exc
     # Only plain bundle names: a listed "../x" or absolute path would be
@@ -874,16 +883,53 @@ def previous_assets(out: Path) -> set[str]:
         raise CorpusError(f"{out} holds bundles bundles.json does not list: {foreign[:3]} (an earlier run"
                           " interrupted before writing bundles.json leaves these); choose another --bundles,"
                           " or remove them if they are that run's")
-    return listed
+    return listed, prior if manifest.is_file() else {}
 
 
-def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
+def check_release_tag(tag: str) -> int:
+    """N, when ``tag`` is corpus-v<N> with N a positive integer and no leading zero."""
+    number = tag[len(TAG_PREFIX):] if isinstance(tag, str) else ""
+    if not (number and tag.startswith(TAG_PREFIX) and number.isdigit() and number.isascii() and number[0] != "0"):
+        raise CorpusError(f"--release-tag {tag!r} is not {TAG_PREFIX}<N> (CLAUDE.md rule 4)")
+    return int(number)
+
+
+def write_bundles(entries: list[dict], workspace: Path, out: Path, release_tag: str,
+                  published: dict | None = None) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
     two-commit history under refs/r5/<entry>/{base,head}, and bundles.json,
-    the manifest the corpus repository commits. Fills each meta's ``bundle``
-    and synthetic commits."""
-    previous = previous_assets(out)  # refuses a foreign --bundles before writing anything
+    the manifest write_entries copies beside the entries. Fills each meta's
+    ``bundle`` and synthetic commits. The bundles are built in a staging
+    directory and moved into ``out`` only once they agree with every manifest
+    known for ``release_tag``: the one in ``out`` and ``published``, the one
+    beside the entries (which, unlike --bundles, is committed and so outlives
+    a temporary build directory). A published release is never edited."""
+    check_release_tag(release_tag)
+    previous, prior = previous_assets(out)  # refuses a foreign --bundles before writing anything
     out.mkdir(parents=True, exist_ok=True)
+    for leftover in out.glob(STAGING_PREFIX + "*"):  # a killed run's; ours by name
+        shutil.rmtree(leftover, ignore_errors=True)
+    priors = [m for m in (prior, published or {}) if m]
+    for known in priors:  # before minutes of packing, not after
+        try:
+            known_n = check_release_tag(known.get("release_tag"))
+        except CorpusError:
+            raise CorpusError(f"a manifest in {out} or --out names no {TAG_PREFIX}<N> release tag"
+                              f" ({known.get('release_tag')!r}); choose another directory") from None
+        # A known manifest at a later N means this tag is published and behind
+        # it: an old command replayed, not a new version.
+        if known_n > check_release_tag(release_tag):
+            raise CorpusError(f"a manifest already names {known['release_tag']}, later than {release_tag};"
+                              " a published release is never rebuilt, so give a new --release-tag")
+    with tempfile.TemporaryDirectory(dir=out, prefix=STAGING_PREFIX) as staging:
+        _write_bundles(entries, workspace, out, Path(staging), release_tag, previous, priors)
+
+
+STAGING_PREFIX = ".staging-"
+
+
+def _write_bundles(entries: list[dict], workspace: Path, out: Path, staging: Path, release_tag: str,
+                   previous: set[str], priors: list[dict]) -> None:
     manifest: list[dict] = []
     by_repo: dict[str, list[dict]] = {}
     for e in entries:
@@ -909,7 +955,7 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
                 git(scratch, "update-ref", f"refs/r5/{meta['entry']}/head", head_commit, isolated=True)
                 meta["synthetic_base"], meta["synthetic_head"] = base_commit, head_commit
                 meta["bundle"] = {"repo": repo_name}
-            target = out / f"{repo_name}.bundle"
+            target = staging / f"{repo_name}.bundle"
             # One pack thread: a threaded delta search orders objects
             # differently run to run, and the published sha256 must hold.
             git(scratch, *PACK_CONFIG, "bundle", "create", "-q", str(target.resolve()), "--all",
@@ -918,15 +964,28 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
         for e in group:
             e["meta"]["bundle"]["sha256"] = digest
         manifest.append({"repo": repo_name, "asset": target.name, "sha256": digest,
-                         "size": target.stat().st_size, "release_tag": BUNDLE_TAG,
-                         "url": BUNDLE_URL.format(tag=BUNDLE_TAG, name=target.name),
+                         "size": target.stat().st_size, "release_tag": release_tag,
+                         "url": BUNDLE_URL.format(tag=release_tag, name=target.name),
                          "git_version": git(source, "--version").strip()})
+    now = {b["asset"]: b["sha256"] for b in manifest}
+    for prior in priors:
+        if prior.get("release_tag") != release_tag:
+            continue
+        was = {b.get("asset"): b.get("sha256") for b in prior.get("bundles", [])}
+        if was != now:
+            changed = sorted(a for a in set(was) | set(now) if was.get(a) != now.get(a))
+            raise CorpusError(f"a manifest already names {release_tag} with other bundles ({changed[:3]});"
+                              " a release is never edited, so give a changed corpus a new --release-tag"
+                              " (or, if an interrupted run left --bundles half-written, remove it and rebuild)")
+    for staged in staging.glob("*.bundle"):
+        os.replace(staged, out / staged.name)
     listed = {b["asset"] for b in manifest}
     for stale in previous - listed:
         (out / stale).unlink(missing_ok=True)  # a repo no longer in the corpus
-    # The corpus repository's git content: the bundles are its release assets.
+    # The bundles themselves are release assets; the harness reads this manifest
+    # from beside the entries, never from the front door's git content.
     (out / "bundles.json").write_text(json.dumps(
-        {"schema_version": SCHEMA_VERSION, "repository": CORPUS_REPO, "release_tag": BUNDLE_TAG,
+        {"schema_version": SCHEMA_VERSION, "repository": CORPUS_REPO, "release_tag": release_tag,
          "bundles": manifest}, indent=1) + "\n", encoding="utf-8")
 
 
@@ -1012,10 +1071,47 @@ def previous_entries(out: Path) -> list[Path]:
     return names
 
 
-def write_entries(entries: list[dict], out: Path) -> None:
-    """Write every entry, replacing the entries a previous run left."""
+# --bundles and --out must differ, since the manifest is copied from one to the
+# other. main refuses that before writing anything, but it can only compare
+# directories that exist; two spellings of one directory that did not exist
+# before this run (./c and ./C on a case-insensitive disk) surface in write_entries.
+SAME_DIRECTORY = "--bundles and --out are the same directory; give the bundles their own"
+
+
+def previous_manifest(out: Path) -> dict:
+    """The bundles.json in --out ({} when there is none). Refuses one this
+    script did not write, since every run replaces or removes it."""
+    manifest = out / "bundles.json"
+    if manifest.is_symlink() or (manifest.exists() and not manifest.is_file()):
+        raise CorpusError(f"{manifest} is not a manifest this script wrote; choose another --out")
+    if manifest.is_file():
+        try:
+            found = json.loads(manifest.read_text(encoding="utf-8"))
+            ours = (found.get("repository") == CORPUS_REPO and isinstance(found.get("bundles"), list)
+                    and all(isinstance(b, dict) for b in found["bundles"]))
+            check_release_tag(found.get("release_tag", ""))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError, CorpusError):
+            ours = False
+        if not ours:
+            raise CorpusError(f"{manifest} is not a manifest this script wrote; choose another --out")
+        return found
+    return {}
+
+
+def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -> None:
+    """Write every entry, replacing the entries a previous run left, and with
+    --bundles the manifest beside them (spec section 6: bundles.json in
+    fixtures/r5-replay/, so the harness needs only that directory and the
+    release). Without --bundles there is no manifest; main refuses that
+    run when --out already holds one."""
     olds = previous_entries(out)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = out / "bundles.json"
+    if bundles is not None:  # before any entry is removed, so a refusal here loses nothing
+        try:
+            shutil.copyfile(bundles / "bundles.json", manifest)
+        except shutil.SameFileError:  # see SAME_DIRECTORY
+            raise CorpusError(SAME_DIRECTORY) from None
     for old in olds:
         shutil.rmtree(old)
     for e in entries:
@@ -1065,6 +1161,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--bundles", type=Path)
+    parser.add_argument("--release-tag", help="with --bundles: the corpus-v<N> release they go to")
     parser.add_argument("--archive-dir", type=Path, default=r5_baseline.DEFAULT_ARCHIVE_DIR)
     parser.add_argument("--workspace", type=Path, default=DEFAULT_WORKSPACE)
     parser.add_argument("--private-dir", type=Path)
@@ -1074,12 +1171,27 @@ def main(argv: list[str] | None = None) -> int:
     try:
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
-        previous_entries(args.out)  # refuse a foreign --out before writing anything
+        # Every refusal main can make comes before the first write; SAME_DIRECTORY
+        # names the one it cannot.
+        previous_entries(args.out)  # a foreign --out
+        published = previous_manifest(args.out)  # or a foreign manifest in it
+        if args.release_tag is not None and not args.bundles:
+            raise CorpusError("--release-tag names the release --bundles go to; give --bundles too")
+        if published and not args.bundles:
+            # It is the committed record of a published release, and the only
+            # one a fresh --bundles is checked against; never drop it quietly.
+            raise CorpusError(f"{args.out / 'bundles.json'} records {published['release_tag']}; rebuild with"
+                              " --bundles and --release-tag, or remove it yourself if that is intended")
         if args.bundles:
-            previous_assets(args.bundles)  # likewise for --bundles
-        if args.bundles:
-            write_bundles(entries, args.workspace, args.bundles)
-        write_entries(entries, args.out)
+            if args.release_tag is None:  # check_release_tag would refuse too; this says why
+                raise CorpusError("--bundles needs --release-tag corpus-v<N>, the release the bundles go to")
+            check_release_tag(args.release_tag)
+            previous_assets(args.bundles)  # a foreign --bundles
+            if args.bundles.resolve() == args.out.resolve() or (
+                    args.bundles.is_dir() and args.out.is_dir() and os.path.samefile(args.bundles, args.out)):
+                raise CorpusError(SAME_DIRECTORY)
+            write_bundles(entries, args.workspace, args.bundles, args.release_tag, published)
+        write_entries(entries, args.out, args.bundles)
     except (CorpusError, r5_baseline.RecordError) as exc:
         print(f"r5-corpus: {exc}", file=sys.stderr)
         return 2

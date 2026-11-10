@@ -12,6 +12,7 @@ Run: uv run --no-project --with pytest pytest -q test/test_r5_corpus.py
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -22,6 +23,7 @@ from pathlib import Path
 import pytest
 
 HERE = Path(__file__).resolve().parent
+TAG = "corpus-v1"
 sys.path.insert(0, str(HERE.parent / "scripts"))
 _spec = importlib.util.spec_from_file_location("r5_corpus", HERE.parent / "scripts" / "r5_corpus.py")
 assert _spec and _spec.loader
@@ -393,7 +395,7 @@ def test_a_bundle_carries_each_entry_s_exact_trees_and_is_reproducible(workspace
     write_record(ws, "lll", record("opensrm-lll", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
     entries = list(build(ws).values())
-    r5_corpus.write_bundles(entries, ws, tmp_path / "b1")
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b1", TAG)
     meta = entries[0]["meta"]
     bundle = tmp_path / "b1" / "demo.bundle"
     assert meta["bundle"]["sha256"] == hashlib.sha256(bundle.read_bytes()).hexdigest()
@@ -413,7 +415,7 @@ def test_a_bundle_carries_each_entry_s_exact_trees_and_is_reproducible(workspace
     assert run(clone, "diff", "refs/r5/opensrm-lll/base", "refs/r5/opensrm-lll/head") == \
         run(workspace["repo"], "diff", workspace["base"], workspace["head"])
     again = list(build(ws).values())
-    r5_corpus.write_bundles(again, ws, tmp_path / "b2")
+    r5_corpus.write_bundles(again, ws, tmp_path / "b2", TAG)
     assert again[0]["meta"]["synthetic_head"] == meta["synthetic_head"]
 
 
@@ -599,7 +601,7 @@ def test_two_builds_give_byte_identical_bundles(workspace, tmp_path):
     digests = []
     for n in (1, 2):
         entries = list(build(ws).values())
-        r5_corpus.write_bundles(entries, ws, tmp_path / f"b{n}")
+        r5_corpus.write_bundles(entries, ws, tmp_path / f"b{n}", TAG)
         digests.append(hashlib.sha256((tmp_path / f"b{n}" / "demo.bundle").read_bytes()).hexdigest())
     assert digests[0] == digests[1]
 
@@ -671,7 +673,7 @@ def test_the_bundle_is_packed_single_threaded(workspace, tmp_path, monkeypatch):
     entries = list(build(ws).values())
     calls, real = [], r5_corpus.git
     monkeypatch.setattr(r5_corpus, "git", lambda repo, *a, **k: (calls.append(a), real(repo, *a, **k))[1])
-    r5_corpus.write_bundles(entries, ws, tmp_path / "b")
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b", TAG)
     (bundle,) = [a for a in calls if "bundle" in a]
     assert bundle[:2] == ("-c", "pack.threads=1")
     assert set(r5_corpus.PACK_CONFIG) <= set(bundle)
@@ -687,13 +689,13 @@ def test_the_caller_s_git_config_does_not_change_the_bundle(workspace, tmp_path,
     write_record(ws, "vvv", record("opensrm-vvv", {"demo": {"base": base, "head": head}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
     entries = list(build(ws).values())
-    r5_corpus.write_bundles(entries, ws, tmp_path / "plain")
+    r5_corpus.write_bundles(entries, ws, tmp_path / "plain", TAG)
     # A key PACK_CONFIG does not pin, so only the isolation keeps it out.
     for key, value in {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.bigFileThreshold",
                        "GIT_CONFIG_VALUE_0": "1"}.items():
         monkeypatch.setenv(key, value)
     again = list(build(ws).values())
-    r5_corpus.write_bundles(again, ws, tmp_path / "configured")
+    r5_corpus.write_bundles(again, ws, tmp_path / "configured", TAG)
     assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
     manifest = json.loads((tmp_path / "configured" / "bundles.json").read_text())
     assert manifest["bundles"][0]["git_version"].startswith("git version")
@@ -706,7 +708,7 @@ def test_a_foreign_out_is_refused_before_any_bundle_is_written(workspace, tmp_pa
     out, bundles = tmp_path / "out", tmp_path / "bundles"
     out.mkdir()
     (out / "opensrm-www").write_text("a file, not an entry\n")
-    assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--archive-dir",
+    assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--release-tag", TAG, "--archive-dir",
                            str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not bundles.exists()
     assert (out / "opensrm-www").read_text() == "a file, not an entry\n"
@@ -755,12 +757,12 @@ def test_a_config_reaching_commit_tree_does_not_change_the_bundle(workspace, tmp
     write_record(ws, "yyy", record("opensrm-yyy", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
     entries = list(build(ws).values())
-    r5_corpus.write_bundles(entries, ws, tmp_path / "plain")
+    r5_corpus.write_bundles(entries, ws, tmp_path / "plain", TAG)
     for key, value in {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "i18n.commitEncoding",
                        "GIT_CONFIG_VALUE_0": "ISO-8859-1", "GIT_DIR": str(workspace["repo"] / ".git")}.items():
         monkeypatch.setenv(key, value)
     again = list(build(ws).values())
-    r5_corpus.write_bundles(again, ws, tmp_path / "configured")
+    r5_corpus.write_bundles(again, ws, tmp_path / "configured", TAG)
     assert again[0]["meta"]["synthetic_head"] == entries[0]["meta"]["synthetic_head"]
     assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
     assert not run(workspace["repo"], "for-each-ref", "refs/r5")  # nothing written to the caller's repo
@@ -772,7 +774,7 @@ def test_an_out_that_is_a_file_is_refused_before_bundles(workspace, tmp_path):
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
     out, bundles = tmp_path / "out", tmp_path / "bundles"
     out.write_text("a file\n")
-    assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--archive-dir",
+    assert r5_corpus.main(["--out", str(out), "--bundles", str(bundles), "--release-tag", TAG, "--archive-dir",
                            str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not bundles.exists()
 
@@ -798,7 +800,7 @@ def test_bundles_that_is_a_file_is_refused(workspace, tmp_path):
     write_record(ws, "abc", record("opensrm-abc", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
     (tmp_path / "bundles").write_text("a file\n")
-    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "bundles"),
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "bundles"), "--release-tag", TAG,
                            "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not (tmp_path / "out").exists()
 
@@ -895,7 +897,7 @@ def test_the_caller_s_global_git_config_does_not_change_the_bundle(workspace, tm
     head = commit(repo, {"big.py": big.replace("line 2500 ", "line 2500 changed ")}, "big change")
     write_record(ws, "gcf", record("opensrm-gcf", {"demo": {"base": base, "head": head}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
-    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "plain")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "plain", TAG)
     home = tmp_path / "home"
     (home / ".config" / "git").mkdir(parents=True)
     hostile = "[core]\n\tbigFileThreshold = 1\n"
@@ -903,7 +905,7 @@ def test_the_caller_s_global_git_config_does_not_change_the_bundle(workspace, tm
     (home / ".config" / "git" / "config").write_text(hostile)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
-    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "configured")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "configured", TAG)
     assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "configured" / "demo.bundle").read_bytes()
 
 
@@ -1038,8 +1040,8 @@ def test_a_stale_bundle_is_removed_with_its_repo(workspace, tmp_path):
     out = tmp_path / "b"
     out.mkdir()
     (out / "old-repo.bundle").write_bytes(b"stale")
-    (out / "bundles.json").write_text(json.dumps({"bundles": [{"asset": "old-repo.bundle"}]}))
-    r5_corpus.write_bundles(list(build(ws).values()), ws, out)
+    (out / "bundles.json").write_text(json.dumps({"release_tag": TAG, "bundles": [{"asset": "old-repo.bundle"}]}))
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, "corpus-v2")
     assert sorted(p.name for p in out.iterdir()) == ["bundles.json", "demo.bundle"]
 
 
@@ -1051,9 +1053,9 @@ def test_a_bundle_this_script_did_not_list_is_refused_untouched(workspace, tmp_p
     out.mkdir()
     (out / "my-backup.bundle").write_bytes(b"mine")
     with pytest.raises(r5_corpus.CorpusError):
-        r5_corpus.write_bundles(list(build(ws).values()), ws, out)
+        r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
     assert (out / "my-backup.bundle").read_bytes() == b"mine"
-    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(out), "--archive-dir",
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(out), "--release-tag", TAG, "--archive-dir",
                            str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert not (tmp_path / "out").exists()
 
@@ -1168,7 +1170,7 @@ def test_the_summary_counts_unknown_blocking_counts_cross_repo_once_and_derived(
     (private / "briefs").mkdir()
     (private / "briefs" / "xrp.md").write_text("Review the diff.\n")
     (private / "briefs" / "index.json").write_text(json.dumps({"xrp": {}}))
-    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "b"),
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--bundles", str(tmp_path / "b"), "--release-tag", TAG,
                            "--archive-dir", str(ws / ".claude"),
                            "--workspace", str(ws), "--private-dir", str(tmp_path / "p"), "--no-bd"]) == 0
     summary = json.loads(capsys.readouterr().out)
@@ -1208,10 +1210,10 @@ def test_each_manifest_item_carries_the_release_tag(workspace, tmp_path):
     ws = workspace["ws"]
     write_record(ws, "tag", record("opensrm-tag", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
-    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b", TAG)
     manifest = json.loads((tmp_path / "b" / "bundles.json").read_text())
-    assert [i["release_tag"] for i in manifest["bundles"]] == [manifest["release_tag"]] == [r5_corpus.BUNDLE_TAG]
-    assert manifest["repository"] == "rsionnach/curamoir-replay-corpus"  # spec v1.1 section 6
+    assert [i["release_tag"] for i in manifest["bundles"]] == [manifest["release_tag"]] == [TAG]
+    assert manifest["repository"] == "rsionnach/nthlayer"  # spec v1.3: front-door release assets
 
 
 
@@ -1236,3 +1238,356 @@ def test_a_worktree_two_record_repos_share_names_neither(tmp_path):
     w = r5_corpus.Workspace(ws)
     assert w.repo_of("alpha-third", {"alpha": {}, "alpha-wt": {}}) is None
     assert w.repo_of("alpha-third", {"alpha": {}, "beta": {}}) == "alpha"
+
+
+
+def test_the_manifest_goes_beside_the_entries_and_only_with_bundles(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "mfs", record("opensrm-mfs", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out, bundles = tmp_path / "out", tmp_path / "b"
+    args = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
+    assert r5_corpus.main(args + ["--bundles", str(bundles), "--release-tag", TAG]) == 0
+    assert (out / "bundles.json").read_bytes() == (bundles / "bundles.json").read_bytes()
+    # A later run without --bundles would drop the committed record of a
+    # published release, which a fresh --bundles is checked against: refused.
+    kept = (out / "bundles.json").read_bytes()
+    assert r5_corpus.main(args) == 2
+    assert (out / "bundles.json").read_bytes() == kept
+    # One directory for both is refused before anything is written.
+    before = {f.name: f.read_bytes() for f in bundles.iterdir()}
+    assert r5_corpus.main(["--out", str(bundles)] + args[2:] + ["--bundles", str(bundles), "--release-tag", TAG]) == 2
+    assert {f.name: f.read_bytes() for f in bundles.iterdir()} == before
+
+
+def _workflow_triggers(text):
+    """The `on:` triggers of a workflow, as {event: {key: [values]}}, read with
+    the standard library: flow (`[a, b]`) and block (`- a`) lists alike, and the
+    scalar and list forms of `on:` itself."""
+    lines = [_strip_comment(line) for line in text.splitlines()]
+    i = next(n for n, line in enumerate(lines) if line.startswith(("on:", '"on":', "'on':")))
+    inline = lines[i].split(":", 1)[1].strip()
+    if inline:
+        assert not inline.startswith("{"), "a flow-mapping on: is not read here; write it as a block"
+        return {e: {} for e in _flow(inline)}
+    events, event_indent, event, key = {}, {}, None, None
+    for body in lines[i + 1:]:
+        if not body.strip():
+            continue
+        indent = len(body) - len(body.lstrip())
+        if indent == 0 and not body.startswith("- "):
+            break  # the next top-level key; a column-0 "- " is still an on: item
+        item = body.strip()
+        if event is None or indent <= event_indent[event]:
+            event = item[2:] if item.startswith("- ") else item  # a block-sequence on:
+            event = event.split(":", 1)[0].strip()
+            events[event], event_indent[event] = {}, indent
+            key = None
+            continue
+        if item.startswith("- ") and key is not None:
+            events[event][key].append(item[2:].strip().strip("'\""))
+        else:
+            assert ":" in item, f"unread on: line {item!r}"
+            key, value = (part.strip() for part in item.split(":", 1))
+            key = key.strip("'\"")
+            events[event][key] = _flow(value) if value else []
+    # An unrecognised shape must fail the guard, not pass it with odd names.
+    assert events and all(e.replace("_", "").isalpha() and e.islower() for e in events), sorted(events)
+    return events
+
+
+def _strip_comment(line):
+    # A comment is a whole-line `#` or a ` #` after a value; a `#` with no space
+    # before it is part of the value, as in YAML.
+    if line.lstrip().startswith("#"):
+        return ""
+    return line.split(" #")[0].rstrip()
+
+
+def _flow(value):
+    return [v.strip().strip("'\"") for v in value.strip("[]").split(",") if v.strip()]
+
+
+def test_workflow_trigger_parse_reads_every_list_form():
+    assert _workflow_triggers("on: release\n") == {"release": {}}
+    assert _workflow_triggers("on: [push, pull_request]\n") == {"push": {}, "pull_request": {}}
+    assert _workflow_triggers("on:\n  - push\n  - release\njobs:\n") == {"push": {}, "release": {}}
+    assert _workflow_triggers("on:\n- push\n- release\njobs:\n") == {"push": {}, "release": {}}
+    with pytest.raises(AssertionError):
+        _workflow_triggers("on:\njobs:\n")
+    assert _workflow_triggers("on:\n  push:\n    'tags': [a]\n") == {"push": {"tags": ["a"]}}
+    with pytest.raises(AssertionError):
+        _workflow_triggers("on:\n  push:\n    tags:\n      [a]\n")
+    assert _workflow_triggers("on:\n  push:\n# note\n    branches: [main]\n  release:\njobs:\n") == {
+        "push": {"branches": ["main"]}, "release": {}}
+    with pytest.raises(AssertionError):
+        _workflow_triggers("on: {push: {tags: [x]}}\n")
+    assert _workflow_triggers("on:\n  push:\n    tags: ['corpus-v*', \"x\"]\njobs:\n") == {
+        "push": {"tags": ["corpus-v*", "x"]}}
+    assert _workflow_triggers("on:\n  push:\n    tags:\n      - 'meta-v*'  # c\n  workflow_dispatch:\n") == {
+        "push": {"tags": ["meta-v*"]}, "workflow_dispatch": {}}
+
+
+CORPUS_TAGS = ("corpus-v1", "corpus-v2", "corpus-v10", "corpus-v123")
+
+
+def _corpus_tag_firings(text):
+    """The triggers in a workflow that a corpus-v<N> release would start. A
+    `release` trigger fires on any release, a `create` on any new tag, an
+    unfiltered push on any tag, and a tag filter on a matching one."""
+    fires = []
+    for event, keys in _workflow_triggers(text).items():
+        if event in ("release", "create"):
+            fires.append(event)
+        if event != "push":
+            continue
+        patterns = keys.get("tags", []) + keys.get("tags-ignore", [])
+        assert not [p for p in patterns if "+" in p]  # fnmatch has no `+` quantifier; GitHub's filters do
+        assert not [p for p in patterns if p.startswith("!")]  # nor does it model a `!` negation
+        for tag in CORPUS_TAGS:
+            if "tags" in keys and any(fnmatch.fnmatch(tag, p) for p in keys["tags"]):
+                fires.append("push.tags")
+            if "tags-ignore" in keys and not any(fnmatch.fnmatch(tag, p) for p in keys["tags-ignore"]):
+                fires.append("push.tags-ignore")
+        if not {"branches", "branches-ignore", "tags", "tags-ignore"} & set(keys):
+            fires.append("push")  # unfiltered: runs on every tag
+    return sorted(set(fires))
+
+
+# GitHub Actions `on:` shapes (the workflow syntax reference), each with what a
+# corpus-v<N> release would start.
+@pytest.mark.parametrize("text,fires", [
+    ("on:\n  release:\n    types: [published]\n", ["release"]),
+    ("on: create\n", ["create"]),
+    ("on: push\n", ["push"]),
+    ("on:\n  push:\n    paths: ['docs/**']\n", ["push"]),  # path filters are not applied to tags
+    ("on:\n  push:\n    tags: [corpus-v*]\n", ["push.tags"]),
+    ("on:\n  push:\n    tags:\n      - '*-v*'\n", ["push.tags"]),
+    ("on:\n  push:\n    tags: ['**']\n", ["push.tags"]),
+    ("on:\n  push:\n    tags-ignore: [meta-v*]\n", ["push.tags-ignore"]),
+    ("on:\n  push:\n    tags-ignore: [corpus-v*]\n", []),
+    ("on:\n  push:\n    tags: [meta-v*]\n", []),
+    ("on:\n  push:\n    branches: [main]\n  pull_request:\n", []),
+])
+def test_corpus_tag_firings_read_each_trigger(text, fires):
+    assert _corpus_tag_firings(text) == fires
+
+
+@pytest.mark.parametrize("pattern", ["'!corpus-v1'", "'[a-z]+-v*'"])
+def test_corpus_tag_firings_refuse_a_pattern_fnmatch_cannot_model(pattern):
+    with pytest.raises(AssertionError):
+        _corpus_tag_firings(f"on:\n  push:\n    tags: [{pattern}]\n")
+
+
+def test_no_workflow_runs_on_a_corpus_tag():
+    # corpus-v* releases carry assets only (CLAUDE.md rule 4).
+    workflows = sorted((HERE.parent / ".github" / "workflows").glob("*.y*ml"))
+    assert workflows
+    assert {wf.name: _corpus_tag_firings(wf.read_text()) for wf in workflows} == {wf.name: [] for wf in workflows}
+    release = _workflow_triggers((HERE.parent / ".github" / "workflows" / "release.yml").read_text())
+    assert release["push"]["tags"] == ["meta-v*"]  # the parse sees release.yml's filter
+
+
+@pytest.mark.parametrize("tag", ["corpus-v0", "corpus-v01", "corpus-v", "corpus-v1a", "meta-v1", "release-12", "corpus-x12", "corpus-v١", 1, None])
+def test_a_release_tag_outside_corpus_v_n_is_refused(tag):
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.check_release_tag(tag)
+
+
+def test_bundles_need_a_release_tag(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "rt", record("opensrm-rt", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    args = ["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd",
+            "--bundles", str(tmp_path / "b")]
+    assert r5_corpus.main(args) == 2
+    assert r5_corpus.main(args + ["--release-tag", "corpus-v01"]) == 2
+    assert not (tmp_path / "b").exists() and not (tmp_path / "out").exists()
+    assert r5_corpus.main(args + ["--release-tag", "corpus-v2"]) == 0
+    manifest = json.loads((tmp_path / "out" / "bundles.json").read_text())
+    assert manifest["release_tag"] == "corpus-v2"
+    assert {b["url"].split("/")[-2] for b in manifest["bundles"]} == {"corpus-v2"}
+
+
+def test_a_built_release_is_never_rebuilt_with_other_bundles(workspace, tmp_path):
+    ws = workspace["ws"]
+    rng = {"demo": {"base": workspace["base"], "head": workspace["head"]}}
+    write_record(ws, "v1", record("opensrm-v1", rng, [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "b"
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
+    before = {f.name: f.read_bytes() for f in out.iterdir()}
+    # The same corpus under the same tag rebuilds byte for byte, so it passes.
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
+    assert {f.name: f.read_bytes() for f in out.iterdir()} == before
+    # A changed corpus under that tag is refused, and leaves the built one as it was.
+    write_record(ws, "v2", record("opensrm-v2", {"demo": {"base": workspace["fix"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
+    assert {f.name: f.read_bytes() for f in out.iterdir()} == before
+    # Under a new tag it builds.
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, "corpus-v2")
+    assert json.loads((out / "bundles.json").read_text())["release_tag"] == "corpus-v2"
+
+
+@pytest.mark.parametrize("content", [
+    # Each is a manifest write_bundles writes ({schema_version, repository,
+    # release_tag, bundles}) with one thing wrong.
+    '{"repository": "someone/else", "release_tag": "corpus-v1", "bundles": []}',
+    '{"repository": "rsionnach/nthlayer", "release_tag": "corpus-v1", "bundles": {}}',
+    '{"repository": "rsionnach/nthlayer", "release_tag": "corpus-v1"}',
+    '{"repository": "rsionnach/nthlayer", "release_tag": "v1", "bundles": []}',
+    '{"repository": "rsionnach/nthlayer", "bundles": []}',
+    "not json", "[]"])
+def test_a_foreign_manifest_in_out_is_refused(workspace, tmp_path, content):
+    ws = workspace["ws"]
+    write_record(ws, "fm", record("opensrm-fm", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "bundles.json").write_text(content)
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
+    assert (out / "bundles.json").read_text() == content and not list(out.glob("opensrm-*"))
+    assert not (tmp_path / "b").exists()  # refused before anything is written
+
+
+def test_two_spellings_of_one_existing_directory_are_refused(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "sd", record("opensrm-sd", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real)
+    assert r5_corpus.main(["--out", str(real), "--bundles", str(tmp_path / "link"), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert list(real.iterdir()) == []
+
+
+def test_a_same_file_manifest_copy_is_refused_before_entries_go(workspace, tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    entry = out / "opensrm-old"
+    entry.mkdir(parents=True)
+    monkeypatch.setattr(r5_corpus, "previous_entries", lambda _: [entry])
+    def same(*_):
+        raise r5_corpus.shutil.SameFileError("same")
+    monkeypatch.setattr(r5_corpus.shutil, "copyfile", same)
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_entries([], out, tmp_path / "b")
+    assert entry.is_dir()
+
+
+def test_a_fresh_build_cannot_republish_the_tag_the_entries_name(workspace, tmp_path):
+    # --bundles is never committed, so the manifest beside the entries is what
+    # remembers a published tag.
+    ws = workspace["ws"]
+    write_record(ws, "pub", record("opensrm-pub", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    base = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b1"), "--release-tag", TAG]) == 0
+    # The same corpus into a fresh --bundles reproduces the published bundles.
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b2"), "--release-tag", TAG]) == 0
+    published = (out / "bundles.json").read_bytes()
+    write_record(ws, "pub2", record("opensrm-pub2", {"demo": {"base": workspace["fix"], "head": workspace["head"]}},
+                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b3"), "--release-tag", TAG]) == 2
+    assert (out / "bundles.json").read_bytes() == published
+    assert not list((tmp_path / "b3").glob("*.bundle"))
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b4"), "--release-tag", "corpus-v2"]) == 0
+
+
+def test_a_release_tag_without_bundles_is_refused(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "nb", record("opensrm-nb", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd", "--release-tag", TAG]) == 2
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_killed_runs_staging_directory_is_cleared(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "st", record("opensrm-st", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "b"
+    (out / ".staging-killed").mkdir(parents=True)
+    (out / ".staging-killed" / "demo.bundle").write_bytes(b"partial")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
+    assert not list(out.glob(".staging-*"))
+
+
+def test_an_older_tag_than_a_known_manifest_is_refused(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "old", record("opensrm-old", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    base = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b1"), "--release-tag", "corpus-v2"]) == 0
+    committed = (out / "bundles.json").read_bytes()
+    # An old command replayed into a fresh --bundles, against the committed v2.
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b2"), "--release-tag", "corpus-v1"]) == 2
+    assert (out / "bundles.json").read_bytes() == committed
+    assert not list((tmp_path / "b2").glob("*.bundle"))
+    # And against a --bundles manifest at a later N.
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "b1", "corpus-v1")
+
+
+@pytest.mark.parametrize("manifest", [
+    {"repository": "rsionnach/nthlayer", "release_tag": "corpus-v1", "bundles": ["x"]},
+    {"repository": "rsionnach/nthlayer", "release_tag": "v1", "bundles": []},
+    {"repository": "rsionnach/nthlayer", "release_tag": 1, "bundles": []},
+])
+def test_a_malformed_out_manifest_is_refused_not_a_traceback(workspace, tmp_path, manifest):
+    ws = workspace["ws"]
+    write_record(ws, "mal", record("opensrm-mal", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "bundles.json").write_text(json.dumps(manifest))
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory"])
+def test_a_manifest_that_is_not_a_plain_file_is_refused(workspace, tmp_path, kind):
+    ws = workspace["ws"]
+    write_record(ws, "nf", record("opensrm-nf", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out, target = tmp_path / "out", tmp_path / "elsewhere.json"
+    out.mkdir()
+    good = json.dumps({"repository": "rsionnach/nthlayer", "release_tag": TAG, "bundles": []})
+    target.write_text(good)
+    if kind == "symlink":
+        (out / "bundles.json").symlink_to(target)
+    else:
+        (out / "bundles.json").mkdir()
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
+    assert target.read_text() == good and not (tmp_path / "b").exists()
+
+
+def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    if not (tmp_path / "REAL").exists():
+        pytest.skip("case-sensitive filesystem: ./real and ./REAL are two directories")
+    ws = workspace["ws"]
+    write_record(ws, "cs", record("opensrm-cs", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(["--out", str(real), "--bundles", str(tmp_path / "REAL"), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert list(real.iterdir()) == []
+
+
+def test_one_new_directory_for_both_is_refused_before_it_is_created(workspace, tmp_path):
+    # samefile needs both to exist; a directory neither run had made is caught
+    # by comparing resolved paths, before write_bundles creates it.
+    ws = workspace["ws"]
+    write_record(ws, "nd", record("opensrm-nd", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    d = tmp_path / "d"
+    assert r5_corpus.main(["--out", str(d), "--bundles", str(d), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert not d.exists()

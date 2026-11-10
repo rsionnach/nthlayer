@@ -4,6 +4,9 @@ name: Release meta-package to PyPI
 # repo's historical v0.1.0a* tags (which were the legacy generator releases,
 # now superseded by nthlayer-generate's v1.0.0+ tags). The meta-package is
 # the only thing this repo publishes to PyPI.
+#
+# corpus-v* tags (R5 replay corpus releases, CLAUDE.md rule 4) are deliberately
+# not matched: they carry release assets only and must publish nothing.
 
 on:
   push:
