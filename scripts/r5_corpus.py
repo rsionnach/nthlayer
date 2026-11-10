@@ -1112,8 +1112,6 @@ def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -
             shutil.copyfile(bundles / "bundles.json", manifest)
         except shutil.SameFileError:  # see SAME_DIRECTORY
             raise CorpusError(SAME_DIRECTORY) from None
-    elif manifest.is_file():
-        manifest.unlink()
     for old in olds:
         shutil.rmtree(old)
     for e in entries:

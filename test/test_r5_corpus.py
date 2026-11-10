@@ -1331,37 +1331,64 @@ def test_workflow_trigger_parse_reads_every_list_form():
 CORPUS_TAGS = ("corpus-v1", "corpus-v2", "corpus-v10", "corpus-v123")
 
 
+def _corpus_tag_firings(text):
+    """The triggers in a workflow that a corpus-v<N> release would start. A
+    `release` trigger fires on any release, a `create` on any new tag, an
+    unfiltered push on any tag, and a tag filter on a matching one."""
+    fires = []
+    for event, keys in _workflow_triggers(text).items():
+        if event in ("release", "create"):
+            fires.append(event)
+        if event != "push":
+            continue
+        patterns = keys.get("tags", []) + keys.get("tags-ignore", [])
+        assert not [p for p in patterns if "+" in p]  # fnmatch has no `+` quantifier; GitHub's filters do
+        assert not [p for p in patterns if p.startswith("!")]  # nor does it model a `!` negation
+        for tag in CORPUS_TAGS:
+            if "tags" in keys and any(fnmatch.fnmatch(tag, p) for p in keys["tags"]):
+                fires.append("push.tags")
+            if "tags-ignore" in keys and not any(fnmatch.fnmatch(tag, p) for p in keys["tags-ignore"]):
+                fires.append("push.tags-ignore")
+        if not {"branches", "branches-ignore", "tags", "tags-ignore"} & set(keys):
+            fires.append("push")  # unfiltered: runs on every tag
+    return sorted(set(fires))
+
+
+# GitHub Actions `on:` shapes (the workflow syntax reference), each with what a
+# corpus-v<N> release would start.
+@pytest.mark.parametrize("text,fires", [
+    ("on:\n  release:\n    types: [published]\n", ["release"]),
+    ("on: create\n", ["create"]),
+    ("on: push\n", ["push"]),
+    ("on:\n  push:\n    paths: ['docs/**']\n", ["push"]),  # path filters are not applied to tags
+    ("on:\n  push:\n    tags: [corpus-v*]\n", ["push.tags"]),
+    ("on:\n  push:\n    tags:\n      - '*-v*'\n", ["push.tags"]),
+    ("on:\n  push:\n    tags: ['**']\n", ["push.tags"]),
+    ("on:\n  push:\n    tags-ignore: [meta-v*]\n", ["push.tags-ignore"]),
+    ("on:\n  push:\n    tags-ignore: [corpus-v*]\n", []),
+    ("on:\n  push:\n    tags: [meta-v*]\n", []),
+    ("on:\n  push:\n    branches: [main]\n  pull_request:\n", []),
+])
+def test_corpus_tag_firings_read_each_trigger(text, fires):
+    assert _corpus_tag_firings(text) == fires
+
+
+@pytest.mark.parametrize("pattern", ["'!corpus-v1'", "'[a-z]+-v*'"])
+def test_corpus_tag_firings_refuse_a_pattern_fnmatch_cannot_model(pattern):
+    with pytest.raises(AssertionError):
+        _corpus_tag_firings(f"on:\n  push:\n    tags: [{pattern}]\n")
+
+
 def test_no_workflow_runs_on_a_corpus_tag():
-    # corpus-v* releases carry assets only (CLAUDE.md rule 4): publishing one
-    # must start no workflow. A `release` trigger fires on any release, a
-    # `create` on any new tag, an unfiltered push on any tag, and a tag filter
-    # on a matching one.
+    # corpus-v* releases carry assets only (CLAUDE.md rule 4).
     workflows = sorted((HERE.parent / ".github" / "workflows").glob("*.y*ml"))
     assert workflows
-    fires, tag_filters = [], []
-    for wf in workflows:
-        for event, keys in _workflow_triggers(wf.read_text()).items():
-            if event in ("release", "create"):
-                fires.append((wf.name, event))
-            if event != "push":
-                continue
-            tag_filters += keys.get("tags", [])
-            # fnmatch has no `+` quantifier; GitHub's filter patterns do.
-            assert not [p for p in keys.get("tags", []) + keys.get("tags-ignore", []) if "+" in p], wf.name
-            # A `!` negation re-includes or re-excludes; this guard does not model it.
-            assert not [p for p in keys.get("tags", []) + keys.get("tags-ignore", []) if p.startswith("!")], wf.name
-            for tag in CORPUS_TAGS:
-                if "tags" in keys and any(fnmatch.fnmatch(tag, p) for p in keys["tags"]):
-                    fires.append((wf.name, "push.tags", tag))
-                if "tags-ignore" in keys and not any(fnmatch.fnmatch(tag, p) for p in keys["tags-ignore"]):
-                    fires.append((wf.name, "push.tags-ignore", tag))
-            if not {"branches", "branches-ignore", "tags", "tags-ignore"} & set(keys):
-                fires.append((wf.name, "push"))  # unfiltered: runs on every tag
-    assert "meta-v*" in tag_filters  # the parse sees release.yml's filter
-    assert fires == []
+    assert {wf.name: _corpus_tag_firings(wf.read_text()) for wf in workflows} == {wf.name: [] for wf in workflows}
+    release = _workflow_triggers((HERE.parent / ".github" / "workflows" / "release.yml").read_text())
+    assert release["push"]["tags"] == ["meta-v*"]  # the parse sees release.yml's filter
 
 
-@pytest.mark.parametrize("tag", ["corpus-v0", "corpus-v01", "corpus-v", "corpus-v1a", "meta-v1", "corpus-v١", 1, None])
+@pytest.mark.parametrize("tag", ["corpus-v0", "corpus-v01", "corpus-v", "corpus-v1a", "meta-v1", "release-12", "corpus-x12", "corpus-v١", 1, None])
 def test_a_release_tag_outside_corpus_v_n_is_refused(tag):
     with pytest.raises(r5_corpus.CorpusError):
         r5_corpus.check_release_tag(tag)
@@ -1403,7 +1430,15 @@ def test_a_built_release_is_never_rebuilt_with_other_bundles(workspace, tmp_path
     assert json.loads((out / "bundles.json").read_text())["release_tag"] == "corpus-v2"
 
 
-@pytest.mark.parametrize("content", ['{"repository": "someone/else"}', "not json", "[]"])
+@pytest.mark.parametrize("content", [
+    # Each is a manifest write_bundles writes ({schema_version, repository,
+    # release_tag, bundles}) with one thing wrong.
+    '{"repository": "someone/else", "release_tag": "corpus-v1", "bundles": []}',
+    '{"repository": "rsionnach/nthlayer", "release_tag": "corpus-v1", "bundles": {}}',
+    '{"repository": "rsionnach/nthlayer", "release_tag": "corpus-v1"}',
+    '{"repository": "rsionnach/nthlayer", "release_tag": "v1", "bundles": []}',
+    '{"repository": "rsionnach/nthlayer", "bundles": []}',
+    "not json", "[]"])
 def test_a_foreign_manifest_in_out_is_refused(workspace, tmp_path, content):
     ws = workspace["ws"]
     write_record(ws, "fm", record("opensrm-fm", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
@@ -1412,8 +1447,10 @@ def test_a_foreign_manifest_in_out_is_refused(workspace, tmp_path, content):
     out.mkdir()
     (out / "bundles.json").write_text(content)
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
-                           "--no-bd"]) == 2
+                           "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
+    assert not (tmp_path / "b").exists()  # refused before anything is written
     assert (out / "bundles.json").read_text() == content and not list(out.glob("opensrm-*"))
+    assert not (tmp_path / "b").exists()  # refused before anything is written
 
 
 def test_two_spellings_of_one_existing_directory_are_refused(workspace, tmp_path):
@@ -1512,3 +1549,34 @@ def test_a_malformed_out_manifest_is_refused_not_a_traceback(workspace, tmp_path
     (out / "bundles.json").write_text(json.dumps(manifest))
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
                            "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory"])
+def test_a_manifest_that_is_not_a_plain_file_is_refused(workspace, tmp_path, kind):
+    ws = workspace["ws"]
+    write_record(ws, "nf", record("opensrm-nf", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out, target = tmp_path / "out", tmp_path / "elsewhere.json"
+    out.mkdir()
+    good = json.dumps({"repository": "rsionnach/nthlayer", "release_tag": TAG, "bundles": []})
+    target.write_text(good)
+    if kind == "symlink":
+        (out / "bundles.json").symlink_to(target)
+    else:
+        (out / "bundles.json").mkdir()
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
+    assert target.read_text() == good and not (tmp_path / "b").exists()
+
+
+def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    if not (tmp_path / "REAL").exists():
+        pytest.skip("case-sensitive filesystem: ./real and ./REAL are two directories")
+    ws = workspace["ws"]
+    write_record(ws, "cs", record("opensrm-cs", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(["--out", str(real), "--bundles", str(tmp_path / "REAL"), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert list(real.iterdir()) == []
