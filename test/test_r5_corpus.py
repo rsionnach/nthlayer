@@ -1437,3 +1437,43 @@ def test_a_same_file_manifest_copy_is_refused_before_entries_go(workspace, tmp_p
     with pytest.raises(r5_corpus.CorpusError):
         r5_corpus.write_entries([], out, tmp_path / "b")
     assert entry.is_dir()
+
+
+def test_a_fresh_build_cannot_republish_the_tag_the_entries_name(workspace, tmp_path):
+    # --bundles is never committed, so the manifest beside the entries is what
+    # remembers a published tag.
+    ws = workspace["ws"]
+    write_record(ws, "pub", record("opensrm-pub", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "out"
+    base = ["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b1"), "--release-tag", TAG]) == 0
+    # The same corpus into a fresh --bundles reproduces the published bundles.
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b2"), "--release-tag", TAG]) == 0
+    published = (out / "bundles.json").read_bytes()
+    write_record(ws, "pub2", record("opensrm-pub2", {"demo": {"base": workspace["fix"], "head": workspace["head"]}},
+                                    [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b3"), "--release-tag", TAG]) == 2
+    assert (out / "bundles.json").read_bytes() == published
+    assert not list((tmp_path / "b3").glob("*.bundle"))
+    assert r5_corpus.main(base + ["--bundles", str(tmp_path / "b4"), "--release-tag", "corpus-v2"]) == 0
+
+
+def test_a_release_tag_without_bundles_is_refused(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "nb", record("opensrm-nb", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd", "--release-tag", TAG]) == 2
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_killed_runs_staging_directory_is_cleared(workspace, tmp_path):
+    ws = workspace["ws"]
+    write_record(ws, "st", record("opensrm-st", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    out = tmp_path / "b"
+    (out / ".staging-killed").mkdir(parents=True)
+    (out / ".staging-killed" / "demo.bundle").write_bytes(b"partial")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, out, TAG)
+    assert not list(out.glob(".staging-*"))
