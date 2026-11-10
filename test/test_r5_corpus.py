@@ -1265,18 +1265,20 @@ def _workflow_triggers(text):
     i = next(n for n, line in enumerate(lines) if line.split("#")[0].rstrip().startswith(("on:", '"on":', "'on':")))
     inline = lines[i].split(":", 1)[1].split("#")[0].strip()
     if inline:
+        assert not inline.startswith("{"), "a flow-mapping on: is not read here; write it as a block"
         return {e: {} for e in _flow(inline)}
     events, event, key = {}, None, None
     for line in lines[i + 1:]:
         body = line.split(" #")[0].rstrip()
-        if not body.strip():
+        if not body.strip() or body.lstrip().startswith("#"):
             continue
         indent = len(body) - len(body.lstrip())
         if indent == 0:
             break
         item = body.strip()
         if event is None or indent <= events[event]["_indent"]:
-            event = item.split(":", 1)[0].strip()
+            event = item[2:] if item.startswith("- ") else item  # a block-sequence on:
+            event = event.split(":", 1)[0].strip()
             events[event] = {"_indent": indent}
             key = None
             continue
@@ -1285,6 +1287,8 @@ def _workflow_triggers(text):
         elif ":" in item:
             key, value = (part.strip() for part in item.split(":", 1))
             events[event][key] = _flow(value) if value else []
+    # An unrecognised shape must fail the guard, not pass it with odd names.
+    assert all(e.replace("_", "").isalpha() and e.islower() for e in events), sorted(events)
     return {e: {k: v for k, v in keys.items() if k != "_indent"} for e, keys in events.items()}
 
 
@@ -1295,6 +1299,11 @@ def _flow(value):
 def test_workflow_trigger_parse_reads_every_list_form():
     assert _workflow_triggers("on: release\n") == {"release": {}}
     assert _workflow_triggers("on: [push, pull_request]\n") == {"push": {}, "pull_request": {}}
+    assert _workflow_triggers("on:\n  - push\n  - release\njobs:\n") == {"push": {}, "release": {}}
+    assert _workflow_triggers("on:\n  push:\n# note\n    branches: [main]\n  release:\njobs:\n") == {
+        "push": {"branches": ["main"]}, "release": {}}
+    with pytest.raises(AssertionError):
+        _workflow_triggers("on: {push: {tags: [x]}}\n")
     assert _workflow_triggers("on:\n  push:\n    tags: ['corpus-v*', \"x\"]\njobs:\n") == {
         "push": {"tags": ["corpus-v*", "x"]}}
     assert _workflow_triggers("on:\n  push:\n    tags:\n      - 'meta-v*'  # c\n  workflow_dispatch:\n") == {

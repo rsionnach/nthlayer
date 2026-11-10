@@ -1091,7 +1091,8 @@ def main(argv: list[str] | None = None) -> int:
         previous_entries(args.out)  # refuse a foreign --out before writing anything
         if args.bundles:
             previous_assets(args.bundles)  # likewise for --bundles
-            if args.bundles.resolve() == args.out.resolve():
+            if args.bundles.resolve() == args.out.resolve() or (
+                    args.bundles.is_dir() and args.out.is_dir() and os.path.samefile(args.bundles, args.out)):
                 raise CorpusError("--bundles and --out are the same directory; the manifest is"
                                   " copied beside the entries, so give the bundles their own")
         if args.bundles:
