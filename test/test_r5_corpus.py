@@ -1284,8 +1284,10 @@ def _workflow_triggers(text):
             continue
         if item.startswith("- ") and key is not None:
             events[event][key].append(item[2:].strip().strip("'\""))
-        elif ":" in item:
+        else:
+            assert ":" in item, f"unread on: line {item!r}"
             key, value = (part.strip() for part in item.split(":", 1))
+            key = key.strip("'\"")
             events[event][key] = _flow(value) if value else []
     # An unrecognised shape must fail the guard, not pass it with odd names.
     assert events and all(e.replace("_", "").isalpha() and e.islower() for e in events), sorted(events)
@@ -1303,6 +1305,9 @@ def test_workflow_trigger_parse_reads_every_list_form():
     assert _workflow_triggers("on:\n- push\n- release\njobs:\n") == {"push": {}, "release": {}}
     with pytest.raises(AssertionError):
         _workflow_triggers("on:\njobs:\n")
+    assert _workflow_triggers("on:\n  push:\n    'tags': [a]\n") == {"push": {"tags": ["a"]}}
+    with pytest.raises(AssertionError):
+        _workflow_triggers("on:\n  push:\n    tags:\n      [a]\n")
     assert _workflow_triggers("on:\n  push:\n# note\n    branches: [main]\n  release:\njobs:\n") == {
         "push": {"branches": ["main"]}, "release": {}}
     with pytest.raises(AssertionError):
@@ -1328,6 +1333,8 @@ def test_no_workflow_runs_on_a_corpus_tag():
             if event != "push":
                 continue
             tag_filters += keys.get("tags", [])
+            # fnmatch has no `+` quantifier; GitHub's filter patterns do.
+            assert not [p for p in keys.get("tags", []) + keys.get("tags-ignore", []) if "+" in p], wf.name
             if "tags" in keys and any(fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p) for p in keys["tags"]):
                 fires.append((wf.name, "push.tags"))
             if "tags-ignore" in keys and not any(fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p) for p in keys["tags-ignore"]):
