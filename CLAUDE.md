@@ -276,9 +276,9 @@ hub with implementation drift.
    - `meta-v*` — PyPI meta-package releases. Triggers `release.yml`.
    - Sub-package `v*` tags live in their own repos.
    - `corpus-v*` — R5 replay corpus releases: the synthetic per-repo
-     bundles `scripts/r5_corpus.py --bundles` writes, as release assets
-     (opensrm-6kqs.2). One release per corpus version, never edited after
-     publication, created with `--latest=false` so the meta-package stays
+     bundles `scripts/r5_corpus.py --bundles DIR --release-tag corpus-vN`
+     writes, as release assets (opensrm-6kqs.2). One release per corpus
+     version, never edited after publication (a changed corpus is a new N), created with `--latest=false` so the meta-package stays
      the latest release. No workflow runs on it, which
      `test/test_r5_corpus.py::test_no_workflow_runs_on_a_corpus_tag` checks.
 
