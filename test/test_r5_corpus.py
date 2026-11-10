@@ -1448,7 +1448,6 @@ def test_a_foreign_manifest_in_out_is_refused(workspace, tmp_path, content):
     (out / "bundles.json").write_text(content)
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
                            "--no-bd", "--bundles", str(tmp_path / "b"), "--release-tag", TAG]) == 2
-    assert not (tmp_path / "b").exists()  # refused before anything is written
     assert (out / "bundles.json").read_text() == content and not list(out.glob("opensrm-*"))
     assert not (tmp_path / "b").exists()  # refused before anything is written
 
@@ -1580,3 +1579,15 @@ def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path):
     assert r5_corpus.main(["--out", str(real), "--bundles", str(tmp_path / "REAL"), "--release-tag", TAG,
                            "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
     assert list(real.iterdir()) == []
+
+
+def test_one_new_directory_for_both_is_refused_before_it_is_created(workspace, tmp_path):
+    # samefile needs both to exist; a directory neither run had made is caught
+    # by comparing resolved paths, before write_bundles creates it.
+    ws = workspace["ws"]
+    write_record(ws, "nd", record("opensrm-nd", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    d = tmp_path / "d"
+    assert r5_corpus.main(["--out", str(d), "--bundles", str(d), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
+    assert not d.exists()

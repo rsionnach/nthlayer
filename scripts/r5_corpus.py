@@ -1183,7 +1183,7 @@ def main(argv: list[str] | None = None) -> int:
             raise CorpusError(f"{args.out / 'bundles.json'} records {published['release_tag']}; rebuild with"
                               " --bundles and --release-tag, or remove it yourself if that is intended")
         if args.bundles:
-            if args.release_tag is None:
+            if args.release_tag is None:  # check_release_tag would refuse too; this says why
                 raise CorpusError("--bundles needs --release-tag corpus-v<N>, the release the bundles go to")
             check_release_tag(args.release_tag)
             previous_assets(args.bundles)  # a foreign --bundles
