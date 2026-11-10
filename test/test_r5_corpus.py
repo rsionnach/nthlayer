@@ -1328,8 +1328,9 @@ def test_workflow_trigger_parse_reads_every_list_form():
 
 def test_no_workflow_runs_on_a_corpus_tag():
     # corpus-v* releases carry assets only (CLAUDE.md rule 4): publishing one
-    # must start no workflow. A `release` or `create` trigger fires on any
-    # release, an unfiltered push on any tag, and a tag filter on a matching one.
+    # must start no workflow. A `release` trigger fires on any release, a
+    # `create` on any new tag, an unfiltered push on any tag, and a tag filter
+    # on a matching one.
     workflows = sorted((HERE.parent / ".github" / "workflows").glob("*.y*ml"))
     assert workflows
     fires, tag_filters = [], []

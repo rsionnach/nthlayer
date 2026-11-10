@@ -1019,8 +1019,8 @@ def previous_entries(out: Path) -> list[Path]:
 
 # --bundles and --out must differ, since the manifest is copied from one to the
 # other. main refuses that before writing anything, but it can only compare
-# directories that exist; two spellings of one directory that neither run had
-# created yet (./c and ./C on a case-insensitive disk) surface in write_entries.
+# directories that exist; two spellings of one directory that did not exist
+# before this run (./c and ./C on a case-insensitive disk) surface in write_entries.
 SAME_DIRECTORY = "--bundles and --out are the same directory; give the bundles their own"
 
 
@@ -1098,7 +1098,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
-        # Every refusal comes before the first write.
+        # Every refusal main can make comes before the first write; SAME_DIRECTORY
+        # names the one it cannot.
         previous_entries(args.out)  # a foreign --out
         if args.bundles:
             previous_assets(args.bundles)  # a foreign --bundles
