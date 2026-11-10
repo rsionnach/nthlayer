@@ -85,3 +85,11 @@ jobs:
         run: uv run --no-project --with pytest pytest -q test/test_r5_corpus.py
       - name: r5-corpus tests (Python 3.9, as the shim runs)
         run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_corpus.py
+
+      # r5_findings's tests (opensrm-6kqs.3): the section 6 finding parser
+      # r5-supervise runs on every reviewer report, and the normaliser r5_corpus
+      # imports. Standard library plus pytest; on 3.9 too, as the shim runs.
+      - name: r5-findings tests
+        run: uv run --no-project --with pytest pytest -q test/test_r5_findings.py
+      - name: r5-findings tests (Python 3.9, as the shim runs)
+        run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_findings.py
