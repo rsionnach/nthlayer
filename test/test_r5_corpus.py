@@ -590,6 +590,15 @@ def test_masking_home_respects_the_path_boundary(monkeypatch):
      "<claude-tmp>/tasks/x.output"),
     ("/private/tmp/claude-501/-Users-rob-Documents-GitHub-eco/x.py", "<claude-tmp>/x.py"),
     ("/private/tmp/claude-501/", "/private/tmp/claude-501/"),
+    # Punctuation after a path that ends at the slug stays.
+    ("/tmp/claude-501/-Users-rob-eco, then", "<claude-tmp>, then"),
+    ("/tmp/claude-501/-Users-rob-eco: x", "<claude-tmp>: x"),
+    ("/tmp/claude-501/-Users-rob-eco.", "<claude-tmp>."),
+    ("/tmp/claude-501/-Users-rob-eco>x", "<claude-tmp>>x"),
+    # Only a temp root, not a tmp/claude-N inside another path.
+    ("/var/tmp/claude-1/s/a", "/var/tmp/claude-1/s/a"),
+    # A session id only when it is a whole path component.
+    ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789abx/y", "<claude-tmp>/6fd1c2a0-1b2c-4d5e-8f90-0123456789abx/y"),
 ])
 def test_masking_claude_temp_directories(path, masked):
     assert r5_corpus.mask_workspace(f"read `{path}` and go", Path("/nowhere")) == f"read `{masked}` and go"

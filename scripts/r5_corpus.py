@@ -601,8 +601,9 @@ _PATH_END = r"(?=/|$|[^\w.-])"
 # Claude Code's per-user temp root, /private/tmp/claude-<uid>/<project slug>/
 # <session id>/...: the slug spells the user's home path and the session id is
 # session material, so both go, through the session id when there is one.
-_CLAUDE_TMP = re.compile(r"(?:/private)?/tmp/claude-\d+/[^/\s'\"`)\]]+"
-                         r"(?:/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?")
+# The slug is the project path with every other character written "-".
+_CLAUDE_TMP = re.compile(r"(?<![\w.-])(?:/private)?/tmp/claude-\d+/[\w-]+"
+                         r"(?:/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" + _PATH_END + ")?")
 
 
 def mask_workspace(text: str | None, workspace: Path) -> str | None:
