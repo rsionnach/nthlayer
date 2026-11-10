@@ -599,6 +599,10 @@ def test_masking_home_respects_the_path_boundary(monkeypatch):
     ("/tmp/claude-501/-Users-rob-eco>x", "<claude-tmp>>x"),
     # Only a temp root, not a tmp/claude-N inside another path.
     ("/var/tmp/claude-1/s/a", "/var/tmp/claude-1/s/a"),
+    ("./tmp/claude-1/s/a", "./tmp/claude-1/s/a"),
+    # A session id is lowercase hex, and ends where its path component does.
+    ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab-x/y", "<claude-tmp>/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab-x/y"),
+    ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789zz/y", "<claude-tmp>/6fd1c2a0-1b2c-4d5e-8f90-0123456789zz/y"),
     # A session id ending a sentence is still a session id.
     ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab.", "<claude-tmp>."),
     ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab...", "<claude-tmp>..."),
@@ -1669,3 +1673,9 @@ def test_main_refuses_to_publish_a_leaking_entry(workspace, tmp_path, monkeypatc
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
                            "--no-bd"]) == 2
     assert not out.exists()
+
+
+def test_a_home_of_root_names_nobody(monkeypatch):
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/")))
+    entry = {"meta": {"entry": "opensrm-x"}, "brief": "/x-y and a-b", "recorded": {"rounds": []}}
+    assert r5_corpus.local_path_leaks([entry]) == []
