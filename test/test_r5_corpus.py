@@ -1653,6 +1653,13 @@ def test_an_entry_still_naming_home_is_refused(monkeypatch, brief):
     assert r5_corpus.local_path_leaks([claim]) == ["opensrm-z"]
 
 
+def test_a_non_ascii_home_in_a_claim_is_refused(monkeypatch):
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/Users/josé")))
+    claim = {"meta": {"entry": "opensrm-z"}, "brief": None,
+             "recorded": {"rounds": [{"findings": [{"claim": "in /Users/josé/x"}]}]}}
+    assert r5_corpus.local_path_leaks([claim]) == ["opensrm-z"]
+
+
 def test_main_refuses_to_publish_a_leaking_entry(workspace, tmp_path, monkeypatch):
     ws = workspace["ws"]
     write_record(ws, "lk", record("opensrm-lk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},

@@ -629,13 +629,18 @@ def local_path_leaks(entries: list[dict]) -> list[str]:
     """The entries whose transcript-derived text (brief, recorded findings)
     still names the home directory, as a path or as the dash-spelled slug
     Claude Code makes of it, after masking: a form mask_workspace does not
-    know (a $TMPDIR root, a JSON-escaped or line-wrapped path) is refused
-    here rather than published. diff.patch is not checked: it is a public
-    repository's own content."""
+    know (a $TMPDIR root, a slug wrapped after the username) is refused here
+    rather than published. A plain substring test, so it refuses loudly where
+    the mask would respect a path boundary (/Users/robert under /Users/rob);
+    a text that escapes its slashes or splits the username is not caught.
+    diff.patch is not checked: it is a public repository's own content."""
     home = str(Path.home())
+    if home.strip("/") == "":
+        return []  # a home of "/" names nobody, and would match every path
     slug = re.sub(r"[^A-Za-z0-9]", "-", home)
     return [e["meta"]["entry"] for e in entries
-            if any(home in t or slug in t for t in (e["brief"] or "", json.dumps(e["recorded"])))]
+            if any(home in t or slug in t
+                   for t in (e["brief"] or "", json.dumps(e["recorded"], ensure_ascii=False)))]
 
 
 class Classified(NamedTuple):
