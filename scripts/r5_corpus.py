@@ -96,6 +96,7 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import r5_baseline  # noqa: E402  (a sibling script, not a package)
+import r5_findings  # noqa: E402  (the section 6 normaliser)
 
 SCHEMA_VERSION = 1
 FIDELITIES = ("recorded", "derived", "counts_only")
@@ -179,19 +180,14 @@ def resolve(repo: Path, rev: str) -> str | None:
 
 # --- the section 6 finding --------------------------------------------------
 
-_LINE_REFS = re.compile(r"(?::~?\d+(?:\s*[-–]\s*\d+)?|\blines?\s+~?\d+(?:\s*[-–]\s*\d+)?|\bL\d+)", re.I)
-_SHA = re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b")
-
-
 def normalise_claim(claim: str) -> str:
-    """Section 6: lower-cased, whitespace-collapsed, line numbers and SHAs removed."""
-    text = _SHA.sub("", _LINE_REFS.sub("", claim.lower()))
-    return " ".join(text.split())
+    """Section 6's normaliser, which r5_findings holds (one implementation)."""
+    return r5_findings.normalise_claim(claim)
 
 
 def fingerprint(lens: str, path: str | None, claim: str) -> str:
-    raw = f"{lens}|{path or ''}|{normalise_claim(claim)}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+    """Section 6's fingerprint; an archived finding may have no path."""
+    return r5_findings.fingerprint(lens, path or "", claim)
 
 
 def schema_lens(lens: str) -> str:
