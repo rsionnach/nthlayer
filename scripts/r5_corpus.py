@@ -1029,7 +1029,10 @@ def write_entries(entries: list[dict], out: Path, bundles: Path | None = None) -
         shutil.rmtree(old)
     manifest = out / "bundles.json"
     if bundles is not None:
-        shutil.copyfile(bundles / "bundles.json", manifest)
+        try:
+            shutil.copyfile(bundles / "bundles.json", manifest)
+        except shutil.SameFileError:  # one directory under two spellings, created this run
+            raise CorpusError("--bundles and --out name the same directory; give the bundles their own") from None
     elif manifest.is_file():
         manifest.unlink()
     for e in entries:

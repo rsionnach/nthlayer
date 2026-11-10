@@ -1273,8 +1273,8 @@ def _workflow_triggers(text):
         if not body.strip() or body.lstrip().startswith("#"):
             continue
         indent = len(body) - len(body.lstrip())
-        if indent == 0:
-            break
+        if indent == 0 and not body.startswith("- "):
+            break  # the next top-level key; a column-0 "- " is still an on: item
         item = body.strip()
         if event is None or indent <= events[event]["_indent"]:
             event = item[2:] if item.startswith("- ") else item  # a block-sequence on:
@@ -1288,7 +1288,7 @@ def _workflow_triggers(text):
             key, value = (part.strip() for part in item.split(":", 1))
             events[event][key] = _flow(value) if value else []
     # An unrecognised shape must fail the guard, not pass it with odd names.
-    assert all(e.replace("_", "").isalpha() and e.islower() for e in events), sorted(events)
+    assert events and all(e.replace("_", "").isalpha() and e.islower() for e in events), sorted(events)
     return {e: {k: v for k, v in keys.items() if k != "_indent"} for e, keys in events.items()}
 
 
@@ -1300,6 +1300,9 @@ def test_workflow_trigger_parse_reads_every_list_form():
     assert _workflow_triggers("on: release\n") == {"release": {}}
     assert _workflow_triggers("on: [push, pull_request]\n") == {"push": {}, "pull_request": {}}
     assert _workflow_triggers("on:\n  - push\n  - release\njobs:\n") == {"push": {}, "release": {}}
+    assert _workflow_triggers("on:\n- push\n- release\njobs:\n") == {"push": {}, "release": {}}
+    with pytest.raises(AssertionError):
+        _workflow_triggers("on:\njobs:\n")
     assert _workflow_triggers("on:\n  push:\n# note\n    branches: [main]\n  release:\njobs:\n") == {
         "push": {"branches": ["main"]}, "release": {}}
     with pytest.raises(AssertionError):
