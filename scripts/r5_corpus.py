@@ -603,7 +603,7 @@ _PATH_END = r"(?=/|$|[^\w.-])"
 # session material, so both go, through the session id when there is one.
 # The slug is the project path with every other character written "-".
 _CLAUDE_TMP = re.compile(r"(?<![\w.-])(?:/private)?/tmp/claude-\d+/[\w-]+"
-                         r"(?:/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" + _PATH_END + ")?")
+                         r"(?:/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-]))?")
 
 
 def mask_workspace(text: str | None, workspace: Path) -> str | None:

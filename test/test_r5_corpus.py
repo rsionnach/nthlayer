@@ -597,6 +597,9 @@ def test_masking_home_respects_the_path_boundary(monkeypatch):
     ("/tmp/claude-501/-Users-rob-eco>x", "<claude-tmp>>x"),
     # Only a temp root, not a tmp/claude-N inside another path.
     ("/var/tmp/claude-1/s/a", "/var/tmp/claude-1/s/a"),
+    # A session id ending a sentence is still a session id.
+    ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab.", "<claude-tmp>."),
+    ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab...", "<claude-tmp>..."),
     # A session id only when it is a whole path component.
     ("/tmp/claude-1/s/6fd1c2a0-1b2c-4d5e-8f90-0123456789abx/y", "<claude-tmp>/6fd1c2a0-1b2c-4d5e-8f90-0123456789abx/y"),
 ])
