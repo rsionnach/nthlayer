@@ -1251,18 +1251,76 @@ def test_the_manifest_goes_beside_the_entries_and_only_with_bundles(workspace, t
     # A later run without --bundles names no bundle, so it leaves no manifest.
     assert r5_corpus.main(args) == 0
     assert not (out / "bundles.json").exists()
+    # One directory for both is refused before anything is written.
+    before = {f.name: f.read_bytes() for f in bundles.iterdir()}
+    assert r5_corpus.main(["--out", str(bundles)] + args[2:] + ["--bundles", str(bundles)]) == 2
+    assert {f.name: f.read_bytes() for f in bundles.iterdir()} == before
+
+
+def _workflow_triggers(text):
+    """The `on:` triggers of a workflow, as {event: {key: [values]}}, read with
+    the standard library: flow (`[a, b]`) and block (`- a`) lists alike, and the
+    scalar and list forms of `on:` itself."""
+    lines = text.splitlines()
+    i = next(n for n, line in enumerate(lines) if line.split("#")[0].rstrip().startswith(("on:", '"on":', "'on':")))
+    inline = lines[i].split(":", 1)[1].split("#")[0].strip()
+    if inline:
+        return {e: {} for e in _flow(inline)}
+    events, event, key = {}, None, None
+    for line in lines[i + 1:]:
+        body = line.split(" #")[0].rstrip()
+        if not body.strip():
+            continue
+        indent = len(body) - len(body.lstrip())
+        if indent == 0:
+            break
+        item = body.strip()
+        if event is None or indent <= events[event]["_indent"]:
+            event = item.split(":", 1)[0].strip()
+            events[event] = {"_indent": indent}
+            key = None
+            continue
+        if item.startswith("- ") and key is not None:
+            events[event][key].append(item[2:].strip().strip("'\""))
+        elif ":" in item:
+            key, value = (part.strip() for part in item.split(":", 1))
+            events[event][key] = _flow(value) if value else []
+    return {e: {k: v for k, v in keys.items() if k != "_indent"} for e, keys in events.items()}
+
+
+def _flow(value):
+    return [v.strip().strip("'\"") for v in value.strip("[]").split(",") if v.strip()]
+
+
+def test_workflow_trigger_parse_reads_every_list_form():
+    assert _workflow_triggers("on: release\n") == {"release": {}}
+    assert _workflow_triggers("on: [push, pull_request]\n") == {"push": {}, "pull_request": {}}
+    assert _workflow_triggers("on:\n  push:\n    tags: ['corpus-v*', \"x\"]\njobs:\n") == {
+        "push": {"tags": ["corpus-v*", "x"]}}
+    assert _workflow_triggers("on:\n  push:\n    tags:\n      - 'meta-v*'  # c\n  workflow_dispatch:\n") == {
+        "push": {"tags": ["meta-v*"]}, "workflow_dispatch": {}}
 
 
 def test_no_workflow_runs_on_a_corpus_tag():
-    # corpus-v* releases carry assets only (CLAUDE.md rule 4): no workflow's
-    # tag filter may match one, release.yml's meta-v* above all.
+    # corpus-v* releases carry assets only (CLAUDE.md rule 4): publishing one
+    # must start no workflow. A `release` trigger fires on any release, an
+    # unfiltered push on any tag, and a tag filter on a matching one.
     import fnmatch
-    import re as _re
-    workflows = HERE.parent / ".github" / "workflows"
-    patterns = []
-    for wf in sorted(workflows.glob("*.yml")):
-        text = wf.read_text()
-        for block in _re.findall(r"^\s+tags:\s*\n((?:\s+- .+\n)+)", text, _re.M):
-            patterns += [p.strip().strip("'\"") for p in _re.findall(r"- (.+)", block)]
-    assert "meta-v*" in patterns  # the parse sees release.yml's filter
-    assert not [p for p in patterns if fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p)]
+    workflows = sorted((HERE.parent / ".github" / "workflows").glob("*.y*ml"))
+    assert workflows
+    fires, tag_filters = [], []
+    for wf in workflows:
+        for event, keys in _workflow_triggers(wf.read_text()).items():
+            if event in ("release", "create"):
+                fires.append((wf.name, event))
+            if event != "push":
+                continue
+            tag_filters += keys.get("tags", [])
+            if "tags" in keys and any(fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p) for p in keys["tags"]):
+                fires.append((wf.name, "push.tags"))
+            if "tags-ignore" in keys and not any(fnmatch.fnmatch(r5_corpus.BUNDLE_TAG, p) for p in keys["tags-ignore"]):
+                fires.append((wf.name, "push.tags-ignore"))
+            if not {"branches", "tags", "branches-ignore"} & set(keys) and "tags-ignore" not in keys:
+                fires.append((wf.name, "push"))  # unfiltered: runs on every tag
+    assert "meta-v*" in tag_filters  # the parse sees release.yml's filter
+    assert fires == []

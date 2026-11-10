@@ -884,7 +884,7 @@ def previous_assets(out: Path) -> set[str]:
 def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
     two-commit history under refs/r5/<entry>/{base,head}, and bundles.json,
-    the manifest the corpus repository commits. Fills each meta's ``bundle``
+    the manifest write_entries copies beside the entries. Fills each meta's ``bundle``
     and synthetic commits."""
     previous = previous_assets(out)  # refuses a foreign --bundles before writing anything
     out.mkdir(parents=True, exist_ok=True)
@@ -928,7 +928,8 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path) -> None:
     listed = {b["asset"] for b in manifest}
     for stale in previous - listed:
         (out / stale).unlink(missing_ok=True)  # a repo no longer in the corpus
-    # The corpus repository's git content: the bundles are its release assets.
+    # The bundles themselves are release assets; the harness reads this manifest
+    # from beside the entries, never from the front door's git content.
     (out / "bundles.json").write_text(json.dumps(
         {"schema_version": SCHEMA_VERSION, "repository": CORPUS_REPO, "release_tag": BUNDLE_TAG,
          "bundles": manifest}, indent=1) + "\n", encoding="utf-8")
@@ -1090,6 +1091,9 @@ def main(argv: list[str] | None = None) -> int:
         previous_entries(args.out)  # refuse a foreign --out before writing anything
         if args.bundles:
             previous_assets(args.bundles)  # likewise for --bundles
+            if args.bundles.resolve() == args.out.resolve():
+                raise CorpusError("--bundles and --out are the same directory; the manifest is"
+                                  " copied beside the entries, so give the bundles their own")
         if args.bundles:
             write_bundles(entries, args.workspace, args.bundles)
         write_entries(entries, args.out, args.bundles)
