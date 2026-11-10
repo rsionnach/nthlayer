@@ -588,7 +588,9 @@ def test_masking_home_respects_the_path_boundary(monkeypatch):
      "<claude-tmp>/scratchpad/b.md"),
     ("/tmp/claude-501/-Users-rob-Documents-GitHub-eco/6fd1c2a0-1b2c-4d5e-8f90-0123456789ab/tasks/x.output",
      "<claude-tmp>/tasks/x.output"),
+    # Without a session id, the slug alone is masked.
     ("/private/tmp/claude-501/-Users-rob-Documents-GitHub-eco/x.py", "<claude-tmp>/x.py"),
+    # No slug: nothing that names the user, so nothing to mask.
     ("/private/tmp/claude-501/", "/private/tmp/claude-501/"),
     # Punctuation after a path that ends at the slug stays.
     ("/tmp/claude-501/-Users-rob-eco, then", "<claude-tmp>, then"),

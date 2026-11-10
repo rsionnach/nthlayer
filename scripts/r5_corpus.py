@@ -600,10 +600,15 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
 _PATH_END = r"(?=/|$|[^\w.-])"
 # Claude Code's per-user temp root, /private/tmp/claude-<uid>/<project slug>/
 # <session id>/...: the slug spells the user's home path and the session id is
-# session material, so both go, through the session id when there is one.
-# The slug is the project path with every other character written "-".
-_CLAUDE_TMP = re.compile(r"(?<![\w.-])(?:/private)?/tmp/claude-\d+/[\w-]+"
-                         r"(?:/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-]))?")
+# session material, so the match covers the slug and, when present, the
+# session id. The slug is the project path with each character that is not a
+# letter or digit written "-", so [\w-]+ is exactly one slug.
+_SESSION_ID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+_CLAUDE_TMP = re.compile(
+    r"(?<![\w.-])"  # a temp root, not a tmp/claude-N inside another path
+    r"(?:/private)?/tmp/claude-\d+/[\w-]+"
+    # Not _PATH_END: a session id ending a sentence ("<id>.") is still one.
+    r"(?:/" + _SESSION_ID + r"(?![\w-]))?")
 
 
 def mask_workspace(text: str | None, workspace: Path) -> str | None:
