@@ -598,18 +598,49 @@ def repo_path(path: str | None, files: set[str], repo_name: str) -> tuple[str | 
 # The end of a path component: a sibling sharing a name prefix ("nthlayer"
 # and "nthlayer-common") is a different path.
 _PATH_END = r"(?=/|$|[^\w.-])"
+# Claude Code's per-user temp root, /private/tmp/claude-<uid>/<project slug>/
+# <session id>/...: the slug spells the user's home path and the session id is
+# session material, so the match covers the slug and, when present, the
+# session id. The slug is the project path with each character that is not a
+# letter or digit written "-", so [\w-]+ is exactly one slug.
+_SESSION_ID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+_CLAUDE_TMP = re.compile(
+    r"(?<![\w.-])"  # a temp root, not a tmp/claude-N inside another path
+    r"(?:/private)?/tmp/claude-\d+/[\w-]+"
+    # Not _PATH_END: a session id ending a sentence ("<id>.") is still one.
+    r"(?:/" + _SESSION_ID + r"(?![\w-]))?")
 
 
 def mask_workspace(text: str | None, workspace: Path) -> str | None:
-    """``text`` with the local workspace's absolute path written ``<workspace>``.
+    """``text`` with the local workspace's absolute path written ``<workspace>``,
+    home ``~`` and Claude Code's temp directories ``<claude-tmp>``.
     Reviewer reports and briefs name files by where they sat on one machine;
     that path says nothing about the code and is not published."""
     if text is None:
         return None
+    text = _CLAUDE_TMP.sub("<claude-tmp>", text)
     # Absolute forms only: a relative workspace ("..") would match every "..".
     for root in sorted({str(workspace.resolve()), str(workspace.absolute())}, key=len, reverse=True):
         text = re.sub(re.escape(root) + _PATH_END, "<workspace>", text)
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
+
+
+def local_path_leaks(entries: list[dict]) -> list[str]:
+    """The entries whose transcript-derived text (brief, recorded findings)
+    still names the home directory, as a path or as the dash-spelled slug
+    Claude Code makes of it, after masking: a form mask_workspace does not
+    know (a $TMPDIR root, a slug wrapped after the username) is refused here
+    rather than published. A plain substring test, so it refuses loudly where
+    the mask would respect a path boundary (/Users/robert under /Users/rob);
+    a text that escapes its slashes or splits the username is not caught.
+    diff.patch is not checked: it is a public repository's own content."""
+    home = str(Path.home())
+    if home.strip("/") == "":
+        return []  # a home of "/" names nobody, and would match every path
+    slug = re.sub(r"[^A-Za-z0-9]", "-", home)
+    return [e["meta"]["entry"] for e in entries
+            if any(home in t or slug in t
+                   for t in (e["brief"] or "", json.dumps(e["recorded"], ensure_ascii=False)))]
 
 
 class Classified(NamedTuple):
@@ -776,7 +807,7 @@ def _recorded_rounds(record_file, revs, private, repos, files, workspace) -> lis
                 continue  # the corpus carries the gate's blocking findings
             repo_name, path, in_tree = assign(f.get("path"), repos, files, layout)
             kept.append(dict(finding(r["lens"], f["severity"], path, f.get("start_line"), f.get("end_line"),
-                                     f["claim"], **prov, fix_commit=fix,
+                                     mask_workspace(f["claim"], workspace), **prov, fix_commit=fix,
                                      reported_path=mask_workspace(f.get("path"), workspace),
                                      path_in_tree=in_tree), _repo=repo_name))
         out.append(_round(r, kept))
@@ -1173,6 +1204,10 @@ def main(argv: list[str] | None = None) -> int:
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         # Every refusal main can make comes before the first write; SAME_DIRECTORY
         # names the one it cannot.
+        leaking = local_path_leaks(entries)
+        if leaking:
+            raise CorpusError(f"{len(leaking)} entries still name the home directory after masking"
+                              f" ({leaking[:3]}); extend mask_workspace before publishing")
         previous_entries(args.out)  # a foreign --out
         published = previous_manifest(args.out)  # or a foreign manifest in it
         if args.release_tag is not None and not args.bundles:
