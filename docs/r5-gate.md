@@ -88,6 +88,37 @@ touched reality:
 
 The provenance pass took the slot to catch exactly that.
 
+### Repeatability (first figures, 2026-11-11)
+
+The same review does not find the same things twice. Measured on one corpus
+entry, `opensrm-wo62-4-2` (tree `cfa4f8e`, the frozen pre-gate head),
+reviewed five times with one review per lens and no fixes: twice with the
+lens templates as they were (*before*), three times with the R5-FINDINGS
+contract of opensrm-6kqs.3 (*after*). Every run used the gate's original
+per-lens prompts. Agreement is the Jaccard overlap of two runs' blocking
+findings (CRITICAL and IMPORTANT), matched by claim, per lens and pooled;
+an empty pair counts as full agreement.
+
+| lens | before vs before (1 pair) | after vs after (3 pairs) | before vs after (6 pairs) |
+|---|---|---|---|
+| correctness | 0.00 | 0.00 | 0.33 |
+| clarity | 0.00 | 1.00 | 0.50 |
+| edge-cases | 0.33 | 0.33 | 0.47 |
+| provenance | 0.50 | 0.19 | 0.28 |
+| pooled | 0.29 | 0.19 | 0.26 |
+
+Recall of the archived gate's nine first-review blocking findings, same
+lens: 4 and 3 for the two before runs, and 1, 3 and 2 for the after runs.
+After's clarity agreement is 1.00 only because no after run raised a
+blocking clarity finding. Three of the nine archived findings were raised
+by no run.
+
+What this says about the gate: a single review is a sample. Two reviews
+with the same template agree about as often as two with different
+templates, and provenance, whose kill check picks its own mutations, agrees
+least. A finding count from one gate is therefore not a measure of the code
+alone, and a clean pass is a clean sample.
+
 ### Sequential, not parallel
 
 A fix made for one lens changes what the next lens reads. Parallel passes
