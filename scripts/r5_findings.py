@@ -215,7 +215,7 @@ def _prose_items(text: str) -> dict:
             current = words[0] if len(words) == 1 and words[0] in SEVERITIES else None
             continue
         # A sub-bullet (``   - File: ...``) is indented two or more spaces.
-        if current is None or raw[:2].isspace():
+        if current is None or not line or raw[:2].isspace():
             continue
         head, _, rest = line.partition(" ")
         if head in ("-", "*") or head[:-1].isdigit() and head.endswith("."):
@@ -223,6 +223,10 @@ def _prose_items(text: str) -> dict:
             if title.startswith("**"):
                 title = title[2:].split("**")[0]
             items[current].append(title.strip())
+        else:
+            # "None." or a plain prose line ("Checks performed:") closes the
+            # section: a list after it is notes, not this severity's issues.
+            current = None
     return items
 
 

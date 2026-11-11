@@ -401,3 +401,11 @@ def test_a_plain_bullet_under_a_heading_is_an_issue():
     out = r5_findings.parse_report(report([], prose=prose), "correctness")
     assert out["prose_unfiled"] == [{"severity": "MINOR", "prose_items": 1, "filed": 0,
                                      "titles": ["tests/golden/x.py:277 results matched by position"]}]
+
+
+def test_a_list_after_none_or_a_prose_line_is_not_issues():
+    prose = ("#### Minor\nNone.\n\nChecks performed:\n- patch targets match\n\n"
+             "#### Important\n- **a real one**\n\nVerified with no finding:\n- each cell\n")
+    out = r5_findings.parse_report(report([], prose=prose), "correctness")
+    assert out["prose_unfiled"] == [{"severity": "IMPORTANT", "prose_items": 1, "filed": 0,
+                                     "titles": ["a real one"]}]
