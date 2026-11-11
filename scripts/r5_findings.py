@@ -192,6 +192,53 @@ def _finding(raw: Any, lens: str, n: int) -> dict:
     return finding
 
 
+def _prose_items(text: str) -> dict:
+    """Issue items in the report's prose, per severity heading.
+
+    The lens templates list each issue as a bold-led item (``1. **...**`` or
+    ``- **...**``) under a ``Critical`` / ``Important`` / ``Minor`` heading. An
+    item runs until the next heading; fenced blocks and the contract line are
+    skipped. Plain string checks rather than patterns, as elsewhere in the
+    workspace, since the shape is fixed by the templates."""
+    items = {s: [] for s in SEVERITIES}
+    current, fenced = None, False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced or line.startswith(PREFIX):
+            continue
+        if line.startswith("#"):
+            words = line.lstrip("#").strip().rstrip(":").upper().split()
+            current = words[0] if len(words) == 1 and words[0] in SEVERITIES else None
+            continue
+        # A sub-bullet (``   - File: ...``) is indented two or more spaces.
+        if current is None or raw[:2].isspace():
+            continue
+        head, _, rest = line.partition(" ")
+        if (head in ("-", "*") or head[:-1].isdigit() and head.endswith(".")) and rest.startswith("**"):
+            items[current].append(rest.strip("*").split("**")[0].strip())
+    return items
+
+
+def prose_unfiled(text: str, records: list) -> list:
+    """Severities whose prose lists more issues than the array files [6kqs.3].
+
+    Telemetry, not a contract failure: a report whose prose names an issue
+    with no matching entry is logged ``prose_unfiled`` (Rob, 2026-11-11). The
+    match is by count per severity; it cannot see an issue mentioned only in
+    free-running notes, which the templates' filing rule covers instead."""
+    filed = {s: sum(r["severity"] == s and r["resolves"] is None for r in records)
+             for s in SEVERITIES}
+    out = []
+    for severity, titles in _prose_items(text).items():
+        if len(titles) > filed[severity]:
+            out.append({"severity": severity, "prose_items": len(titles),
+                        "filed": filed[severity], "titles": titles})
+    return out
+
+
 def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
                  prior_open: list = ()) -> dict:
     """The report's records, the open set after it, and its accounting."""
@@ -266,7 +313,10 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
     return {"findings": records, "open_set": open_set, "counts": counts,
             "unproven": unproven, "closures": valid_closures, "closure_rejected": rejected,
             "unaccounted": [f["fingerprint"] for f in carried],
-            "downgrades_refused": downgrades_refused}
+            "downgrades_refused": downgrades_refused,
+            # NthLayer's addition to the reference's output (6kqs.3); a key the
+            # bridge does not emit, so cúramóir mirrors it or the shared text says so.
+            "prose_unfiled": prose_unfiled(text, records)}
 
 
 def _schema_lens(name: str) -> str:

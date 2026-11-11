@@ -341,3 +341,55 @@ def test_compare_skips_an_event_that_is_not_a_parsed_review():
         {"event": "findings_received", "pass": "provenance", "findings": [finding(lens="provenance")]}]}
     out = r5_findings.compare_records(rec, rep)
     assert len(out["matched"]) == 1 and out["unmatched"] == []
+
+
+# --- prose_unfiled (Rob, 2026-11-11): "a report whose prose names an issue
+#     with no matching entry is logged prose_unfiled". The prose shape is the
+#     templates' Output Format: bold-led items under severity headings, e.g.
+#     correctness-reviewer.md "#### Important ... 1. **[Short description]**".
+
+PROSE = """### Correctness Issues
+
+#### Critical
+None.
+
+#### Important
+1. **The stub is pinned instead of failing**
+   - File: tests/golden/test_golden_legacy_cli.py:157
+   - What's wrong: except Exception catches AssertionError
+
+#### Minor
+- **Docstring names one stub only**
+
+```
+#### Important
+1. **not an item: inside a fence**
+```
+"""
+
+
+def test_an_issue_in_the_prose_with_no_entry_is_prose_unfiled():
+    out = r5_findings.parse_report(report([finding(severity="MINOR")], prose=PROSE), "correctness")
+    assert out["prose_unfiled"] == [{"severity": "IMPORTANT", "prose_items": 1, "filed": 0,
+                                     "titles": ["The stub is pinned instead of failing"]}]
+    assert out["counts"]["important"] == 0          # telemetry: it never blocks or fails
+
+
+def test_every_prose_issue_filed_is_not_prose_unfiled():
+    out = r5_findings.parse_report(
+        report([finding(), finding(claim="docstring", severity="MINOR")], prose=PROSE), "correctness")
+    assert out["prose_unfiled"] == []
+
+
+def test_a_closure_does_not_count_as_filing_a_prose_issue():
+    before = prior(finding())
+    out = r5_findings.parse_report(
+        report([closure(fp("the v2 branch never fires")), finding(claim="docstring", severity="MINOR")],
+               prose=PROSE), "correctness", prior_open=before)
+    assert [u["severity"] for u in out["prose_unfiled"]] == ["IMPORTANT"]
+    assert out["closures"] == [fp("the v2 branch never fires")]
+
+
+def test_none_and_sub_bullets_are_not_issues():
+    prose = "#### Critical\nNone.\n\n#### Important\nNone.\n   - **indented, a sub-bullet**\n"
+    assert r5_findings.parse_report(report([], prose=prose), "correctness")["prose_unfiled"] == []
