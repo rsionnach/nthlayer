@@ -195,9 +195,10 @@ def _finding(raw: Any, lens: str, n: int) -> dict:
 def _prose_items(text: str) -> dict:
     """Issue items in the report's prose, per severity heading.
 
-    The lens templates list each issue as a bold-led item (``1. **...**`` or
-    ``- **...**``) under a ``Critical`` / ``Important`` / ``Minor`` heading. An
-    item runs until the next heading; fenced blocks and the contract line are
+    The lens templates list each issue as a top-level item (``1. **...**``,
+    ``- **...**``, or a plain ``- ...`` bullet) under a ``Critical`` /
+    ``Important`` / ``Minor`` heading; the title is the bold lead if there is
+    one. Indented sub-bullets, fenced blocks and the contract line are
     skipped. Plain string checks rather than patterns, as elsewhere in the
     workspace, since the shape is fixed by the templates."""
     items = {s: [] for s in SEVERITIES}
@@ -217,8 +218,11 @@ def _prose_items(text: str) -> dict:
         if current is None or raw[:2].isspace():
             continue
         head, _, rest = line.partition(" ")
-        if (head in ("-", "*") or head[:-1].isdigit() and head.endswith(".")) and rest.startswith("**"):
-            items[current].append(rest.strip("*").split("**")[0].strip())
+        if head in ("-", "*") or head[:-1].isdigit() and head.endswith("."):
+            title = rest.strip()
+            if title.startswith("**"):
+                title = title[2:].split("**")[0]
+            items[current].append(title.strip())
     return items
 
 

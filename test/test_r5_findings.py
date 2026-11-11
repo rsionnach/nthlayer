@@ -393,3 +393,11 @@ def test_a_closure_does_not_count_as_filing_a_prose_issue():
 def test_none_and_sub_bullets_are_not_issues():
     prose = "#### Critical\nNone.\n\n#### Important\nNone.\n   - **indented, a sub-bullet**\n"
     assert r5_findings.parse_report(report([], prose=prose), "correctness")["prose_unfiled"] == []
+
+
+def test_a_plain_bullet_under_a_heading_is_an_issue():
+    """Reviewers also write MINORs as plain bullets: ``- tests/x.py:12 foo``."""
+    prose = "#### Minor\n- tests/golden/x.py:277 results matched by position\n"
+    out = r5_findings.parse_report(report([], prose=prose), "correctness")
+    assert out["prose_unfiled"] == [{"severity": "MINOR", "prose_items": 1, "filed": 0,
+                                     "titles": ["tests/golden/x.py:277 results matched by position"]}]
