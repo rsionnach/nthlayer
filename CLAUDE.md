@@ -180,6 +180,16 @@ examples, generator-specific scripts.
     `.claude/r5-handbacks/`; only findings and briefs leave it. Standard
     library and git only. Tests: `test/test_r5_corpus.py`, on the runner's
     Python and on 3.9.
+  - `r5_findings.py` — the section 6 finding parser (R5 Gate v2 Phase A.3,
+    opensrm-6kqs.3). `parse` reads a reviewer report's last line,
+    `R5-FINDINGS: [...]`, into findings, the open set, counts, UNPROVEN,
+    closures and their rejections; exit 2 means the reviewer is UNAVAILABLE.
+    `compare` checks a dry-run replay against a corpus entry's
+    `recorded.json`, recomputing fingerprints on both sides. It ports
+    cúramóir's `.claude/hooks/lib/r5_findings.py`, which is normative, and
+    holds the one claim normaliser `r5_corpus.py` imports. r5-supervise
+    calls it through the workspace shim `.claude/bin/r5-findings.sh`.
+    Tests: `test/test_r5_findings.py`, on the runner's Python and on 3.9.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest
     release is outside its range [opensrm-z1kq].
@@ -190,8 +200,9 @@ examples, generator-specific scripts.
   - `ci.yml` — `bash -n` across `demo/`, `test/` and `scripts/` *.sh
     (opensrm-0buj); `ruff check` over the same three directories
     (opensrm-u5dw.1); the `test_eco_doctor.sh` regression suite
-    (opensrm-8hn3); `test/test_r5_baseline.py` (opensrm-6kqs.1); and
-    `test/test_r5_corpus.py` (opensrm-6kqs.2).
+    (opensrm-8hn3); `test/test_r5_baseline.py` (opensrm-6kqs.1);
+    `test/test_r5_corpus.py` (opensrm-6kqs.2); and
+    `test/test_r5_findings.py` (opensrm-6kqs.3).
   - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
