@@ -76,8 +76,10 @@ SEVERITIES = ("CRITICAL", "IMPORTANT", "MINOR")
 LEVELS = ("asserted", "cited", "walked", "script", "reproduced")
 DEFAULT_FLOOR = "script"
 BLOCKING = ("CRITICAL", "IMPORTANT")
-# Excellence is advisory: it never blocks, so it has nothing to prove.
-ADVISORY_LENSES = ("excellence",)
+# Advisory lenses never block, so they have nothing to prove: excellence, and
+# clarity from spec v1.9 (R5-R12, opensrm-6kqs.11, 2026-11-12). Ahead of
+# curamoir's reference, which lists excellence only until it mirrors v1.9.
+ADVISORY_LENSES = ("clarity", "excellence")
 
 # Removed from a claim before it is fingerprinted, so a finding keeps its key
 # when the code it points at moves: line references (line 42, lines 4-9,

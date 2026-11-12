@@ -179,6 +179,12 @@ def test_excellence_has_nothing_to_prove():
     assert out["unproven"] == []
 
 
+def test_clarity_has_nothing_to_prove():
+    """"Clarity and excellence are advisory (R5-R12) and have nothing to prove"."""
+    out = parse([finding(lens="clarity", verification_level="cited")], lens="clarity")
+    assert out["unproven"] == [] and out["counts"]["important"] == 1
+
+
 # --- Closures (verify mode)
 
 def prior(*records: dict, lens: str = "correctness") -> list:
@@ -469,3 +475,13 @@ def test_a_recorded_finding_with_no_location_is_refused_not_lost():
     out = r5_findings.roundtrip_record(rec)
     assert out["parsed"] == 0 and out["lost"] == []
     assert [r["reason"] for r in out["refused"]] == ["no path or line range"] * 2
+
+
+def test_compare_leaves_clarity_out_with_the_advisory_lenses():
+    """Spec v1.9 R5-R12: clarity is advisory, logged as advisory_pass_completed,
+    so a recorded clarity finding (blocking when it was recorded) is not a loss."""
+    rec = recorded(("clarity", 1, [finding(lens="clarity", **STALE)]),
+                   ("correctness", 1, [finding(**STALE)]))
+    rep = replay(("correctness", [finding()]))
+    out = r5_findings.compare_records(rec, rep)
+    assert len(out["matched"]) == 1 and out["unmatched"] == []
