@@ -39,7 +39,8 @@ lens has a gap.
 Clarity became advisory on 2026-11-12 [opensrm-6kqs.11, R5 Gate v2 spec v1.9
 Phase A bead 9, R5-R12]. Over corpus-v1's 91 source records it took 256 of the
 1,107 sequential model steps, with a fix round in 69 of them, and the table
-below shows it raised no CRITICAL in 478 first-review findings. From 2026-08-28
+below shows no recorded CRITICAL in its 478 first-review findings (60 of them
+have no recorded severity). From 2026-08-28
 to 2026-11-12 it was the second blocking pass; the archived records of that
 period, and the baseline below, show it so.
 
