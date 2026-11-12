@@ -105,6 +105,30 @@ def test_a_stored_fingerprint_is_never_the_key():
         "correctness", "src/opensrm/parser/v2.py", "the v2 branch never fires")
 
 
+# Section 6 schema: "start_line": 118, "end_line": 131 are lines at HEAD
+# (integers, a range); "resolves": "fingerprint of the prior finding this
+# closes, or null"; "evidence": "the lines, or the test output, that show
+# it". A record that cannot be read as that is a report that does not meet
+# the contract: UNAVAILABLE.
+
+@pytest.mark.parametrize("start, end", [(0, 3), (5, 4), ("12", 12), (True, 2), (3, None)])
+def test_a_line_range_that_is_not_one_is_unavailable(start, end):
+    with pytest.raises(ReportError):
+        parse([finding(start_line=start, end_line=end)])
+
+
+@pytest.mark.parametrize("evidence", [None, "", "   "])
+def test_a_finding_without_evidence_is_unavailable(evidence):
+    with pytest.raises(ReportError):
+        parse([finding(evidence=evidence)])
+
+
+@pytest.mark.parametrize("resolves", ["not-a-fingerprint", "abc", "g" * 16, 42])
+def test_a_resolves_that_is_not_a_fingerprint_is_unavailable(resolves):
+    with pytest.raises(ReportError):
+        parse([finding(resolves=resolves)], prior_open=[])
+
+
 def test_verification_level_is_the_ladder():
     with pytest.raises(ReportError):
         parse([finding(verification_level="proven")])
@@ -242,6 +266,28 @@ def test_a_re_raise_keeps_the_more_severe_severity():
     assert out["downgrades_refused"] == [fp("the v2 branch never fires")]
 
 
+def test_a_closure_and_a_re_raise_of_one_fingerprint_keep_it_open():
+    """A re-raise is "the prior record copied verbatim"; the open set is the
+    previous one "minus valid closures, plus new and re-raised findings".
+    The reference (cm-70j) reads both in one report as a re-raise: the
+    finding stays open and the closure is neither applied nor rejected."""
+    target = fp("the v2 branch never fires")
+    out = parse([closure(target), finding()], prior_open=prior(finding()))
+    assert out["closures"] == [] and out["closure_rejected"] == []
+    assert [f["fingerprint"] for f in out["open_set"]] == [target]
+    assert out["counts"]["important"] == 1
+
+
+def test_one_fingerprint_twice_is_one_finding_at_the_more_severe():
+    """Fingerprint = lens|path|normalised claim, so a claim differing only in
+    a line reference is one finding; the reference keeps the most severe."""
+    out = parse([finding(severity="MINOR", claim="the v2 branch never fires at line 9"),
+                 finding(severity="CRITICAL", claim="The v2 branch never fires at line 40")])
+    assert len(out["open_set"]) == 1 and out["open_set"][0]["severity"] == "CRITICAL"
+    out = parse([finding(severity="CRITICAL"), finding(severity="MINOR")])
+    assert [f["severity"] for f in out["open_set"]] == ["CRITICAL"]
+
+
 def test_silence_never_closes():
     """"carried forward unchanged and tagged unaccounted"."""
     out = parse([], prior_open=prior(finding()))
@@ -274,6 +320,9 @@ def test_cli_exit_codes(tmp_path):
     assert cli("parse", "style", str(good)).returncode == 1
     assert cli("parse", "correctness", str(good), "--floor").returncode == 1
     assert cli("parse", "correctness", str(tmp_path / "missing.md")).returncode == 1
+    latin1 = tmp_path / "latin1.md"   # the reference: a report that is not UTF-8 fails the contract
+    latin1.write_bytes(report([finding()], prose="Caf\u00e9 review\n").encode("latin-1"))
+    assert cli("parse", "correctness", str(latin1)).returncode == 2
 
 
 # --- compare: the dry-run acceptance (spec section 3, bead 3)
