@@ -343,10 +343,12 @@ def test_compare_skips_an_event_that_is_not_a_parsed_review():
     assert len(out["matched"]) == 1 and out["unmatched"] == []
 
 
-# --- prose_unfiled (Rob, 2026-11-11): "a report whose prose names an issue
-#     with no matching entry is logged prose_unfiled". The prose shape is the
-#     templates' Output Format: bold-led items under severity headings, e.g.
-#     correctness-reviewer.md "#### Important ... 1. **[Short description]**".
+# --- prose_unfiled, section 6 "Prose and entries": "The parser logs
+#     prose_unfiled, as {"heading": "", "text": ""}, for each item under a
+#     severity heading with no matching entry and each Not filed line with no
+#     reason". The prose shape is the templates' Output Format: bold-led items
+#     under severity headings, e.g. correctness-reviewer.md "#### Important ...
+#     1. **[Short description]**".
 
 PROSE = """### Correctness Issues
 
@@ -370,8 +372,7 @@ None.
 
 def test_an_issue_in_the_prose_with_no_entry_is_prose_unfiled():
     out = r5_findings.parse_report(report([finding(severity="MINOR")], prose=PROSE), "correctness")
-    assert out["prose_unfiled"] == [{"severity": "IMPORTANT", "prose_items": 1, "filed": 0,
-                                     "titles": ["The stub is pinned instead of failing"]}]
+    assert out["prose_unfiled"] == [{"heading": "IMPORTANT", "text": "The stub is pinned instead of failing"}]
     assert out["counts"]["important"] == 0          # telemetry: it never blocks or fails
 
 
@@ -386,7 +387,7 @@ def test_a_closure_does_not_count_as_filing_a_prose_issue():
     out = r5_findings.parse_report(
         report([closure(fp("the v2 branch never fires")), finding(claim="docstring", severity="MINOR")],
                prose=PROSE), "correctness", prior_open=before)
-    assert [u["severity"] for u in out["prose_unfiled"]] == ["IMPORTANT"]
+    assert [u["heading"] for u in out["prose_unfiled"]] == ["IMPORTANT"]
     assert out["closures"] == [fp("the v2 branch never fires")]
 
 
@@ -399,13 +400,39 @@ def test_a_plain_bullet_under_a_heading_is_an_issue():
     """Reviewers also write MINORs as plain bullets: ``- tests/x.py:12 foo``."""
     prose = "#### Minor\n- tests/golden/x.py:277 results matched by position\n"
     out = r5_findings.parse_report(report([], prose=prose), "correctness")
-    assert out["prose_unfiled"] == [{"severity": "MINOR", "prose_items": 1, "filed": 0,
-                                     "titles": ["tests/golden/x.py:277 results matched by position"]}]
+    assert out["prose_unfiled"] == [{"heading": "MINOR", "text": "tests/golden/x.py:277 results matched by position"}]
 
 
 def test_a_list_after_none_or_a_prose_line_is_not_issues():
     prose = ("#### Minor\nNone.\n\nChecks performed:\n- patch targets match\n\n"
              "#### Important\n- **a real one**\n\nVerified with no finding:\n- each cell\n")
     out = r5_findings.parse_report(report([], prose=prose), "correctness")
-    assert out["prose_unfiled"] == [{"severity": "IMPORTANT", "prose_items": 1, "filed": 0,
-                                     "titles": ["a real one"]}]
+    assert out["prose_unfiled"] == [{"heading": "IMPORTANT", "text": "a real one"}]
+
+
+def test_with_fewer_entries_the_least_matching_item_is_unfiled():
+    prose = ("#### Important\n1. **The stub is pinned instead of failing**\n"
+             "2. **Recording rules are sorted in the CLI cells**\n")
+    out = r5_findings.parse_report(
+        report([finding(claim="Env.files sorts recording rules in the CLI cells")], prose=prose), "correctness")
+    assert out["prose_unfiled"] == [{"heading": "IMPORTANT", "text": "The stub is pinned instead of failing"}]
+
+
+# "A remark that is not a finding goes under a Not filed heading, one line
+#  each, ending in its reason: out_of_scope, pre_existing or not_an_issue."
+
+def test_a_not_filed_line_needs_its_reason():
+    prose = ("#### Not filed\n"
+             "- The old cells sort too; pre_existing\n"
+             "- `id` masking in dashboards is documented — not_an_issue\n"
+             "- Panel ids are masked globally (out_of_scope)\n"
+             "- The loader walks up from the cwd\n")
+    out = r5_findings.parse_report(report([], prose=prose), "correctness")
+    assert out["prose_unfiled"] == [{"heading": "Not filed", "text": "The loader walks up from the cwd"}]
+    assert out["counts"] == {"critical": 0, "important": 0, "minor": 0}
+
+
+def test_a_not_filed_line_is_never_an_unfiled_finding():
+    """A reasoned remark under Not filed is not compared with the array."""
+    prose = "### Not filed\n- **Bold remark** about scope; out_of_scope\n"
+    assert r5_findings.parse_report(report([], prose=prose), "correctness")["prose_unfiled"] == []

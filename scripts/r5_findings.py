@@ -192,16 +192,32 @@ def _finding(raw: Any, lens: str, n: int) -> dict:
     return finding
 
 
+NOT_FILED = "Not filed"
+# A Not-filed line ends in one of these (section 6, "Prose and entries").
+NOT_FILED_REASONS = ("out_of_scope", "pre_existing", "not_an_issue")
+
+
+def _heading(line: str) -> str | None:
+    """The section a markdown heading opens: a severity, Not filed, or None."""
+    words = line.lstrip("#").strip().rstrip(":").split()
+    if len(words) == 1 and words[0].upper() in SEVERITIES:
+        return words[0].upper()
+    if [w.lower() for w in words] == ["not", "filed"]:
+        return NOT_FILED
+    return None
+
+
 def _prose_items(text: str) -> dict:
-    """Issue items in the report's prose, per severity heading.
+    """Items in the report's prose, per severity heading and under Not filed.
 
     The lens templates list each issue as a top-level item (``1. **...**``,
     ``- **...**``, or a plain ``- ...`` bullet) under a ``Critical`` /
-    ``Important`` / ``Minor`` heading; the title is the bold lead if there is
+    ``Important`` / ``Minor`` heading, and each remark that is not a finding
+    as a line under ``Not filed``; an item's text is its bold lead if it has
     one. Indented sub-bullets, fenced blocks and the contract line are
     skipped. Plain string checks rather than patterns, as elsewhere in the
     workspace, since the shape is fixed by the templates."""
-    items = {s: [] for s in SEVERITIES}
+    items = {s: [] for s in (*SEVERITIES, NOT_FILED)}
     current, fenced = None, False
     for raw in text.splitlines():
         line = raw.strip()
@@ -211,8 +227,7 @@ def _prose_items(text: str) -> dict:
         if fenced or line.startswith(PREFIX):
             continue
         if line.startswith("#"):
-            words = line.lstrip("#").strip().rstrip(":").upper().split()
-            current = words[0] if len(words) == 1 and words[0] in SEVERITIES else None
+            current = _heading(line)
             continue
         # A sub-bullet (``   - File: ...``) is indented two or more spaces.
         if current is None or not line or raw[:2].isspace():
@@ -220,30 +235,53 @@ def _prose_items(text: str) -> dict:
         head, _, rest = line.partition(" ")
         if head in ("-", "*") or head[:-1].isdigit() and head.endswith("."):
             title = rest.strip()
-            if title.startswith("**"):
+            if title.startswith("**") and current != NOT_FILED:
                 title = title[2:].split("**")[0]
             items[current].append(title.strip())
         else:
             # "None." or a plain prose line ("Checks performed:") closes the
-            # section: a list after it is notes, not this severity's issues.
+            # section: a list after it is notes, not this heading's items.
             current = None
     return items
 
 
-def prose_unfiled(text: str, records: list) -> list:
-    """Severities whose prose lists more issues than the array files [6kqs.3].
+def _words(text: str) -> set:
+    return set(normalise_claim(text).replace("`", " ").replace("*", " ").split())
 
-    Telemetry, not a contract failure: a report whose prose names an issue
-    with no matching entry is logged ``prose_unfiled`` (Rob, 2026-11-11). The
-    match is by count per severity; it cannot see an issue mentioned only in
-    free-running notes, which the templates' filing rule covers instead."""
-    filed = {s: sum(r["severity"] == s and r["resolves"] is None for r in records)
-             for s in SEVERITIES}
+
+def _has_reason(line: str) -> bool:
+    words = line.replace("`", " ").replace("(", " ").replace(")", " ").split()
+    return bool(words) and words[-1].rstrip(".;,") in NOT_FILED_REASONS
+
+
+def prose_unfiled(text: str, records: list) -> list:
+    """Prose items with no matching entry, and Not-filed lines with no reason.
+
+    Section 6 ("Prose and entries", Rob 2026-11-11/12): each item under a
+    severity heading with no matching entry, and each ``Not filed`` line that
+    does not end in its reason, is logged as ``{"heading", "text"}``. It is
+    telemetry, never a contract failure. Items are matched to that severity's
+    entries (closures aside) greedily, by the share of the item's words found
+    in the entry's claim, so a severity with as many entries as items has no
+    unfiled item whatever the wording; with fewer entries, the least-matching
+    items are the unfiled ones. It cannot see an issue mentioned only in
+    running prose; the sampling audit reads for that."""
+    items = _prose_items(text)
     out = []
-    for severity, titles in _prose_items(text).items():
-        if len(titles) > filed[severity]:
-            out.append({"severity": severity, "prose_items": len(titles),
-                        "filed": filed[severity], "titles": titles})
+    for severity in SEVERITIES:
+        claims = [_words(r["claim"]) for r in records
+                  if r["severity"] == severity and r["resolves"] is None]
+        pairs = sorted(((len(_words(t) & c) / max(len(_words(t)), 1), i, j)
+                        for i, t in enumerate(items[severity]) for j, c in enumerate(claims)),
+                       reverse=True)
+        matched, used = set(), set()
+        for _, i, j in pairs:
+            if i not in matched and j not in used:
+                matched.add(i)
+                used.add(j)
+        out.extend({"heading": severity, "text": t}
+                   for i, t in enumerate(items[severity]) if i not in matched)
+    out.extend({"heading": NOT_FILED, "text": t} for t in items[NOT_FILED] if not _has_reason(t))
     return out
 
 
