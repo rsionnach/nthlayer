@@ -1,0 +1,178 @@
+{
+  "supervisor": "r5-supervise",
+  "version": 2,
+  "target_bead": "fx-clarity-advisory",
+  "started_at": "2000-01-01T00:00:00Z",
+  "dry_run": false,
+  "passes": [
+    "correctness",
+    "edge-cases",
+    "provenance"
+  ],
+  "advisory_passes": [
+    "clarity",
+    "excellence"
+  ],
+  "status": "completed",
+  "completed_passes": [
+    {
+      "name": "correctness",
+      "findings_count_initial": 3,
+      "findings_count_final": 0,
+      "fix_iterations": 1
+    },
+    {
+      "name": "edge-cases",
+      "findings_count_initial": 3,
+      "findings_count_final": 0,
+      "fix_iterations": 0
+    },
+    {
+      "name": "provenance",
+      "findings_count_initial": 1,
+      "findings_count_final": 0,
+      "fix_iterations": 1
+    }
+  ],
+  "audit_trail": [
+    {
+      "ts": "2000-01-01T00:00:00Z",
+      "event": "pass_started",
+      "pass": "correctness"
+    },
+    {
+      "ts": "2000-01-01T00:00:01Z",
+      "event": "findings_received",
+      "pass": "correctness",
+      "counts": {
+        "critical": 0,
+        "important": 1,
+        "minor": 2
+      }
+    },
+    {
+      "ts": "2000-01-01T00:00:02Z",
+      "event": "fixes_applied",
+      "pass": "correctness"
+    },
+    {
+      "ts": "2000-01-01T00:00:03Z",
+      "event": "findings_received",
+      "pass": "correctness",
+      "iteration": 2,
+      "counts": {
+        "critical": 0,
+        "important": 0,
+        "minor": 1
+      }
+    },
+    {
+      "ts": "2000-01-01T00:00:04Z",
+      "event": "pass_completed",
+      "pass": "correctness",
+      "fix_iterations": 1
+    },
+    {
+      "ts": "2000-01-01T00:00:05Z",
+      "event": "pass_started",
+      "pass": "edge-cases"
+    },
+    {
+      "ts": "2000-01-01T00:00:06Z",
+      "event": "findings_received",
+      "pass": "edge-cases",
+      "counts": {
+        "critical": 0,
+        "important": 0,
+        "minor": 3
+      }
+    },
+    {
+      "ts": "2000-01-01T00:00:07Z",
+      "event": "pass_completed",
+      "pass": "edge-cases",
+      "fix_iterations": 0
+    },
+    {
+      "ts": "2000-01-01T00:00:08Z",
+      "event": "pass_started",
+      "pass": "provenance"
+    },
+    {
+      "ts": "2000-01-01T00:00:09Z",
+      "event": "findings_received",
+      "pass": "provenance",
+      "counts": {
+        "critical": 1,
+        "important": 0,
+        "minor": 0
+      }
+    },
+    {
+      "ts": "2000-01-01T00:00:10Z",
+      "event": "fixes_applied",
+      "pass": "provenance"
+    },
+    {
+      "ts": "2000-01-01T00:00:11Z",
+      "event": "findings_received",
+      "pass": "provenance",
+      "iteration": 2,
+      "counts": {
+        "critical": 0,
+        "important": 0,
+        "minor": 0
+      }
+    },
+    {
+      "ts": "2000-01-01T00:00:12Z",
+      "event": "pass_completed",
+      "pass": "provenance",
+      "fix_iterations": 1
+    },
+    {
+      "ts": "2000-01-01T00:00:13Z",
+      "event": "pass_started",
+      "pass": "clarity",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:14Z",
+      "event": "reviewer_dispatched",
+      "pass": "clarity",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:15Z",
+      "event": "advisory_pass_completed",
+      "pass": "clarity",
+      "counts": {
+        "critical": 0,
+        "important": 2,
+        "minor": 5
+      }
+    },
+    {
+      "ts": "2000-01-01T00:00:16Z",
+      "event": "pass_started",
+      "pass": "excellence",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:17Z",
+      "event": "reviewer_dispatched",
+      "pass": "excellence",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:18Z",
+      "event": "advisory_pass_completed",
+      "pass": "excellence",
+      "counts": {
+        "critical": 0,
+        "important": 0,
+        "minor": 3
+      }
+    }
+  ]
+}

@@ -24,8 +24,8 @@ Fields present, and nothing else:
 - `audit_trail[]` events `pass_started`, `findings_received`,
   `advisory_pass_completed`, `pass_completed`, `fixes_applied`,
   `fix_dispatched`, `reviewer_dispatched`, `reviewer_dispatch_blocked` and
-  `supervisor_blocked`, with `ts`, `event`, `pass`, `iteration`, `counts` and
-  `fix_iterations`.
+  `supervisor_blocked`, with `ts`, `event`, `pass`, `iteration`, `counts`,
+  `fix_iterations` and `advisory`.
 
 The script's known-data tables (`BLOCKED_DISPATCHES`, `PASSLESS_EVENTS`) hold
 real archive keys, which match none of these. The tests swap in the synthetic
@@ -48,6 +48,7 @@ known-data entry, add the synthetic key to `SYNTHETIC_BLOCKED_DISPATCHES` or
 | fixture (`r5-state-fx-…-completed.json`) | pattern |
 |---|---|
 | `v2-per-review-severities` | schema v2: severities logged per review, advisory excellence as `advisory_pass_completed` |
+| `clarity-advisory` | the roster from 2026-11-12 (opensrm-6kqs.11): three `passes`, clarity and excellence under `advisory_passes`, each read once: `pass_started` and `reviewer_dispatched` with `advisory: true`, then `advisory_pass_completed`, as the first live three-pass record logs them |
 | `v1-totals-only` | schema v1 with no `findings_received`: pass totals only, so every finding is unattributed |
 | `v1-fix-loops` | schema v1, totals only, multi-iteration fix loops |
 | `dry-run-with-other-bucket` | a dry run (excluded from the totals), and a `counts` key outside the three severities (`missing_tests`) |

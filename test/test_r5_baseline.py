@@ -58,6 +58,7 @@ def test_fixtures_are_present():
         "r5-state-fx-blocked-dispatch-after-launch-completed.json",
         "r5-state-fx-blocked-dispatch-before-launch-completed.json",
         "r5-state-fx-blocking-only-initial-count-completed.json",
+        "r5-state-fx-clarity-advisory-completed.json",
         "r5-state-fx-combined-pass-completed.json",
         "r5-state-fx-dry-run-with-other-bucket-completed.json",
         "r5-state-fx-passless-fix-events-completed.json",
@@ -96,6 +97,19 @@ def test_lens_order_and_critical_path_for_a_v2_record():
     # reviews + fixes: correctness 3+2, clarity 2+1, edge-cases 2+1, provenance
     # 3+2, excellence 1+0.
     assert row["sequential_steps"] == 17
+
+
+def test_a_three_pass_record_reads_clarity_as_one_advisory_review():
+    # The roster from 2026-11-12 (opensrm-6kqs.11): three passes, clarity and
+    # excellence under advisory_passes, each read once on the final tree. By
+    # hand from fx-clarity-advisory: correctness 2 reviews + 1 fix, edge-cases
+    # 1 + 0, provenance 2 + 1, clarity 1 + 0, excellence 1 + 0.
+    row = _row("fx-clarity-advisory")
+    assert row["lens_order"] == ["correctness", "edge-cases", "provenance", "clarity", "excellence"]
+    assert row["sequential_steps"] == 9
+    clarity = row["lenses"]["clarity"]
+    assert clarity["findings_by_review"] == [{"critical": 0, "important": 2, "minor": 5, "other": 0}]
+    assert (clarity["reviews"], clarity["fix_rounds"], clarity["steps"]) == (1, 0, 1)
 
 
 def test_a_totals_only_record_reports_every_finding_unattributed():
@@ -155,20 +169,20 @@ def _json_out(capsys) -> dict:
 def test_json_mode_reports_every_record(capsys):
     out = _json_out(capsys)
     assert out["schema_version"] == 1
-    assert len(out["records"]) == 13
+    assert len(out["records"]) == 14
     assert "fx-dry-run-with-other-bucket" not in {r["bead"] for r in r5_baseline.baseline_rows(out["records"])}
 
 
 def test_json_marks_the_records_the_totals_leave_out(capsys):
     # The two excluded fixtures (a dry run; a gate abandoned before any
-    # review) are listed but not counted; the other eleven are.
+    # review) are listed but not counted; the other twelve are.
     out = _json_out(capsys)
     uncounted = sorted(r["file"] for r in out["records"] if not r["counted"])
     assert uncounted == [
         "r5-state-fx-abandoned-unreviewed-completed.json",
         "r5-state-fx-dry-run-with-other-bucket-completed.json",
     ]
-    assert sum(r["counted"] for r in out["records"]) == 11
+    assert sum(r["counted"] for r in out["records"]) == 12
 
 
 def test_a_bead_with_two_records_sums_their_steps(capsys):
@@ -188,7 +202,7 @@ def test_a_bead_with_two_records_sums_their_steps(capsys):
     # Uncounted records give their bead no entry.
     assert "fx-dry-run-with-other-bucket" not in out["beads"]
     assert "fx-abandoned-unreviewed" not in out["beads"]
-    assert len(out["beads"]) == 10
+    assert len(out["beads"]) == 11
 
 
 def test_json_carries_the_table_summary(capsys):
@@ -200,10 +214,10 @@ def test_json_carries_the_table_summary(capsys):
 
 def test_schema_versions_are_counted_by_value():
     # Counted fixtures: 2 of version 1 (the other two v1 files are the
-    # excluded ones), 9 of version 2; read off the files' "version" fields.
+    # excluded ones), 10 of version 2; read off the files' "version" fields.
     rows = [_row(p.name.removeprefix("r5-state-").removesuffix("-completed.json"))
             for p in sorted(FIXTURES.glob("*.json"))]
-    assert r5_baseline.report(rows)["versions"] == {"1": 2, "2": 9}
+    assert r5_baseline.report(rows)["versions"] == {"1": 2, "2": 10}
     # A third version is its own bucket, not folded into v2.
     rows[0] = dict(rows[0], version=3)
     assert r5_baseline.schema_versions(rows)["3"] == 1
@@ -431,13 +445,13 @@ def test_the_published_table_folds_other_passes_and_follows_the_roster():
     ]
     assert (r["excluded_dry_runs"], r["excluded_unreviewed"]) == (1, 1)
     # 13 fixtures less fx-dry-run-with-other-bucket and
-    # fx-abandoned-unreviewed; all 11 have a reviewed correctness pass. With
+    # fx-abandoned-unreviewed; all 12 have a reviewed correctness pass. With
     # the exclusions skipped, either number would rise.
-    assert r["records"] == 11
+    assert r["records"] == 12
     # Two of those are checkpoints of one bead (fx-passless-fix-events and
     # fx-re-run-passes share fx-checkpointed-bead), as checkpointed beads are.
-    assert r["beads"] == 10
-    assert r["table"][0][r5_baseline.TABLE_COLUMNS.index("records")] == 11
+    assert r["beads"] == 11
+    assert r["table"][0][r5_baseline.TABLE_COLUMNS.index("records")] == 12
     # Every row has a cell per column, or every later value shifts left.
     assert all(len(row) == len(r5_baseline.TABLE_COLUMNS) for row in r["table"])
     # The three one-off passes, by hand from the fixtures' events:

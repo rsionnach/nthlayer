@@ -897,6 +897,26 @@ def test_a_v2_excellence_finding_never_makes_an_entry_blocking(workspace):
 
 
 
+def test_clarity_under_advisory_passes_does_not_block(workspace):
+    # The roster from 2026-11-12 (opensrm-6kqs.11, r5-supervise's state
+    # schema): passes are correctness, edge-cases and provenance; clarity and
+    # excellence are advisory_passes. A record whose only IMPORTANT is
+    # clarity's is clean, as one whose only IMPORTANT is excellence's is.
+    ws = workspace["ws"]
+    rec = record("opensrm-cla", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 0, "minor": 1}, None),
+                  ("clarity", {"critical": 0, "important": 2, "minor": 0}, None)])
+    rec.update(passes=["correctness", "edge-cases", "provenance"], advisory_passes=["clarity", "excellence"])
+    write_record(ws, "cla", rec)
+    assert build(ws)["opensrm-cla"]["meta"]["blocking_findings"] == 0
+    # The same reviews under the 2026-08-28 roster, clarity blocking, count.
+    assert r5_corpus.blocking_lenses({"version": 2, "advisory_passes": ["excellence"]}) >= {"clarity"}
+    advisory = r5_corpus.blocking_lenses({"version": 2, "advisory_passes": ["clarity", "excellence"]})
+    assert advisory == {"correctness", "edge-cases", "provenance"}
+    assert not r5_corpus.lens_blocks("delta-clarity", advisory)
+    assert r5_corpus.lens_blocks("clarity+edge-cases", advisory)
+
+
 def test_a_built_round_keeps_the_archive_s_iteration_where_it_differs(workspace):
     # A re-run pass restarts the archive's count: the second correctness
     # review logs iteration 1 again, as 41 real reviews do.
