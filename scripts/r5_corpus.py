@@ -101,7 +101,10 @@ import r5_findings  # noqa: E402  (the section 6 normaliser)
 SCHEMA_VERSION = 1
 FIDELITIES = ("recorded", "derived", "counts_only")
 BRIEF_SOURCES = ("reviewer_prompt", "bead", "plan_doc", "none")
-BLOCKING = r5_baseline.LENS_ORDER[:4]  # the blocking roster; excellence is advisory
+# The blocking roster from 2026-08-28 to 2026-11-12; excellence is advisory, and
+# clarity too from 2026-11-12 (opensrm-6kqs.11), which a record says in its own
+# advisory_passes (blocking_lenses).
+BLOCKING = r5_baseline.LENS_ORDER[:4]
 # One release per corpus version, in the front door's corpus-v* tag namespace
 # (its CLAUDE.md rule 4); no workflow there runs on it. --release-tag names the
 # version, corpus-v<N>.
@@ -333,10 +336,15 @@ class PrivateArchive:
 
 def blocking_lenses(record: dict) -> set[str]:
     """The lenses that blocked in this record's roster: the four, and in a v1
-    record excellence too when it ran as a pass (the roster before 2026-08-28)."""
+    record excellence too when it ran as a pass (the roster before 2026-08-28).
+    A record that lists clarity under advisory_passes (the roster from
+    2026-11-12) did not block on it. A v1 record's own passes list is not used
+    as the roster: it names excellence but not provenance."""
     lenses = set(BLOCKING)
     if record.get("version", 1) == 1 and "excellence" in (record.get("passes") or []):
         lenses.add("excellence")
+    if "clarity" in (record.get("advisory_passes") or []):
+        lenses.discard("clarity")
     return lenses
 
 

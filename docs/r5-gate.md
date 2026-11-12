@@ -14,14 +14,14 @@ them is wrong and should be fixed, not silently preferred.
 > moves to cúramóir; Phase A (baseline, replay corpus, finding schema, round
 > record, round 0, tree-keyed verdict) is the NthLayer work now.
 
-## The roster (revised 2026-08-28)
+## The roster (revised 2026-11-12)
 
 | # | Pass | Kind | Asks |
 |---|---|---|---|
 | 1 | correctness | blocking | Is anything wrong, broken, or a contract mismatch with a caller? |
-| 2 | clarity | blocking | Naming, structure, stale or misleading comments, duplication. |
-| 3 | edge-cases | blocking | Empty input, boundaries, concurrency, partial failure, rollback, config edges. |
-| 4 | fixture provenance | blocking | Do the tests exercise reality? Mutation kill check, silent skips, fixture shapes traced to the spec. |
+| 2 | edge-cases | blocking | Empty input, boundaries, concurrency, partial failure, rollback, config edges. |
+| 3 | fixture provenance | blocking | Do the tests exercise reality? Mutation kill check, silent skips, fixture shapes traced to the spec. |
+| — | clarity | advisory | Naming, structure, stale or misleading comments, duplication. |
 | — | excellence | advisory | Docs, API design, conventions, dependencies, compatibility. |
 
 The blocking passes run **in that order, one at a time, never in parallel**.
@@ -30,10 +30,18 @@ lens, until it reports no CRITICAL or IMPORTANT finding. Three iterations
 without converging escalates to a human. MINOR findings are fixed in passing
 when trivial and otherwise listed, never looped on.
 
-Excellence runs **once**, after the four blocking passes are clean. Its
-findings are reported and never auto-fixed, and it cannot hold a bead open.
-A CRITICAL or a NEEDS WORK verdict from it is escalated as a question, read as
-a sign that a blocking lens has a gap.
+Clarity and excellence each run **once**, on the final tree, after the three
+blocking passes are clean. Their findings are reported and never auto-fixed,
+and neither can hold a bead open. A CRITICAL, a FAIL from clarity or a NEEDS
+WORK from excellence is escalated as a question, read as a sign that a blocking
+lens has a gap.
+
+Clarity became advisory on 2026-11-12 [opensrm-6kqs.11, R5 Gate v2 spec v1.9
+Phase A bead 9, R5-R12]. Over corpus-v1's 91 source records it took 256 of the
+1,107 sequential model steps, with a fix round in 69 of them, and the table
+below shows it raised no CRITICAL in 478 first-review findings. From 2026-08-28
+to 2026-11-12 it was the second blocking pass; the archived records of that
+period, and the baseline below, show it so.
 
 ### Why this order, and why excellence is advisory
 
@@ -175,7 +183,7 @@ the wrong version and still produces a clean record (opensrm-p3bm).
 
 ### What a clean gate means
 
-All four blocking passes ended with zero CRITICAL and IMPORTANT findings, the
+All three blocking passes ended with zero CRITICAL and IMPORTANT findings, the
 suite and lint passed after every fix commit, and the provenance kill checks
 ran and went red. The supervisor then closes the bead, unless the bead has
 further checkpoints, in which case it stays open and the gate record names
