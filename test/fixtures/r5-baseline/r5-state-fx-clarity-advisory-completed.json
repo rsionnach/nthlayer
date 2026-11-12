@@ -132,6 +132,18 @@
     },
     {
       "ts": "2000-01-01T00:00:13Z",
+      "event": "pass_started",
+      "pass": "clarity",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:14Z",
+      "event": "reviewer_dispatched",
+      "pass": "clarity",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:15Z",
       "event": "advisory_pass_completed",
       "pass": "clarity",
       "counts": {
@@ -141,7 +153,19 @@
       }
     },
     {
-      "ts": "2000-01-01T00:00:14Z",
+      "ts": "2000-01-01T00:00:16Z",
+      "event": "pass_started",
+      "pass": "excellence",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:17Z",
+      "event": "reviewer_dispatched",
+      "pass": "excellence",
+      "advisory": true
+    },
+    {
+      "ts": "2000-01-01T00:00:18Z",
       "event": "advisory_pass_completed",
       "pass": "excellence",
       "counts": {
