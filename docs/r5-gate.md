@@ -97,6 +97,52 @@ touched reality:
 
 The provenance pass took the slot to catch exactly that.
 
+### Repeatability (first figures, 2026-11-12)
+
+The same review does not find the same things twice. Measured on one corpus
+entry, `opensrm-wo62-4-2` (tree `cfa4f8e`, the frozen pre-gate head),
+reviewed five times with one review per lens and no fixes: twice with the
+lens templates as they were (*before*), three times with the R5-FINDINGS
+contract of opensrm-6kqs.3 (*after*). Every run used the gate's original
+per-lens prompts. Agreement is the Jaccard overlap of two runs' findings,
+matched by claim, per lens and pooled over the four lenses that were blocking
+at the time; an empty pair counts as full agreement.
+
+| lens | before vs before (1 pair) | after vs after (3 pairs) | before vs after (6 pairs) |
+|---|---|---|---|
+| correctness | 0.50 | 0.17 | 0.10 |
+| clarity | 0.29 | 0.33 | 0.32 |
+| edge-cases | 0.29 | 0.56 | 0.31 |
+| provenance | 0.20 | 0.17 | 0.19 |
+| pooled, any severity | 0.28 | 0.27 | 0.23 |
+| pooled, CRITICAL and IMPORTANT only | 0.27 | 0.18 | 0.24 |
+| excellence (advisory), any severity | 0.80 | 0.42 | 0.42 |
+
+The per-lens rows count findings of any severity; the catalogue behind them
+has 49 distinct issues. Treating one recurring provenance issue (dependency
+branches no corpus case reaches) as three issues instead of one moves the
+pooled numbers by at most 0.02.
+
+Recall of the archived gate's nine first-review blocking findings, same
+lens: 4 and 3 for the two before runs, and 1, 3 and 2 for the after runs.
+Three of the nine were raised by no run.
+
+The runs raised 16 blocking findings that the archived gate never did. A
+fresh reviewer adjudicated them against the frozen tree, checking six by
+mutation: 5 real, 11 noise. The real five are a colour variable that leaks
+into console goldens because the console is built before the harness scrubs
+it; dependency-inference branches that no corpus case reaches; an
+alert-rule sort the harness applies though the order is deterministic;
+failure cells that pin only the exit code; and recording-rule order hidden
+in the CLI cells. The archived gate raised the last as a clarity finding.
+
+What this says about the gate: a single review is a sample. Two reviews
+with the same template agree about as often as two with different
+templates. Provenance agrees least, because its kill check picks its own
+mutations. A finding count from one gate is therefore not a measure of the
+code alone, and a clean pass is a clean sample. Of the extra blocking
+findings a second review raises, about a third hold up.
+
 ### Sequential, not parallel
 
 A fix made for one lens changes what the next lens reads. Parallel passes
