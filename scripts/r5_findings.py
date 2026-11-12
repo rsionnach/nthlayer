@@ -15,6 +15,7 @@ counts typed by the supervisor.
 
     r5_findings.py parse <lens> <report-file> [--floor <level>] [--prior <file>]
     r5_findings.py compare <recorded.json> <replay-state.json>
+    r5_findings.py roundtrip <recorded.json>
 
 ``--prior`` is a JSON file holding the previous round's open set for this lens
 (a list of findings; none on a first review). ``parse`` prints one JSON object:
@@ -29,7 +30,9 @@ counts typed by the supervisor.
   findings the report neither closed nor re-raised) and
   ``downgrades_refused`` (re-raises held at the prior, higher severity).
 
-``compare`` is the dry-run acceptance of bead 3 (see ``compare_records``).
+``compare`` checks a dry-run replay against a corpus entry
+(``compare_records``); ``roundtrip`` is bead 3's parser check over a corpus
+``recorded.json`` (``roundtrip_record``).
 
 Closures, per section 6 (settled 2026-11-07). A record with ``resolves`` set
 is a closure, not a finding: it is never counted, whatever its severity, and
@@ -50,7 +53,9 @@ closes every prior finding with empty evidence is a contract failure
 
 ``parse`` exits 0; 2 if the report does not meet the contract (the reason on
 stderr: the caller records the reviewer UNAVAILABLE, R5-R9); 1 on a usage
-error. ``compare`` exits 0, or 1 on a usage error or an unreadable file.
+error. ``compare`` and ``roundtrip`` exit 0, or 1 on a usage error or an
+unreadable file; ``roundtrip`` exits 2 if a recorded finding breaks the
+contract.
 
 Standard library only, and Python 3.9 compatible: the hooks run under
 whatever python3 the session finds (macOS ships 3.9).
@@ -455,6 +460,55 @@ def compare_records(recorded: dict, replay: dict) -> dict:
     return result
 
 
+# What a parsed finding must carry over unchanged from a recorded one.
+ROUNDTRIP_FIELDS = ("lens", "severity", "path", "start_line", "end_line", "claim")
+
+
+def roundtrip_record(recorded: dict) -> dict:
+    """Write each recorded round as a reviewer's report, parse it, compare.
+
+    Bead 3's parser check (spec v1.9): a corpus ``recorded.json`` round-trips
+    the parser with no dispatch. corpus-v1 recorded no evidence (its findings
+    were extracted from reports), so a null ``evidence`` is filled from the
+    finding's own provenance (``derived_from`` and the handback or fix commit
+    it came from): the parser requires evidence, and the recorded finding has
+    none to lose. A finding with no path or line range cannot be written in
+    the contract at all; it is listed under ``refused``, not parsed. A finding
+    is ``lost`` if any of ROUNDTRIP_FIELDS changes or its recomputed
+    fingerprint does."""
+    result = {"rounds": 0, "findings": 0, "parsed": 0, "lost": [], "refused": []}
+    for review in recorded.get("rounds") or ():
+        lens = _schema_lens(review.get("lens", ""))
+        written = []
+        for f in review.get("findings") or ():
+            result["findings"] += 1
+            if not f.get("path") or f.get("start_line") is None or f.get("end_line") is None:
+                result["refused"].append({"lens": lens, "iteration": review.get("iteration"),
+                                          "claim": f["claim"], "reason": "no path or line range"})
+                continue
+            source = f.get("handback_sha256") or f.get("fix_commit") or "unknown"
+            written.append({**{k: f[k] for k in ROUNDTRIP_FIELDS}, "lens": lens,
+                            "evidence": f.get("evidence") or f"recorded {f.get('derived_from')}: {source}",
+                            "fix": f.get("fix"), "verification_level": f.get("verification_level"),
+                            "resolves": f.get("resolves"), "regression": bool(f.get("regression"))})
+        if not written:
+            continue
+        result["rounds"] += 1
+        parsed = parse_report(PREFIX + " " + json.dumps(written), lens)["findings"]
+        result["parsed"] += len(parsed)
+        if len(parsed) != len(written):
+            result["lost"].append({"lens": lens, "iteration": review.get("iteration"),
+                                   "changed": [f"{len(written)} written, {len(parsed)} parsed"]})
+            continue
+        for before, after in zip(written, parsed):  # noqa: B905  (3.9 has no strict=; lengths checked)
+            changed = [k for k in ROUNDTRIP_FIELDS if before[k] != after[k]]
+            if _key(before) != after["fingerprint"]:
+                changed.append("fingerprint")
+            if changed:
+                result["lost"].append({"lens": lens, "claim": before["claim"], "changed": changed})
+    return result
+
+
 def _load_json(path: str) -> Any:
     with open(path, encoding="utf-8") as handle:
         return json.load(handle)
@@ -477,10 +531,34 @@ def _compare_main(args: list) -> int:
     return 0
 
 
+def _roundtrip_main(args: list) -> int:
+    if len(args) != 1:
+        print("usage: r5_findings.py roundtrip <recorded.json>", file=sys.stderr)
+        return 1
+    try:
+        recorded = _load_json(args[0])
+    except (OSError, ValueError) as exc:
+        print(f"r5_findings: cannot read {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(recorded, dict):
+        print("r5_findings: the file must hold a JSON object", file=sys.stderr)
+        return 1
+    try:
+        result = roundtrip_record(recorded)
+    except ReportError as exc:  # a recorded finding the contract rejects outright
+        print(f"r5_findings: {exc}", file=sys.stderr)
+        return 2
+    json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0
+
+
 def main(argv: list) -> int:
     args = list(argv)
     if args[:1] == ["compare"]:
         return _compare_main(args[1:])
+    if args[:1] == ["roundtrip"]:
+        return _roundtrip_main(args[1:])
     options = {"--floor": DEFAULT_FLOOR, "--prior": ""}
     for flag in options:
         if flag in args:

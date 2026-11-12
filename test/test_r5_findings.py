@@ -436,3 +436,36 @@ def test_a_not_filed_line_is_never_an_unfiled_finding():
     """A reasoned remark under Not filed is not compared with the array."""
     prose = "### Not filed\n- **Bold remark** about scope; out_of_scope\n"
     assert r5_findings.parse_report(report([], prose=prose), "correctness")["prose_unfiled"] == []
+
+
+# --- roundtrip: bead 3's parser check, "the recorded.json of three recorded
+#     corpus entries round-trips the new parser without loss, with no
+#     dispatch". recorded.json as scripts/r5_corpus.py writes it: rounds of
+#     lens/iteration/findings, evidence null (extracted findings carry none),
+#     with derived_from and the handback it came from.
+
+def corpus_finding(**over) -> dict:
+    base = {"lens": "provenance", "severity": "CRITICAL", "path": "src/opensrm/parser/v2.py",
+            "start_line": 105, "end_line": 112, "claim": "Parse-time ${env} substitution is not pinned",
+            "evidence": None, "fix": None, "fingerprint": "ffffffffffffffff", "verification_level": "asserted",
+            "resolves": None, "regression": False, "status": None, "derived_from": "reviewer_transcript",
+            "handback_sha256": "ab" * 32}
+    base.update(over)
+    return base
+
+
+def test_a_recorded_entry_round_trips_without_loss():
+    rec = recorded(("provenance", 1, [corpus_finding(), corpus_finding(claim="exit 1 is never produced",
+                                                                        severity="IMPORTANT")]),
+                   ("edge_cases", 2, [corpus_finding(lens="edge_cases", claim="templates above the cwd leak")]))
+    out = r5_findings.roundtrip_record(rec)
+    assert (out["rounds"], out["findings"], out["parsed"]) == (2, 3, 3)
+    assert out["lost"] == [] and out["refused"] == []
+
+
+def test_a_recorded_finding_with_no_location_is_refused_not_lost():
+    rec = recorded(("clarity", 1, [corpus_finding(lens="clarity", path=None, start_line=None, end_line=None),
+                                   corpus_finding(lens="clarity", start_line=None, end_line=None)]))
+    out = r5_findings.roundtrip_record(rec)
+    assert out["parsed"] == 0 and out["lost"] == []
+    assert [r["reason"] for r in out["refused"]] == ["no path or line range"] * 2
