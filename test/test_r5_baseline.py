@@ -547,7 +547,7 @@ def test_a_round_record_reads_as_its_old_record_does():
 
 # Round records (opensrm-6kqs.14). Hand-built, not fixture files: they are
 # audit trails r5-supervise writes today (SKILL.md "Audit trail": event names
-# reviewer_dispatched, supervisor_blocked, reviewer_unavailable,
+# reviewer_dispatched, reviewer_dispatch_blocked, reviewer_unavailable,
 # findings_received, fixes_applied, commit_made, pass_completed), turned into
 # rounds[] by r5_record.build, as the supervisor does at archive time (spec
 # section 6, "Round record"). Every expected count is read off the events.
@@ -565,7 +565,9 @@ def _round_record(bead: str, trail: list, passes: list) -> dict:
 
 def _review(lens: str, counts: dict | None = None, *, dispatches: int = 1) -> list:
     sent = [{"event": "reviewer_dispatched", "pass": lens}]
-    blocked = [{"event": "supervisor_blocked", "pass": lens}]
+    # Step 3: a dispatch the hook refuses logs reviewer_dispatch_blocked (Rob's
+    # ruling, 2026-11-13: supervisor_blocked means the run paused, not this).
+    blocked = [{"event": "reviewer_dispatch_blocked", "pass": lens}]
     return (sent + blocked) * (dispatches - 1) + sent + [
         {"event": "findings_received", "pass": lens, "counts": counts or {}}]
 
@@ -577,7 +579,7 @@ def _fix(lens: str) -> list:
 
 def test_a_round_record_does_not_count_a_dispatch_the_hook_refused():
     # The 6kqs.14 shape: reviewer_dispatched logged before launch, the hook
-    # refuses the Agent call, supervisor_blocked, the same iteration re-sent.
+    # refuses the Agent call, reviewer_dispatch_blocked, the same iteration re-sent.
     # No reviewer ran for the first dispatch, and the record is from after
     # bead 4, so BLOCKED_DISPATCHES holds no key for it.
     # correctness: review (2 dispatches, 1 reviewer), fix, verify = 2 reviews,
@@ -666,8 +668,8 @@ def test_a_round_record_reviewing_a_lens_its_audit_trail_does_not_is_refused(tmp
 
 
 def test_a_round_record_counts_a_stalled_re_sent_review():
-    # A reviewer dispatched, then re-sent with no supervisor_blocked or
-    # reviewer_dispatch_blocked between (archives bnal, t4rd: the first
+    # A reviewer dispatched, then re-sent with no reviewer_dispatch_blocked
+    # between (archives bnal, t4rd: the first
     # reviewer ran and stalled). The audit-trail path counts both dispatches;
     # rounds[] must too: an UNAVAILABLE round plus the answered one.
     trail = [

@@ -46,9 +46,22 @@ does a ``commit_made`` after a review with neither (older supervisors logged
 only the commit); the ``commit_made`` events before the next dispatch are its
 commits, and the round's head is the last of them. A ``reviewer_dispatched``
 for a lens whose last dispatch is unanswered is a re-send (Rob, 2026-11-13,
-opensrm-6kqs.14). When a ``supervisor_blocked`` or ``reviewer_dispatch_blocked``
-for that pass, or naming no pass, lies between the two, the hook refused the
-earlier launch: no reviewer ran and the re-send replaces it. Otherwise the
+opensrm-6kqs.14). The earlier dispatch was REFUSED by the hook, so no
+reviewer ran and the re-send replaces it, when (Rob's ruling, 2026-11-13):
+
+- ``event``: a ``reviewer_dispatch_blocked`` for that pass, or naming no
+  pass, lies between the two (r5-supervise Step 3); or
+- ``table``: the dispatch is a row of ``KNOWN_REFUSED``, history only.
+
+``supervisor_blocked`` is not a refusal signal: it means the run paused for
+the user, and wo62-4-2 logs one after a real stall ("two consecutive reviewer
+stalls... escalated to Rob") that was then re-sent. Before ``STEP3_CUTOFF``,
+a re-sent dispatch that neither rule refuses is a stall. From the cutoff on, a
+hook refusal leaves no ``reviewer_dispatched`` behind, so a
+``supervisor_blocked`` between a dispatch and its re-send with no
+``reviewer_dispatch_blocked`` is ambiguous and ``build`` refuses the record
+(``blocked_resend_ambiguous``). A stall is only ever a dispatch with no
+receipt before its re-send, never inferred from ``supervisor_blocked``. The
 earlier reviewer ran and stalled: it is a round of its own, lens status
 ``UNAVAILABLE`` with null parser lists, whose mode follows the order rule (it
 is not the lens's first review), started at the stalled dispatch and ended at
@@ -93,11 +106,40 @@ RECEIPTS = ("findings_received", "advisory_pass_completed")
 # UNAVAILABLE, with no parser output. r5-supervise re-dispatches the same
 # brief once, so the retry keeps the refused round's mode.
 UNAVAILABLE = "reviewer_unavailable"
-# The events that say a reviewer_dispatched never launched a reviewer: the
-# parallel-block hook refused it (r5-supervise Step 3/4). A re-send after one
-# of these replaces the refused dispatch; a re-send after none follows a
-# reviewer that ran and stalled, which is a round of its own.
-BLOCKS = ("supervisor_blocked", "reviewer_dispatch_blocked")
+# The event that says a reviewer_dispatched never launched a reviewer: the
+# parallel-block hook refused it (r5-supervise Step 3). A re-send after one
+# replaces the refused dispatch; a re-send after none follows a reviewer that
+# ran and stalled, which is a round of its own (unless KNOWN_REFUSED lists it).
+BLOCK = "reviewer_dispatch_blocked"
+# The run paused for the user. Not a refusal signal (Rob, 2026-11-13): from
+# STEP3_CUTOFF on, one between a dispatch and its re-send is ambiguous.
+PAUSED = "supervisor_blocked"
+# When r5-supervise Step 3 started requiring reviewer_dispatched to be logged
+# after the launch, so that a hook refusal leaves no dispatch event behind.
+STEP3_CUTOFF = "2026-11-13T22:06:05+00:00"
+# Archived dispatches the hook refused that log no reviewer_dispatch_blocked,
+# keyed by (bead, schema lens, the dispatch's ts exactly as logged). HISTORY
+# ONLY: no row for a record started at or after STEP3_CUTOFF, and each row must
+# match a re-sent dispatch in the record of its bead whose audit trail spans
+# its ts; ``build`` refuses the record otherwise (table_row_after_cutoff,
+# table_row_unmatched), so a mistyped key cannot silently turn a stall into a
+# refusal. Each row says why it was a hook refusal and where that is shown.
+KNOWN_REFUSED = {
+    ("opensrm-6kqs.4", "correctness", "2026-11-13T21:07:15+00:00"): {
+        "reason": "reviewer_dispatched logged before launch; the parallel-block hook "
+                  "refused the Agent call; no reviewer ran",
+        "evidence": "archive r5-state-6kqs.4-completed.json, supervisor_blocked at "
+                    "2026-11-13T21:07:46+00:00 (its reason states the refusal); the "
+                    "hook's PreToolUse refusal in the gate session transcript (private)",
+    },
+    ("opensrm-wo62.4.1", "correctness", "2026-10-27T17:10:18.968444+00:00"): {
+        "reason": "dispatch event logged before launch tripped the parallel-block hook; "
+                  "no reviewer ran",
+        "evidence": "archive r5-state-wo62-4-1-completed.json, supervisor_blocked note at "
+                    "17:10:30.618830; r5_baseline.BLOCKED_DISPATCHES (found by the "
+                    "opensrm-6kqs.1 R5 correctness pass)",
+    },
+}
 FIX_OPENERS = ("fixes_applied", "fix_dispatched")
 COMMIT = "commit_made"
 
@@ -115,6 +157,12 @@ REFUSALS = {
     "bad_commit_event": "a commit_made sha or shas is not a string, a list of strings or a map to strings",
     "bad_summary": "completed_passes is present but not a list",
     "dispatch_unanswered": "a reviewer dispatch has no receipt by the end of audit_trail",
+    "blocked_resend_ambiguous": "from STEP3_CUTOFF on, a supervisor_blocked lies between a "
+                                "dispatch and its re-send with no reviewer_dispatch_blocked",
+    "table_row_after_cutoff": "a KNOWN_REFUSED row falls in a record started at or after "
+                              "STEP3_CUTOFF",
+    "table_row_unmatched": "a KNOWN_REFUSED row matches no re-sent dispatch in the record "
+                           "of its bead that spans its ts",
 }
 
 
@@ -257,8 +305,45 @@ def _start_head(trail: list, range_head: str | None) -> str | None:
     return range_head
 
 
+def _record_start(record: dict, trail: list) -> datetime.datetime | None:
+    """When the gate started: started_at (Step 1), else its first event."""
+    start = _instant(record.get("started_at"))
+    if start is not None:
+        return start
+    moments = [m for e in trail if isinstance(e, dict) and (m := _instant(e.get("ts")))]
+    return min(moments) if moments else None
+
+
+def _table_rows(record: dict, trail: list) -> set[tuple]:
+    """The KNOWN_REFUSED keys that belong to this record: its bead's rows
+    whose ts lies within its audit trail's span (a bead gated at several
+    checkpoints has one record each), as r5_baseline.unmatched_table_entries
+    assigns its keys."""
+    bead = record.get("target_bead")
+    moments = [m for e in trail if isinstance(e, dict) and (m := _instant(e.get("ts")))]
+    if not moments:
+        return set()
+    first, last = min(moments), max(moments)
+    out = set()
+    for key in KNOWN_REFUSED:
+        moment = _instant(key[2])
+        if key[0] == bead and (moment is None or first <= moment <= last):
+            out.add(key)  # an unparseable ts is a typo: it can match nothing
+    return out
+
+
 def derive_rounds(record: dict) -> list[dict]:
     """The rounds of one gate, in audit-trail order."""
+    return _derive(record)[0]
+
+
+def refused_dispatches(record: dict) -> list[tuple[str, Any, str]]:
+    """(lens, dispatch ts, rule) for each dispatch the hook refused, where
+    rule is ``event`` or ``table``: re-derived from the kept audit_trail."""
+    return _derive(record)[1]
+
+
+def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
     trail = record.get("audit_trail")
     if not isinstance(trail, list):
         raise BuildRefused("no_audit_trail", type(trail).__name__)
@@ -268,9 +353,18 @@ def derive_rounds(record: dict) -> list[dict]:
     # would name a review that read them all (D3's reason, per round).
     dr = record.get("diff_range")
     multi_repo = isinstance(dr, dict) and len(dr) > 1
+    start = _record_start(record, trail)
+    after_cutoff = start is not None and start >= _instant(STEP3_CUTOFF)
+    rows = _table_rows(record, trail)
+    if rows and after_cutoff:
+        raise BuildRefused("table_row_after_cutoff", ", ".join(map(str, sorted(rows))))
+    bead = record.get("target_bead")
+    matched: set[tuple] = set()
+    refusals: list[tuple[str, Any, str]] = []
     rounds: list[dict] = []
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
-    refused: set[str] = set()  # pending lenses with a block event since dispatch
+    refused: set[str] = set()  # pending lenses with a reviewer_dispatch_blocked since dispatch
+    paused: set[str] = set()  # pending lenses with a supervisor_blocked since dispatch
     reviewed: set[str] = set()
     fix: dict | None = None  # the open fix round, until the next dispatch
     reviewed_since_dispatch = False  # a receipt came after the last dispatch
@@ -289,7 +383,21 @@ def derive_rounds(record: dict) -> list[dict]:
         if name == DISPATCH:
             lens = _lens_of(event)
             stalled = pending.get(lens)
-            if stalled is not None and lens not in refused:
+            rule = None
+            if stalled is not None:
+                key = (bead, lens, stalled.get("ts"))
+                if key in rows:
+                    matched.add(key)
+                if lens in refused:
+                    rule = "event"
+                elif key in rows:
+                    rule = "table"
+                elif lens in paused and after_cutoff:
+                    raise BuildRefused("blocked_resend_ambiguous",
+                                       f"{lens} dispatched {stalled.get('ts')}, re-sent {event.get('ts')}")
+            if rule is not None:
+                refusals.append((lens, stalled.get("ts"), rule))
+            elif stalled is not None:
                 # The earlier reviewer ran and gave no answer: its own round.
                 mode = "verify" if lens in reviewed else "review"
                 entry = _lens_entry(stalled, {}, mode, unavailable=True)
@@ -304,12 +412,14 @@ def derive_rounds(record: dict) -> list[dict]:
             # A refused dispatch never ran: the re-send replaces it.
             pending[lens] = event
             refused.discard(lens)
+            paused.discard(lens)
             fix = None
             reviewed_since_dispatch = False
         elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
             refused.discard(lens)
+            paused.discard(lens)
             mode = "verify" if lens in reviewed else "review"
             unavailable = name == UNAVAILABLE
             if not unavailable:
@@ -323,12 +433,13 @@ def derive_rounds(record: dict) -> list[dict]:
             })
             fix = None
             reviewed_since_dispatch = True
-        elif name in BLOCKS:
+        elif name in (BLOCK, PAUSED):
+            marks = refused if name == BLOCK else paused
             target = event.get("pass")
             if not isinstance(target, str):
-                refused.update(pending)
+                marks.update(pending)
             elif _schema_lens(target) in pending:
-                refused.add(_schema_lens(target))
+                marks.add(_schema_lens(target))
         elif name in FIX_OPENERS:
             statuses = event.get("statuses")
             if fix is None:
@@ -353,6 +464,8 @@ def derive_rounds(record: dict) -> list[dict]:
         # A reviewer that never answered is not a round we can describe, and
         # dropping it would record a gate with one review fewer than it ran.
         raise BuildRefused("dispatch_unanswered", ", ".join(sorted(pending)))
+    if rows - matched:
+        raise BuildRefused("table_row_unmatched", ", ".join(map(str, sorted(rows - matched))))
     for n, rnd in enumerate(rounds, 1):
         rnd["n"] = n
         commits = rnd.pop("_commits", None)
@@ -363,7 +476,7 @@ def derive_rounds(record: dict) -> list[dict]:
             rnd["head"] = commits[-1]
             if len(commits) == 1:
                 rnd["fix"]["commit"] = commits[0]
-    return [_ordered(r) for r in rounds]
+    return [_ordered(r) for r in rounds], refusals
 
 
 def _ordered(rnd: dict) -> dict:
@@ -544,6 +657,14 @@ def validate(record: Any) -> dict:
                     notes.append(f"{where}: fix round with no single commit")
         elif "fix" in rnd:
             errors.append(f"{where}: fix object on a {kind} round")
+    if isinstance(record.get("audit_trail"), list):
+        # Which rule refused each replaced dispatch (Rob, 2026-11-13, point 5),
+        # re-derived from the kept audit_trail; a trail build refuses has none.
+        try:
+            for lens, ts, rule in refused_dispatches(record):
+                notes.append(f"refused dispatch {lens} {ts}: {rule}")
+        except BuildRefused:
+            pass
     verdict = record.get("verdict")
     if verdict is not None and (
             not isinstance(verdict, dict) or verdict.get("state") not in VERDICT_STATES):
