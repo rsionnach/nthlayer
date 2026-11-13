@@ -730,3 +730,102 @@ def test_sweep_does_not_count_an_invalid_record_as_built(tmp_path, monkeypatch):
     out = r5_record.sweep(tmp_path)
     assert out["built"] == [] and "r5-state-x-completed.json" in out["invalid"]
     assert out["ok"] is False
+
+
+# ------------------------------------------------------- re-sent dispatches
+# A reviewer_dispatched for a lens whose last dispatch has no receipt is a
+# re-send (Rob, 2026-11-13, opensrm-6kqs.14). The shapes: SKILL.md Step 3
+# appends reviewer_dispatched right after the launch, Step 4 appends the
+# receipt; its "Audit trail" list names supervisor_blocked, which the
+# 6kqs.4 archive logs between a hook-refused dispatch and its re-send (and
+# t4rd with a pass, opensrm-ir5m and 6kqs.2 log reviewer_dispatch_blocked the
+# same way). Archives 6kqs.2 (reviewer_stalled), bnal (reviewer_dispatch_failed)
+# and t4rd (provenance_checks_skipped) re-send after a reviewer that ran and
+# stalled, with no block event between.
+
+
+def _resent(between: list, iteration: int = 1, fixed: bool = False) -> dict:
+    trail = [ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1})]
+    if fixed:
+        trail += [received("01:00", "correctness", 1, [finding("correctness")]),
+                  ev("01:30", "fixes_applied", **{"pass": "correctness"}),
+                  ev("01:40", "commit_made", sha=FIX1, repo="nthlayer"),
+                  ev("02:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 2})]
+    trail += [*between,
+              ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": iteration}),
+              received("14:00", "correctness", iteration, []),
+              ev("14:00", "pass_completed", **{"pass": "correctness", "fix_iterations": int(fixed)})]
+    return r5_record.build(state(trail, [("correctness", int(fixed))]))
+
+
+def test_a_stalled_dispatch_re_sent_is_an_unavailable_round():
+    """No block event between: the first reviewer ran and gave no answer. It
+    is its own round, UNAVAILABLE with null lists, from the stalled dispatch
+    to the re-send; duration_s is null (D2: the wait is not the reviewer's
+    measured time). It is not the first review, so the re-send is still a
+    review, and fix_iterations 0 still matches."""
+    out = _resent([ev("10:10", "reviewer_stalled", **{"pass": "correctness", "iteration": 1})])
+    stall, answer = out["rounds"]
+    assert (stall["kind"], answer["kind"]) == ("review", "review")
+    entry = stall["lenses"]["correctness"]
+    assert entry["status"] == "UNAVAILABLE"
+    assert all(entry[k] is None for k in r5_record.PARSER_LISTS)
+    assert entry["duration_s"] is None
+    assert (stall["started"], stall["ended"]) == ("2026-11-13T10:00:10+00:00",
+                                                  "2026-11-13T10:12:00+00:00")
+    assert answer["lenses"]["correctness"]["status"] == "ok"
+    assert answer["started"] == "2026-11-13T10:12:00+00:00"
+    assert r5_record.lens_tally(out["rounds"])["correctness"] == {"review": 1, "verify": 0, "fix": 0}
+    assert r5_record.validate(out)["valid"]
+
+
+def test_a_stalled_verify_re_sent_is_an_unavailable_verify():
+    out = _resent([], iteration=2, fixed=True)
+    kinds = [(r["kind"], next(iter(r["lenses"].values()))["status"]) for r in out["rounds"] if r["lenses"]]
+    assert kinds == [("review", "ok"), ("verify", "UNAVAILABLE"), ("verify", "ok")]
+
+
+@pytest.mark.parametrize("block", [
+    {"event": "supervisor_blocked", "pass": "correctness", "iteration": 1},
+    {"event": "reviewer_dispatch_blocked", "pass": "correctness", "iteration": 1},
+    {"event": "supervisor_blocked", "reason": "lock held by another session"},
+], ids=["supervisor_blocked", "reviewer_dispatch_blocked", "no-pass"])
+def test_a_hook_refused_dispatch_re_sent_is_replaced(block):
+    """A block event for the pass (or naming none) between: no reviewer ran,
+    so the re-send replaces the dispatch and the gate has one round."""
+    out = _resent([ev("00:40", **block)])
+    assert [(r["kind"], r["started"]) for r in out["rounds"]] == [
+        ("review", "2026-11-13T10:12:00+00:00")]
+
+
+def test_a_block_for_another_pass_does_not_replace_a_stall():
+    out = _resent([ev("00:40", "supervisor_blocked", **{"pass": "provenance"})])
+    assert [r["lenses"]["correctness"]["status"] for r in out["rounds"]] == ["UNAVAILABLE", "ok"]
+
+
+def test_a_block_before_the_pending_dispatch_does_not_replace_a_stall():
+    """The block refused the dispatch before it; the pending one ran."""
+    trail = [
+        ev("00:05", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        ev("00:06", "supervisor_blocked", **{"pass": "correctness"}),
+        ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        received("14:00", "correctness", 1, []),
+    ]
+    out = r5_record.build(state(trail, [("correctness", 0)]))
+    assert [(r["started"], r["lenses"]["correctness"]["status"]) for r in out["rounds"]] == [
+        ("2026-11-13T10:00:10+00:00", "UNAVAILABLE"), ("2026-11-13T10:12:00+00:00", "ok")]
+
+
+def test_a_stall_keeps_its_dispatch_measurements_but_never_a_duration():
+    """Measured fields logged on the reviewer events pass through (as in
+    test_measured_fields_on_the_event_are_kept), but a stall has no receipt:
+    a duration_s on its dispatch would stand for a run nobody timed (D2)."""
+    trail = [
+        ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1,
+                                              "model": "claude-opus-5-5", "duration_s": 30}),
+        ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        received("14:00", "correctness", 1, []),
+    ]
+    entry = r5_record.build(state(trail, [("correctness", 0)]))["rounds"][0]["lenses"]["correctness"]
+    assert (entry["status"], entry["model"], entry["duration_s"]) == ("UNAVAILABLE", "claude-opus-5-5", None)

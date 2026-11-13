@@ -44,7 +44,17 @@ only in verify mode; a ``mode`` on the dispatch is not read, since no step
 writes one that differs). ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`` round, and so
 does a ``commit_made`` after a review with neither (older supervisors logged
 only the commit); the ``commit_made`` events before the next dispatch are its
-commits, and the round's head is the last of them. ``preflight``
+commits, and the round's head is the last of them. A ``reviewer_dispatched``
+for a lens whose last dispatch is unanswered is a re-send (Rob, 2026-11-13,
+opensrm-6kqs.14). When a ``supervisor_blocked`` or ``reviewer_dispatch_blocked``
+for that pass, or naming no pass, lies between the two, the hook refused the
+earlier launch: no reviewer ran and the re-send replaces it. Otherwise the
+earlier reviewer ran and stalled: it is a round of its own, lens status
+``UNAVAILABLE`` with null parser lists, whose mode follows the order rule (it
+is not the lens's first review), started at the stalled dispatch and ended at
+the re-send. Its ``duration_s`` is null: the span to the re-send is how long
+the supervisor waited, not a measurement of the reviewer, which may have
+stopped long before (D2). ``preflight``
 rounds are bead 5's, ``merge`` and ``mutations`` Phase B's and bead 10's, and
 ``verdict`` bead 6's: this script writes none of them.
 
@@ -83,6 +93,11 @@ RECEIPTS = ("findings_received", "advisory_pass_completed")
 # UNAVAILABLE, with no parser output. r5-supervise re-dispatches the same
 # brief once, so the retry keeps the refused round's mode.
 UNAVAILABLE = "reviewer_unavailable"
+# The events that say a reviewer_dispatched never launched a reviewer: the
+# parallel-block hook refused it (r5-supervise Step 3/4). A re-send after one
+# of these replaces the refused dispatch; a re-send after none follows a
+# reviewer that ran and stalled, which is a round of its own.
+BLOCKS = ("supervisor_blocked", "reviewer_dispatch_blocked")
 FIX_OPENERS = ("fixes_applied", "fix_dispatched")
 COMMIT = "commit_made"
 
@@ -255,6 +270,7 @@ def derive_rounds(record: dict) -> list[dict]:
     multi_repo = isinstance(dr, dict) and len(dr) > 1
     rounds: list[dict] = []
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
+    refused: set[str] = set()  # pending lenses with a block event since dispatch
     reviewed: set[str] = set()
     fix: dict | None = None  # the open fix round, until the next dispatch
     reviewed_since_dispatch = False  # a receipt came after the last dispatch
@@ -272,12 +288,28 @@ def derive_rounds(record: dict) -> list[dict]:
         name = event["event"]
         if name == DISPATCH:
             lens = _lens_of(event)
-            pending[lens] = event  # a re-sent dispatch replaces an unanswered one
+            stalled = pending.get(lens)
+            if stalled is not None and lens not in refused:
+                # The earlier reviewer ran and gave no answer: its own round.
+                mode = "verify" if lens in reviewed else "review"
+                entry = _lens_entry(stalled, {}, mode, unavailable=True)
+                entry["duration_s"] = None
+                stalled_head = stalled.get("head") or head
+                rounds.append({
+                    "kind": mode,
+                    "head": stalled_head if isinstance(stalled_head, str) else None,
+                    "started": stalled.get("ts"), "ended": event.get("ts"),
+                    "lenses": {lens: entry},
+                })
+            # A refused dispatch never ran: the re-send replaces it.
+            pending[lens] = event
+            refused.discard(lens)
             fix = None
             reviewed_since_dispatch = False
         elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
+            refused.discard(lens)
             mode = "verify" if lens in reviewed else "review"
             unavailable = name == UNAVAILABLE
             if not unavailable:
@@ -291,6 +323,12 @@ def derive_rounds(record: dict) -> list[dict]:
             })
             fix = None
             reviewed_since_dispatch = True
+        elif name in BLOCKS:
+            target = event.get("pass")
+            if not isinstance(target, str):
+                refused.update(pending)
+            elif _schema_lens(target) in pending:
+                refused.add(_schema_lens(target))
         elif name in FIX_OPENERS:
             statuses = event.get("statuses")
             if fix is None:

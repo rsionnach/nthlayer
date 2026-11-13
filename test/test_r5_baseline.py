@@ -663,3 +663,32 @@ def test_a_round_record_reviewing_a_lens_its_audit_trail_does_not_is_refused(tmp
         r5_baseline.analyse_record(record)
     (tmp_path / "r5-state-probe-completed.json").write_text(json.dumps(record))
     assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
+
+
+def test_a_round_record_counts_a_stalled_re_sent_review():
+    # A reviewer dispatched, then re-sent with no supervisor_blocked or
+    # reviewer_dispatch_blocked between (archives bnal, t4rd: the first
+    # reviewer ran and stalled). The audit-trail path counts both dispatches;
+    # rounds[] must too: an UNAVAILABLE round plus the answered one.
+    trail = [
+        {"event": "pass_started", "pass": "correctness"},
+        {"event": "reviewer_dispatched", "pass": "correctness"},
+        *_review("correctness"),
+        {"event": "pass_completed", "pass": "correctness", "fix_iterations": 0},
+    ]
+    record = _round_record("fx-round-stall", trail, [
+        {"name": "correctness", "findings_count_initial": 0, "fix_iterations": 0},
+    ])
+    assert [r["lenses"]["correctness"]["status"] for r in record["rounds"]] == ["UNAVAILABLE", "ok"]
+    correctness = r5_baseline.analyse_record(record)["lenses"]["correctness"]
+    assert (correctness["reviews"], correctness["fix_rounds"]) == (2, 0)
+    assert correctness["steps_source"] == "rounds"
+
+
+def test_a_round_record_naming_one_lens_two_ways_is_refused():
+    # edge-cases (SKILL.md's pass name) and edge_cases (the schema's, D4) are
+    # one lens in rounds[]; two audit-trail rows for it cannot share one count.
+    trail = [*_review("edge-cases"), *_review("edge_cases")]
+    record = _round_record("fx-round-two-names", trail, [])
+    with pytest.raises(r5_baseline.RecordError, match="fewer schema lenses"):
+        r5_baseline.analyse_record(record)

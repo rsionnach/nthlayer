@@ -326,6 +326,13 @@ def _count_from_rounds(lenses: dict, rounds: list[dict]) -> None:
     """Replace each lens row's step counts with its rounds[] counts."""
     counts = _round_counts(rounds)
     by_schema = {r5_record._schema_lens(lens): lens for lens in lenses}
+    if len(by_schema) != len(lenses):
+        # Two audit-trail names (edge-cases, edge_cases) for one schema lens:
+        # rounds[] holds one count for both rows, so either split is a guess.
+        raise RecordError(
+            f"audit_trail names {sorted(lenses)} map to fewer schema lenses"
+            f" {sorted(by_schema)}"
+        )
     if set(by_schema) != set(counts):
         raise RecordError(
             f"rounds[] reviews lenses {sorted(counts)} but audit_trail"
