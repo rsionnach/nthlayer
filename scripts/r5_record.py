@@ -186,12 +186,44 @@ def _single_repo(diff_range: Any) -> tuple[str | None, str | None, str | None]:
             head if isinstance(head, str) else None)
 
 
+def _commit_shas(event: dict) -> list[str]:
+    shas = [event.get("sha")] if isinstance(event.get("sha"), str) else []
+    return shas + [s for s in event.get("shas") or [] if isinstance(s, str)]
+
+
+def _same_commit(a: str, b: str) -> bool:
+    """Abbreviated SHAs of one commit: one is a prefix of the other."""
+    return bool(a) and bool(b) and (a.startswith(b) or b.startswith(a))
+
+
+def _start_head(trail: list, range_head: str | None) -> str | None:
+    """The head the gate's first reviews ran against, or None if unknown.
+
+    Some supervisors left diff_range's head where the gate started; others
+    moved it to the last fix commit when the gate ended (the archives hold
+    both). A head that is one of the gate's own commits after its first
+    review is an end head, so the start is not recorded."""
+    if range_head is None:
+        return None
+    seen_review = False
+    for event in trail:
+        if not isinstance(event, dict):
+            continue
+        if event.get("event") in RECEIPTS or event.get("event") == UNAVAILABLE:
+            seen_review = True
+        elif event.get("event") == COMMIT and seen_review and any(
+                _same_commit(sha, range_head) for sha in _commit_shas(event)):
+            return None
+    return range_head
+
+
 def derive_rounds(record: dict) -> list[dict]:
     """The rounds of one gate, in audit-trail order."""
     trail = record.get("audit_trail")
     if not isinstance(trail, list):
         raise BuildRefused("no_audit_trail", type(trail).__name__)
     _, _, range_head = _single_repo(record.get("diff_range"))
+    range_head = _start_head(trail, range_head)
     rounds: list[dict] = []
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
     reviewed: set[str] = set()
@@ -245,8 +277,7 @@ def derive_rounds(record: dict) -> list[dict]:
             # any review (the implementation itself) is not a round.
             if fix is None:
                 fix = open_fix(event.get("ts"))
-            shas = [event.get("sha")] if isinstance(event.get("sha"), str) else []
-            shas += [s for s in event.get("shas") or [] if isinstance(s, str)]
+            shas = _commit_shas(event)
             fix["_commits"].extend(shas)
             fix["ended"] = event.get("ts")
             if shas:
@@ -323,8 +354,8 @@ def build(record: Any) -> dict:
     out = {k: copy.deepcopy(v) for k, v in record.items() if k not in DERIVED_KEYS}
     repo, base, head = _single_repo(record.get("diff_range"))
     if repo is not None:
-        # diff_range's head is where the gate started; fix commits move it,
-        # and the record's head is where the gate ended.
+        # The record's head is where the gate ended: its last round's head,
+        # else diff_range's (a gate with no fix commit ends where it began).
         heads = [r["head"] for r in rounds if r["head"] is not None]
         head = heads[-1] if heads else head
     bead = record.get("target_bead")

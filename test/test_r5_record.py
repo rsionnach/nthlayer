@@ -302,6 +302,30 @@ def test_commit_after_a_review_with_no_fixes_applied_is_a_fix_round():
     assert out["head"] == FIX1
 
 
+def test_a_diff_range_head_moved_to_the_end_is_not_the_start():
+    """Some supervisors moved diff_range's head to the last fix commit when the
+    gate ended (3ntg, ln7w). A round before that commit did not run against
+    it: its head is unknown, null, not a commit from the future."""
+    g = full_gate()
+    g["diff_range"]["nthlayer"]["head"] = FIX1  # the gate's own fix commit
+    out = r5_record.build(g)
+    assert out["rounds"][0]["head"] is None
+    assert [r["head"] for r in out["rounds"][1:]] == [FIX1] * 6
+    assert out["head"] == FIX1
+    # Abbreviated either way round, as archives record them.
+    g["diff_range"]["nthlayer"]["head"] = FIX1[:5]
+    assert r5_record.build(g)["rounds"][0]["head"] is None
+
+
+def test_a_diff_range_head_committed_before_the_first_review_is_the_start():
+    """The implementation commit, logged before any review, is the range the
+    first reviewer read: the start head, kept."""
+    g = full_gate()
+    g["diff_range"]["nthlayer"]["head"] = HEAD0
+    g["audit_trail"].insert(0, ev("00:00", "commit_made", sha=HEAD0, repo="nthlayer"))
+    assert r5_record.build(g)["rounds"][0]["head"] == HEAD0
+
+
 def test_a_commit_before_any_review_is_not_a_round():
     """The implementation commit lands before the first reviewer; it is the
     range the gate reviews, not a fix."""
