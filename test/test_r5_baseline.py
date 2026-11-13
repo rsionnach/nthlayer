@@ -533,4 +533,133 @@ def test_a_round_record_reads_as_its_old_record_does():
     record = json.loads((FIXTURES / "r5-state-fx-clarity-advisory-completed.json").read_text())
     built = r5_record.build(record)
     assert built["rounds"], "the fixture must derive rounds, or this compares nothing"
-    assert r5_baseline.analyse_record(built) == r5_baseline.analyse_record(record)
+    old, new = r5_baseline.analyse_record(record), r5_baseline.analyse_record(built)
+    # The same counts; only the source a round record's counts came from
+    # differs (opensrm-6kqs.14). This fixture has no blocked dispatch, so
+    # rounds[] and audit_trail agree on every count.
+    assert {lens: row["steps_source"] for lens, row in new["lenses"].items()} == {
+        lens: "rounds" for lens in old["lenses"]
+    }
+    for row in (*old["lenses"].values(), *new["lenses"].values()):
+        del row["steps_source"]
+    assert new == old
+
+
+# Round records (opensrm-6kqs.14). Hand-built, not fixture files: they are
+# audit trails r5-supervise writes today (SKILL.md "Audit trail": event names
+# reviewer_dispatched, supervisor_blocked, reviewer_unavailable,
+# findings_received, fixes_applied, commit_made, pass_completed), turned into
+# rounds[] by r5_record.build, as the supervisor does at archive time (spec
+# section 6, "Round record"). Every expected count is read off the events.
+def _round_record(bead: str, trail: list, passes: list) -> dict:
+    sys.path.insert(0, str(HERE.parent / "scripts"))
+    import r5_record
+
+    events = [{"ts": f"2000-01-01T00:00:{i:02d}Z", **e} for i, e in enumerate(trail)]
+    return r5_record.build({
+        "supervisor": "r5-supervise", "version": 2, "target_bead": bead,
+        "started_at": "2000-01-01T00:00:00Z", "dry_run": False, "status": "completed",
+        "completed_passes": passes, "audit_trail": events,
+    })
+
+
+def _review(lens: str, counts: dict | None = None, *, dispatches: int = 1) -> list:
+    sent = [{"event": "reviewer_dispatched", "pass": lens}]
+    blocked = [{"event": "supervisor_blocked", "pass": lens}]
+    return (sent + blocked) * (dispatches - 1) + sent + [
+        {"event": "findings_received", "pass": lens, "counts": counts or {}}]
+
+
+def _fix(lens: str) -> list:
+    return [{"event": "fixes_applied", "pass": lens},
+            {"event": "commit_made", "sha": "abc1234"}]
+
+
+def test_a_round_record_does_not_count_a_dispatch_the_hook_refused():
+    # The 6kqs.14 shape: reviewer_dispatched logged before launch, the hook
+    # refuses the Agent call, supervisor_blocked, the same iteration re-sent.
+    # No reviewer ran for the first dispatch, and the record is from after
+    # bead 4, so BLOCKED_DISPATCHES holds no key for it.
+    # correctness: review (2 dispatches, 1 reviewer), fix, verify = 2 reviews,
+    # 1 fix round. edge-cases: one review, clean.
+    trail = [
+        {"event": "pass_started", "pass": "correctness"},
+        *_review("correctness", {"important": 1}, dispatches=2),
+        *_fix("correctness"),
+        *_review("correctness"),
+        {"event": "pass_completed", "pass": "correctness", "fix_iterations": 1},
+        {"event": "pass_started", "pass": "edge-cases"},
+        *_review("edge-cases"),
+        {"event": "pass_completed", "pass": "edge-cases", "fix_iterations": 0},
+    ]
+    record = _round_record("fx-round-hook-refused", trail, [
+        {"name": "correctness", "findings_count_initial": 1, "fix_iterations": 1},
+        {"name": "edge-cases", "findings_count_initial": 0, "fix_iterations": 0},
+    ])
+    row = r5_baseline.analyse_record(record)
+    correctness = row["lenses"]["correctness"]
+    assert (correctness["reviews"], correctness["fix_rounds"], correctness["steps"]) == (2, 1, 3)
+    assert correctness["steps_source"] == "rounds"
+    # Severities still come from findings_received, one entry per review.
+    assert [r["important"] for r in correctness["findings_by_review"]] == [1, 0]
+    # edge-cases, with the schema's edge_cases key in rounds[], keeps its name.
+    assert row["lenses"]["edge-cases"]["reviews"] == 1
+    assert row["lenses"]["edge-cases"]["steps_source"] == "rounds"
+    assert row["sequential_steps"] == 4
+
+
+def test_a_round_record_counts_an_unavailable_reviewer_as_a_review():
+    # reviewer_unavailable (SKILL.md: the parser refused the report, the same
+    # brief is re-sent once). A reviewer ran: a model step, as the audit-trail
+    # path counts it through its dispatch. Then the hook refuses the retry's
+    # first dispatch. So: dispatched, unavailable, dispatched, blocked,
+    # dispatched, findings = 2 reviews, no fix.
+    trail = [
+        {"event": "pass_started", "pass": "correctness"},
+        {"event": "reviewer_dispatched", "pass": "correctness"},
+        {"event": "reviewer_unavailable", "pass": "correctness"},
+        *_review("correctness", dispatches=2),
+        {"event": "pass_completed", "pass": "correctness", "fix_iterations": 0},
+    ]
+    record = _round_record("fx-round-unavailable", trail, [
+        {"name": "correctness", "findings_count_initial": 0, "fix_iterations": 0},
+    ])
+    assert [r["lenses"]["correctness"]["status"] for r in record["rounds"]] == ["UNAVAILABLE", "ok"]
+    correctness = r5_baseline.analyse_record(record)["lenses"]["correctness"]
+    assert (correctness["reviews"], correctness["fix_rounds"]) == (2, 0)
+    assert correctness["steps_source"] == "rounds"
+
+
+def test_a_round_record_counts_a_commit_only_fix_round():
+    # A MINOR fixed in passing with no re-review (r5_record's docstring: a
+    # commit_made after a review with no fixes_applied opens a fix round;
+    # section 6: each fix is one). fix_iterations is 0, and the audit trail
+    # has no fix event, so only rounds[] shows the fix: 1 review + 1 fix.
+    trail = [
+        {"event": "pass_started", "pass": "correctness"},
+        *_review("correctness", {"minor": 1}),
+        {"event": "commit_made", "sha": "abc1234"},
+        {"event": "pass_completed", "pass": "correctness", "fix_iterations": 0},
+    ]
+    record = _round_record("fx-round-commit-only-fix", trail, [
+        {"name": "correctness", "findings_count_initial": 1, "fix_iterations": 0},
+    ])
+    correctness = r5_baseline.analyse_record(record)["lenses"]["correctness"]
+    assert (correctness["reviews"], correctness["fix_rounds"], correctness["steps"]) == (1, 1, 2)
+
+
+def test_a_round_record_reviewing_a_lens_its_audit_trail_does_not_is_refused(tmp_path):
+    # A reviewer_unavailable with no dispatch before it is a round of its own
+    # in rounds[], but the audit-trail path finds no review of that lens (no
+    # findings_received, no dispatch, no summary). The two disagree on which
+    # lenses ran, so the record is refused rather than counted either way.
+    trail = [
+        *_review("correctness"),
+        {"event": "reviewer_unavailable", "pass": "provenance"},
+    ]
+    record = _round_record("fx-round-lens-mismatch", trail, [])
+    assert [next(iter(r["lenses"])) for r in record["rounds"]] == ["correctness", "provenance"]
+    with pytest.raises(r5_baseline.RecordError, match="rounds"):
+        r5_baseline.analyse_record(record)
+    (tmp_path / "r5-state-probe-completed.json").write_text(json.dumps(record))
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
