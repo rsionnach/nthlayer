@@ -578,10 +578,11 @@ def _fix(lens: str) -> list:
 
 
 def test_a_round_record_does_not_count_a_dispatch_the_hook_refused():
-    # The 6kqs.14 shape: reviewer_dispatched logged before launch, the hook
-    # refuses the Agent call, reviewer_dispatch_blocked, the same iteration re-sent.
-    # No reviewer ran for the first dispatch, and the record is from after
-    # bead 4, so BLOCKED_DISPATCHES holds no key for it.
+    # The ir5m / 6kqs.2 shape, before STEP3_CUTOFF (the event rule):
+    # reviewer_dispatched logged before launch, the hook refuses the Agent
+    # call, reviewer_dispatch_blocked, the same iteration re-sent. No reviewer
+    # ran for the first dispatch, and BLOCKED_DISPATCHES holds no key for it.
+    # (6kqs.4 logs supervisor_blocked instead: the table test below.)
     # correctness: review (2 dispatches, 1 reviewer), fix, verify = 2 reviews,
     # 1 fix round. edge-cases: one review, clean.
     trail = [
@@ -608,6 +609,38 @@ def test_a_round_record_does_not_count_a_dispatch_the_hook_refused():
     assert row["lenses"]["edge-cases"]["reviews"] == 1
     assert row["lenses"]["edge-cases"]["steps_source"] == "rounds"
     assert row["sequential_steps"] == 4
+
+
+def test_a_round_record_does_not_count_a_dispatch_a_table_row_refuses(monkeypatch):
+    # The 6kqs.4 archive's shape: reviewer_dispatched logged before launch, the
+    # hook refuses the Agent call, the run logs supervisor_blocked (not
+    # reviewer_dispatch_blocked), the same iteration is re-sent. Only the
+    # history-only KNOWN_REFUSED table marks it refused (Rob's ruling,
+    # 2026-11-13). The row here is synthetic, keyed like the real 6kqs.4 row
+    # (bead, schema lens, the dispatch ts as logged), as the BLOCKED_DISPATCHES
+    # fixture above is.
+    trail = [
+        {"event": "pass_started", "pass": "correctness"},
+        {"event": "reviewer_dispatched", "pass": "correctness"},
+        {"event": "supervisor_blocked", "pass": "correctness",
+         "reason": "parallel-block hook refused the dispatch"},
+        {"event": "reviewer_dispatched", "pass": "correctness"},
+        {"event": "findings_received", "pass": "correctness", "counts": {}},
+        {"event": "pass_completed", "pass": "correctness", "fix_iterations": 0},
+    ]
+    passes = [{"name": "correctness", "findings_count_initial": 0, "fix_iterations": 0}]
+    # Without the row, supervisor_blocked is a pause, not a refusal: a stall.
+    unlisted = _round_record("fx-round-table-refused", trail, passes)
+    assert r5_baseline.analyse_record(unlisted)["lenses"]["correctness"]["reviews"] == 2
+    monkeypatch.setattr(r5_baseline.r5_record, "KNOWN_REFUSED", {
+        ("fx-round-table-refused", "correctness", "2000-01-01T00:00:01Z"): {
+            "reason": "hook refused the launch", "evidence": "synthetic"}})
+    record = _round_record("fx-round-table-refused", trail, passes)
+    assert r5_baseline.r5_record.refused_dispatches(record) == [
+        ("correctness", "2000-01-01T00:00:01Z", "table")]
+    correctness = r5_baseline.analyse_record(record)["lenses"]["correctness"]
+    assert (correctness["reviews"], correctness["fix_rounds"]) == (1, 0)
+    assert correctness["steps_source"] == "rounds"
 
 
 def test_a_round_record_counts_an_unavailable_reviewer_as_a_review():
