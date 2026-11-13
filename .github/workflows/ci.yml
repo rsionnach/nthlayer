@@ -93,3 +93,11 @@ jobs:
         run: uv run --no-project --with pytest pytest -q test/test_r5_findings.py
       - name: r5-findings tests (Python 3.9, as the shim runs)
         run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_findings.py
+
+      # r5_record's tests (opensrm-6kqs.4): the section 6 round record derived
+      # from r5-state.json's audit_trail, its validator, and the archive sweep.
+      # Standard library plus pytest; on 3.9 too, as the shim runs.
+      - name: r5-record tests
+        run: uv run --no-project --with pytest pytest -q test/test_r5_record.py
+      - name: r5-record tests (Python 3.9, as the shim runs)
+        run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_record.py
