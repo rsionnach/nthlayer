@@ -390,7 +390,31 @@ REFUSAL_CASES = {
         [("correctness", 1)]),
     "verify_count_mismatch": lambda: dict(
         full_gate(), completed_passes=[{"name": "correctness", "fix_iterations": 2}]),
+    # 6kqs.2 logged sha as a JSON number: unreadable, so the head is unknown.
+    "bad_commit_event": lambda: _with_commit(sha=5859972),
 }
+
+
+def _with_commit(**fields) -> dict:
+    g = full_gate()
+    g["audit_trail"][5] = ev("03:06", "commit_made", repo="nthlayer", **fields)
+    return g
+
+
+@pytest.mark.parametrize("fields", [
+    {"sha": None, "shas": "3333333"},  # a string, not a list
+    {"shas": [3333333]},  # a list holding a number
+    {"shas": {"nthlayer": 3333333}},  # a map to a number
+], ids=["shas-string", "shas-list-number", "shas-map-number"])
+def test_unreadable_commit_shapes_are_refused(fields):
+    assert _refusal(_with_commit(**fields)) == "bad_commit_event"
+
+
+def test_a_per_repo_map_of_shas_names_its_commits_not_its_repos():
+    """7zpz-pinrepos logs shas as {repo: sha}; the commits are the values."""
+    out = r5_record.build(_with_commit(shas={"nthlayer": FIX1}))
+    assert out["rounds"][1]["fix"]["commit"] == FIX1
+    assert out["rounds"][2]["head"] == FIX1
 
 
 @pytest.mark.parametrize("reason", sorted(REFUSAL_CASES))
@@ -401,7 +425,7 @@ def test_each_refusal(reason):
 def test_every_refusal_reason_has_a_case():
     # The parametrise list above must not shrink silently below the set.
     assert set(REFUSAL_CASES) == set(r5_record.REFUSALS)
-    assert len(REFUSAL_CASES) >= 8
+    assert len(REFUSAL_CASES) >= 9
 
 
 # --------------------------------------------------------------- validate

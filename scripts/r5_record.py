@@ -96,6 +96,7 @@ REFUSALS = {
     "bad_parser_field": "a findings event carries a parser field that is not a list",
     "pass_without_review": "a completed pass has no reviewer receipt in audit_trail",
     "verify_count_mismatch": "a lens's derived verify rounds differ from its fix_iterations",
+    "bad_commit_event": "a commit_made sha or shas is not a string, a list of strings or a map to strings",
 }
 
 
@@ -187,8 +188,18 @@ def _single_repo(diff_range: Any) -> tuple[str | None, str | None, str | None]:
 
 
 def _commit_shas(event: dict) -> list[str]:
-    shas = [event.get("sha")] if isinstance(event.get("sha"), str) else []
-    return shas + [s for s in event.get("shas") or [] if isinstance(s, str)]
+    """The commits a commit_made names: ``sha``, then ``shas`` as a list or as
+    a per-repo map (7zpz-pinrepos logs one). Anything else is refused: a
+    commit that cannot be read would leave the next round on a stale head."""
+    sha, many = event.get("sha"), event.get("shas")
+    if sha is not None and not isinstance(sha, str):
+        raise BuildRefused("bad_commit_event", f"sha {sha!r}")
+    out = [sha] if sha is not None else []
+    if isinstance(many, dict):
+        many = list(many.values())
+    if many is not None and not (isinstance(many, list) and all(isinstance(s, str) for s in many)):
+        raise BuildRefused("bad_commit_event", f"shas {many!r}"[:120])
+    return out + list(many or [])
 
 
 def _same_commit(a: str, b: str) -> bool:
