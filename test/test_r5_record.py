@@ -857,10 +857,63 @@ def test_a_supervisor_blocked_re_send_after_the_cutoff_is_refused():
     assert _refusal(_after_cutoff([PAUSE_AFTER_CUTOFF])) == "blocked_resend_ambiguous"
 
 
+# Rob's ruling, 2026-11-13 (6kqs.14 edge-cases): from STEP3_CUTOFF on, Step 3
+# logs reviewer_dispatched only after the launch returns, so a logged dispatch
+# ran, and a reviewer_dispatch_blocked records a launch that never happened.
+BLOCK_AFTER_CUTOFF = {"ts": "2026-11-13T22:15:01+00:00", "event": "reviewer_dispatch_blocked",
+                      "pass": "correctness", "iteration": 1,
+                      "reason": "parallel-block hook refused the launch"}
+
+
+def _stall_then_ok(out: dict) -> None:
+    assert [(r["kind"], r["lenses"]["correctness"]["status"]) for r in out["rounds"]] == [
+        ("review", "UNAVAILABLE"), ("review", "ok")]
+    assert out["rounds"][0]["started"] == "2026-11-13T22:10:00+00:00"
+    assert r5_record.refused_dispatches(out) == []
+    assert r5_record.validate(out)["valid"]
+
+
 def test_after_the_cutoff_reviewer_dispatch_blocked_settles_it():
-    out = r5_record.build(_after_cutoff([PAUSE_AFTER_CUTOFF, dict(
-        PAUSE_AFTER_CUTOFF, ts="2026-11-13T22:15:01+00:00", event="reviewer_dispatch_blocked")]))
-    assert [r["started"] for r in out["rounds"]] == ["2026-11-13T22:20:00+00:00"]
+    """Ruling point 1: a reviewer_dispatch_blocked beside a supervisor_blocked
+    settles the ambiguity (the refusal was logged as one, the pause is a real
+    pause), and the logged dispatch ran either way: a stall, not a refusal."""
+    _stall_then_ok(r5_record.build(_after_cutoff([PAUSE_AFTER_CUTOFF, BLOCK_AFTER_CUTOFF])))
+
+
+def test_after_the_cutoff_a_blocked_re_send_of_a_stalled_reviewer_is_a_stall():
+    """Ruling point 1 and SKILL.md Step 3: dispatch (logged after its launch,
+    so it ran) -> reviewer_dispatch_blocked (the hook refused the re-send,
+    since reviewer_dispatched was still the latest event) -> re-send ->
+    findings. The block never refuses the logged dispatch: it is an
+    UNAVAILABLE stall round, and no dispatch is refused."""
+    _stall_then_ok(r5_record.build(_after_cutoff([BLOCK_AFTER_CUTOFF])))
+
+
+def test_after_the_cutoff_reviewer_unavailable_stall_then_re_send():
+    """SKILL.md Step 3, the protocol's normal shape: before re-sending a
+    stalled reviewer the supervisor logs reviewer_unavailable (reason stall),
+    closing the round as UNAVAILABLE; the re-send is then an ordinary review."""
+    trail = [{"ts": "2026-11-13T22:10:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             {"ts": "2026-11-13T22:15:00+00:00", "event": "reviewer_unavailable",
+              "pass": "correctness", "iteration": 1, "reason": "stall"},
+             {"ts": "2026-11-13T22:20:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             dict(received("00:00", "correctness", 1, []), ts="2026-11-13T22:25:00+00:00")]
+    out = r5_record.build(dict(state(trail, [("correctness", 0)]), started_at=r5_record.STEP3_CUTOFF))
+    _stall_then_ok(out)
+    assert out["rounds"][0]["ended"] == "2026-11-13T22:15:00+00:00"
+    assert out["rounds"][1]["started"] == "2026-11-13T22:20:00+00:00"
+
+
+def test_before_the_cutoff_reviewer_dispatch_blocked_still_refuses():
+    """Ruling point 1: before STEP3_CUTOFF the event rule is unchanged (ir5m
+    stays refused by event): the re-send replaces the blocked dispatch."""
+    out = _resent([ev("00:40", "reviewer_dispatch_blocked", **{
+        "pass": "correctness", "iteration": 1, "reason": "parallel-block hook refused the launch"})])
+    assert len(out["rounds"]) == 1
+    assert r5_record.refused_dispatches(out) == [
+        ("correctness", "2026-11-13T10:00:10+00:00", "event")]
 
 
 def test_a_not_converged_supervisor_blocked_after_a_returned_review_gives_no_stall():

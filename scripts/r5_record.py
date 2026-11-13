@@ -49,9 +49,20 @@ for a lens whose last dispatch is unanswered is a re-send (Rob, 2026-11-13,
 opensrm-6kqs.14). The earlier dispatch was REFUSED by the hook, so no
 reviewer ran and the re-send replaces it, when (Rob's ruling, 2026-11-13):
 
-- ``event``: a ``reviewer_dispatch_blocked`` for that pass, or naming no
-  pass, lies between the two (r5-supervise Step 3); or
+- ``event``: in a record started before ``STEP3_CUTOFF``, a
+  ``reviewer_dispatch_blocked`` for that pass, or naming no pass, lies between
+  the two (r5-supervise Step 3); or
 - ``table``: the dispatch is a row of ``KNOWN_REFUSED``, history only.
+
+From ``STEP3_CUTOFF`` on, ``reviewer_dispatch_blocked`` never marks an
+already-logged dispatch refused (Rob's ruling, 2026-11-13, opensrm-6kqs.14
+edge-cases): Step 3 logs ``reviewer_dispatched`` only after the launch
+returns, so a logged dispatch ran, and the block records a launch that never
+happened, typically the refused re-send of a stalled reviewer. A pending
+dispatch, then ``reviewer_dispatch_blocked``, then a re-send is therefore a
+STALL (the stall round below). Step 3 has the supervisor log
+``reviewer_unavailable`` (reason ``stall``) before re-sending a stalled
+reviewer, which closes the round as UNAVAILABLE and clears the hook's window.
 
 ``supervisor_blocked`` is not a refusal signal: it means the run paused for
 the user, and wo62-4-2 logs one after a real stall ("two consecutive reviewer
@@ -60,7 +71,10 @@ a re-sent dispatch that neither rule refuses is a stall. From the cutoff on, a
 hook refusal leaves no ``reviewer_dispatched`` behind, so a
 ``supervisor_blocked`` between a dispatch and its re-send with no
 ``reviewer_dispatch_blocked`` is ambiguous and ``build`` refuses the record
-(``blocked_resend_ambiguous``). A stall is only ever a dispatch with no
+(``blocked_resend_ambiguous``): it may stand in for a mislabelled hook refusal.
+A ``reviewer_dispatch_blocked`` beside it settles that the pause was a real
+pause and the refusal was logged as one; the logged dispatch ran either way,
+so that gap is a stall. A stall is only ever a dispatch with no
 receipt before its re-send, never inferred from ``supervisor_blocked``. The
 earlier reviewer ran and stalled: it is a round of its own, lens status
 ``UNAVAILABLE`` with null parser lists, whose mode follows the order rule (it
@@ -106,10 +120,12 @@ RECEIPTS = ("findings_received", "advisory_pass_completed")
 # UNAVAILABLE, with no parser output. r5-supervise re-dispatches the same
 # brief once, so the retry keeps the refused round's mode.
 UNAVAILABLE = "reviewer_unavailable"
-# The event that says a reviewer_dispatched never launched a reviewer: the
-# parallel-block hook refused it (r5-supervise Step 3). A re-send after one
-# replaces the refused dispatch; a re-send after none follows a reviewer that
-# ran and stalled, which is a round of its own (unless KNOWN_REFUSED lists it).
+# The parallel-block hook refused a launch (r5-supervise Step 3). Before
+# STEP3_CUTOFF a dispatch was logged before its launch, so a re-send after one
+# replaces the refused dispatch. From the cutoff on a refused launch logs no
+# dispatch, so one after a logged dispatch never refuses it: that dispatch ran,
+# and its re-send is a stall (Rob, 2026-11-13). A re-send after none follows a
+# reviewer that ran and stalled, a round of its own (unless KNOWN_REFUSED lists it).
 BLOCK = "reviewer_dispatch_blocked"
 # The run paused for the user. Not a refusal signal (Rob, 2026-11-13): from
 # STEP3_CUTOFF on, one between a dispatch and its re-send is ambiguous.
@@ -368,7 +384,7 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
     refusals: list[tuple[str, Any, str]] = []
     rounds: list[dict] = []
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
-    refused: set[str] = set()  # pending lenses with a reviewer_dispatch_blocked since dispatch
+    blocked: set[str] = set()  # pending lenses with a reviewer_dispatch_blocked since dispatch
     paused: set[str] = set()  # pending lenses with a supervisor_blocked since dispatch
     reviewed: set[str] = set()
     fix: dict | None = None  # the open fix round, until the next dispatch
@@ -393,11 +409,13 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
                 key = (bead, lens, stalled.get("ts"))
                 if key in rows:
                     matched.add(key)
-                if lens in refused:
+                # From the cutoff on a block never refuses a logged dispatch
+                # (it ran); it only settles a supervisor_blocked's ambiguity.
+                if lens in blocked and not after_cutoff:
                     rule = "event"
                 elif key in rows:
                     rule = "table"
-                elif lens in paused and after_cutoff:
+                elif lens in paused and lens not in blocked and after_cutoff:
                     raise BuildRefused("blocked_resend_ambiguous",
                                        f"{lens} dispatched {stalled.get('ts')}, re-sent {event.get('ts')}")
             if rule is not None:
@@ -416,14 +434,14 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
                 })
             # A refused dispatch never ran: the re-send replaces it.
             pending[lens] = event
-            refused.discard(lens)
+            blocked.discard(lens)
             paused.discard(lens)
             fix = None
             reviewed_since_dispatch = False
         elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
-            refused.discard(lens)
+            blocked.discard(lens)
             paused.discard(lens)
             mode = "verify" if lens in reviewed else "review"
             unavailable = name == UNAVAILABLE
@@ -439,7 +457,7 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
             fix = None
             reviewed_since_dispatch = True
         elif name in (BLOCK, PAUSED):
-            marks = refused if name == BLOCK else paused
+            marks = blocked if name == BLOCK else paused
             target = event.get("pass")
             if not isinstance(target, str):
                 marks.update(pending)
