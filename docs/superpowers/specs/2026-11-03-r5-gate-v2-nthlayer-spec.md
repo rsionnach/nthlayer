@@ -1,6 +1,6 @@
 # R5 Gate v2 — NthLayer specification
 
-**Status:** v1.10, 2026-11-12. Supersedes the 3 November hand-off and every inline amendment since, including the 9 November corpus-fidelity paragraph, which is folded into Phase A bead 2 below. From here, a change is a dated entry in §8, made in this file and mirrored in the cúramóir spec in the same pass.
+**Status:** v1.11, 2026-11-13. Supersedes the 3 November hand-off and every inline amendment since, including the 9 November corpus-fidelity paragraph, which is folded into Phase A bead 2 below. From here, a change is a dated entry in §8, made in this file and mirrored in the cúramóir spec in the same pass.
 **Scope:** NthLayer's part of the move to the batched R5 gate: the baseline and corpus now (Phase A), a skill-level batched gate only if cúramóir's Epic 5 is far off (Phase B), and the hand-over (Phase D). The mechanism is specified in cúramóir's `docs/r5-gate-v2-curamoir-spec.md`.
 **Binds:** `docs/r5-gate.md` (the versioned gate description, `opensrm-xf73`), `r5-supervise`, `epic-executor` stage 2, the lens templates in `~/.claude/skills/rule-of-five-review/`, the ecosystem root's `.claude/hooks/r5-lock.sh`, `r5-parallel-block.sh` and `r5-state.json`, `scripts/r5_baseline.py` and `scripts/r5_corpus.py`. No file under any member repository's `src/`, `spec/` or `tests/`.
 
@@ -143,7 +143,7 @@ This section is word for word the same in both specs. A change to it is a dated 
       "started": "<iso8601>", "ended": "<iso8601>",
       "lenses": {
         "correctness": {"model": "<id>", "tier": "deep", "mode": "review | verify",
-                         "tokens_in": 0, "tokens_out": 0, "duration_s": 0,
+                         "tokens_in": null, "tokens_out": null, "tokens_total": 51234, "duration_s": 150.0,
                          "status": "ok | UNAVAILABLE | skipped", "skip_rule": null,
                          "findings": [], "closures": [], "closure_rejected": [],
                          "unaccounted": [], "downgrades_refused": [], "prose_unfiled": []}
@@ -158,6 +158,8 @@ This section is word for word the same in both specs. A change to it is a dated 
               "inputs": {"brief": "sha256:<hex>", "lens:correctness": "git:<blob id>"}, "input_digest": "sha256:<hex>"}
 }
 ```
+
+**Measurements (v1.11).** `model`, `tier`, `tokens_in`, `tokens_out`, `tokens_total` and `duration_s` are `null` when unmeasured, never `0`: a `0` reads as measured and zero. `tokens_total` is for a dispatcher that measures only a total (the Agent result reports one, with no split); the split stays `null` beside it. `duration_s` is derived from the round's start and end timestamps where both carry a time of day. NthLayer derives `rounds[]` from the audit trail with `scripts/r5_record.py`, which is safe to re-run over every archive, so a rename here is a re-derivation there.
 
 **Verdict check.** A close, push or merge gate passes when `verdict.state` is `CLEAN` and `git rev-parse HEAD^{tree}` equals `verdict.tree_sha`. Anything else refuses, naming the state or the mismatch. A squash, reorder or message edit that leaves the tree identical keeps its verdict; a rebase onto a moved base changes the tree and re-gates.
 
@@ -252,6 +254,7 @@ fixtures/r5-replay/<bead>[-<repo>][-<part>]/   in the plugin repo, light files o
 
 A change to this file after v1.0 is one dated line here, the edit it names, and the same change in the cúramóir spec when it touches §6 or a shared decision. Both agents are told in the same message. Nothing is edited in place without a line here.
 
+- **v1.11, 2026-11-13.** From bead 4 (6kqs.4). §6 Round record: a lens entry gains `tokens_total` beside `tokens_in` and `tokens_out` (E1); an unmeasured `model`, `tier`, token count or `duration_s` is `null`, never `0`, and the example shows it (E2); `duration_s` is derived from the round's timestamps. Both are errata against the shape cúramóir owns: mirrored as a cúramóir bead (E1, E2) for its spec, not edited there from here.
 - **v1.10, 2026-11-12.** From the first three-pass gate (6kqs.3). A1 discharged; bead 3's agreement criterion is restated as falling inside the within-variant spread, and its `docs/r5-gate.md` figures move to the docs PR. §6: an output line ends at LF only; the line-reference pattern takes `~`; a re-raise beside an empty closure keeps the re-raise. `scripts/r5_findings.py` takes those three from cúramóir's parser once it has them. Mirrored in the cúramóir spec at its v1.10.
 - **v1.9, 2026-11-12.** Rob's five decisions. New Phase A beads 9 (clarity advisory, now) and 10 (listed kill checks through `curamoir run mutations`), with A7; Phase B's roster follows. A1 drops the clarity criterion. Phase A's acceptance no longer asks a corpus dry run to lose no recorded finding, and bead 3's parser check is a round-trip with no dispatch: both were the unmeetable test v1.8 removed elsewhere. §6: clarity advisory, optional `verdict.inputs` (R5-R75). Scope frozen. Mirrored in the cúramóir spec at its v1.9.
 - **v1.8, 2026-11-12.** Rob's ruling that more replay dispatches cost more than they prove. A1 and bead 3 close on the `wo62-4-2` runs already made; `wo62-2` and `wo62-4-3` are not run. Phase B: R5-R58 is a tripwire with recall as telemetry, and the step ratio is measured over the shadow gates. §6 unchanged. Mirrored in the cúramóir spec at its v1.8.
