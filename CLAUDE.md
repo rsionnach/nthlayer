@@ -190,6 +190,16 @@ examples, generator-specific scripts.
     holds the one claim normaliser `r5_corpus.py` imports. r5-supervise
     calls it through the workspace shim `.claude/bin/r5-findings.sh`.
     Tests: `test/test_r5_findings.py`, on the runner's Python and on 3.9.
+  - `r5_record.py` — the section 6 round record (R5 Gate v2 Phase A.4,
+    opensrm-6kqs.4). `build` derives `rounds[]` (and the top-level `bead`,
+    `repo`, `branch`, `base`, `head`) from an `r5-state.json`'s
+    `audit_trail`, keeping every existing field; `validate` checks the shape;
+    `sweep <dir>` re-derives every archive in a directory. It never edits its
+    input and refuses, with a reason from a fixed set, a record whose rounds
+    would contradict its own `completed_passes`. r5-supervise calls it at
+    archive time through the workspace shim `.claude/bin/r5-record.sh`, and
+    `r5_baseline.py` re-derives a record's rounds to check them. Tests:
+    `test/test_r5_record.py`, on the runner's Python and on 3.9.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest
     release is outside its range [opensrm-z1kq].
@@ -201,8 +211,9 @@ examples, generator-specific scripts.
     (opensrm-0buj); `ruff check` over the same three directories
     (opensrm-u5dw.1); the `test_eco_doctor.sh` regression suite
     (opensrm-8hn3); `test/test_r5_baseline.py` (opensrm-6kqs.1);
-    `test/test_r5_corpus.py` (opensrm-6kqs.2); and
-    `test/test_r5_findings.py` (opensrm-6kqs.3).
+    `test/test_r5_corpus.py` (opensrm-6kqs.2);
+    `test/test_r5_findings.py` (opensrm-6kqs.3); and
+    `test/test_r5_record.py` (opensrm-6kqs.4).
   - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against

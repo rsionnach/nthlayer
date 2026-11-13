@@ -59,8 +59,14 @@ by the replay corpus (scripts/r5_corpus.py, opensrm-6kqs.2):
 - ``summary``: the table's data (report()): header counts, schema versions by
   value, table rows and per-gate step statistics.
 
+Round records (opensrm-6kqs.4). A record written since bead 4 also carries
+``rounds[]``, which scripts/r5_record.py derives from the same ``audit_trail``.
+This script keeps counting from ``audit_trail``, so an old record and a new one
+are read alike and give the same row; it re-derives ``rounds[]`` and refuses a
+record whose stored rounds differ, since then one of the two is wrong.
+
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
-library only.
+library only, and its sibling script r5_record.py (itself standard library).
 
 Usage:
     python3 scripts/r5_baseline.py [--archive-dir DIR] [--json | --markdown]
@@ -80,6 +86,9 @@ import statistics
 import sys
 from collections import Counter
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import r5_record  # noqa: E402  (a sibling script, not a package)
 
 # The --json contract version; raised when a field changes meaning or goes.
 JSON_SCHEMA_VERSION = 1
@@ -274,21 +283,32 @@ def _lens_row(lens: str, summary: dict, scan: dict) -> dict | None:
     }
 
 
+def _check_rounds(record: dict) -> None:
+    """A round record's rounds[] must be what its audit_trail derives."""
+    try:
+        derived = r5_record.build(record)["rounds"]
+    except r5_record.BuildRefused as exc:
+        raise RecordError(f"rounds[] cannot be derived from audit_trail: {exc}") from exc
+    if record["rounds"] != derived:
+        raise RecordError(
+            "rounds[] differs from what audit_trail derives; re-derive it with"
+            " scripts/r5_record.py build"
+        )
+
+
 def analyse_record(record: dict) -> dict:
     """The baseline row for one archived gate record.
 
-    Raises RecordError for a shape it does not read: a ``rounds[]`` record (the
-    Phase A.4 round record, which this script must learn before it can count
-    one) or a record with neither ``audit_trail`` nor ``completed_passes``.
-    Counting either as a gate with no reviews would be a plausible wrong total.
+    Raises RecordError for a shape it does not read: a record with neither
+    ``audit_trail`` nor ``completed_passes``, or a round record whose
+    ``rounds[]`` is not what its ``audit_trail`` derives (stale, hand-edited,
+    or refused by r5_record.build). Counting either would be a plausible
+    wrong total.
     """
     if not isinstance(record, dict):
         raise RecordError("not a JSON object")
     if "rounds" in record:
-        raise RecordError(
-            "has rounds[] (round record): not yet read by this script; teach"
-            " analyse_record the Phase A.4 shape (opensrm-6kqs.4) first"
-        )
+        _check_rounds(record)
     if "audit_trail" not in record and "completed_passes" not in record:
         raise RecordError("has neither audit_trail nor completed_passes")
     for key in ("audit_trail", "completed_passes"):
