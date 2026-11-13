@@ -95,7 +95,7 @@ REFUSALS = {
     "receipt_without_pass": "a findings event names no pass",
     "bad_parser_field": "a findings event carries a parser field that is not a list",
     "pass_without_review": "a completed pass has no reviewer receipt in audit_trail",
-    "verify_count_mismatch": "a lens's derived verify rounds differ from its fix_iterations",
+    "verify_count_mismatch": "a lens's derived re-reviews differ from its fix_iterations",
     "bad_commit_event": "a commit_made sha or shas is not a string, a list of strings or a map to strings",
     "bad_summary": "completed_passes is present but not a list",
     "dispatch_unanswered": "a reviewer dispatch has no receipt by the end of audit_trail",
@@ -165,9 +165,10 @@ def _lens_entry(dispatch: dict | None, receipt: dict, mode: str,
         "tokens_out": _int_or_none(measured.get("tokens_out")),
         "tokens_total": _int_or_none(measured.get("tokens_total")),
         "duration_s": duration,
-        "status": "UNAVAILABLE" if unavailable else (
-            measured.get("status") if measured.get("status") in LENS_STATUSES else "ok"),
-        "skip_rule": measured.get("skip_rule") if isinstance(measured.get("skip_rule"), str) else None,
+        # Only reviewer_unavailable sets a status: no supervisor step writes a
+        # status or a skip rule on an event (skipped lenses are Phase B's).
+        "status": "UNAVAILABLE" if unavailable else "ok",
+        "skip_rule": None,
     }
     for key in PARSER_LISTS:
         value = None if unavailable else receipt.get(key)
@@ -359,7 +360,8 @@ def check_against_summary(record: dict, rounds: list[dict]) -> None:
     refuses instead of writing one.
 
     ``fix_iterations`` counts fix-then-re-review loops, so it is compared
-    with verify rounds, not fix rounds: a MINOR fixed in passing is a fix
+    with the lens's answered reviews after its first (verify rounds, or a
+    re-review whose dispatch stated ``review``), not with fix rounds: a MINOR fixed in passing is a fix
     round (section 6: each fix is one) with no re-review after it
     (opensrm-6kqs.11's correctness pass)."""
     tally = lens_tally(rounds)
@@ -374,9 +376,12 @@ def check_against_summary(record: dict, rounds: list[dict]) -> None:
         if got is None:
             raise BuildRefused("pass_without_review", summary["name"])
         want = summary.get("fix_iterations")
-        if isinstance(want, int) and not isinstance(want, bool) and want != got["verify"]:
+        # Every answered review after the lens's first is a re-review, in
+        # whatever mode its dispatch stated.
+        again = got["review"] + got["verify"] - 1
+        if isinstance(want, int) and not isinstance(want, bool) and want != again:
             raise BuildRefused("verify_count_mismatch",
-                               f"{summary['name']}: fix_iterations {want}, verify rounds {got['verify']}")
+                               f"{summary['name']}: fix_iterations {want}, re-reviews {again}")
 
 
 def build(record: Any) -> dict:
@@ -393,9 +398,9 @@ def build(record: Any) -> dict:
         heads = [r["head"] for r in rounds if r["head"] is not None]
         head = heads[-1] if heads else head
     bead = record.get("target_bead")
-    branch = record.get("branch_name")
     out.update({"bead": bead if isinstance(bead, str) else None, "repo": repo,
-                "branch": branch if isinstance(branch, str) else None,
+                # r5-state records no branch (Step 1's shape, 0 of 96 archives).
+                "branch": None,
                 "base": base, "head": head, "rounds": rounds})
     return out
 

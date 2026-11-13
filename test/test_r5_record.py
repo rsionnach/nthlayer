@@ -582,3 +582,150 @@ def test_cli_exit_codes(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
     assert _cli("sweep", str(empty)).returncode == 2
+
+
+# ------------------------------------------------ provenance pass additions
+# Each case below is a shape a real archive or a supervisor step writes, or a
+# section 6 rule, named in its docstring; the provenance pass (6kqs.4 gate)
+# found the code paths they cover untested.
+
+
+def test_a_dispatch_head_is_the_round_head():
+    """iiay, f751, wo62-4-22 and wo62-4-6 log the HEAD a reviewer read on
+    reviewer_dispatched (iiay: head "baff067" after commit baff067...). That
+    HEAD is the round's, not the running head."""
+    g = full_gate()
+    g["audit_trail"][9]["head"] = "abcdef1"  # the edge-cases dispatch
+    rounds = r5_record.build(g)["rounds"]
+    assert rounds[3]["head"] == "abcdef1"
+    assert rounds[4]["head"] == FIX1  # the next round falls back to the running head
+
+
+def test_fix_dispatched_opens_the_fix_round():
+    """7zpz-core logs fix_dispatched (to the implementer) before
+    fixes_applied: one fix round, started at the dispatch."""
+    g = full_gate()
+    g["audit_trail"].insert(3, ev("02:50", "fix_dispatched", **{"pass": "correctness", "to": "implementer"}))
+    rounds = r5_record.build(g)["rounds"]
+    assert [r["kind"] for r in rounds[:3]] == ["review", "fix", "verify"]
+    assert rounds[1]["started"].endswith("10:02:50+00:00")
+
+
+def test_a_fix_round_spans_its_events():
+    """A fix round starts at fixes_applied (03:00) and ends at its last event,
+    the commit (03:06)."""
+    fix = r5_record.build(full_gate())["rounds"][1]
+    assert (fix["started"], fix["ended"]) == ("2026-11-13T10:03:00+00:00", "2026-11-13T10:03:06+00:00")
+
+
+def test_a_fix_round_with_no_commit_ends_at_its_last_fixes_applied():
+    g = full_gate()
+    del g["audit_trail"][5]  # no commit_made (a dry run logs none)
+    g["audit_trail"].insert(4, ev("03:04", "fixes_applied", **{"pass": "correctness", "statuses": {}}))
+    fix = r5_record.build(g)["rounds"][1]
+    assert fix["ended"] == "2026-11-13T10:03:04+00:00" and fix["fix"]["commit"] is None
+
+
+def test_an_unavailable_verify_is_not_a_verify():
+    """Step 4: an UNAVAILABLE report is retried with the same brief, so an
+    unavailable verify followed by its retry is one re-review against
+    fix_iterations 1, not two."""
+    g = full_gate()
+    g["audit_trail"].insert(7, ev("03:40", "reviewer_unavailable", **{"pass": "correctness", "iteration": 2}))
+    g["audit_trail"].insert(8, ev("03:45", "reviewer_dispatched", **{"pass": "correctness", "iteration": 2, "mode": "verify"}))
+    out = r5_record.build(g)  # completed_passes says fix_iterations 1
+    kinds = [(r["kind"], next(iter(r["lenses"].values()))["status"]) for r in out["rounds"][:4] if r["lenses"]]
+    assert kinds == [("review", "ok"), ("verify", "UNAVAILABLE"), ("verify", "ok")]
+
+
+def test_a_stated_mode_wins_over_inference():
+    """A dispatch that states its mode (6kqs.3's verify dispatches do) is
+    that mode, even where order alone would infer another."""
+    g = full_gate()
+    g["audit_trail"][6]["mode"] = "review"  # a full re-review, stated
+    assert r5_record.build(g)["rounds"][2]["kind"] == "review"
+
+
+@pytest.mark.parametrize("fields, key", [
+    ({"duration_s": -5}, "duration_s"),
+    ({"tokens_total": -1}, "tokens_total"),
+    ({"tokens_in": True}, "tokens_in"),
+    ({"tokens_out": 1.5}, "tokens_out"),
+    ({"model": 42}, "model"),
+], ids=["negative-duration", "negative-tokens", "bool-tokens", "float-tokens", "non-string-model"])
+def test_unmeasurable_values_become_null(fields, key):
+    """D2: a value that is not a measurement is null, never kept or zeroed.
+    (duration_s here has no dispatch stamp to come from first.)"""
+    g = full_gate()
+    del g["audit_trail"][1]
+    g["audit_trail"][1].update(fields)
+    assert r5_record.build(g)["rounds"][0]["lenses"]["correctness"][key] is None
+
+
+def test_the_receipt_wins_over_the_dispatch_for_measurements():
+    """The receipt is later than the dispatch, so its value stands."""
+    g = full_gate()
+    g["audit_trail"][1]["model"] = "dispatch-model"
+    g["audit_trail"][2]["model"] = "receipt-model"
+    assert r5_record.build(g)["rounds"][0]["lenses"]["correctness"]["model"] == "receipt-model"
+
+
+def test_nothing_writes_a_status_skip_rule_or_branch():
+    """No supervisor step writes status or skip_rule on an event, or a branch
+    into r5-state (0 of 96 archives): the record carries the defaults."""
+    g = full_gate()
+    g["audit_trail"][2].update(status="skipped", skip_rule="docs-only")
+    g["branch_name"] = "round-record"
+    out = r5_record.build(g)
+    entry = out["rounds"][0]["lenses"]["correctness"]
+    assert (entry["status"], entry["skip_rule"], out["branch"]) == ("ok", None, None)
+
+
+@pytest.mark.parametrize("value, kept", [
+    ("abc", False), ("abcd", True), ("a" * 40, True), ("a" * 41, False),
+], ids=["3-hex", "4-hex", "40-hex", "41-hex"])
+def test_sha_length_bounds(value, kept):
+    """git abbreviates to at least 4 hex digits; a full SHA-1 is 40."""
+    g = full_gate()
+    g["diff_range"]["nthlayer"]["base"] = value
+    assert r5_record.build(g)["base"] == (value if kept else None)
+
+
+@pytest.mark.parametrize("name, mutate, needle", [
+    ("bead not a string", lambda o: o.update(bead=7), "bead: not a string"),
+    ("round head not a string", lambda o: o["rounds"][0].update(head=7), "head: not a string"),
+    ("round started not a string", lambda o: o["rounds"][0].update(started=7), "started: not a string"),
+    ("fix commit not a string", lambda o: o["rounds"][1]["fix"].update(commit=7), "fix.commit"),
+    ("scope_breaches not a list", lambda o: o["rounds"][1]["fix"].update(scope_breaches={}), "scope_breaches"),
+    ("fix round without fix", lambda o: o["rounds"][1].pop("fix"), "fix: missing"),
+    ("round not an object", lambda o: o["rounds"].__setitem__(0, "r"), "not an object"),
+    ("lens entry not an object",
+     lambda o: o["rounds"][0]["lenses"].update(correctness="x"), "correctness: not an object"),
+    ("model not a string",
+     lambda o: o["rounds"][0]["lenses"]["correctness"].update(model=1), "model: not a string"),
+    ("negative duration",
+     lambda o: o["rounds"][0]["lenses"]["correctness"].update(duration_s=-1), "duration_s"),
+    ("parser list not a list",
+     lambda o: o["rounds"][0]["lenses"]["correctness"].update(closures="x"), "closures: not a list"),
+    ("measured field missing",
+     lambda o: o["rounds"][0]["lenses"]["correctness"].pop("tokens_total"), "tokens_total: missing"),
+])
+def test_validate_rejects_each_shape_break(name, mutate, needle):
+    """Section 6's round-record shape, one break per check."""
+    errors = _errors(mutate)
+    assert any(needle in e for e in errors), (name, errors)
+
+
+def test_validate_rejects_a_record_that_is_not_an_object():
+    assert r5_record.validate([]) == {"valid": False, "errors": ["not a JSON object"], "notes": []}
+
+
+def test_sweep_does_not_count_an_invalid_record_as_built(tmp_path, monkeypatch):
+    """A record that builds but fails validate is invalid, and the sweep is
+    not ok: that is the archive-wide check a shape change relies on."""
+    (tmp_path / "r5-state-x-completed.json").write_text(json.dumps(full_gate()))
+    real = r5_record.build
+    monkeypatch.setattr(r5_record, "build", lambda rec: dict(real(rec), rounds="broken"))
+    out = r5_record.sweep(tmp_path)
+    assert out["built"] == [] and "r5-state-x-completed.json" in out["invalid"]
+    assert out["ok"] is False
