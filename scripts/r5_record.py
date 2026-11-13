@@ -14,9 +14,14 @@ shape is a re-derivation over the whole archive, not a migration.
 
     r5_record.py build <state.json>       derived record on stdout
     r5_record.py validate <record.json>   report on stdout
+    r5_record.py sweep <dir>              build + validate every archive in <dir>
 
 Exit codes: 0 ok; 2 the record cannot be derived (``build``, with a named
 reason) or does not match the shape (``validate``); 1 usage or unreadable file.
+``sweep`` exits 0 when every ``r5-state-*-completed.json`` in the directory
+either builds into a valid record or refuses with a reason in ``REFUSALS``,
+and 2 when any built record fails ``validate`` or no archive is found: it is
+the re-derivation over the whole archive a change in the shape needs.
 
 Rulings applied (Rob, 2026-11-13):
 
@@ -71,6 +76,10 @@ DERIVED_KEYS = ("bead", "repo", "branch", "base", "head", "rounds")
 # tests, rulings, notes...) is informational and ignored here.
 DISPATCH = "reviewer_dispatched"
 RECEIPTS = ("findings_received", "advisory_pass_completed")
+# A report the parser refused (exit 2, R5-R9): a round whose lens status is
+# UNAVAILABLE, with no parser output. r5-supervise re-dispatches the same
+# brief once, so the retry keeps the refused round's mode.
+UNAVAILABLE = "reviewer_unavailable"
 FIX_OPENERS = ("fixes_applied", "fix_dispatched")
 COMMIT = "commit_made"
 
@@ -129,7 +138,8 @@ def _int_or_none(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def _lens_entry(dispatch: dict | None, receipt: dict, mode: str) -> dict:
+def _lens_entry(dispatch: dict | None, receipt: dict, mode: str,
+                unavailable: bool = False) -> dict:
     """One lens's entry in a review or verify round."""
     started = dispatch.get("ts") if dispatch else None
     measured = dict(dispatch or {})
@@ -145,11 +155,12 @@ def _lens_entry(dispatch: dict | None, receipt: dict, mode: str) -> dict:
         "tokens_out": _int_or_none(measured.get("tokens_out")),
         "tokens_total": _int_or_none(measured.get("tokens_total")),
         "duration_s": duration,
-        "status": measured.get("status") if measured.get("status") in LENS_STATUSES else "ok",
+        "status": "UNAVAILABLE" if unavailable else (
+            measured.get("status") if measured.get("status") in LENS_STATUSES else "ok"),
         "skip_rule": measured.get("skip_rule") if isinstance(measured.get("skip_rule"), str) else None,
     }
     for key in PARSER_LISTS:
-        value = receipt.get(key)
+        value = None if unavailable else receipt.get(key)
         if value is not None and not isinstance(value, list):
             raise BuildRefused("bad_parser_field", f"{key} is {type(value).__name__}")
         entry[key] = copy.deepcopy(value)
@@ -188,18 +199,20 @@ def derive_rounds(record: dict) -> list[dict]:
             lens = _lens_of(event)
             pending[lens] = event  # a re-sent dispatch replaces an unanswered one
             fix = None
-        elif name in RECEIPTS:
+        elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
             stated = (dispatch or {}).get("mode")
             mode = stated if stated in MODES else ("verify" if lens in reviewed else "review")
-            reviewed.add(lens)
+            unavailable = name == UNAVAILABLE
+            if not unavailable:
+                reviewed.add(lens)
             round_head = (dispatch or {}).get("head") or event.get("head") or head
             started = dispatch.get("ts") if dispatch else None
             rounds.append({
                 "kind": mode, "head": round_head if isinstance(round_head, str) else None,
                 "started": started, "ended": event.get("ts"),
-                "lenses": {lens: _lens_entry(dispatch, event, mode)},
+                "lenses": {lens: _lens_entry(dispatch, event, mode, unavailable)},
             })
             fix = None
         elif name in FIX_OPENERS:
@@ -238,17 +251,20 @@ def _ordered(rnd: dict) -> dict:
 
 
 def lens_tally(rounds: list[dict]) -> dict[str, dict[str, int]]:
-    """Per lens: review, verify and fix rounds. A fix round belongs to the
-    lens of the review or verify round before it (the sequential gate fixes
-    one lens's findings at a time)."""
+    """Per lens: answered review and verify rounds, and fix rounds. A fix
+    round belongs to the lens of the review or verify round before it (the
+    sequential gate fixes one lens's findings at a time). An UNAVAILABLE
+    round is not counted: its retry is the same review."""
     tally: dict[str, dict[str, int]] = {}
     last = None
     for rnd in rounds:
         if rnd["kind"] in MODES:
-            last = next(iter(rnd["lenses"]))
+            last, entry = next(iter(rnd["lenses"].items()))
+            if entry["status"] == "UNAVAILABLE":
+                continue
             tally.setdefault(last, {"review": 0, "verify": 0, "fix": 0})[rnd["kind"]] += 1
         elif rnd["kind"] == "fix" and last is not None:
-            tally[last]["fix"] += 1
+            tally.setdefault(last, {"review": 0, "verify": 0, "fix": 0})["fix"] += 1
     return tally
 
 
@@ -418,11 +434,44 @@ def _load(path: str) -> Any:
         return json.load(handle)
 
 
+def sweep(directory: Path) -> dict:
+    """Build and validate every archived record in ``directory``."""
+    outcome: dict[str, Any] = {"built": [], "refused": {}, "invalid": {}, "unreadable": {}}
+    for path in sorted(directory.glob("r5-state-*-completed.json")):
+        try:
+            record = _load(str(path))
+        except (OSError, ValueError) as exc:
+            outcome["unreadable"][path.name] = str(exc)
+            continue
+        try:
+            built = build(record)
+        except BuildRefused as exc:
+            outcome["refused"][path.name] = exc.reason
+            continue
+        result = validate(built)
+        if result["valid"]:
+            outcome["built"].append(path.name)
+        else:
+            outcome["invalid"][path.name] = result["errors"]
+    total = sum(len(v) for v in outcome.values())
+    outcome["ok"] = total > 0 and not outcome["invalid"] and not outcome["unreadable"]
+    return outcome
+
+
 def main(argv: list) -> int:
-    if len(argv) != 2 or argv[0] not in ("build", "validate"):
-        print("usage: r5_record.py build <state.json> | validate <record.json>", file=sys.stderr)
+    if len(argv) != 2 or argv[0] not in ("build", "validate", "sweep"):
+        print("usage: r5_record.py build <state.json> | validate <record.json> | sweep <dir>",
+              file=sys.stderr)
         return 1
     command, path = argv
+    if command == "sweep":
+        if not Path(path).is_dir():
+            print(f"r5_record: {path} is not a directory", file=sys.stderr)
+            return 1
+        result = sweep(Path(path))
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+        return 0 if result["ok"] else 2
     try:
         data = _load(path)
     except (OSError, ValueError) as exc:
