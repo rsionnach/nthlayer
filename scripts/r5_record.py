@@ -38,9 +38,10 @@ Records written before the parser (6kqs.3) hold severity counts, not
 findings. Their lens entries carry ``null`` for ``findings`` and the other
 parser lists: not recorded, as opposed to ``[]``, none found.
 
-Round kinds. A lens's first reviewer in the gate is a ``review`` round and
-each later one a ``verify`` round, unless the dispatch event names its
-``mode``. ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`` round, and so
+Round kinds. A lens's first answered reviewer in the gate is a ``review``
+round and each later one a ``verify`` round (r5-supervise Step 8 re-dispatches
+only in verify mode; a ``mode`` on the dispatch is not read, since no step
+writes one that differs). ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`` round, and so
 does a ``commit_made`` after a review with neither (older supervisors logged
 only the commit); the ``commit_made`` events before the next dispatch are its
 commits, and the round's head is the last of them. ``preflight``
@@ -95,7 +96,7 @@ REFUSALS = {
     "receipt_without_pass": "a findings event names no pass",
     "bad_parser_field": "a findings event carries a parser field that is not a list",
     "pass_without_review": "a completed pass has no reviewer receipt in audit_trail",
-    "verify_count_mismatch": "a lens's derived re-reviews differ from its fix_iterations",
+    "verify_count_mismatch": "a lens's derived verify rounds differ from its fix_iterations",
     "bad_commit_event": "a commit_made sha or shas is not a string, a list of strings or a map to strings",
     "bad_summary": "completed_passes is present but not a list",
     "dispatch_unanswered": "a reviewer dispatch has no receipt by the end of audit_trail",
@@ -277,8 +278,7 @@ def derive_rounds(record: dict) -> list[dict]:
         elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
-            stated = (dispatch or {}).get("mode")
-            mode = stated if stated in MODES else ("verify" if lens in reviewed else "review")
+            mode = "verify" if lens in reviewed else "review"
             unavailable = name == UNAVAILABLE
             if not unavailable:
                 reviewed.add(lens)
@@ -360,8 +360,7 @@ def check_against_summary(record: dict, rounds: list[dict]) -> None:
     refuses instead of writing one.
 
     ``fix_iterations`` counts fix-then-re-review loops, so it is compared
-    with the lens's answered reviews after its first (verify rounds, or a
-    re-review whose dispatch stated ``review``), not with fix rounds: a MINOR fixed in passing is a fix
+    with verify rounds, not fix rounds: a MINOR fixed in passing is a fix
     round (section 6: each fix is one) with no re-review after it
     (opensrm-6kqs.11's correctness pass)."""
     tally = lens_tally(rounds)
@@ -376,12 +375,9 @@ def check_against_summary(record: dict, rounds: list[dict]) -> None:
         if got is None:
             raise BuildRefused("pass_without_review", summary["name"])
         want = summary.get("fix_iterations")
-        # Every answered review after the lens's first is a re-review, in
-        # whatever mode its dispatch stated.
-        again = got["review"] + got["verify"] - 1
-        if isinstance(want, int) and not isinstance(want, bool) and want != again:
+        if isinstance(want, int) and not isinstance(want, bool) and want != got["verify"]:
             raise BuildRefused("verify_count_mismatch",
-                               f"{summary['name']}: fix_iterations {want}, re-reviews {again}")
+                               f"{summary['name']}: fix_iterations {want}, verify rounds {got['verify']}")
 
 
 def build(record: Any) -> dict:

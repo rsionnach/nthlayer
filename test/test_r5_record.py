@@ -205,8 +205,8 @@ def test_z_suffix_timestamps_are_read():
 
 
 def test_mode_without_a_stated_mode():
-    """A lens's first reviewer is a review round, a later one a verify round,
-    when the dispatch names no mode (older Step 8 dispatches did not)."""
+    """A lens's first reviewer is a review round, a later one a verify round
+    (older Step 8 dispatches name no mode)."""
     g = full_gate()
     del g["audit_trail"][6]["mode"]
     assert r5_record.build(g)["rounds"][2]["kind"] == "verify"
@@ -638,12 +638,13 @@ def test_an_unavailable_verify_is_not_a_verify():
     assert kinds == [("review", "ok"), ("verify", "UNAVAILABLE"), ("verify", "ok")]
 
 
-def test_a_stated_mode_wins_over_inference():
-    """A dispatch that states its mode (6kqs.3's verify dispatches do) is
-    that mode, even where order alone would infer another."""
+def test_a_dispatch_mode_is_not_read():
+    """Step 8 re-dispatches only in verify mode, and the archives that state a
+    mode state "verify" (2 of 96): the kind comes from order, never from a
+    field no step writes differently."""
     g = full_gate()
-    g["audit_trail"][6]["mode"] = "review"  # a full re-review, stated
-    assert r5_record.build(g)["rounds"][2]["kind"] == "review"
+    g["audit_trail"][6]["mode"] = "review"
+    assert r5_record.build(g)["rounds"][2]["kind"] == "verify"
 
 
 @pytest.mark.parametrize("fields, key", [
