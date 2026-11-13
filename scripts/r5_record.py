@@ -235,6 +235,10 @@ def derive_rounds(record: dict) -> list[dict]:
         raise BuildRefused("no_audit_trail", type(trail).__name__)
     _, _, range_head = _single_repo(record.get("diff_range"))
     range_head = _start_head(trail, range_head)
+    # A gate over several repos has no one tree per round: one repo's commit
+    # would name a review that read them all (D3's reason, per round).
+    dr = record.get("diff_range")
+    multi_repo = isinstance(dr, dict) and len(dr) > 1
     rounds: list[dict] = []
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
     reviewed: set[str] = set()
@@ -291,7 +295,7 @@ def derive_rounds(record: dict) -> list[dict]:
             shas = _commit_shas(event)
             fix["_commits"].extend(shas)
             fix["ended"] = event.get("ts")
-            if shas:
+            if shas and not multi_repo:
                 head = shas[-1]
 
     for n, rnd in enumerate(rounds, 1):
@@ -299,8 +303,8 @@ def derive_rounds(record: dict) -> list[dict]:
         commits = rnd.pop("_commits", None)
         # One commit is the round's commit. Several have no single one: null
         # (ruling b; the audit trail keeps them all, section 6 has one commit
-        # per round). Either way the round ends at its last commit.
-        if commits:
+        # per round). Either way a single-repo round ends at its last commit.
+        if commits and not multi_repo:
             rnd["head"] = commits[-1]
             if len(commits) == 1:
                 rnd["fix"]["commit"] = commits[0]

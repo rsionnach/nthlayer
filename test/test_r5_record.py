@@ -273,8 +273,10 @@ def test_multi_repo_gate_leaves_top_level_and_multi_commit_fix_null():
     out = r5_record.build(g)
     assert (out["repo"], out["base"], out["head"]) == (None, None, None)
     fix = out["rounds"][1]
-    # ruling (b): no single commit; the round still ends at its last commit.
-    assert fix["fix"]["commit"] is None and fix["head"] == FIX2
+    # ruling (b): no single commit. And no single tree: rounds over several
+    # repos carry no head, as D3 gives the top level none.
+    assert fix["fix"]["commit"] is None
+    assert all(r["head"] is None for r in out["rounds"])
     report = r5_record.validate(out)
     assert report["valid"]
     assert any(n.startswith("multi_repo") for n in report["notes"])
