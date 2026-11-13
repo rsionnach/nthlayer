@@ -916,6 +916,18 @@ def test_a_table_row_in_a_record_after_the_cutoff_is_refused(monkeypatch):
     assert _refusal(_after_cutoff([])) == "table_row_after_cutoff"
 
 
+def test_a_table_row_after_the_cutoff_is_refused_in_an_earlier_record(monkeypatch):
+    """Ruling point 2: the table "covers records up to the Step 3 change and
+    takes no new rows after that", so a row whose own ts is at or after
+    STEP3_CUTOFF is an error even when its record started before it."""
+    key = ("opensrm-fx.1", "correctness", "2026-11-13T22:10:00+00:00")
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {key: ROW_TABLE[ROW]})
+    record = dict(_after_cutoff([]), started_at="2026-11-13T22:00:00+00:00")
+    assert r5_record._record_start(record, record["audit_trail"]) < r5_record._instant(
+        r5_record.STEP3_CUTOFF) <= r5_record._instant(key[2])
+    assert _refusal(record) == "table_row_after_cutoff"
+
+
 def test_an_unmatched_table_row_is_refused(monkeypatch):
     """Ruling point 2: a row of this bead, inside this record's span, that
     matches no re-sent dispatch is detected: build refuses (sweep then lists

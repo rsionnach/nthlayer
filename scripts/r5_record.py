@@ -119,9 +119,9 @@ PAUSED = "supervisor_blocked"
 STEP3_CUTOFF = "2026-11-13T22:06:05+00:00"
 # Archived dispatches the hook refused that log no reviewer_dispatch_blocked,
 # keyed by (bead, schema lens, the dispatch's ts exactly as logged). HISTORY
-# ONLY: no row for a record started at or after STEP3_CUTOFF, and each row must
-# match a re-sent dispatch in the record of its bead whose audit trail spans
-# its ts; ``build`` refuses the record otherwise (table_row_after_cutoff,
+# ONLY: no row for a record started at or after STEP3_CUTOFF, no row whose own
+# ts is at or after it, and each row must match a re-sent dispatch in the
+# record of its bead whose audit trail spans its ts; ``build`` refuses the record otherwise (table_row_after_cutoff,
 # table_row_unmatched), so a mistyped key cannot silently turn a stall into a
 # refusal. Each row says why it was a hook refusal and where that is shown.
 KNOWN_REFUSED = {
@@ -356,8 +356,13 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
     start = _record_start(record, trail)
     after_cutoff = start is not None and start >= _instant(STEP3_CUTOFF)
     rows = _table_rows(record, trail)
-    if rows and after_cutoff:
-        raise BuildRefused("table_row_after_cutoff", ", ".join(map(str, sorted(rows))))
+    # The table takes no rows after Step 3 (Rob, 2026-11-13): a row is refused
+    # when its record started at/after the cutoff, or when its own ts is.
+    cutoff = _instant(STEP3_CUTOFF)
+    late = rows if after_cutoff else {
+        k for k in rows if (m := _instant(k[2])) is not None and m >= cutoff}
+    if late:
+        raise BuildRefused("table_row_after_cutoff", ", ".join(map(str, sorted(late))))
     bead = record.get("target_bead")
     matched: set[tuple] = set()
     refusals: list[tuple[str, Any, str]] = []
