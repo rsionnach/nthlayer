@@ -40,8 +40,10 @@ parser lists: not recorded, as opposed to ``[]``, none found.
 
 Round kinds. A lens's first reviewer in the gate is a ``review`` round and
 each later one a ``verify`` round, unless the dispatch event names its
-``mode``. ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`` round; the
-``commit_made`` events before the next dispatch are its commits. ``preflight``
+``mode``. ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`` round, and so
+does a ``commit_made`` after a review with neither (older supervisors logged
+only the commit); the ``commit_made`` events before the next dispatch are its
+commits, and the round's head is the last of them. ``preflight``
 rounds are bead 5's, ``merge`` and ``mutations`` Phase B's and bead 10's, and
 ``verdict`` bead 6's: this script writes none of them.
 
@@ -194,7 +196,14 @@ def derive_rounds(record: dict) -> list[dict]:
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
     reviewed: set[str] = set()
     fix: dict | None = None  # the open fix round, until the next dispatch
+    reviewed_since_dispatch = False  # a receipt came after the last dispatch
     head = range_head
+
+    def open_fix(ts: Any) -> dict:
+        rnd = {"kind": "fix", "head": None, "started": ts, "ended": ts, "lenses": {},
+               "fix": {"commit": None, "statuses": {}, "scope_breaches": []}, "_commits": []}
+        rounds.append(rnd)
+        return rnd
 
     for event in trail:
         if not (isinstance(event, dict) and isinstance(event.get("event"), str)):
@@ -204,6 +213,7 @@ def derive_rounds(record: dict) -> list[dict]:
             lens = _lens_of(event)
             pending[lens] = event  # a re-sent dispatch replaces an unanswered one
             fix = None
+            reviewed_since_dispatch = False
         elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
@@ -220,18 +230,21 @@ def derive_rounds(record: dict) -> list[dict]:
                 "lenses": {lens: _lens_entry(dispatch, event, mode, unavailable)},
             })
             fix = None
+            reviewed_since_dispatch = True
         elif name in FIX_OPENERS:
             statuses = event.get("statuses")
             if fix is None:
-                fix = {"kind": "fix", "head": None, "started": event.get("ts"),
-                       "ended": event.get("ts"), "lenses": {},
-                       "fix": {"commit": None, "statuses": {}, "scope_breaches": []}}
-                fix["_commits"] = []
-                rounds.append(fix)
+                fix = open_fix(event.get("ts"))
             fix["ended"] = event.get("ts")
             if isinstance(statuses, dict):
                 fix["fix"]["statuses"].update(copy.deepcopy(statuses))
-        elif name == COMMIT and fix is not None:
+        elif name == COMMIT and (fix is not None or reviewed_since_dispatch):
+            # Supervisors before 6kqs.3 often logged findings_received ->
+            # commit_made -> reviewer_dispatched with no fixes_applied: a
+            # commit after a review is that review's fix. A commit before
+            # any review (the implementation itself) is not a round.
+            if fix is None:
+                fix = open_fix(event.get("ts"))
             shas = [event.get("sha")] if isinstance(event.get("sha"), str) else []
             shas += [s for s in event.get("shas") or [] if isinstance(s, str)]
             fix["_commits"].extend(shas)
@@ -242,11 +255,13 @@ def derive_rounds(record: dict) -> list[dict]:
     for n, rnd in enumerate(rounds, 1):
         rnd["n"] = n
         commits = rnd.pop("_commits", None)
-        # One commit is the round's commit and its head. Several (a gate over
-        # more than one repo) have no single one: null, and the audit trail
-        # keeps them all (section 6 has one commit per round).
-        if commits is not None and len(commits) == 1:
-            rnd["fix"]["commit"] = rnd["head"] = commits[0]
+        # One commit is the round's commit. Several have no single one: null
+        # (ruling b; the audit trail keeps them all, section 6 has one commit
+        # per round). Either way the round ends at its last commit.
+        if commits:
+            rnd["head"] = commits[-1]
+            if len(commits) == 1:
+                rnd["fix"]["commit"] = commits[0]
     return [_ordered(r) for r in rounds]
 
 

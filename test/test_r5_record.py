@@ -273,11 +273,56 @@ def test_multi_repo_gate_leaves_top_level_and_multi_commit_fix_null():
     out = r5_record.build(g)
     assert (out["repo"], out["base"], out["head"]) == (None, None, None)
     fix = out["rounds"][1]
-    assert fix["fix"]["commit"] is None and fix["head"] is None
+    # ruling (b): no single commit; the round still ends at its last commit.
+    assert fix["fix"]["commit"] is None and fix["head"] == FIX2
     report = r5_record.validate(out)
     assert report["valid"]
     assert any(n.startswith("multi_repo") for n in report["notes"])
     assert any("no single commit" in n for n in report["notes"])
+
+
+def test_commit_after_a_review_with_no_fixes_applied_is_a_fix_round():
+    """Each fix is a fix round (bead 4). Supervisors before 6kqs.3 logged
+    findings_received -> commit_made -> reviewer_dispatched with no
+    fixes_applied (opensrm-6kqs.1's record): the commit is that review's fix,
+    and the gate's head moves to it (ruling c)."""
+    trail = [
+        ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        ev("01:10", "findings_received", **{"pass": "correctness", "iteration": 1,
+                                            "counts": {"critical": 0, "important": 1, "minor": 0}}),
+        ev("01:30", "commit_made", sha=FIX1, repo="nthlayer"),
+        ev("01:40", "reviewer_dispatched", **{"pass": "correctness", "iteration": 2}),
+        ev("02:40", "findings_received", **{"pass": "correctness", "iteration": 2, "counts": {}}),
+        ev("02:40", "pass_completed", **{"pass": "correctness", "fix_iterations": 1}),
+    ]
+    out = r5_record.build(state(trail, [("correctness", 1)]))
+    assert [r["kind"] for r in out["rounds"]] == ["review", "fix", "verify"]
+    assert out["rounds"][1]["fix"] == {"commit": FIX1, "statuses": {}, "scope_breaches": []}
+    assert [r["head"] for r in out["rounds"]] == [HEAD0, FIX1, FIX1]
+    assert out["head"] == FIX1
+
+
+def test_a_commit_before_any_review_is_not_a_round():
+    """The implementation commit lands before the first reviewer; it is the
+    range the gate reviews, not a fix."""
+    trail = [
+        ev("00:05", "commit_made", sha=FIX1, repo="nthlayer"),
+        ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        received("01:10", "correctness", 1, []),
+        ev("01:10", "pass_completed", **{"pass": "correctness", "fix_iterations": 0}),
+    ]
+    out = r5_record.build(state(trail, [("correctness", 0)]))
+    assert [r["kind"] for r in out["rounds"]] == ["review"]
+
+
+def test_single_repo_multi_commit_fix_ends_the_gate_at_its_last_commit():
+    """Ruling (c): the top-level head is where the gate ended, also when the
+    last fix round has two commits (and so no single fix.commit, ruling b)."""
+    g = full_gate()
+    g["audit_trail"].insert(6, ev("03:07", "commit_made", sha=FIX2, repo="nthlayer"))
+    out = r5_record.build(g)
+    assert out["rounds"][1]["fix"]["commit"] is None
+    assert out["head"] == FIX2
 
 
 def test_build_keeps_every_existing_field_and_does_not_touch_its_input():
