@@ -179,6 +179,14 @@ def test_date_only_or_missing_timestamps_give_no_duration():
     assert rnd["started"] is None and rnd["lenses"]["correctness"]["duration_s"] is None
 
 
+def test_receipt_stamped_before_its_dispatch_gives_no_duration():
+    """D2: a duration that cannot be measured is null; a clock that runs
+    backwards measures nothing, and validate rejects a negative duration."""
+    g = full_gate()
+    g["audit_trail"][1]["ts"] = "2026-11-13T10:05:00+00:00"  # after the 02:40 receipt
+    assert r5_record.build(g)["rounds"][0]["lenses"]["correctness"]["duration_s"] is None
+
+
 def test_z_suffix_timestamps_are_read():
     g = full_gate()
     g["audit_trail"][1]["ts"] = "2026-11-13T10:00:10Z"

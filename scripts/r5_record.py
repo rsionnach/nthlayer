@@ -107,8 +107,9 @@ class BuildRefused(ValueError):
 
 
 def _instant(ts: Any) -> datetime.datetime | None:
-    """A timestamp with a time of day, or None (date-only stamps carry none)."""
-    if not isinstance(ts, str) or "T" not in ts:
+    """An aware timestamp, or None. A date-only stamp parses to a naive
+    midnight, so it is None too: it carries no time of day to measure."""
+    if not isinstance(ts, str):
         return None
     try:
         moment = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
