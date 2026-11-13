@@ -6,7 +6,7 @@ docs/superpowers/specs/2026-11-03-r5-gate-v2-nthlayer-spec.md, which cúramóir
 owns. ``r5-state.json`` keeps every existing top-level field; this adds
 ``bead``, ``repo``, ``branch``, ``base``, ``head`` and ``rounds[]``.
 
-``rounds[]`` is DERIVED from ``audit_trail`` (Rob, 2026-11-13, D1), never
+``rounds[]`` is DERIVED from ``audit_trail`` (opensrm-6kqs.4), never
 written by hand: the supervisor appends events, this script turns them into
 rounds, so the two cannot drift apart. ``build`` never edits its input, is
 deterministic and replaces only the keys it derives, so a later rename in the
@@ -23,16 +23,16 @@ either builds into a valid record or refuses with a reason in ``REFUSALS``,
 and 2 when any built record fails ``validate`` or no archive is found: it is
 the re-derivation over the whole archive a change in the shape needs.
 
-Rulings applied (Rob, 2026-11-13):
+Field rules (opensrm-6kqs.4):
 
-- D2: ``model``, ``tier``, ``tokens_in``, ``tokens_out`` and ``duration_s`` are
+- ``model``, ``tier``, ``tokens_in``, ``tokens_out`` and ``duration_s`` are
   null when unmeasured, never 0. ``duration_s`` comes from the dispatch and
   receipt timestamps when both carry a time of day. ``tokens_total`` (erratum
   E1, an addition to section 6) holds the Agent result's total.
-- D3: the top-level ``repo``, ``base`` and ``head`` are filled from
+- the top-level ``repo``, ``base`` and ``head`` are filled from
   ``diff_range`` only when it names one repo; otherwise they are null and
   ``diff_range`` stays the source.
-- D4: ``lenses`` keys use the schema's spelling (``edge_cases``).
+- ``lenses`` keys use the schema's spelling (``edge_cases``).
 
 Records written before the parser (6kqs.3) hold severity counts, not
 findings. Their lens entries carry ``null`` for ``findings`` and the other
@@ -44,7 +44,43 @@ only in verify mode; a ``mode`` on the dispatch is not read, since no step
 writes one that differs). ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`` round, and so
 does a ``commit_made`` after a review with neither (older supervisors logged
 only the commit); the ``commit_made`` events before the next dispatch are its
-commits, and the round's head is the last of them. ``preflight``
+commits, and the round's head is the last of them. A ``reviewer_dispatched``
+for a lens whose last dispatch is unanswered is a re-send (opensrm-6kqs.14).
+The earlier dispatch was REFUSED by the hook, so no reviewer ran and the
+re-send replaces it, when:
+
+- ``event``: in a record started before ``STEP3_CUTOFF``, a
+  ``reviewer_dispatch_blocked`` for that pass, or naming no pass, lies between
+  the two (r5-supervise Step 3); or
+- ``table``: the dispatch is a row of ``KNOWN_REFUSED``, history only.
+
+From ``STEP3_CUTOFF`` on, ``reviewer_dispatch_blocked`` never marks an
+already-logged dispatch refused (opensrm-6kqs.14): r5-supervise Step 3 logs
+``reviewer_dispatched`` only after the launch returns, so a logged dispatch
+ran, and the block records a launch that never happened, typically the
+refused re-send of a stalled reviewer. A pending dispatch, then
+``reviewer_dispatch_blocked``, then a re-send is therefore a STALL (the stall round below). Step 3 has the supervisor log
+``reviewer_unavailable`` (reason ``stall``) before re-sending a stalled
+reviewer, which closes the round as UNAVAILABLE and clears the hook's window.
+
+``supervisor_blocked`` is not a refusal signal: it means the run paused for
+the user, and wo62-4-2 logs one after a real stall ("two consecutive reviewer
+stalls", escalated to the user) that was then re-sent. Before ``STEP3_CUTOFF``,
+a re-sent dispatch that neither rule refuses is a stall. From the cutoff on, a
+hook refusal leaves no ``reviewer_dispatched`` behind, so a
+``supervisor_blocked`` between a dispatch and its re-send with no
+``reviewer_dispatch_blocked`` is ambiguous and ``build`` refuses the record
+(``blocked_resend_ambiguous``): it may stand in for a mislabelled hook refusal.
+A ``reviewer_dispatch_blocked`` beside it settles that the pause was a real
+pause and the refusal was logged as one; the logged dispatch ran either way,
+so that gap is a stall. A stall is only ever a dispatch with no
+receipt before its re-send, never inferred from ``supervisor_blocked``. The
+earlier reviewer ran and stalled: it is a round of its own, lens status
+``UNAVAILABLE`` with null parser lists, whose mode follows the order rule (it
+is not the lens's first review), started at the stalled dispatch and ended at
+the re-send. Its ``duration_s`` is null: the span to the re-send is how long
+the supervisor waited, not a measurement of the reviewer, which may have
+stopped long before (null when unmeasured, above). ``preflight``
 rounds are bead 5's, ``merge`` and ``mutations`` Phase B's and bead 10's, and
 ``verdict`` bead 6's: this script writes none of them.
 
@@ -76,13 +112,48 @@ MEASURED = ("model", "tier", "tokens_in", "tokens_out", "tokens_total", "duratio
 DERIVED_KEYS = ("bead", "repo", "branch", "base", "head", "rounds")
 
 # The audit events that make rounds. Every other event (preflight drift,
-# tests, rulings, notes...) is informational and ignored here.
+# tests, decisions, notes...) is informational and ignored here.
 DISPATCH = "reviewer_dispatched"
 RECEIPTS = ("findings_received", "advisory_pass_completed")
 # A report the parser refused (exit 2, R5-R9): a round whose lens status is
 # UNAVAILABLE, with no parser output. r5-supervise re-dispatches the same
 # brief once, so the retry keeps the refused round's mode.
 UNAVAILABLE = "reviewer_unavailable"
+# The parallel-block hook refused a launch (r5-supervise Step 3). Before
+# STEP3_CUTOFF a dispatch was logged before its launch, so a re-send after one
+# replaces the refused dispatch. From the cutoff on a refused launch logs no
+# dispatch, so one after a logged dispatch never refuses it: that dispatch ran,
+# and its re-send is a stall (opensrm-6kqs.14). A re-send after none follows a
+# reviewer that ran and stalled, a round of its own (unless KNOWN_REFUSED lists it).
+BLOCK = "reviewer_dispatch_blocked"
+# The run paused for the user. Not a refusal signal (opensrm-6kqs.14): from
+# STEP3_CUTOFF on, one between a dispatch and its re-send is ambiguous.
+PAUSED = "supervisor_blocked"
+# When r5-supervise Step 3 started requiring reviewer_dispatched to be logged
+# after the launch, so that a hook refusal leaves no dispatch event behind.
+STEP3_CUTOFF = "2026-11-13T22:06:05+00:00"
+# Archived dispatches the hook refused that log no reviewer_dispatch_blocked,
+# keyed by (bead, schema lens, the dispatch's ts exactly as logged). HISTORY
+# ONLY: no row for a record started at or after STEP3_CUTOFF, no row whose own
+# ts is at or after it, and each row must match a re-sent dispatch in the
+# record of its bead whose audit trail spans its ts; ``build`` refuses the record otherwise (table_row_after_cutoff,
+# table_row_unmatched), so a mistyped key cannot silently turn a stall into a
+# refusal. Each row says why it was a hook refusal and where that is shown.
+KNOWN_REFUSED = {
+    ("opensrm-6kqs.4", "correctness", "2026-11-13T21:07:15+00:00"): {
+        "reason": "reviewer_dispatched logged before launch; the parallel-block hook "
+                  "refused the Agent call; no reviewer ran",
+        "evidence": "archive r5-state-6kqs.4-completed.json, supervisor_blocked at "
+                    "2026-11-13T21:07:46+00:00 (its reason states the refusal)",
+    },
+    ("opensrm-wo62.4.1", "correctness", "2026-10-27T17:10:18.968444+00:00"): {
+        "reason": "dispatch event logged before launch tripped the parallel-block hook; "
+                  "no reviewer ran",
+        "evidence": "archive r5-state-wo62-4-1-completed.json, supervisor_blocked note at "
+                    "17:10:30.618830; r5_baseline.BLOCKED_DISPATCHES (found by the "
+                    "opensrm-6kqs.1 R5 correctness pass)",
+    },
+}
 FIX_OPENERS = ("fixes_applied", "fix_dispatched")
 COMMIT = "commit_made"
 
@@ -100,6 +171,12 @@ REFUSALS = {
     "bad_commit_event": "a commit_made sha or shas is not a string, a list of strings or a map to strings",
     "bad_summary": "completed_passes is present but not a list",
     "dispatch_unanswered": "a reviewer dispatch has no receipt by the end of audit_trail",
+    "blocked_resend_ambiguous": "from STEP3_CUTOFF on, a supervisor_blocked lies between a "
+                                "dispatch and its re-send with no reviewer_dispatch_blocked",
+    "table_row_after_cutoff": "a KNOWN_REFUSED row falls in a record started at or after "
+                              "STEP3_CUTOFF",
+    "table_row_unmatched": "a KNOWN_REFUSED row matches no re-sent dispatch in the record "
+                           "of its bead that spans its ts",
 }
 
 
@@ -151,7 +228,7 @@ def _lens_entry(dispatch: dict | None, receipt: dict, mode: str,
     started = dispatch.get("ts") if dispatch else None
     measured = dict(dispatch or {})
     measured.update(receipt)  # the receipt is later, so it wins
-    # D2: from the audit timestamps first; a duration the event states is the
+    # From the audit timestamps first; a duration the event states is the
     # fallback (an event with no dispatch stamp); null when neither exists.
     duration = _duration(started, receipt.get("ts"))
     stated = measured.get("duration_s")
@@ -192,7 +269,7 @@ def _sha_or_none(value: Any) -> str | None:
 
 
 def _single_repo(diff_range: Any) -> tuple[str | None, str | None, str | None]:
-    """(repo, base, head) when diff_range names exactly one repo (D3)."""
+    """(repo, base, head) when diff_range names exactly one repo (opensrm-6kqs.4)."""
     if not (isinstance(diff_range, dict) and len(diff_range) == 1):
         return None, None, None
     (repo, span), = diff_range.items()
@@ -242,19 +319,71 @@ def _start_head(trail: list, range_head: str | None) -> str | None:
     return range_head
 
 
+def _record_start(record: dict, trail: list) -> datetime.datetime | None:
+    """When the gate started: started_at (Step 1), else its first event."""
+    start = _instant(record.get("started_at"))
+    if start is not None:
+        return start
+    moments = [m for e in trail if isinstance(e, dict) and (m := _instant(e.get("ts")))]
+    return min(moments) if moments else None
+
+
+def _table_rows(record: dict, trail: list) -> set[tuple]:
+    """The KNOWN_REFUSED keys that belong to this record: its bead's rows
+    whose ts lies within its audit trail's span (a bead gated at several
+    checkpoints has one record each), as r5_baseline.unmatched_table_entries
+    assigns its keys."""
+    bead = record.get("target_bead")
+    moments = [m for e in trail if isinstance(e, dict) and (m := _instant(e.get("ts")))]
+    if not moments:
+        return set()
+    first, last = min(moments), max(moments)
+    out = set()
+    for key in KNOWN_REFUSED:
+        moment = _instant(key[2])
+        if key[0] == bead and (moment is None or first <= moment <= last):
+            out.add(key)  # an unparseable ts is a typo: it can match nothing
+    return out
+
+
 def derive_rounds(record: dict) -> list[dict]:
     """The rounds of one gate, in audit-trail order."""
+    return _derive(record)[0]
+
+
+def refused_dispatches(record: dict) -> list[tuple[str, Any, str]]:
+    """(lens, dispatch ts, rule) for each dispatch the hook refused, where
+    rule is ``event`` or ``table``: re-derived from the kept audit_trail."""
+    return _derive(record)[1]
+
+
+def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
     trail = record.get("audit_trail")
     if not isinstance(trail, list):
         raise BuildRefused("no_audit_trail", type(trail).__name__)
     _, _, range_head = _single_repo(record.get("diff_range"))
     range_head = _start_head(trail, range_head)
     # A gate over several repos has no one tree per round: one repo's commit
-    # would name a review that read them all (D3's reason, per round).
+    # would name a review that read them all (the top-level rule, per round).
     dr = record.get("diff_range")
     multi_repo = isinstance(dr, dict) and len(dr) > 1
+    start = _record_start(record, trail)
+    after_cutoff = start is not None and start >= _instant(STEP3_CUTOFF)
+    rows = _table_rows(record, trail)
+    # The table takes no rows after Step 3 (opensrm-6kqs.14): a row is refused
+    # when its record started at/after the cutoff, or when its own ts is.
+    cutoff = _instant(STEP3_CUTOFF)
+    late = rows if after_cutoff else {
+        k for k in rows if (m := _instant(k[2])) is not None and m >= cutoff}
+    if late:
+        raise BuildRefused("table_row_after_cutoff", ", ".join(map(str, sorted(late))))
+    bead = record.get("target_bead")
+    matched: set[tuple] = set()
+    refusals: list[tuple[str, Any, str]] = []
     rounds: list[dict] = []
     pending: dict[str, dict] = {}  # lens -> its unanswered dispatch event
+    blocked: set[str] = set()  # pending lenses with a reviewer_dispatch_blocked since dispatch
+    paused: set[str] = set()  # pending lenses with a supervisor_blocked since dispatch
     reviewed: set[str] = set()
     fix: dict | None = None  # the open fix round, until the next dispatch
     reviewed_since_dispatch = False  # a receipt came after the last dispatch
@@ -272,12 +401,46 @@ def derive_rounds(record: dict) -> list[dict]:
         name = event["event"]
         if name == DISPATCH:
             lens = _lens_of(event)
-            pending[lens] = event  # a re-sent dispatch replaces an unanswered one
+            stalled = pending.get(lens)
+            rule = None
+            if stalled is not None:
+                key = (bead, lens, stalled.get("ts"))
+                if key in rows:
+                    matched.add(key)
+                # From the cutoff on a block never refuses a logged dispatch
+                # (it ran); it only settles a supervisor_blocked's ambiguity.
+                if lens in blocked and not after_cutoff:
+                    rule = "event"
+                elif key in rows:
+                    rule = "table"
+                elif lens in paused and lens not in blocked and after_cutoff:
+                    raise BuildRefused("blocked_resend_ambiguous",
+                                       f"{lens} dispatched {stalled.get('ts')}, re-sent {event.get('ts')}")
+            if rule is not None:
+                refusals.append((lens, stalled.get("ts"), rule))
+            elif stalled is not None:
+                # The earlier reviewer ran and gave no answer: its own round.
+                mode = "verify" if lens in reviewed else "review"
+                entry = _lens_entry(stalled, {}, mode, unavailable=True)
+                entry["duration_s"] = None
+                stalled_head = stalled.get("head") or head
+                rounds.append({
+                    "kind": mode,
+                    "head": stalled_head if isinstance(stalled_head, str) else None,
+                    "started": stalled.get("ts"), "ended": event.get("ts"),
+                    "lenses": {lens: entry},
+                })
+            # A refused dispatch never ran: the re-send replaces it.
+            pending[lens] = event
+            blocked.discard(lens)
+            paused.discard(lens)
             fix = None
             reviewed_since_dispatch = False
         elif name in RECEIPTS or name == UNAVAILABLE:
             lens = _lens_of(event)
             dispatch = pending.pop(lens, None)
+            blocked.discard(lens)
+            paused.discard(lens)
             mode = "verify" if lens in reviewed else "review"
             unavailable = name == UNAVAILABLE
             if not unavailable:
@@ -291,6 +454,13 @@ def derive_rounds(record: dict) -> list[dict]:
             })
             fix = None
             reviewed_since_dispatch = True
+        elif name in (BLOCK, PAUSED):
+            marks = blocked if name == BLOCK else paused
+            target = event.get("pass")
+            if not isinstance(target, str):
+                marks.update(pending)
+            elif _schema_lens(target) in pending:
+                marks.add(_schema_lens(target))
         elif name in FIX_OPENERS:
             statuses = event.get("statuses")
             if fix is None:
@@ -315,17 +485,19 @@ def derive_rounds(record: dict) -> list[dict]:
         # A reviewer that never answered is not a round we can describe, and
         # dropping it would record a gate with one review fewer than it ran.
         raise BuildRefused("dispatch_unanswered", ", ".join(sorted(pending)))
+    if rows - matched:
+        raise BuildRefused("table_row_unmatched", ", ".join(map(str, sorted(rows - matched))))
     for n, rnd in enumerate(rounds, 1):
         rnd["n"] = n
         commits = rnd.pop("_commits", None)
         # One commit is the round's commit. Several have no single one: null
-        # (ruling b; the audit trail keeps them all, section 6 has one commit
+        # (the audit trail keeps them all; section 6 has one commit
         # per round). Either way a single-repo round ends at its last commit.
         if commits and not multi_repo:
             rnd["head"] = commits[-1]
             if len(commits) == 1:
                 rnd["fix"]["commit"] = commits[0]
-    return [_ordered(r) for r in rounds]
+    return [_ordered(r) for r in rounds], refusals
 
 
 def _ordered(rnd: dict) -> dict:
@@ -454,10 +626,10 @@ def validate(record: Any) -> dict:
             errors.append(f"{key}: not a string or null")
     dr = record.get("diff_range")
     if isinstance(dr, dict) and len(dr) > 1:
-        notes.append(f"multi_repo: {sorted(dr)}; repo, base and head stay null (D3)")
+        notes.append(f"multi_repo: {sorted(dr)}; repo, base and head stay null (opensrm-6kqs.4)")
         for key in ("repo", "base", "head"):
             if record.get(key) is not None:
-                errors.append(f"{key}: set on a multi-repo gate (D3 says null)")
+                errors.append(f"{key}: set on a multi-repo gate (opensrm-6kqs.4: null over several repos)")
     rounds = record.get("rounds")
     if not isinstance(rounds, list):
         errors.append("rounds: not a list")
@@ -506,6 +678,14 @@ def validate(record: Any) -> dict:
                     notes.append(f"{where}: fix round with no single commit")
         elif "fix" in rnd:
             errors.append(f"{where}: fix object on a {kind} round")
+    if isinstance(record.get("audit_trail"), list):
+        # Which rule refused each replaced dispatch (opensrm-6kqs.14),
+        # re-derived from the kept audit_trail; a trail build refuses has none.
+        try:
+            for lens, ts, rule in refused_dispatches(record):
+                notes.append(f"refused dispatch {lens} {ts}: {rule}")
+        except BuildRefused:
+            pass
     verdict = record.get("verdict")
     if verdict is not None and (
             not isinstance(verdict, dict) or verdict.get("state") not in VERDICT_STATES):

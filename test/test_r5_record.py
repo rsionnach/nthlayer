@@ -11,11 +11,12 @@ Two sources fix every input and expected value here, never the script:
   findings_received and reviewer_unavailable; Step 5 fixes_applied; Step 7
   commit_made; Step 8 pass_completed; advisory passes).
 
-The rulings the script applies (Rob, 2026-11-13) are quoted where they set an
-expected value: D2 null when unmeasured, duration from timestamps; D3
-top-level fields only for one repo; D4 the lens key edge_cases; (a) null for
-parser lists a record never carried; (b) no single commit, null; (c) the
-top-level head is where the gate ended; (d) a fix round dispatches no lens.
+The field rules the script applies (opensrm-6kqs.4; the stall and refusal
+rules are opensrm-6kqs.14's) are named where they set an expected value:
+measured fields null when unmeasured, duration from timestamps; top-level
+repo, base and head only for one repo; the lens key edge_cases; null for
+parser lists a record never carried; no single commit, null; the top-level
+head is where the gate ended; a fix round dispatches no lens.
 
 Run: uv run --no-project --with pytest pytest -q test/test_r5_record.py
 """
@@ -114,9 +115,9 @@ def test_rounds_follow_the_sequential_gate():
     kinds = [(r["n"], r["kind"], list(r["lenses"])) for r in out["rounds"]]
     assert kinds == [
         (1, "review", ["correctness"]),
-        (2, "fix", []),  # ruling (d)
+        (2, "fix", []),  # a fix round dispatches no lens
         (3, "verify", ["correctness"]),
-        (4, "review", ["edge_cases"]),  # D4
+        (4, "review", ["edge_cases"]),  # the schema's lens key
         (5, "review", ["provenance"]),
         (6, "review", ["clarity"]),
         (7, "review", ["excellence"]),
@@ -126,7 +127,7 @@ def test_rounds_follow_the_sequential_gate():
 
 def test_heads_move_with_fix_commits():
     """Round head is the HEAD the round ran against: the range head until a
-    fix commit, then that commit. Ruling (c): the top level ends there too."""
+    fix commit, then that commit. The top level ends there too."""
     out = r5_record.build(full_gate())
     assert [r["head"] for r in out["rounds"]] == [HEAD0, FIX1, FIX1, FIX1, FIX1, FIX1, FIX1]
     assert out["rounds"][1]["fix"] == {"commit": FIX1, "statuses": {"a" * 16: "fixed"},
@@ -137,7 +138,7 @@ def test_heads_move_with_fix_commits():
 
 
 def test_lens_entry_measures_and_nulls():
-    """D2: duration_s from dispatch and receipt timestamps (00:10 to 02:40 is
+    """duration_s from dispatch and receipt timestamps (00:10 to 02:40 is
     150 s); tokens_total recorded when the event carries it; model, tier,
     tokens_in and tokens_out null when unmeasured, never 0."""
     entry = r5_record.build(full_gate())["rounds"][0]["lenses"]["correctness"]
@@ -165,12 +166,12 @@ def test_measured_fields_on_the_event_are_kept():
     entry = r5_record.build(g)["rounds"][0]["lenses"]["correctness"]
     assert (entry["model"], entry["tier"], entry["tokens_in"], entry["tokens_out"]) == (
         "claude-opus-5-5", "deep", 40000, 11234)
-    # D2: the timestamps (150 s) come before a duration the event states.
+    # The timestamps (150 s) come before a duration the event states.
     assert entry["duration_s"] == 150.0
 
 
 def test_a_stated_duration_is_the_fallback_when_no_stamps_measure_one():
-    """D2: timestamps first, then the event's own duration_s, then null."""
+    """Timestamps first, then the event's own duration_s, then null."""
     g = full_gate()
     del g["audit_trail"][1]  # no dispatch stamp
     g["audit_trail"][1]["duration_s"] = 149.5
@@ -178,7 +179,7 @@ def test_a_stated_duration_is_the_fallback_when_no_stamps_measure_one():
 
 
 def test_date_only_or_missing_timestamps_give_no_duration():
-    """D2: duration only when both stamps carry a time of day."""
+    """Duration only when both stamps carry a time of day."""
     g = full_gate()
     g["audit_trail"][1]["ts"] = "2026-11-13"
     entry = r5_record.build(g)["rounds"][0]["lenses"]["correctness"]
@@ -190,7 +191,7 @@ def test_date_only_or_missing_timestamps_give_no_duration():
 
 
 def test_receipt_stamped_before_its_dispatch_gives_no_duration():
-    """D2: a duration that cannot be measured is null; a clock that runs
+    """A duration that cannot be measured is null; a clock that runs
     backwards measures nothing, and validate rejects a negative duration."""
     g = full_gate()
     g["audit_trail"][1]["ts"] = "2026-11-13T10:05:00+00:00"  # after the 02:40 receipt
@@ -252,7 +253,7 @@ def test_unavailable_report_is_its_own_round_and_the_retry_keeps_the_mode():
 
 
 def test_pre_parser_records_carry_null_lists():
-    """Ruling (a): a record from before the parser holds counts, not
+    """A record from before the parser holds counts, not
     findings: null (not recorded), never [] (none found)."""
     trail = [
         ev("00:10", "reviewer_dispatched", **{"pass": "correctness"}),
@@ -265,16 +266,16 @@ def test_pre_parser_records_carry_null_lists():
 
 
 def test_multi_repo_gate_leaves_top_level_and_multi_commit_fix_null():
-    """D3: repo, base and head only when diff_range names one repo. Ruling
-    (b): section 6 has one commit per fix round; two have no single one."""
+    """repo, base and head only when diff_range names one repo. Section 6
+    has one commit per fix round; two have no single one."""
     g = full_gate()
     g["diff_range"]["nthlayer-common"] = {"base": "5555555", "head": "6666666", "worktree": None}
     g["audit_trail"].insert(6, ev("03:07", "commit_made", sha=FIX2, repo="nthlayer-common"))
     out = r5_record.build(g)
     assert (out["repo"], out["base"], out["head"]) == (None, None, None)
     fix = out["rounds"][1]
-    # ruling (b): no single commit. And no single tree: rounds over several
-    # repos carry no head, as D3 gives the top level none.
+    # No single commit. And no single tree: rounds over several repos carry
+    # no head, as the top level has none.
     assert fix["fix"]["commit"] is None
     assert all(r["head"] is None for r in out["rounds"])
     report = r5_record.validate(out)
@@ -287,7 +288,7 @@ def test_commit_after_a_review_with_no_fixes_applied_is_a_fix_round():
     """Each fix is a fix round (bead 4). Supervisors before 6kqs.3 logged
     findings_received -> commit_made -> reviewer_dispatched with no
     fixes_applied (opensrm-6kqs.1's record): the commit is that review's fix,
-    and the gate's head moves to it (ruling c)."""
+    and the gate's head moves to it."""
     trail = [
         ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
         ev("01:10", "findings_received", **{"pass": "correctness", "iteration": 1,
@@ -342,8 +343,8 @@ def test_a_commit_before_any_review_is_not_a_round():
 
 
 def test_single_repo_multi_commit_fix_ends_the_gate_at_its_last_commit():
-    """Ruling (c): the top-level head is where the gate ended, also when the
-    last fix round has two commits (and so no single fix.commit, ruling b)."""
+    """The top-level head is where the gate ended, also when the last fix
+    round has two commits (and so no single fix.commit)."""
     g = full_gate()
     g["audit_trail"].insert(6, ev("03:07", "commit_made", sha=FIX2, repo="nthlayer"))
     out = r5_record.build(g)
@@ -352,7 +353,7 @@ def test_single_repo_multi_commit_fix_ends_the_gate_at_its_last_commit():
 
 
 def test_build_keeps_every_existing_field_and_does_not_touch_its_input():
-    """Bead 4: existing fields are kept. Rob's condition on E1: re-run safe,
+    """Bead 4: existing fields are kept. Erratum E1: re-run safe,
     so the input is never edited."""
     g = full_gate()
     before = copy.deepcopy(g)
@@ -399,6 +400,18 @@ REFUSAL_CASES = {
     # gate with one review fewer than it ran.
     "dispatch_unanswered": lambda: dict(full_gate(), audit_trail=full_gate()["audit_trail"] + [
         ev("11:00", "reviewer_dispatched", **{"pass": "provenance", "iteration": 2})]),
+    # opensrm-6kqs.14: after the cutoff a supervisor_blocked re-send is ambiguous.
+    "blocked_resend_ambiguous": lambda: _after_cutoff([PAUSE_AFTER_CUTOFF]),
+    # opensrm-6kqs.14, with TABLE_FOR below: history only, and checked.
+    "table_row_after_cutoff": lambda: _after_cutoff([]),
+    "table_row_unmatched": lambda: full_gate(),
+}
+# The KNOWN_REFUSED a case is built against, where it needs one.
+TABLE_FOR = {
+    "table_row_after_cutoff": {("opensrm-fx.1", "correctness", "2026-11-13T22:10:00+00:00"):
+                               {"reason": "hook refused the launch", "evidence": "synthetic"}},
+    "table_row_unmatched": {("opensrm-fx.1", "correctness", "2026-11-13T10:00:10+00:00"):
+                            {"reason": "hook refused the launch", "evidence": "synthetic"}},
 }
 
 
@@ -425,14 +438,16 @@ def test_a_per_repo_map_of_shas_names_its_commits_not_its_repos():
 
 
 @pytest.mark.parametrize("reason", sorted(REFUSAL_CASES))
-def test_each_refusal(reason):
+def test_each_refusal(reason, monkeypatch):
+    if reason in TABLE_FOR:
+        monkeypatch.setattr(r5_record, "KNOWN_REFUSED", TABLE_FOR[reason])
     assert _refusal(REFUSAL_CASES[reason]()) == reason
 
 
 def test_every_refusal_reason_has_a_case():
     # The parametrise list above must not shrink silently below the set.
     assert set(REFUSAL_CASES) == set(r5_record.REFUSALS)
-    assert len(REFUSAL_CASES) >= 11
+    assert len(REFUSAL_CASES) >= 14
 
 
 # --------------------------------------------------------------- validate
@@ -482,7 +497,7 @@ def test_validate_rejects(name, mutate, needle):
 
 
 def test_validate_accepts_zero_and_null_measurements():
-    """D2: 0 is a measurement, null is none; both are valid."""
+    """0 is a measurement, null is none; both are valid."""
     def zero(o):
         o["rounds"][0]["lenses"]["correctness"].update(tokens_in=0, tokens_out=0, duration_s=0)
     assert _errors(zero) == []
@@ -655,7 +670,7 @@ def test_a_dispatch_mode_is_not_read():
     ({"model": 42}, "model"),
 ], ids=["negative-duration", "negative-tokens", "bool-tokens", "float-tokens", "non-string-model"])
 def test_unmeasurable_values_become_null(fields, key):
-    """D2: a value that is not a measurement is null, never kept or zeroed.
+    """A value that is not a measurement is null, never kept or zeroed.
     (duration_s here has no dispatch stamp to come from first.)"""
     g = full_gate()
     del g["audit_trail"][1]
@@ -730,3 +745,412 @@ def test_sweep_does_not_count_an_invalid_record_as_built(tmp_path, monkeypatch):
     out = r5_record.sweep(tmp_path)
     assert out["built"] == [] and "r5-state-x-completed.json" in out["invalid"]
     assert out["ok"] is False
+
+
+# ------------------------------------------------------- re-sent dispatches
+# A reviewer_dispatched for a lens whose last dispatch has no receipt is a
+# re-send (opensrm-6kqs.14). The shapes: SKILL.md Step 3
+# appends reviewer_dispatched right after the launch and, if the hook refuses
+# it anyway, reviewer_dispatch_blocked {ts, event, pass, iteration, reason}
+# (opensrm-ir5m and 6kqs.2 log it so); Step 4 appends the receipt. Archives
+# 6kqs.2 (reviewer_stalled), bnal (reviewer_dispatch_failed) and t4rd
+# (provenance_checks_skipped) re-send after a reviewer that ran and stalled.
+# supervisor_blocked means the run paused for the user, not a refusal
+# (opensrm-6kqs.14): wo62-4-2 logs one after a real stall that was then
+# re-sent; 6kqs.4 and wo62-4-1 log one after a hook refusal, and those two
+# are rows of the history-only KNOWN_REFUSED table instead.
+
+
+def _resent(between: list, iteration: int = 1, fixed: bool = False) -> dict:
+    trail = [ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1})]
+    if fixed:
+        trail += [received("01:00", "correctness", 1, [finding("correctness")]),
+                  ev("01:30", "fixes_applied", **{"pass": "correctness"}),
+                  ev("01:40", "commit_made", sha=FIX1, repo="nthlayer"),
+                  ev("02:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 2})]
+    trail += [*between,
+              ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": iteration}),
+              received("14:00", "correctness", iteration, []),
+              ev("14:00", "pass_completed", **{"pass": "correctness", "fix_iterations": int(fixed)})]
+    return r5_record.build(state(trail, [("correctness", int(fixed))]))
+
+
+def test_a_stalled_dispatch_re_sent_is_an_unavailable_round():
+    """No block event between: the first reviewer ran and gave no answer. It
+    is its own round, UNAVAILABLE with null lists, from the stalled dispatch
+    to the re-send; duration_s is null (the wait is not the reviewer's
+    measured time). It is not the first review, so the re-send is still a
+    review, and fix_iterations 0 still matches."""
+    out = _resent([ev("10:10", "reviewer_stalled", **{"pass": "correctness", "iteration": 1})])
+    stall, answer = out["rounds"]
+    assert (stall["kind"], answer["kind"]) == ("review", "review")
+    entry = stall["lenses"]["correctness"]
+    assert entry["status"] == "UNAVAILABLE"
+    assert all(entry[k] is None for k in r5_record.PARSER_LISTS)
+    assert entry["duration_s"] is None
+    assert (stall["started"], stall["ended"]) == ("2026-11-13T10:00:10+00:00",
+                                                  "2026-11-13T10:12:00+00:00")
+    assert answer["lenses"]["correctness"]["status"] == "ok"
+    assert answer["started"] == "2026-11-13T10:12:00+00:00"
+    assert r5_record.lens_tally(out["rounds"])["correctness"] == {"review": 1, "verify": 0, "fix": 0}
+    assert r5_record.validate(out)["valid"]
+
+
+def test_a_stalled_verify_re_sent_is_an_unavailable_verify():
+    out = _resent([], iteration=2, fixed=True)
+    kinds = [(r["kind"], next(iter(r["lenses"].values()))["status"]) for r in out["rounds"] if r["lenses"]]
+    assert kinds == [("review", "ok"), ("verify", "UNAVAILABLE"), ("verify", "ok")]
+
+
+@pytest.mark.parametrize("block", [
+    {"event": "reviewer_dispatch_blocked", "pass": "correctness", "iteration": 1,
+     "reason": "parallel-block hook refused the launch"},
+    {"event": "reviewer_dispatch_blocked", "reason": "lock held by another session"},
+], ids=["for-the-pass", "no-pass"])
+def test_a_hook_refused_dispatch_re_sent_is_replaced(block):
+    """The event rule (opensrm-6kqs.14): a reviewer_dispatch_blocked for the
+    pass (or naming none) between: no reviewer ran, so the re-send replaces
+    the dispatch and the gate has one round."""
+    out = _resent([ev("00:40", **block)])
+    assert [(r["kind"], r["started"]) for r in out["rounds"]] == [
+        ("review", "2026-11-13T10:12:00+00:00")]
+    assert r5_record.refused_dispatches(out) == [
+        ("correctness", "2026-11-13T10:00:10+00:00", "event")]
+
+
+@pytest.mark.parametrize("paused", [
+    {"pass": "correctness", "reason": "two consecutive reviewer stalls; escalated to the user"},
+    {"reason": "two consecutive reviewer stalls; escalated to the user"},
+], ids=["for-the-pass", "no-pass"])
+def test_a_supervisor_blocked_re_send_before_the_cutoff_is_a_stall(paused):
+    """opensrm-6kqs.14: before STEP3_CUTOFF, a supervisor_blocked between a
+    dispatch and its re-send, with no reviewer_dispatch_blocked and no table
+    row, leaves a stall (wo62-4-2: dispatched 01:41:08, supervisor_blocked
+    03:53:55 for two consecutive reviewer stalls, escalated to the user, re-sent
+    15:09:30)."""
+    out = _resent([ev("05:00", "supervisor_blocked", **paused)])
+    assert [r["lenses"]["correctness"]["status"] for r in out["rounds"]] == ["UNAVAILABLE", "ok"]
+    assert out["rounds"][0]["started"] == "2026-11-13T10:00:10+00:00"
+    assert r5_record.refused_dispatches(out) == []
+
+
+def _after_cutoff(between: list) -> dict:
+    """A gate started at STEP3_CUTOFF (the rule is 'at or after') whose
+    correctness dispatch is re-sent with ``between`` in the gap."""
+    trail = [{"ts": "2026-11-13T22:10:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             *between,
+             {"ts": "2026-11-13T22:20:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             dict(received("00:00", "correctness", 1, []), ts="2026-11-13T22:25:00+00:00")]
+    return dict(state(trail, [("correctness", 0)]), started_at=r5_record.STEP3_CUTOFF)
+
+
+PAUSE_AFTER_CUTOFF = {"ts": "2026-11-13T22:15:00+00:00", "event": "supervisor_blocked",
+                      "pass": "correctness", "reason": "reviewer stalled; escalated to the user"}
+
+
+def test_a_supervisor_blocked_re_send_after_the_cutoff_is_refused():
+    """opensrm-6kqs.14: from the cutoff on, Step 3 logs reviewer_dispatched
+    after the launch, so a refusal leaves no dispatch; a supervisor_blocked
+    between a dispatch and its re-send with no reviewer_dispatch_blocked is
+    ambiguous, and build refuses rather than guess."""
+    assert _refusal(_after_cutoff([PAUSE_AFTER_CUTOFF])) == "blocked_resend_ambiguous"
+
+
+# opensrm-6kqs.14 and r5-supervise Step 3: from STEP3_CUTOFF on, Step 3
+# logs reviewer_dispatched only after the launch returns, so a logged dispatch
+# ran, and a reviewer_dispatch_blocked records a launch that never happened.
+BLOCK_AFTER_CUTOFF = {"ts": "2026-11-13T22:15:01+00:00", "event": "reviewer_dispatch_blocked",
+                      "pass": "correctness", "iteration": 1,
+                      "reason": "parallel-block hook refused the launch"}
+
+
+def _stall_then_ok(out: dict) -> None:
+    assert [(r["kind"], r["lenses"]["correctness"]["status"]) for r in out["rounds"]] == [
+        ("review", "UNAVAILABLE"), ("review", "ok")]
+    assert out["rounds"][0]["started"] == "2026-11-13T22:10:00+00:00"
+    assert r5_record.refused_dispatches(out) == []
+    assert r5_record.validate(out)["valid"]
+
+
+def test_after_the_cutoff_reviewer_dispatch_blocked_settles_it():
+    """opensrm-6kqs.14: a reviewer_dispatch_blocked beside a supervisor_blocked
+    settles the ambiguity (the refusal was logged as one, the pause is a real
+    pause), and the logged dispatch ran either way: a stall, not a refusal."""
+    _stall_then_ok(r5_record.build(_after_cutoff([PAUSE_AFTER_CUTOFF, BLOCK_AFTER_CUTOFF])))
+
+
+def test_after_the_cutoff_a_blocked_re_send_of_a_stalled_reviewer_is_a_stall():
+    """opensrm-6kqs.14 and SKILL.md Step 3: dispatch (logged after its launch,
+    so it ran) -> reviewer_dispatch_blocked (the hook refused the re-send,
+    since reviewer_dispatched was still the latest event) -> re-send ->
+    findings. The block never refuses the logged dispatch: it is an
+    UNAVAILABLE stall round, and no dispatch is refused."""
+    _stall_then_ok(r5_record.build(_after_cutoff([BLOCK_AFTER_CUTOFF])))
+
+
+def test_after_the_cutoff_reviewer_unavailable_stall_then_re_send():
+    """SKILL.md Step 3, the protocol's normal shape: before re-sending a
+    stalled reviewer the supervisor logs reviewer_unavailable (reason stall),
+    closing the round as UNAVAILABLE; the re-send is then an ordinary review."""
+    trail = [{"ts": "2026-11-13T22:10:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             {"ts": "2026-11-13T22:15:00+00:00", "event": "reviewer_unavailable",
+              "pass": "correctness", "iteration": 1, "reason": "stall"},
+             {"ts": "2026-11-13T22:20:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             dict(received("00:00", "correctness", 1, []), ts="2026-11-13T22:25:00+00:00")]
+    out = r5_record.build(dict(state(trail, [("correctness", 0)]), started_at=r5_record.STEP3_CUTOFF))
+    _stall_then_ok(out)
+    assert out["rounds"][0]["ended"] == "2026-11-13T22:15:00+00:00"
+    assert out["rounds"][1]["started"] == "2026-11-13T22:20:00+00:00"
+
+
+def test_before_the_cutoff_reviewer_dispatch_blocked_still_refuses():
+    """opensrm-6kqs.14: before STEP3_CUTOFF the event rule is unchanged (ir5m
+    stays refused by event): the re-send replaces the blocked dispatch."""
+    out = _resent([ev("00:40", "reviewer_dispatch_blocked", **{
+        "pass": "correctness", "iteration": 1, "reason": "parallel-block hook refused the launch"})])
+    assert len(out["rounds"]) == 1
+    assert r5_record.refused_dispatches(out) == [
+        ("correctness", "2026-11-13T10:00:10+00:00", "event")]
+
+
+def test_a_not_converged_supervisor_blocked_after_a_returned_review_gives_no_stall():
+    """opensrm-6kqs.14: the 'not converged after 3 fix iterations' escalation
+    (6kqs.1, 6kqs.2-store, t4rd, wo62-4-19...) follows a findings_received:
+    the reviewer returned, so the next dispatch is no re-send and no stall is
+    inferred from the supervisor_blocked alone, before or after the cutoff."""
+    for started_at in ("2026-11-13T10:00:00+00:00", r5_record.STEP3_CUTOFF):
+        f = finding("correctness")
+        trail = [ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+                 received("01:00", "correctness", 1, [f]),
+                 ev("01:10", "supervisor_blocked", **{
+                     "pass": "correctness", "reason": "not converged after 3 fix iterations"}),
+                 ev("01:30", "fixes_applied", **{"pass": "correctness"}),
+                 ev("01:40", "commit_made", sha=FIX1, repo="nthlayer"),
+                 ev("02:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 2}),
+                 received("03:00", "correctness", 2, [], closures=[f["fingerprint"]])]
+        out = r5_record.build(dict(state(trail, [("correctness", 1)]), started_at=started_at))
+        assert [r["kind"] for r in out["rounds"]] == ["review", "fix", "verify"]
+        assert all(e["status"] == "ok" for r in out["rounds"] for e in r["lenses"].values())
+
+
+# A synthetic KNOWN_REFUSED row, in the table's key shape (bead, pass, the
+# dispatch ts exact string) with a reason and an evidence pointer.
+ROW = ("opensrm-fx.1", "correctness", "2026-11-13T10:00:10+00:00")
+ROW_TABLE = {ROW: {"reason": "hook refused the launch", "evidence": "synthetic"}}
+
+
+def test_a_table_row_refuses_its_dispatch(monkeypatch):
+    """The table rule (opensrm-6kqs.14): a dispatch listed in KNOWN_REFUSED is
+    replaced by its re-send with no event between."""
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", ROW_TABLE)
+    out = _resent([])
+    assert [r["started"] for r in out["rounds"]] == ["2026-11-13T10:12:00+00:00"]
+    assert r5_record.refused_dispatches(out) == [("correctness", ROW[2], "table")]
+
+
+def test_a_table_row_matches_its_ts_exactly(monkeypatch):
+    """The key is the dispatch ts as logged: the same instant spelt with Z
+    is not the row, so it matches nothing and the record is refused."""
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {
+        (ROW[0], ROW[1], "2026-11-13T10:00:10Z"): ROW_TABLE[ROW]})
+    with pytest.raises(r5_record.BuildRefused) as caught:
+        _resent([])
+    assert caught.value.reason == "table_row_unmatched"
+
+
+def test_a_table_row_in_a_record_after_the_cutoff_is_refused(monkeypatch):
+    """opensrm-6kqs.14: the table is history only; a row in a record started
+    at or after STEP3_CUTOFF is an error."""
+    key = ("opensrm-fx.1", "correctness", "2026-11-13T22:10:00+00:00")
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {key: ROW_TABLE[ROW]})
+    assert _refusal(_after_cutoff([])) == "table_row_after_cutoff"
+
+
+def test_a_table_row_after_the_cutoff_is_refused_in_an_earlier_record(monkeypatch):
+    """opensrm-6kqs.14: the table covers records up to the Step 3 change and
+    takes no new rows after it, so a row whose own ts is at or after
+    STEP3_CUTOFF is an error even when its record started before it."""
+    key = ("opensrm-fx.1", "correctness", "2026-11-13T22:10:00+00:00")
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {key: ROW_TABLE[ROW]})
+    record = dict(_after_cutoff([]), started_at="2026-11-13T22:00:00+00:00")
+    assert r5_record._record_start(record, record["audit_trail"]) < r5_record._instant(
+        r5_record.STEP3_CUTOFF) <= r5_record._instant(key[2])
+    assert _refusal(record) == "table_row_after_cutoff"
+
+
+def test_an_unmatched_table_row_is_refused(monkeypatch):
+    """opensrm-6kqs.14: a row of this bead, inside this record's span, that
+    matches no re-sent dispatch is detected: build refuses (sweep then lists
+    the record under refused). Here the listed dispatch was answered."""
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", ROW_TABLE)
+    assert full_gate()["audit_trail"][1]["ts"] == ROW[2]
+    assert _refusal(full_gate()) == "table_row_unmatched"
+
+
+def test_the_real_table_is_history_with_reasons():
+    """opensrm-6kqs.14: each row carries a reason and an evidence pointer and
+    predates STEP3_CUTOFF."""
+    assert len(r5_record.KNOWN_REFUSED) == 2
+    for (bead, lens, ts), row in r5_record.KNOWN_REFUSED.items():
+        assert bead.startswith("opensrm-") and lens in r5_record.LENSES
+        assert r5_record._instant(ts) < r5_record._instant(r5_record.STEP3_CUTOFF)
+        assert row["reason"] and row["evidence"] and set(row) == {"reason", "evidence"}
+
+
+def test_a_table_row_of_another_bead_or_outside_the_span_is_not_this_records(monkeypatch):
+    """A bead gated at several checkpoints has one record each; a row is the
+    record's whose audit trail spans its ts (r5_baseline's rule)."""
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {
+        ("opensrm-other", *ROW[1:]): ROW_TABLE[ROW],
+        (ROW[0], ROW[1], "2026-11-12T10:00:10+00:00"): ROW_TABLE[ROW]})
+    assert r5_record.build(full_gate())["rounds"]
+
+
+def test_validate_notes_name_the_rule(monkeypatch):
+    """opensrm-6kqs.14: validate says which rule refused each replaced
+    dispatch, re-derived from the kept audit_trail; no new record field."""
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", ROW_TABLE)
+    by_table = _resent([])
+    assert "refused dispatch correctness 2026-11-13T10:00:10+00:00: table" in \
+        r5_record.validate(by_table)["notes"]
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {})
+    by_event = _resent([ev("00:40", "reviewer_dispatch_blocked", **{"pass": "correctness"})])
+    assert "refused dispatch correctness 2026-11-13T10:00:10+00:00: event" in \
+        r5_record.validate(by_event)["notes"]
+    assert set(by_event) == set(full_gate()) | set(r5_record.DERIVED_KEYS)
+
+
+def test_a_block_for_another_pass_does_not_replace_a_stall():
+    out = _resent([ev("00:40", "reviewer_dispatch_blocked", **{"pass": "provenance"})])
+    assert [r["lenses"]["correctness"]["status"] for r in out["rounds"]] == ["UNAVAILABLE", "ok"]
+
+
+def test_a_block_before_the_pending_dispatch_does_not_replace_a_stall():
+    """The block refused the dispatch before it; the pending one ran."""
+    trail = [
+        ev("00:05", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        ev("00:06", "reviewer_dispatch_blocked", **{"pass": "correctness"}),
+        ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        received("14:00", "correctness", 1, []),
+    ]
+    out = r5_record.build(state(trail, [("correctness", 0)]))
+    assert [(r["started"], r["lenses"]["correctness"]["status"]) for r in out["rounds"]] == [
+        ("2026-11-13T10:00:10+00:00", "UNAVAILABLE"), ("2026-11-13T10:12:00+00:00", "ok")]
+
+
+def test_a_stall_keeps_its_dispatch_measurements_but_never_a_duration():
+    """Measured fields logged on the reviewer events pass through (as in
+    test_measured_fields_on_the_event_are_kept), but a stall has no receipt:
+    a duration_s on its dispatch would stand for a run nobody timed."""
+    trail = [
+        ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1,
+                                              "model": "claude-opus-5-5", "duration_s": 30}),
+        ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+        received("14:00", "correctness", 1, []),
+    ]
+    entry = r5_record.build(state(trail, [("correctness", 0)]))["rounds"][0]["lenses"]["correctness"]
+    assert (entry["status"], entry["model"], entry["duration_s"]) == ("UNAVAILABLE", "claude-opus-5-5", None)
+
+
+# ---------------------------------- provenance pass additions (6kqs.14 gate)
+# Each case covers a branch the 6kqs.14 provenance pass mutated and found
+# green; its source is named in the docstring.
+
+
+@pytest.mark.parametrize("dispatch_head, expected", [
+    ("ccccccc", "ccccccc"),
+    (None, HEAD0),
+], ids=["dispatch-head", "running-head"])
+def test_a_stall_round_s_head_is_its_dispatch_s_else_the_running_head(dispatch_head, expected):
+    """opensrm-6kqs.14 (stall = a dispatch with no result before its re-send) makes
+    the stalled dispatch a round of its own, so its head follows the receipt
+    round's rule (test_a_dispatch_head_is_the_round_head: iiay, f751 log the
+    HEAD a reviewer read on reviewer_dispatched): the dispatch's head, else the
+    running head (diff_range's head, HEAD0, before any fix commit)."""
+    first = ev("00:10", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1})
+    if dispatch_head is not None:
+        first["head"] = dispatch_head
+    trail = [first,
+             ev("12:00", "reviewer_dispatched", **{"pass": "correctness", "iteration": 1}),
+             received("14:00", "correctness", 1, [])]
+    stall, answer = r5_record.build(state(trail, [("correctness", 0)]))["rounds"]
+    assert stall["lenses"]["correctness"]["status"] == "UNAVAILABLE"
+    assert stall["head"] == expected
+    assert answer["head"] == HEAD0
+
+
+def test_after_the_cutoff_a_second_re_send_after_a_settled_pause_is_a_stall():
+    """opensrm-6kqs.14: post-cutoff a logged dispatch always ran, and only a
+    supervisor_blocked between a dispatch and ITS re-send is ambiguous. Here
+    the pause (settled by reviewer_dispatch_blocked, SKILL.md Step 3's shape)
+    lies before the first re-send only; the second re-send follows a dispatch
+    with no pause after it, so both earlier dispatches are stalls."""
+    trail = [{"ts": "2026-11-13T22:10:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             PAUSE_AFTER_CUTOFF, BLOCK_AFTER_CUTOFF,
+             {"ts": "2026-11-13T22:20:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             {"ts": "2026-11-13T22:22:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             dict(received("00:00", "correctness", 1, []), ts="2026-11-13T22:25:00+00:00")]
+    out = r5_record.build(dict(state(trail, [("correctness", 0)]), started_at=r5_record.STEP3_CUTOFF))
+    assert [r["lenses"]["correctness"]["status"] for r in out["rounds"]] == [
+        "UNAVAILABLE", "UNAVAILABLE", "ok"]
+    assert [r["started"] for r in out["rounds"]] == [
+        "2026-11-13T22:10:00+00:00", "2026-11-13T22:20:00+00:00", "2026-11-13T22:22:00+00:00"]
+    assert r5_record.refused_dispatches(out) == []
+
+
+def test_a_table_row_exactly_at_the_cutoff_is_refused(monkeypatch):
+    """opensrm-6kqs.14: the table takes no rows at/after STEP3_CUTOFF, so a row
+    whose ts IS the cutoff is late, even in a record started before it. The
+    row otherwise matches a re-sent dispatch, so only the cutoff refuses it."""
+    key = ("opensrm-fx.1", "correctness", r5_record.STEP3_CUTOFF)
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {key: ROW_TABLE[ROW]})
+    trail = [{"ts": r5_record.STEP3_CUTOFF, "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             {"ts": "2026-11-13T22:20:00+00:00", "event": "reviewer_dispatched",
+              "pass": "correctness", "iteration": 1},
+             dict(received("00:00", "correctness", 1, []), ts="2026-11-13T22:25:00+00:00")]
+    record = dict(state(trail, [("correctness", 0)]), started_at="2026-11-13T22:00:00+00:00")
+    assert _refusal(record) == "table_row_after_cutoff"
+
+
+def test_a_table_row_with_an_unparseable_ts_is_refused(monkeypatch):
+    """KNOWN_REFUSED's docstring: a mistyped key must not pass silently. A ts
+    that does not parse can match no logged dispatch, so the row is the
+    record's (its bead) and unmatched: build refuses it."""
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {
+        (ROW[0], ROW[1], "2026-13-99Tbad"): ROW_TABLE[ROW]})
+    assert _refusal(full_gate()) == "table_row_unmatched"
+
+
+def test_a_record_with_no_started_at_is_dated_by_its_first_event():
+    """SKILL.md's r5-state.json carries started_at, but an archive missing it is
+    dated by its first audit event. A trail that starts after STEP3_CUTOFF is
+    then post-cutoff, and opensrm-6kqs.14 refuses its ambiguous supervisor_blocked
+    re-send (before the cutoff the same trail would be a stall)."""
+    record = _after_cutoff([PAUSE_AFTER_CUTOFF])
+    del record["started_at"]
+    assert _refusal(record) == "blocked_resend_ambiguous"
+
+
+def test_validate_checks_the_shape_of_a_record_whose_trail_no_longer_builds():
+    """validate checks the section 6 shape; refused-dispatch notes
+    (opensrm-6kqs.14) are informational, re-derived from audit_trail when it
+    derives. A built record whose trail then gains an unanswered dispatch
+    (dispatch_unanswered) is still shape-valid: validate returns it valid with
+    no refused-dispatch notes rather than raising. Whether rounds[] matches its
+    trail is r5_baseline._check_rounds's question, not the shape's."""
+    record = r5_record.build(full_gate())
+    record["audit_trail"].append(
+        ev("11:00", "reviewer_dispatched", **{"pass": "provenance", "iteration": 2}))
+    assert _refusal(record) == "dispatch_unanswered"
+    report = r5_record.validate(record)
+    assert report["valid"] and report["errors"] == []
+    assert not any(n.startswith("refused dispatch") for n in report["notes"])

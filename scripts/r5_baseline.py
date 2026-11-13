@@ -61,9 +61,19 @@ by the replay corpus (scripts/r5_corpus.py, opensrm-6kqs.2):
 
 Round records (opensrm-6kqs.4). A record written since bead 4 also carries
 ``rounds[]``, which scripts/r5_record.py derives from the same ``audit_trail``.
-This script keeps counting from ``audit_trail``, so an old record and a new one
-are read alike and give the same row; it re-derives ``rounds[]`` and refuses a
-record whose stored rounds differ, since then one of the two is wrong.
+This script re-derives ``rounds[]`` and refuses a record whose stored rounds
+differ, since then one of the two is wrong. For such a record each lens's
+reviews and fix rounds come from ``rounds[]`` (``steps_source`` "rounds",
+opensrm-6kqs.14), because rounds record dispatches exactly: a dispatch the
+hook refused, then re-sent, is one round, where the audit trail shows two
+``reviewer_dispatched`` and BLOCKED_DISPATCHES lists no gate run after bead 4.
+Reviews are the lens's review and verify rounds, UNAVAILABLE ones included (a
+reviewer ran and its report was refused: a model step, as the audit-trail
+count of its dispatch makes it); fix rounds are the fix rounds that follow
+them. The severity columns still come from ``findings_received``: rounds hold
+parser findings or null, not counts. A record whose rounds and audit trail
+disagree on which lenses were reviewed is refused. A record without
+``rounds[]`` is counted from ``audit_trail`` alone, as before.
 
 Like ``eco_doctor.py`` this depends on nothing in the ecosystem: the standard
 library only, and its sibling script r5_record.py (itself standard library).
@@ -296,14 +306,55 @@ def _check_rounds(record: dict) -> None:
         )
 
 
+def _round_counts(rounds: list[dict]) -> dict[str, dict[str, int]]:
+    """Per schema lens: reviews (answered and UNAVAILABLE review and verify
+    rounds) and fix rounds. Fix rounds are attributed as r5_record.lens_tally
+    does; it skips UNAVAILABLE rounds, which are added back here."""
+    counts = {
+        lens: {"reviews": t["review"] + t["verify"], "fix_rounds": t["fix"]}
+        for lens, t in r5_record.lens_tally(rounds).items()
+    }
+    for rnd in rounds:
+        if rnd["kind"] in r5_record.MODES:
+            for lens, entry in rnd["lenses"].items():
+                if entry["status"] == "UNAVAILABLE":
+                    counts.setdefault(lens, {"reviews": 0, "fix_rounds": 0})["reviews"] += 1
+    return counts
+
+
+def _count_from_rounds(lenses: dict, rounds: list[dict]) -> None:
+    """Replace each lens row's step counts with its rounds[] counts."""
+    counts = _round_counts(rounds)
+    by_schema = {r5_record._schema_lens(lens): lens for lens in lenses}
+    if len(by_schema) != len(lenses):
+        # Two audit-trail names (edge-cases, edge_cases) for one schema lens:
+        # rounds[] holds one count for both rows, so either split is a guess.
+        raise RecordError(
+            f"audit_trail names {sorted(lenses)} map to fewer schema lenses"
+            f" {sorted(by_schema)}"
+        )
+    if set(by_schema) != set(counts):
+        raise RecordError(
+            f"rounds[] reviews lenses {sorted(counts)} but audit_trail"
+            f" {sorted(by_schema)}"
+        )
+    for schema_lens, lens in by_schema.items():
+        row = lenses[lens]
+        row["reviews"] = counts[schema_lens]["reviews"]
+        row["fix_rounds"] = counts[schema_lens]["fix_rounds"]
+        row["steps"] = row["reviews"] + row["fix_rounds"]
+        row["steps_source"] = "rounds"
+
+
 def analyse_record(record: dict) -> dict:
     """The baseline row for one archived gate record.
 
     Raises RecordError for a shape it does not read: a record with neither
     ``audit_trail`` nor ``completed_passes``, or a round record whose
     ``rounds[]`` is not what its ``audit_trail`` derives (stale, hand-edited,
-    or refused by r5_record.build). Counting either would be a plausible
-    wrong total.
+    or refused by r5_record.build) or whose rounds review other lenses than
+    its audit trail does. Counting any of these would be a plausible wrong
+    total.
     """
     if not isinstance(record, dict):
         raise RecordError("not a JSON object")
@@ -333,6 +384,8 @@ def analyse_record(record: dict) -> dict:
         row = _lens_row(lens, summaries.get(lens, {}), scan)
         if row is not None:
             lenses[lens] = row
+    if "rounds" in record:
+        _count_from_rounds(lenses, record["rounds"])
     sequence = scan["sequence"] or order
     return {
         "bead": record.get("target_bead"),
