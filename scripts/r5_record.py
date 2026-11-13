@@ -80,9 +80,36 @@ earlier reviewer ran and stalled: it is a round of its own, lens status
 is not the lens's first review), started at the stalled dispatch and ended at
 the re-send. Its ``duration_s`` is null: the span to the re-send is how long
 the supervisor waited, not a measurement of the reviewer, which may have
-stopped long before (null when unmeasured, above). ``preflight``
-rounds are bead 5's, ``merge`` and ``mutations`` Phase B's and bead 10's, and
-``verdict`` bead 6's: this script writes none of them.
+stopped long before (null when unmeasured, above). ``merge`` and
+``mutations`` are Phase B's and bead 10's, and ``verdict`` bead 6's: this
+script writes none of them.
+
+Round 0 (opensrm-6kqs.5, R5-R1). Before the first reviewer, r5-supervise runs
+lint, the type check, the full suite and ``scripts/r5_provenance_checks.py``
+(R5-R33), and appends ONE event:
+
+    {"ts": "<iso8601>", "event": "round0_completed", "head": "<sha>",
+     "started": "<iso8601, optional>",
+     "results": {"lint" | "typecheck" | "suite" | "provenance_checks" | ...:
+                 {"ok": true|false, "command": "<str>"|null, "output_tail": "<str>"|null}},
+     "findings": [<section 6 Finding, lens provenance>, ...],
+     "verdict": "ok" | "PREFLIGHT_FAILED"}
+
+It derives a ``preflight`` round: round 1, ``lenses`` ``{}`` (round 0 runs
+before any model is dispatched, and a lens entry describes a reviewer
+dispatch: model, tier, tokens, mode ``review | verify``; a fix round, which
+dispatches no lens either, is the precedent), and a ``preflight`` object
+holding ``results``, ``findings`` and ``verdict`` as logged. The findings
+keep ``lens: provenance`` in each Finding, so they stay attributed without a
+lens entry. ``verdict`` is ``PREFLIGHT_FAILED`` exactly when a result is not
+ok or there is a finding (a check hit is blocking and stops the gate before
+any reviewer); ``build`` refuses an event that says otherwise
+(``preflight_verdict_mismatch``), one that is not the first round
+(``preflight_not_first``), a malformed one (``bad_preflight_event``), and any
+round after a failed round 0 (``round_after_preflight_failed``). A failed
+round 0 is a complete record of a gate that stopped: it builds and validates
+with that single round. Archives written before bead 5 hold no such event,
+so their rounds are unchanged.
 
 Standard library only, Python 3.9 compatible, like the other gate scripts.
 """
@@ -97,7 +124,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from r5_findings import LENSES, _schema_lens  # noqa: E402  (sibling script)
+from r5_findings import LENSES, SEVERITIES, _schema_lens  # noqa: E402  (sibling script)
 
 KINDS = ("preflight", "review", "fix", "verify")
 MODES = ("review", "verify")
@@ -155,6 +182,8 @@ KNOWN_REFUSED = {
     },
 }
 FIX_OPENERS = ("fixes_applied", "fix_dispatched")
+ROUND0 = "round0_completed"
+PREFLIGHT_VERDICTS = ("ok", "PREFLIGHT_FAILED")
 COMMIT = "commit_made"
 
 # Why ``build`` refuses a record. A fixed set, so a test can hold the whole
@@ -177,6 +206,11 @@ REFUSALS = {
                               "STEP3_CUTOFF",
     "table_row_unmatched": "a KNOWN_REFUSED row matches no re-sent dispatch in the record "
                            "of its bead that spans its ts",
+    "bad_preflight_event": "a round0_completed event is not the documented shape",
+    "preflight_not_first": "a round0_completed event follows a round or a dispatch",
+    "preflight_verdict_mismatch": "a round0_completed verdict disagrees with its results "
+                                  "and findings",
+    "round_after_preflight_failed": "a round follows a round 0 that ended PREFLIGHT_FAILED",
 }
 
 
@@ -346,6 +380,51 @@ def _table_rows(record: dict, trail: list) -> set[tuple]:
     return out
 
 
+def _preflight_problems(pre: Any) -> list[str]:
+    """What is wrong with a round 0 object (results, findings, verdict)."""
+    if not isinstance(pre, dict):
+        return ["not an object"]
+    errors = []
+    results, findings, verdict = pre.get("results"), pre.get("findings"), pre.get("verdict")
+    if not isinstance(results, dict) or not results:
+        errors.append("results: not a non-empty object")
+        results = {}
+    for name, res in results.items():
+        if not (isinstance(res, dict) and isinstance(res.get("ok"), bool)
+                and _is_str_or_none(res.get("command"))
+                and _is_str_or_none(res.get("output_tail"))):
+            errors.append(f"results.{name}: not {{ok: bool, command, output_tail}}")
+    if not isinstance(findings, list):
+        errors.append("findings: not a list")
+        findings = []
+    for i, f in enumerate(findings):
+        if not (isinstance(f, dict) and f.get("lens") == "provenance"
+                and f.get("severity") in SEVERITIES):
+            errors.append(f"findings[{i}]: not a provenance Finding")
+    if verdict not in PREFLIGHT_VERDICTS:
+        errors.append(f"verdict: {verdict!r} not in {PREFLIGHT_VERDICTS}")
+    elif not errors:
+        failed = bool(findings) or not all(r["ok"] for r in results.values())
+        if failed != (verdict == "PREFLIGHT_FAILED"):
+            errors.append(f"verdict: {verdict} but "
+                          + ("a result failed or a check hit" if failed
+                             else "every result ok and no finding"))
+    return errors
+
+
+def _preflight_round(event: dict, head: str | None) -> dict:
+    pre = {k: copy.deepcopy(event.get(k)) for k in ("results", "findings", "verdict")}
+    problems = _preflight_problems(pre)
+    if problems:
+        reason = "preflight_verdict_mismatch" if all(
+            p.startswith("verdict: ") and " but " in p for p in problems) else "bad_preflight_event"
+        raise BuildRefused(reason, "; ".join(problems)[:200])
+    round_head = event.get("head") or head
+    started = event.get("started") if isinstance(event.get("started"), str) else event.get("ts")
+    return {"kind": "preflight", "head": round_head if isinstance(round_head, str) else None,
+            "started": started, "ended": event.get("ts"), "lenses": {}, "preflight": pre}
+
+
 def derive_rounds(record: dict) -> list[dict]:
     """The rounds of one gate, in audit-trail order."""
     return _derive(record)[0]
@@ -399,6 +478,15 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
         if not (isinstance(event, dict) and isinstance(event.get("event"), str)):
             raise BuildRefused("bad_event", repr(event)[:120])
         name = event["event"]
+        if name == ROUND0:
+            if rounds or pending:
+                raise BuildRefused("preflight_not_first", str(event.get("ts")))
+            rounds.append(_preflight_round(event, head))
+            continue
+        if rounds and rounds[0]["kind"] == "preflight" and \
+                rounds[0]["preflight"]["verdict"] == "PREFLIGHT_FAILED" and \
+                name in (DISPATCH, UNAVAILABLE, *RECEIPTS, *FIX_OPENERS):
+            raise BuildRefused("round_after_preflight_failed", f"{name} at {event.get('ts')}")
         if name == DISPATCH:
             lens = _lens_of(event)
             stalled = pending.get(lens)
@@ -501,7 +589,7 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
 
 
 def _ordered(rnd: dict) -> dict:
-    order = ("n", "kind", "head", "started", "ended", "lenses", "fix")
+    order = ("n", "kind", "head", "started", "ended", "lenses", "fix", "preflight")
     return {k: rnd[k] for k in order if k in rnd}
 
 
@@ -678,6 +766,22 @@ def validate(record: Any) -> dict:
                     notes.append(f"{where}: fix round with no single commit")
         elif "fix" in rnd:
             errors.append(f"{where}: fix object on a {kind} round")
+        if kind == "preflight":
+            # Round 0 (opensrm-6kqs.5): round 1, no lens dispatched.
+            if i != 0:
+                errors.append(f"{where}: a preflight round is round 1 or absent")
+            if lenses:
+                errors.append(f"{where}: a preflight round dispatches no lens")
+            errors += [f"{where}.preflight: {p}" for p in _preflight_problems(rnd.get("preflight"))]
+            pre = rnd.get("preflight")
+            if isinstance(pre, dict) and pre.get("verdict") == "PREFLIGHT_FAILED":
+                if len(rounds) > 1:
+                    errors.append(f"{where}: rounds follow a PREFLIGHT_FAILED round 0")
+                v = record.get("verdict")
+                if isinstance(v, dict) and v.get("state") != "PREFLIGHT_FAILED":
+                    errors.append(f"verdict.state: {v.get('state')!r} after a PREFLIGHT_FAILED round 0")
+        elif "preflight" in rnd:
+            errors.append(f"{where}: preflight object on a {kind} round")
     if isinstance(record.get("audit_trail"), list):
         # Which rule refused each replaced dispatch (opensrm-6kqs.14),
         # re-derived from the kept audit_trail; a trail build refuses has none.
