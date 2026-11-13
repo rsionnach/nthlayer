@@ -163,8 +163,18 @@ def test_measured_fields_on_the_event_are_kept():
     g["audit_trail"][1].update(model="claude-opus-5-5", tier="deep")
     g["audit_trail"][2].update(tokens_in=40000, tokens_out=11234, duration_s=149.5)
     entry = r5_record.build(g)["rounds"][0]["lenses"]["correctness"]
-    assert (entry["model"], entry["tier"], entry["tokens_in"], entry["tokens_out"],
-            entry["duration_s"]) == ("claude-opus-5-5", "deep", 40000, 11234, 149.5)
+    assert (entry["model"], entry["tier"], entry["tokens_in"], entry["tokens_out"]) == (
+        "claude-opus-5-5", "deep", 40000, 11234)
+    # D2: the timestamps (150 s) come before a duration the event states.
+    assert entry["duration_s"] == 150.0
+
+
+def test_a_stated_duration_is_the_fallback_when_no_stamps_measure_one():
+    """D2: timestamps first, then the event's own duration_s, then null."""
+    g = full_gate()
+    del g["audit_trail"][1]  # no dispatch stamp
+    g["audit_trail"][1]["duration_s"] = 149.5
+    assert r5_record.build(g)["rounds"][0]["lenses"]["correctness"]["duration_s"] == 149.5
 
 
 def test_date_only_or_missing_timestamps_give_no_duration():

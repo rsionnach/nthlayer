@@ -145,9 +145,13 @@ def _lens_entry(dispatch: dict | None, receipt: dict, mode: str,
     started = dispatch.get("ts") if dispatch else None
     measured = dict(dispatch or {})
     measured.update(receipt)  # the receipt is later, so it wins
-    duration = measured.get("duration_s")
-    if not (isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0):
-        duration = _duration(started, receipt.get("ts"))
+    # D2: from the audit timestamps first; a duration the event states is the
+    # fallback (an event with no dispatch stamp); null when neither exists.
+    duration = _duration(started, receipt.get("ts"))
+    stated = measured.get("duration_s")
+    if duration is None and isinstance(stated, (int, float)) and not isinstance(stated, bool) \
+            and stated >= 0:
+        duration = stated
     entry = {
         "model": measured.get("model") if isinstance(measured.get("model"), str) else None,
         "tier": measured.get("tier") if isinstance(measured.get("tier"), str) else None,
