@@ -6,7 +6,7 @@ docs/superpowers/specs/2026-11-03-r5-gate-v2-nthlayer-spec.md, which cúramóir
 owns. ``r5-state.json`` keeps every existing top-level field; this adds
 ``bead``, ``repo``, ``branch``, ``base``, ``head`` and ``rounds[]``.
 
-``rounds[]`` is DERIVED from ``audit_trail`` (Rob, 2026-11-13, D1), never
+``rounds[]`` is DERIVED from ``audit_trail`` (opensrm-6kqs.4), never
 written by hand: the supervisor appends events, this script turns them into
 rounds, so the two cannot drift apart. ``build`` never edits its input, is
 deterministic and replaces only the keys it derives, so a later rename in the
@@ -23,16 +23,16 @@ either builds into a valid record or refuses with a reason in ``REFUSALS``,
 and 2 when any built record fails ``validate`` or no archive is found: it is
 the re-derivation over the whole archive a change in the shape needs.
 
-Rulings applied (Rob, 2026-11-13):
+Field rules (opensrm-6kqs.4):
 
-- D2: ``model``, ``tier``, ``tokens_in``, ``tokens_out`` and ``duration_s`` are
+- ``model``, ``tier``, ``tokens_in``, ``tokens_out`` and ``duration_s`` are
   null when unmeasured, never 0. ``duration_s`` comes from the dispatch and
   receipt timestamps when both carry a time of day. ``tokens_total`` (erratum
   E1, an addition to section 6) holds the Agent result's total.
-- D3: the top-level ``repo``, ``base`` and ``head`` are filled from
+- the top-level ``repo``, ``base`` and ``head`` are filled from
   ``diff_range`` only when it names one repo; otherwise they are null and
   ``diff_range`` stays the source.
-- D4: ``lenses`` keys use the schema's spelling (``edge_cases``).
+- ``lenses`` keys use the schema's spelling (``edge_cases``).
 
 Records written before the parser (6kqs.3) hold severity counts, not
 findings. Their lens entries carry ``null`` for ``findings`` and the other
@@ -45,9 +45,9 @@ writes one that differs). ``fixes_applied`` or ``fix_dispatched`` opens a ``fix`
 does a ``commit_made`` after a review with neither (older supervisors logged
 only the commit); the ``commit_made`` events before the next dispatch are its
 commits, and the round's head is the last of them. A ``reviewer_dispatched``
-for a lens whose last dispatch is unanswered is a re-send (Rob, 2026-11-13,
-opensrm-6kqs.14). The earlier dispatch was REFUSED by the hook, so no
-reviewer ran and the re-send replaces it, when (Rob's ruling, 2026-11-13):
+for a lens whose last dispatch is unanswered is a re-send (opensrm-6kqs.14).
+The earlier dispatch was REFUSED by the hook, so no reviewer ran and the
+re-send replaces it, when:
 
 - ``event``: in a record started before ``STEP3_CUTOFF``, a
   ``reviewer_dispatch_blocked`` for that pass, or naming no pass, lies between
@@ -55,18 +55,17 @@ reviewer ran and the re-send replaces it, when (Rob's ruling, 2026-11-13):
 - ``table``: the dispatch is a row of ``KNOWN_REFUSED``, history only.
 
 From ``STEP3_CUTOFF`` on, ``reviewer_dispatch_blocked`` never marks an
-already-logged dispatch refused (Rob's ruling, 2026-11-13, opensrm-6kqs.14
-edge-cases): Step 3 logs ``reviewer_dispatched`` only after the launch
-returns, so a logged dispatch ran, and the block records a launch that never
-happened, typically the refused re-send of a stalled reviewer. A pending
-dispatch, then ``reviewer_dispatch_blocked``, then a re-send is therefore a
-STALL (the stall round below). Step 3 has the supervisor log
+already-logged dispatch refused (opensrm-6kqs.14): r5-supervise Step 3 logs
+``reviewer_dispatched`` only after the launch returns, so a logged dispatch
+ran, and the block records a launch that never happened, typically the
+refused re-send of a stalled reviewer. A pending dispatch, then
+``reviewer_dispatch_blocked``, then a re-send is therefore a STALL (the stall round below). Step 3 has the supervisor log
 ``reviewer_unavailable`` (reason ``stall``) before re-sending a stalled
 reviewer, which closes the round as UNAVAILABLE and clears the hook's window.
 
 ``supervisor_blocked`` is not a refusal signal: it means the run paused for
 the user, and wo62-4-2 logs one after a real stall ("two consecutive reviewer
-stalls... escalated to Rob") that was then re-sent. Before ``STEP3_CUTOFF``,
+stalls", escalated to the user) that was then re-sent. Before ``STEP3_CUTOFF``,
 a re-sent dispatch that neither rule refuses is a stall. From the cutoff on, a
 hook refusal leaves no ``reviewer_dispatched`` behind, so a
 ``supervisor_blocked`` between a dispatch and its re-send with no
@@ -81,7 +80,7 @@ earlier reviewer ran and stalled: it is a round of its own, lens status
 is not the lens's first review), started at the stalled dispatch and ended at
 the re-send. Its ``duration_s`` is null: the span to the re-send is how long
 the supervisor waited, not a measurement of the reviewer, which may have
-stopped long before (D2). ``preflight``
+stopped long before (null when unmeasured, above). ``preflight``
 rounds are bead 5's, ``merge`` and ``mutations`` Phase B's and bead 10's, and
 ``verdict`` bead 6's: this script writes none of them.
 
@@ -113,7 +112,7 @@ MEASURED = ("model", "tier", "tokens_in", "tokens_out", "tokens_total", "duratio
 DERIVED_KEYS = ("bead", "repo", "branch", "base", "head", "rounds")
 
 # The audit events that make rounds. Every other event (preflight drift,
-# tests, rulings, notes...) is informational and ignored here.
+# tests, decisions, notes...) is informational and ignored here.
 DISPATCH = "reviewer_dispatched"
 RECEIPTS = ("findings_received", "advisory_pass_completed")
 # A report the parser refused (exit 2, R5-R9): a round whose lens status is
@@ -124,10 +123,10 @@ UNAVAILABLE = "reviewer_unavailable"
 # STEP3_CUTOFF a dispatch was logged before its launch, so a re-send after one
 # replaces the refused dispatch. From the cutoff on a refused launch logs no
 # dispatch, so one after a logged dispatch never refuses it: that dispatch ran,
-# and its re-send is a stall (Rob, 2026-11-13). A re-send after none follows a
+# and its re-send is a stall (opensrm-6kqs.14). A re-send after none follows a
 # reviewer that ran and stalled, a round of its own (unless KNOWN_REFUSED lists it).
 BLOCK = "reviewer_dispatch_blocked"
-# The run paused for the user. Not a refusal signal (Rob, 2026-11-13): from
+# The run paused for the user. Not a refusal signal (opensrm-6kqs.14): from
 # STEP3_CUTOFF on, one between a dispatch and its re-send is ambiguous.
 PAUSED = "supervisor_blocked"
 # When r5-supervise Step 3 started requiring reviewer_dispatched to be logged
@@ -145,8 +144,7 @@ KNOWN_REFUSED = {
         "reason": "reviewer_dispatched logged before launch; the parallel-block hook "
                   "refused the Agent call; no reviewer ran",
         "evidence": "archive r5-state-6kqs.4-completed.json, supervisor_blocked at "
-                    "2026-11-13T21:07:46+00:00 (its reason states the refusal); the "
-                    "hook's PreToolUse refusal in the gate session transcript (private)",
+                    "2026-11-13T21:07:46+00:00 (its reason states the refusal)",
     },
     ("opensrm-wo62.4.1", "correctness", "2026-10-27T17:10:18.968444+00:00"): {
         "reason": "dispatch event logged before launch tripped the parallel-block hook; "
@@ -230,7 +228,7 @@ def _lens_entry(dispatch: dict | None, receipt: dict, mode: str,
     started = dispatch.get("ts") if dispatch else None
     measured = dict(dispatch or {})
     measured.update(receipt)  # the receipt is later, so it wins
-    # D2: from the audit timestamps first; a duration the event states is the
+    # From the audit timestamps first; a duration the event states is the
     # fallback (an event with no dispatch stamp); null when neither exists.
     duration = _duration(started, receipt.get("ts"))
     stated = measured.get("duration_s")
@@ -271,7 +269,7 @@ def _sha_or_none(value: Any) -> str | None:
 
 
 def _single_repo(diff_range: Any) -> tuple[str | None, str | None, str | None]:
-    """(repo, base, head) when diff_range names exactly one repo (D3)."""
+    """(repo, base, head) when diff_range names exactly one repo (opensrm-6kqs.4)."""
     if not (isinstance(diff_range, dict) and len(diff_range) == 1):
         return None, None, None
     (repo, span), = diff_range.items()
@@ -366,13 +364,13 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
     _, _, range_head = _single_repo(record.get("diff_range"))
     range_head = _start_head(trail, range_head)
     # A gate over several repos has no one tree per round: one repo's commit
-    # would name a review that read them all (D3's reason, per round).
+    # would name a review that read them all (the top-level rule, per round).
     dr = record.get("diff_range")
     multi_repo = isinstance(dr, dict) and len(dr) > 1
     start = _record_start(record, trail)
     after_cutoff = start is not None and start >= _instant(STEP3_CUTOFF)
     rows = _table_rows(record, trail)
-    # The table takes no rows after Step 3 (Rob, 2026-11-13): a row is refused
+    # The table takes no rows after Step 3 (opensrm-6kqs.14): a row is refused
     # when its record started at/after the cutoff, or when its own ts is.
     cutoff = _instant(STEP3_CUTOFF)
     late = rows if after_cutoff else {
@@ -493,7 +491,7 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
         rnd["n"] = n
         commits = rnd.pop("_commits", None)
         # One commit is the round's commit. Several have no single one: null
-        # (ruling b; the audit trail keeps them all, section 6 has one commit
+        # (the audit trail keeps them all; section 6 has one commit
         # per round). Either way a single-repo round ends at its last commit.
         if commits and not multi_repo:
             rnd["head"] = commits[-1]
@@ -681,7 +679,7 @@ def validate(record: Any) -> dict:
         elif "fix" in rnd:
             errors.append(f"{where}: fix object on a {kind} round")
     if isinstance(record.get("audit_trail"), list):
-        # Which rule refused each replaced dispatch (Rob, 2026-11-13, point 5),
+        # Which rule refused each replaced dispatch (opensrm-6kqs.14),
         # re-derived from the kept audit_trail; a trail build refuses has none.
         try:
             for lens, ts, rule in refused_dispatches(record):

@@ -565,8 +565,8 @@ def _round_record(bead: str, trail: list, passes: list) -> dict:
 
 def _review(lens: str, counts: dict | None = None, *, dispatches: int = 1) -> list:
     sent = [{"event": "reviewer_dispatched", "pass": lens}]
-    # Step 3: a dispatch the hook refuses logs reviewer_dispatch_blocked (Rob's
-    # ruling, 2026-11-13: supervisor_blocked means the run paused, not this).
+    # Step 3: a dispatch the hook refuses logs reviewer_dispatch_blocked
+    # (opensrm-6kqs.14: supervisor_blocked means the run paused, not this).
     blocked = [{"event": "reviewer_dispatch_blocked", "pass": lens}]
     return (sent + blocked) * (dispatches - 1) + sent + [
         {"event": "findings_received", "pass": lens, "counts": counts or {}}]
@@ -615,8 +615,8 @@ def test_a_round_record_does_not_count_a_dispatch_a_table_row_refuses(monkeypatc
     # The 6kqs.4 archive's shape: reviewer_dispatched logged before launch, the
     # hook refuses the Agent call, the run logs supervisor_blocked (not
     # reviewer_dispatch_blocked), the same iteration is re-sent. Only the
-    # history-only KNOWN_REFUSED table marks it refused (Rob's ruling,
-    # 2026-11-13). The row here is synthetic, keyed like the real 6kqs.4 row
+    # history-only KNOWN_REFUSED table marks it refused
+    # (opensrm-6kqs.14). The row here is synthetic, keyed like the real 6kqs.4 row
     # (bead, schema lens, the dispatch ts as logged), as the BLOCKED_DISPATCHES
     # fixture above is.
     trail = [
@@ -721,7 +721,7 @@ def test_a_round_record_counts_a_stalled_re_sent_review():
 
 
 def test_a_round_record_naming_one_lens_two_ways_is_refused():
-    # edge-cases (SKILL.md's pass name) and edge_cases (the schema's, D4) are
+    # edge-cases (SKILL.md's pass name) and edge_cases (the schema's) are
     # one lens in rounds[]; two audit-trail rows for it cannot share one count.
     trail = [*_review("edge-cases"), *_review("edge_cases")]
     record = _round_record("fx-round-two-names", trail, [])
