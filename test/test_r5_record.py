@@ -405,6 +405,13 @@ REFUSAL_CASES = {
     # opensrm-6kqs.14, with TABLE_FOR below: history only, and checked.
     "table_row_after_cutoff": lambda: _after_cutoff([]),
     "table_row_unmatched": lambda: full_gate(),
+    # opensrm-6kqs.5: round 0's event, as r5_record's docstring defines it.
+    "bad_preflight_event": lambda: _gate_after(round0(results={"lint": {"ok": "yes"}})),
+    "preflight_not_first": lambda: dict(full_gate(), audit_trail=full_gate()["audit_trail"] + [
+        round0("11:00")]),
+    "preflight_verdict_mismatch": lambda: _gate_after(round0(verdict="PREFLIGHT_FAILED")),
+    "round_after_preflight_failed": lambda: _gate_after(round0(suite_ok=False,
+                                                               verdict="PREFLIGHT_FAILED")),
 }
 # The KNOWN_REFUSED a case is built against, where it needs one.
 TABLE_FOR = {
@@ -447,7 +454,7 @@ def test_each_refusal(reason, monkeypatch):
 def test_every_refusal_reason_has_a_case():
     # The parametrise list above must not shrink silently below the set.
     assert set(REFUSAL_CASES) == set(r5_record.REFUSALS)
-    assert len(REFUSAL_CASES) >= 14
+    assert len(REFUSAL_CASES) >= 18
 
 
 # --------------------------------------------------------------- validate
@@ -1154,3 +1161,146 @@ def test_validate_checks_the_shape_of_a_record_whose_trail_no_longer_builds():
     report = r5_record.validate(record)
     assert report["valid"] and report["errors"] == []
     assert not any(n.startswith("refused dispatch") for n in report["notes"])
+
+
+# ------------------------------------------------ round 0 (opensrm-6kqs.5)
+#
+# Bead 5 in section 3 of the spec, and R5-R1: before the first reviewer the
+# supervisor runs lint, the type check, the full suite and the provenance
+# mechanical checks; any failure ends the gate PREFLIGHT_FAILED with the tool
+# output in the record, and a check hit is a blocking provenance finding
+# that stops the gate before any model. The event is the one r5_record's
+# docstring defines (round0_completed); section 6 gives the round its kind,
+# "preflight", and the record its verdict state, "PREFLIGHT_FAILED".
+
+
+def round0(ts: str = "00:05", verdict: str = "ok", findings: list | None = None,
+           suite_ok: bool = True, **more) -> dict:
+    results = {
+        "lint": {"ok": True, "command": "uvx ruff check src/ tests/", "output_tail": "All checks passed!"},
+        "typecheck": {"ok": True, "command": None, "output_tail": None},
+        "suite": {"ok": suite_ok, "command": "uv run pytest -q",
+                  "output_tail": "3 passed" if suite_ok else "1 failed, 2 passed"},
+        "provenance_checks": {"ok": not findings, "command": "r5_provenance_checks.py check",
+                              "output_tail": "exit 2" if findings else "exit 0"},
+    }
+    fields = {"head": HEAD0, "results": results, "findings": findings or [], "verdict": verdict}
+    fields.update(more)
+    return ev(ts, "round0_completed", **fields)
+
+
+def _gate_after(event: dict) -> dict:
+    """The full gate with round 0 logged before its first dispatch."""
+    g = full_gate()
+    g["audit_trail"].insert(0, event)
+    return g
+
+
+def _stopped(event: dict) -> dict:
+    """A gate that stopped at round 0: no dispatch, no pass completed."""
+    rec = state([ev("00:00", "supervisor_started"), event], [])
+    rec["verdict"] = {"state": "PREFLIGHT_FAILED", "tree_sha": None, "head_sha": HEAD0,
+                      "at": event["ts"]}
+    return rec
+
+
+def test_a_clean_round_0_is_round_1_and_the_gate_follows():
+    out = r5_record.build(_gate_after(round0()))
+    first = out["rounds"][0]
+    assert (first["n"], first["kind"], first["head"], first["lenses"]) == (1, "preflight", HEAD0, {})
+    assert first["preflight"]["verdict"] == "ok"
+    assert set(first["preflight"]["results"]) == {"lint", "typecheck", "suite", "provenance_checks"}
+    assert "fix" not in first
+    # The review rounds keep their order, one later.
+    assert [r["kind"] for r in out["rounds"][1:]] == [
+        r["kind"] for r in r5_record.build(full_gate())["rounds"]]
+    assert [r["n"] for r in out["rounds"]] == list(range(1, len(out["rounds"]) + 1))
+    assert r5_record.validate(out)["valid"] is True
+
+
+def test_round_0_s_started_defaults_to_its_event_and_takes_a_stated_start():
+    out = r5_record.build(_gate_after(round0()))["rounds"][0]
+    assert out["started"] == out["ended"] == "2026-11-13T10:00:05+00:00"
+    out = r5_record.build(_gate_after(round0(started="2026-11-13T10:00:01+00:00")))["rounds"][0]
+    assert out["started"] == "2026-11-13T10:00:01+00:00"
+
+
+def test_a_tool_failure_stops_the_gate_and_still_builds():
+    """R5-R1: the record of a gate that stopped is the tool output."""
+    out = r5_record.build(_stopped(round0(suite_ok=False, verdict="PREFLIGHT_FAILED")))
+    assert [r["kind"] for r in out["rounds"]] == ["preflight"]
+    assert out["rounds"][0]["preflight"]["results"]["suite"]["output_tail"] == "1 failed, 2 passed"
+    assert out["head"] == HEAD0
+    assert r5_record.validate(out) == {"valid": True, "errors": [], "notes": []}
+
+
+def test_a_check_hit_is_a_blocking_provenance_finding_and_stops_the_gate():
+    hit = dict(finding("provenance", "CRITICAL", "pytestmark applies skipif to the whole module"),
+               verification_level="script")
+    out = r5_record.build(_stopped(round0(findings=[hit], verdict="PREFLIGHT_FAILED")))
+    assert out["rounds"][0]["preflight"]["findings"] == [hit]
+    assert r5_record.validate(out)["valid"] is True
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"verdict": "PREFLIGHT_FAILED"},  # everything ok, yet failed
+    {"suite_ok": False},  # a tool failed, yet ok
+    {"findings": [dict(finding("provenance", "CRITICAL"), verification_level="script")]},
+], ids=["failed-when-ok", "ok-when-a-tool-failed", "ok-with-a-hit"])
+def test_a_verdict_that_contradicts_its_results_is_refused(kwargs):
+    assert _refusal(_gate_after(round0(**kwargs))) == "preflight_verdict_mismatch"
+
+
+@pytest.mark.parametrize("more", [
+    {"results": {}},
+    {"results": {"suite": {"ok": True, "command": 3, "output_tail": None}}},
+    {"findings": "none"},
+    {"findings": [finding("correctness", "CRITICAL")]},  # not a provenance finding
+    {"verdict": "CLEAN"},
+], ids=["no-results", "command-not-a-string", "findings-not-a-list", "wrong-lens", "bad-verdict"])
+def test_a_malformed_round_0_is_refused(more):
+    assert _refusal(_gate_after(round0(**more))) == "bad_preflight_event"
+
+
+def test_round_0_after_a_dispatch_is_refused():
+    g = full_gate()
+    g["audit_trail"].insert(2, round0("00:15"))  # after the first dispatch
+    assert _refusal(g) == "preflight_not_first"
+
+
+def test_a_second_round_0_is_refused():
+    g = _gate_after(round0())
+    g["audit_trail"].insert(1, round0("00:06"))
+    assert _refusal(g) == "preflight_not_first"
+
+
+def test_validate_holds_round_0_to_its_place_and_shape():
+    out = r5_record.build(_gate_after(round0()))
+    moved = copy.deepcopy(out)
+    moved["rounds"][0], moved["rounds"][1] = moved["rounds"][1], moved["rounds"][0]
+    moved["rounds"][0]["n"], moved["rounds"][1]["n"] = 1, 2
+    assert any("round 1 or absent" in e for e in r5_record.validate(moved)["errors"])
+    with_lens = copy.deepcopy(out)
+    with_lens["rounds"][0]["lenses"] = copy.deepcopy(out["rounds"][1]["lenses"])
+    assert any("dispatches no lens" in e for e in r5_record.validate(with_lens)["errors"])
+    bad = copy.deepcopy(out)
+    bad["rounds"][0]["preflight"]["verdict"] = "PREFLIGHT_FAILED"
+    assert any("preflight: verdict: PREFLIGHT_FAILED but" in e for e in r5_record.validate(bad)["errors"])
+    stray = copy.deepcopy(out)
+    stray["rounds"][1]["preflight"] = out["rounds"][0]["preflight"]
+    assert any("preflight object on a" in e for e in r5_record.validate(stray)["errors"])
+
+
+def test_validate_refuses_rounds_after_a_failed_round_0_and_a_contrary_verdict():
+    out = r5_record.build(_stopped(round0(suite_ok=False, verdict="PREFLIGHT_FAILED")))
+    extra = copy.deepcopy(out)
+    extra["rounds"].append(dict(r5_record.build(full_gate())["rounds"][0], n=2))
+    assert any("follow a PREFLIGHT_FAILED" in e for e in r5_record.validate(extra)["errors"])
+    contrary = copy.deepcopy(out)
+    contrary["verdict"]["state"] = "CLEAN"
+    assert any("verdict.state" in e for e in r5_record.validate(contrary)["errors"])
+
+
+def test_a_gate_with_no_round_0_is_unchanged():
+    """Archives before bead 5 log no round0_completed: no preflight round."""
+    assert all(r["kind"] != "preflight" for r in r5_record.build(full_gate())["rounds"])
