@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -347,7 +348,10 @@ def test_only_excluded_records_is_a_usage_error_not_a_crash(tmp_path):
 # Shapes no archive has today, so these probes are hand-built: each must be
 # refused, since counting it would print a plausible wrong total.
 @pytest.mark.parametrize("record", [
-    {"rounds": [], "audit_trail": []},  # a Phase A.4 round record
+    # round records (6kqs.4) whose rounds[] is not what audit_trail derives:
+    {"rounds": [{"n": 1}], "audit_trail": []},  # stale or hand-edited
+    {"rounds": [], "audit_trail": [],  # a pass with no reviewer: build refuses
+     "completed_passes": [{"name": "correctness", "fix_iterations": 0}]},
     {"target_bead": "x"},  # neither audit_trail nor completed_passes
     {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"critical": "1"}}]},
     {"audit_trail": [{"event": "findings_received", "pass": "c", "counts": {"minor": -1}}]},
@@ -516,3 +520,17 @@ def test_a_key_with_an_unparseable_ts_for_a_present_bead_is_refused(monkeypatch)
     bad = (bead, lens, "2000-01-1T00:00:03Z")  # a dropped digit
     monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({bad}))
     assert r5_baseline.unmatched_table_entries([_row(bead)]) == [bad]
+
+
+def test_a_round_record_reads_as_its_old_record_does():
+    """Bead 4: r5_baseline reads old and new archives alike. A record built
+    by r5_record (rounds[] added, every old field kept) gives the same row
+    as the record it was built from. fx-clarity-advisory is the live
+    three-pass shape, the one gates now write."""
+    sys.path.insert(0, str(HERE.parent / "scripts"))
+    import r5_record
+
+    record = json.loads((FIXTURES / "r5-state-fx-clarity-advisory-completed.json").read_text())
+    built = r5_record.build(record)
+    assert built["rounds"], "the fixture must derive rounds, or this compares nothing"
+    assert r5_baseline.analyse_record(built) == r5_baseline.analyse_record(record)
