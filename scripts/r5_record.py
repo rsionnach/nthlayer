@@ -626,10 +626,10 @@ def validate(record: Any) -> dict:
             errors.append(f"{key}: not a string or null")
     dr = record.get("diff_range")
     if isinstance(dr, dict) and len(dr) > 1:
-        notes.append(f"multi_repo: {sorted(dr)}; repo, base and head stay null (D3)")
+        notes.append(f"multi_repo: {sorted(dr)}; repo, base and head stay null (opensrm-6kqs.4)")
         for key in ("repo", "base", "head"):
             if record.get(key) is not None:
-                errors.append(f"{key}: set on a multi-repo gate (D3 says null)")
+                errors.append(f"{key}: set on a multi-repo gate (opensrm-6kqs.4: null over several repos)")
     rounds = record.get("rounds")
     if not isinstance(rounds, list):
         errors.append("rounds: not a list")
