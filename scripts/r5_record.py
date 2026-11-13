@@ -97,6 +97,8 @@ REFUSALS = {
     "pass_without_review": "a completed pass has no reviewer receipt in audit_trail",
     "verify_count_mismatch": "a lens's derived verify rounds differ from its fix_iterations",
     "bad_commit_event": "a commit_made sha or shas is not a string, a list of strings or a map to strings",
+    "bad_summary": "completed_passes is present but not a list",
+    "dispatch_unanswered": "a reviewer dispatch has no receipt by the end of audit_trail",
 }
 
 
@@ -175,6 +177,18 @@ def _lens_entry(dispatch: dict | None, receipt: dict, mode: str,
     return entry
 
 
+_HEX = frozenset("0123456789abcdef")
+
+
+def _sha_or_none(value: Any) -> str | None:
+    """A commit SHA (4 to 40 hex digits), else None: diff_range sometimes
+    holds a revision expression ("65ba2bc^", "HEAD"), which names no commit
+    once the branch moves."""
+    if isinstance(value, str) and 4 <= len(value) <= 40 and set(value.lower()) <= _HEX:
+        return value
+    return None
+
+
 def _single_repo(diff_range: Any) -> tuple[str | None, str | None, str | None]:
     """(repo, base, head) when diff_range names exactly one repo (D3)."""
     if not (isinstance(diff_range, dict) and len(diff_range) == 1):
@@ -182,9 +196,7 @@ def _single_repo(diff_range: Any) -> tuple[str | None, str | None, str | None]:
     (repo, span), = diff_range.items()
     if not isinstance(span, dict):
         return repo, None, None
-    base, head = span.get("base"), span.get("head")
-    return (repo, base if isinstance(base, str) else None,
-            head if isinstance(head, str) else None)
+    return repo, _sha_or_none(span.get("base")), _sha_or_none(span.get("head"))
 
 
 def _commit_shas(event: dict) -> list[str]:
@@ -298,6 +310,10 @@ def derive_rounds(record: dict) -> list[dict]:
             if shas and not multi_repo:
                 head = shas[-1]
 
+    if pending:
+        # A reviewer that never answered is not a round we can describe, and
+        # dropping it would record a gate with one review fewer than it ran.
+        raise BuildRefused("dispatch_unanswered", ", ".join(sorted(pending)))
     for n, rnd in enumerate(rounds, 1):
         rnd["n"] = n
         commits = rnd.pop("_commits", None)
@@ -347,7 +363,10 @@ def check_against_summary(record: dict, rounds: list[dict]) -> None:
     round (section 6: each fix is one) with no re-review after it
     (opensrm-6kqs.11's correctness pass)."""
     tally = lens_tally(rounds)
-    for summary in record.get("completed_passes") or []:
+    summaries = record.get("completed_passes")
+    if summaries is not None and not isinstance(summaries, list):
+        raise BuildRefused("bad_summary", type(summaries).__name__)
+    for summary in summaries or []:
         if not isinstance(summary, dict) or not isinstance(summary.get("name"), str):
             continue
         lens = _lens_of({"pass": summary["name"]})
@@ -513,6 +532,9 @@ def sweep(directory: Path) -> dict:
             built = build(record)
         except BuildRefused as exc:
             outcome["refused"][path.name] = exc.reason
+            continue
+        except Exception as exc:  # noqa: BLE001  one bad archive must not hide the rest
+            outcome["invalid"][path.name] = [f"build crashed: {type(exc).__name__}: {exc}"]
             continue
         result = validate(built)
         if result["valid"]:

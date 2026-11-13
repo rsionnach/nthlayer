@@ -394,6 +394,11 @@ REFUSAL_CASES = {
         full_gate(), completed_passes=[{"name": "correctness", "fix_iterations": 2}]),
     # 6kqs.2 logged sha as a JSON number: unreadable, so the head is unknown.
     "bad_commit_event": lambda: _with_commit(sha=5859972),
+    "bad_summary": lambda: dict(full_gate(), completed_passes=5),
+    # A reviewer dispatched and never answered: dropping it would record a
+    # gate with one review fewer than it ran.
+    "dispatch_unanswered": lambda: dict(full_gate(), audit_trail=full_gate()["audit_trail"] + [
+        ev("11:00", "reviewer_dispatched", **{"pass": "provenance", "iteration": 2})]),
 }
 
 
@@ -427,7 +432,7 @@ def test_each_refusal(reason):
 def test_every_refusal_reason_has_a_case():
     # The parametrise list above must not shrink silently below the set.
     assert set(REFUSAL_CASES) == set(r5_record.REFUSALS)
-    assert len(REFUSAL_CASES) >= 9
+    assert len(REFUSAL_CASES) >= 11
 
 
 # --------------------------------------------------------------- validate
@@ -511,6 +516,37 @@ def test_sweep_reports_invalid_and_unreadable(tmp_path):
     out = r5_record.sweep(tmp_path)
     assert out["built"] == ["r5-state-good-completed.json"]
     assert "r5-state-bad-completed.json" in out["unreadable"] and not out["ok"]
+
+
+def test_sweep_reports_a_crash_and_carries_on(tmp_path, monkeypatch):
+    """One archive that crashes build is reported invalid; the others are
+    still swept, so a bad file cannot hide the rest of the archive."""
+    for name in ("a", "b"):
+        (tmp_path / f"r5-state-{name}-completed.json").write_text(json.dumps(full_gate()))
+    real = r5_record.build
+
+    def flaky(record):
+        if record is not None and record.get("target_bead") == "boom":
+            raise TypeError("boom")
+        return real(record)
+
+    (tmp_path / "r5-state-a-completed.json").write_text(json.dumps(dict(full_gate(), target_bead="boom")))
+    monkeypatch.setattr(r5_record, "build", flaky)
+    out = r5_record.sweep(tmp_path)
+    assert out["built"] == ["r5-state-b-completed.json"]
+    assert out["invalid"]["r5-state-a-completed.json"][0].startswith("build crashed: TypeError")
+    assert out["ok"] is False
+
+
+def test_revision_expressions_are_not_commits():
+    """jmy.19's diff_range base is "65ba2bc^"; "HEAD" moves with the branch.
+    Neither names a commit, so the record holds null, not the expression."""
+    g = full_gate()
+    g["diff_range"]["nthlayer"].update(base="65ba2bc^", head="HEAD")
+    out = r5_record.build(g)
+    assert out["base"] is None
+    assert out["rounds"][0]["head"] is None  # the start head is not a commit
+    assert out["head"] == FIX1  # the gate still ends at its fix commit
 
 
 def test_sweep_of_an_empty_directory_is_not_ok(tmp_path):
