@@ -30,6 +30,8 @@ import contextlib
 import importlib.util
 import json
 import os
+import shlex
+import signal
 import subprocess
 import sys
 import textwrap
@@ -783,3 +785,99 @@ def test_an_unexpected_error_still_prints_json_and_exits_1(repo, monkeypatch, ca
     data = json.loads(capsys.readouterr().out)
     assert code == 1 and data["errors"] == ["internal: RuntimeError: boom"]
     assert not any(c["ran"] for c in data["checks"].values())
+
+
+# ---------------- edges from the second edge-cases pass [opensrm-6kqs.5]
+
+
+def _wait_for(path: Path, seconds: float) -> None:
+    deadline = time.monotonic() + seconds
+    while not (path.exists() and path.read_text()):
+        assert time.monotonic() < deadline, f"{path} never appeared"
+        time.sleep(0.1)
+
+
+def _dead(pid: int) -> bool:
+    for _ in range(50):  # the reaper may need a moment after SIGKILL
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM], ids=["SIGINT", "SIGTERM"])
+def test_an_interrupt_of_the_script_leaves_no_pytest_behind(repo, tmp_path, signum):
+    """Edge: the pytest run is its own session, so a signal to the script's
+    process group (Ctrl-C, or a tool timeout killing the group) never reaches
+    it. The script must kill the run's group on the way out, then still print
+    its JSON object and exit 1."""
+    pid_file = tmp_path / "pid"
+    base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
+    head = commit(repo, {"tests/test_m.py": f"""
+        import os, time
+        def test_hangs():
+            with open({str(pid_file)!r}, "w") as handle:
+                handle.write(str(os.getpid()))
+            time.sleep(60)
+        """}, "head")
+    wrapper = ["sh", "-c", '"$@"; exit $?', "sh", *PYTEST]  # forks pytest, like uv run
+
+    def own_group_default_sigint():  # an inherited SIG_IGN would stop Python's handler
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    script = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "check", "--repo", str(repo), "--base", base, "--head",
+         head, "--pytest", shlex.join(wrapper)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True, preexec_fn=own_group_default_sigint)
+    try:
+        _wait_for(pid_file, 30)
+        os.killpg(script.pid, signum)
+        out, err = script.communicate(timeout=30)
+        assert script.returncode == 1, err
+        data = json.loads(out)
+        assert data["errors"] == [f"{'interrupted' if signum == signal.SIGINT else 'terminated'}"
+                                  f" by {signum.name}; the check did not finish"]
+        pid = int(pid_file.read_text())
+        assert _dead(pid), f"pytest {pid} outlived the {signum.name}"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(script.pid, signal.SIGKILL)
+        if pid_file.exists() and pid_file.read_text():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_file.read_text()), signal.SIGKILL)
+
+
+def test_a_non_utf8_test_path_cannot_be_checked_but_hides_no_other_finding(repo):
+    """Edge: a test directory whose name is latin-1 bytes (``caf\\xe9``), next
+    to a normal file; both hold a module-level skip. The path cannot be named
+    in a finding, so that file is not checked (exit 1, named escaped in
+    errors), and the normal file's finding is still reported."""
+    skip = b"import pytest\npytestmark = pytest.mark.skip\ndef test_a():\n    assert 1\n"
+    base = commit(repo, {"README": "x\n"}, "base")
+    bad = Path(os.fsdecode(bytes(repo) + b"/tests/caf\xe9/test_x.py"))
+    bad.parent.mkdir(parents=True)
+    bad.write_bytes(skip)
+    head = commit_bytes(repo, {"tests/test_ok.py": skip}, "head")
+    result, code = checks.check(repo, base, head, True, PYTEST, 120)
+    assert code == 1
+    assert [(f["path"], f["start_line"]) for f in hits(result, "module_level_skip")] == [
+        ("tests/test_ok.py", 2)]
+    assert result["errors"] == ["tests/caf\\xe9/test_x.py: the path is not valid UTF-8, so no "
+                                "finding can name it; this file was not checked"]
+    assert result["checks"]["module_level_skip"]["ran"] is False
+
+
+def test_a_changed_line_starting_plus_plus_space_is_not_a_file_header(repo):
+    """Edge: a changed line whose text is ``++ b/x`` appears in the diff as
+    ``+++ b/x``, the shape of a file header. Inside a hunk it is content, so
+    the new skipped test later in the same file is still a changed test."""
+    before = 'import pytest\n\n\ndef test_0():\n    s = """\nx\n"""\n    assert s\n'
+    after = (before.replace("\nx\n", "\n++ b/x\n")
+             + "\n\n@pytest.mark.skip(reason='later')\ndef test_new():\n    assert 1\n")
+    result, code = gate(repo, {"tests/test_a.py": after}, {"tests/test_a.py": before},
+                        static_only=False)
+    assert code == 2, result["errors"]
+    assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
+        "changed test test_new is SKIPPED when run"]

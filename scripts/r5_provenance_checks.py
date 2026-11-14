@@ -59,7 +59,9 @@ basename matches pytest's default ``python_files``: ``test_*.py`` or
 read as bytes: diff text and paths decode as UTF-8 with undecodable bytes
 kept (``surrogateescape``), and each test file is parsed from its bytes, so a
 PEP 263 coding cookie applies. A test file that does not decode or parse
-under the interpreter running this script cannot be checked (exit 1). Any
+under the interpreter running this script cannot be checked (exit 1); so
+can a test file whose path is not UTF-8, which is named in ``errors`` with
+its bytes escaped (``caf\\xe9``) while the other files' findings are kept. Any
 unexpected error still prints the JSON object, with the error in ``errors``,
 and exits 1.
 
@@ -138,7 +140,10 @@ would, plus the outcomes. The probe turns pytest-xdist's distribution off for
 the run (``-n``/``--dist`` in ``addopts`` would otherwise collect in workers and
 leave the probe's process with no items); without xdist it changes nothing.
 The run is its own process group, and ``--timeout`` kills the whole group, not
-only the prefix's wrapper (POSIX only). A module whose collection errors, or a run that
+only the prefix's wrapper (POSIX only). So does any other way out of the run:
+SIGINT (KeyboardInterrupt), SIGTERM (turned into an exception while a run is
+live, the previous handler restored after) or any other exception; the CLI
+then prints its JSON object with the interrupt in ``errors`` and exits 1. A module whose collection errors, or a run that
 exits other than 0, 1 or 5 or writes no probe output, cannot be checked
 (exit 1). Test failures are the suite's business, not this check's.
 
@@ -191,6 +196,30 @@ OK_EXITS = (0, 1, 5)  # passed, tests failed, none collected
 
 class CannotRun(Exception):
     """A check could not run; it is reported, never passed."""
+
+
+class Terminated(BaseException):
+    """SIGTERM arrived; a BaseException, like KeyboardInterrupt, so no
+    ``except Exception`` swallows it on the way out."""
+
+
+def _raise_terminated(signum, frame):
+    raise Terminated("terminated by SIGTERM")
+
+
+@contextlib.contextmanager
+def _sigterm_raises() -> Iterator[None]:
+    """SIGTERM raises Terminated inside the block; the previous handler is
+    restored after. Signal handlers can only be set from the main thread."""
+    import threading
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.signal(signal.SIGTERM, _raise_terminated)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 # ------------------------------------------------------------------- git
@@ -278,24 +307,42 @@ def changed_test_files(repo: Path, base: str, head: str) -> list[str]:
     return sorted(set(out))
 
 
-_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+_HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def changed_lines(repo: Path, base: str, head: str) -> dict[str, set[int]]:
     """HEAD-side lines added or modified per file; a pure deletion counts at
-    the line it was deleted before (and the one after it)."""
+    the line it was deleted before (and the one after it).
+
+    A hunk's body is skipped by the line counts in its ``@@`` header, so a
+    changed line whose text starts ``++ `` (``+++ ...`` in the diff) is
+    content, never a file header."""
     raw = _git(repo, "diff", "-U0", "--find-renames", "--no-color", "--no-ext-diff",
                "--src-prefix=a/", "--dst-prefix=b/", base, head)
     out: dict[str, set[int]] = {}
     current: set[int] | None = None
+    old_left = new_left = 0  # body lines still to come in the current hunk
     for line in raw.split("\n"):  # not splitlines: a diff line may hold \r, \f, \x1c...
+        if old_left or new_left:
+            if line.startswith("-"):
+                old_left -= 1
+            elif line.startswith("+"):
+                new_left -= 1
+            elif line.startswith(" "):
+                old_left, new_left = old_left - 1, new_left - 1
+            # "\ No newline at end of file" counts for neither side
+            continue
         if line.startswith("+++ "):
             target = _diff_path(line[4:])
             current = out.setdefault(target[2:], set()) if target.startswith("b/") else None
             continue
         m = _HUNK.match(line)
-        if m and current is not None:
-            start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+        if m:
+            old_left = int(m.group(1) if m.group(1) is not None else 1)
+            start, count = int(m.group(2)), int(m.group(3) if m.group(3) is not None else 1)
+            new_left = count
+            if current is None:
+                continue
             if count == 0:
                 current.update({start, start + 1})
             else:
@@ -868,15 +915,23 @@ def run_module(repo: Path, prefix: list[str], module: str, probe_dir: str,
                                 stderr=subprocess.STDOUT, start_new_session=True)
     except OSError as exc:
         raise CannotRun(f"{shlex.join(command)}: {exc}") from None
-    try:
-        stdout, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+
+    def kill_group() -> None:
         with contextlib.suppress(ProcessLookupError):  # the group is already gone
             os.killpg(proc.pid, signal.SIGKILL)
         proc.wait()  # not communicate(): a descendant that left the group may hold the pipe
         proc.stdout.close()
-        raise CannotRun(f"{shlex.join(command)}: timed out after {timeout} seconds; "
-                        "its process group was killed") from None
+
+    with _sigterm_raises():
+        try:
+            stdout, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            kill_group()
+            raise CannotRun(f"{shlex.join(command)}: timed out after {timeout} seconds; "
+                            "its process group was killed") from None
+        except BaseException:  # SIGINT, SIGTERM, anything: never orphan the run
+            kill_group()
+            raise
     tail = _tail(stdout.decode("utf-8", "replace"))
     data = None
     if os.path.exists(out_file):
@@ -1024,6 +1079,13 @@ def check(repo: Path, base: str, head: str, static_only: bool, prefix: list[str]
     static_errors = []
     for path in files:
         try:
+            path.encode("utf-8")
+        except UnicodeEncodeError:  # a surrogate: git gave bytes that are not UTF-8
+            shown = path.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
+            static_errors.append(f"{shown}: the path is not valid UTF-8, so no finding can "
+                                 "name it; this file was not checked")
+            continue
+        try:
             tree, source = read_test_blob(repo, result["head"], path)
             hits += static_hits(path, tree)
             parsed[path] = (tree, source)
@@ -1052,7 +1114,7 @@ def check(repo: Path, base: str, head: str, static_only: bool, prefix: list[str]
                 Path(probe_dir, PROBE + ".py").write_text(PROBE_SOURCE, encoding="utf-8")
                 for path in files:
                     if path not in parsed:
-                        continue  # did not parse: already an error above
+                        continue  # not checked statically: already an error above
                     tree, source = parsed[path]
                     try:
                         zero, skipped, detail = runtime_hits(
@@ -1077,11 +1139,11 @@ def check(repo: Path, base: str, head: str, static_only: bool, prefix: list[str]
             for name in RUNTIME_CHECKS:
                 checks[name]["detail"] = {"error": str(exc)}
 
-    try:
-        result["findings"] = [to_finding(h, n) for n, h in enumerate(hits, 1)]
-    except ReportError as exc:  # a hit that is not a valid finding is a bug here
-        result["errors"].append(f"internal: {exc}")
-        return result, 1
+    for n, hit in enumerate(hits, 1):
+        try:
+            result["findings"].append(to_finding(hit, n))
+        except ReportError as exc:  # a bug here; it never hides the other findings
+            result["errors"].append(f"internal: {exc}")
     for f in result["findings"]:
         checks[f["check"]]["hits"] += 1
     if result["errors"] or not all(checks[n]["ran"] for n in STATIC_CHECKS) or (
@@ -1115,14 +1177,22 @@ def main(argv: list) -> int:
     if not repo.is_dir():
         print(f"r5_provenance_checks: {repo} is not a directory", file=sys.stderr)
         return 1
+    def failed(error: str, detail: str) -> dict:
+        return {"base": None, "head": None, "static_only": args.static_only, "test_files": [],
+                "findings": [], "errors": [error],
+                "checks": {name: {"ran": False, "hits": 0, "detail": {"error": detail}}
+                           for name in STATIC_CHECKS + RUNTIME_CHECKS}}
+
     try:
-        result, code = check(repo, args.base, args.head, args.static_only, prefix, args.timeout)
+        with _sigterm_raises():
+            result, code = check(repo, args.base, args.head, args.static_only, prefix,
+                                 args.timeout)
+    except KeyboardInterrupt:  # any pytest run was killed on the way out
+        result, code = failed("interrupted by SIGINT; the check did not finish", "interrupted"), 1
+    except Terminated:
+        result, code = failed("terminated by SIGTERM; the check did not finish", "interrupted"), 1
     except Exception as exc:  # never a traceback without the JSON
-        result = {"base": None, "head": None, "static_only": args.static_only, "test_files": [],
-                  "findings": [], "errors": [f"internal: {type(exc).__name__}: {exc}"],
-                  "checks": {name: {"ran": False, "hits": 0, "detail": {"error": "internal"}}
-                             for name in STATIC_CHECKS + RUNTIME_CHECKS}}
-        code = 1
+        result, code = failed(f"internal: {type(exc).__name__}: {exc}", "internal"), 1
     try:  # a non-UTF-8 path is a surrogate here: escape it rather than fail to print
         text = json.dumps(result, ensure_ascii=False, indent=1)
         text.encode(sys.stdout.encoding or "utf-8")
