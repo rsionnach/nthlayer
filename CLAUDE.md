@@ -215,8 +215,8 @@ examples, generator-specific scripts.
     swallowing except, collection-time parametrise without a minimum) and,
     unless `--static-only`, runtime checks in the repo's own environment
     (zero-collecting module, changed test SKIPPED or deselected). Each hit is
-    a blocking section 6 provenance finding; exit 0 clean, 2 hits, 1 a
-    check that could not run. Standard library and git only. Tests:
+    a blocking section 6 provenance finding; exit 0 clean (or `--help`,
+    which prints no JSON), 2 hits, 1 a check that could not run. Standard library and git only. Tests:
     `test/test_r5_provenance_checks.py`, on the runner's Python and on 3.9.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest

@@ -33,7 +33,8 @@ Output: one JSON object on stdout with ``base`` and ``head`` (full SHAs),
 ``static_only``, ``test_files`` (the changed test files checked),
 ``findings`` (section 6 Finding objects) and ``checks`` (per check: ``ran``,
 ``hits``, ``detail``). Exit 0: every check ran, no hit. Exit 2: every check
-ran and at least one hit. Exit 1: a usage error, or a check that could not
+ran and at least one hit (``--help`` also exits 0, printing usage and no
+JSON). Exit 1: a usage error, or a check that could not
 run (named in its ``detail``, and in ``errors``): a check that cannot run is
 never passed, so the caller treats round 0 as not clean. ``--static-only``
 leaves the runtime checks ``ran: false`` with that reason and does not by
@@ -50,8 +51,9 @@ same outcome reached without mutating anything. Both escapes in this
 workspace's record had that outcome, which is why the severity is CRITICAL:
 opensrm-ih0v's archetype module, which skipped silently outside the sibling
 layout (a module-level skip these checks catch), and oh27's never-firing
-branch. No check here sees oh27's shape, a predicate over a fixture as unreal
-as itself; that is a kill check's, opensrm-6kqs.12 (spec v1.12).
+branch. These checks do not catch oh27's kind: a predicate that never fires
+because its fixtures are as unreal as it is. Catching that takes a kill
+check, which is opensrm-6kqs.12 (spec v1.12).
 
 What a "changed test file" is: a path added, modified, renamed or copied in
 ``git diff BASE HEAD`` (rename detection on; deletions ignored) whose
@@ -145,13 +147,14 @@ leave the probe's process with no items); without xdist it changes nothing.
 The run is its own process group, and ``--timeout`` kills the whole group, not
 only the prefix's wrapper (POSIX only). So does any other way out of the run:
 SIGINT (KeyboardInterrupt), SIGTERM, SIGHUP or SIGQUIT (each turned into an
-exception while a run is live, the previous handlers restored after) or any
+exception while a run is live, the previous handlers restored after; a signal
+the caller already ignores, as ``nohup`` ignores SIGHUP, stays ignored) or any
 other exception; the CLI then prints its JSON object with the interrupt in
 ``errors`` and exits 1. SIGKILL cannot be caught (a known limit,
-opensrm-6kqs.15): after a SIGKILL the run's group is orphaned and runs until it
-ends by itself, since ``--timeout`` was the script's to enforce. To stop it,
-kill that group too; its id is the pid of the script's child (the prefix's
-first process). A module whose collection errors, or a run that
+opensrm-6kqs.15), and the script is the only thing that enforces
+``--timeout``, so after a SIGKILL the run's group is orphaned and runs until it
+ends by itself. To stop it, kill that group too; its id is the pid of the
+script's child (the prefix's first process). A module whose collection errors, or a run that
 exits other than 0, 1 or 5 or writes no probe output, cannot be checked
 (exit 1). Test failures are the suite's business, not this check's.
 
