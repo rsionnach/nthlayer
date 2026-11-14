@@ -46,9 +46,12 @@ lens ``provenance``, severity CRITICAL, ``verification_level`` ``script``,
 names a test that can stay green without exercising what it claims to:
 R5-R32 makes a surviving mutation (a test that passes with the behaviour
 broken) CRITICAL, and a skipped, uncollected or never-failing test is the
-same outcome reached without mutating anything. That is the shape of both
-escapes in this workspace's record: opensrm-ih0v's archetype module, which
-skipped silently outside the sibling layout, and oh27's never-firing branch.
+same outcome reached without mutating anything. Both escapes in this
+workspace's record had that outcome, which is why the severity is CRITICAL:
+opensrm-ih0v's archetype module, which skipped silently outside the sibling
+layout (a module-level skip these checks catch), and oh27's never-firing
+branch. No check here sees oh27's shape, a predicate over a fixture as unreal
+as itself; that is a kill check's, opensrm-6kqs.12 (spec v1.12).
 
 What a "changed test file" is: a path added, modified, renamed or copied in
 ``git diff BASE HEAD`` (rename detection on; deletions ignored) whose
@@ -141,9 +144,14 @@ the run (``-n``/``--dist`` in ``addopts`` would otherwise collect in workers and
 leave the probe's process with no items); without xdist it changes nothing.
 The run is its own process group, and ``--timeout`` kills the whole group, not
 only the prefix's wrapper (POSIX only). So does any other way out of the run:
-SIGINT (KeyboardInterrupt), SIGTERM (turned into an exception while a run is
-live, the previous handler restored after) or any other exception; the CLI
-then prints its JSON object with the interrupt in ``errors`` and exits 1. A module whose collection errors, or a run that
+SIGINT (KeyboardInterrupt), SIGTERM, SIGHUP or SIGQUIT (each turned into an
+exception while a run is live, the previous handlers restored after) or any
+other exception; the CLI then prints its JSON object with the interrupt in
+``errors`` and exits 1. SIGKILL cannot be caught (a known limit,
+opensrm-6kqs.15): after a SIGKILL the run's group is orphaned and runs until it
+ends by itself, since ``--timeout`` was the script's to enforce. To stop it,
+kill that group too; its id is the pid of the script's child (the prefix's
+first process). A module whose collection errors, or a run that
 exits other than 0, 1 or 5 or writes no probe output, cannot be checked
 (exit 1). Test failures are the suite's business, not this check's.
 
@@ -199,27 +207,37 @@ class CannotRun(Exception):
 
 
 class Terminated(BaseException):
-    """SIGTERM arrived; a BaseException, like KeyboardInterrupt, so no
-    ``except Exception`` swallows it on the way out."""
+    """A terminating signal arrived (one of TERMINATING); a BaseException, like
+    KeyboardInterrupt, so no ``except Exception`` swallows it on the way out.
+    ``args[0]`` is the signal's name."""
+
+
+# Signals whose default action ends the script without running its cleanup,
+# which would orphan a live pytest run in its own session (opensrm-6kqs.15
+# added SIGHUP and SIGQUIT). SIGINT is Python's KeyboardInterrupt already;
+# SIGKILL and SIGSTOP cannot be caught at all (see the module docstring).
+TERMINATING = (signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)
 
 
 def _raise_terminated(signum, frame):
-    raise Terminated("terminated by SIGTERM")
+    raise Terminated(signal.Signals(signum).name)
 
 
 @contextlib.contextmanager
-def _sigterm_raises() -> Iterator[None]:
-    """SIGTERM raises Terminated inside the block; the previous handler is
-    restored after. Signal handlers can only be set from the main thread."""
+def _signals_raise() -> Iterator[None]:
+    """Each TERMINATING signal raises Terminated inside the block; the previous
+    handlers are restored after. Signal handlers can only be set from the main
+    thread."""
     import threading
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    previous = signal.signal(signal.SIGTERM, _raise_terminated)
+    previous = {signum: signal.signal(signum, _raise_terminated) for signum in TERMINATING}
     try:
         yield
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
 
 
 # ------------------------------------------------------------------- git
@@ -922,14 +940,14 @@ def run_module(repo: Path, prefix: list[str], module: str, probe_dir: str,
         proc.wait()  # not communicate(): a descendant that left the group may hold the pipe
         proc.stdout.close()
 
-    with _sigterm_raises():
+    with _signals_raise():
         try:
             stdout, _ = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             kill_group()
             raise CannotRun(f"{shlex.join(command)}: timed out after {timeout} seconds; "
                             "its process group was killed") from None
-        except BaseException:  # SIGINT, SIGTERM, anything: never orphan the run
+        except BaseException:  # SIGINT, a TERMINATING signal, anything: never orphan the run
             kill_group()
             raise
     tail = _tail(stdout.decode("utf-8", "replace"))
@@ -1164,8 +1182,8 @@ def main(argv: list) -> int:
     p.add_argument("--timeout", type=float, default=1800.0)
     try:
         args = parser.parse_args(argv)
-    except SystemExit:
-        return 1
+    except SystemExit as exc:  # --help exits 0; a usage error is argparse's 2, ours 1
+        return 0 if exc.code == 0 else 1
     if args.command != "check":
         parser.print_usage(sys.stderr)
         return 1
@@ -1184,13 +1202,14 @@ def main(argv: list) -> int:
                            for name in STATIC_CHECKS + RUNTIME_CHECKS}}
 
     try:
-        with _sigterm_raises():
+        with _signals_raise():
             result, code = check(repo, args.base, args.head, args.static_only, prefix,
                                  args.timeout)
     except KeyboardInterrupt:  # any pytest run was killed on the way out
         result, code = failed("interrupted by SIGINT; the check did not finish", "interrupted"), 1
-    except Terminated:
-        result, code = failed("terminated by SIGTERM; the check did not finish", "interrupted"), 1
+    except Terminated as exc:
+        result, code = failed(f"terminated by {exc.args[0]}; the check did not finish",
+                              "interrupted"), 1
     except Exception as exc:  # never a traceback without the JSON
         result, code = failed(f"internal: {type(exc).__name__}: {exc}", "internal"), 1
     try:  # a non-UTF-8 path is a surrogate here: escape it rather than fail to print
