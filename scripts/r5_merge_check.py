@@ -29,25 +29,34 @@ through ``gh pr merge`` (``gh api``, the web UI), is not seen.
 2. ``gh pr view`` gives the head commit, head branch, changed files and
    commit subjects. Exempt, and allowed without a record:
    - doc-only: every changed file ends ``.md``, ``.rst`` or ``.txt`` (doc-only
-     PRs skip R5 and merge on green CI); a PR whose file list is truncated
-     (``changedFiles`` above the files returned) is not doc-only;
+     PRs skip R5 and merge on green CI), and so did every renamed file's
+     previous path (``gh api .../pulls/<n>/files``); a PR whose file list is
+     truncated (``changedFiles`` above the files returned) is not doc-only;
    - a release-please PR (head branch ``release-please--``) or a dependabot
      PR (``dependabot/``): neither carries a bead, and neither is gated.
 3. Otherwise the beads are the ``opensrm-<id>`` names in the commit subjects
    (bodies cite other beads freely). None: refused.
 4. Each bead's archive is ``<root>/.claude/r5-state-<id>-completed.json`` or
-   ``r5-state-<id>-<repo>-completed.json`` (r5-supervise's Final step 3a;
+   ``r5-state-<id>-<name>-completed.json`` (r5-supervise's Final step 3a;
    ``<id>`` with or without its dots as hyphens). An archive counts only if
    its record's ``repo`` is the PR's repository name: a bead gated in
-   another repo says nothing about this PR's tree. An epic task has no
+   another repo says nothing about this PR's tree. The repo part of the
+   second name is whatever the gate gave it (``-common``, ``-frontdoor``), so
+   every ``r5-state-<id>-*-completed.json`` is read and filtered by its
+   record's ``target_bead`` and ``repo``. An epic task has no
    archive: epic-executor writes a bare ``verdict.json`` in each stage-2 run
    directory, ``<root>/.claude/r5-reports/<id>/epic-<ts>/``, and each counts
    (a bare verdict names no repo; its tree is what is checked).
 5. The PR head's tree comes from GitHub (``gh api
    repos/<owner>/<repo>/commits/<sha>``, ``commit.tree.sha``), so no local
    checkout needs the commit.
-6. Allowed when one of the bead's archives passes ``r5_record.check`` for
-   that tree. Otherwise refused, naming each archive's reason.
+6. The merge must be bound to the head judged: ``--match-head-commit
+   <head>`` with exactly that SHA, and no ``--auto`` (which merges whatever
+   head the PR has later, unseen). Otherwise a push between this check and
+   the merge would merge an unjudged tree.
+7. Allowed when one of the bead's archives (whose record names this bead)
+   passes ``r5_record.check`` for that tree. Otherwise refused, naming each
+   archive's reason.
 
 Standard library only, Python 3.9 compatible, like the other gate scripts.
 """
@@ -96,8 +105,10 @@ def gh(args: list) -> str:
 
 def merges_in(command: str) -> list[list[str]]:
     """The argument lists of each ``gh pr merge`` in a shell command."""
-    # A newline ends a command as ";" does (inside quotes it stays text).
-    lexer = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=";&|")
+    # A backslash-newline continues the line; any other newline ends a command
+    # as ";" does (inside quotes it stays text).
+    text = command.replace("\\\n", " ").replace("\n", " ; ")
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|")
     lexer.whitespace_split = True
     lexer.commenters = ""
     try:
@@ -116,11 +127,28 @@ def merges_in(command: str) -> list[list[str]]:
             current.append(tok)
     merges = []
     for words in out:
+        # A subshell or command substitution opens on the word itself:
+        # "(gh", "$(gh", "`gh".
+        names = [w.lstrip("$(`") for w in words]
         for i in range(len(words) - 2):
-            if Path(words[i]).name == "gh" and words[i + 1:i + 3] == ["pr", "merge"]:
-                merges.append(words[i + 3:])
+            if Path(names[i]).name == "gh" and words[i + 1:i + 3] == ["pr", "merge"]:
+                # ...and closes on the last word: "o/r)".
+                merges.append([w.rstrip(")`") for w in words[i + 3:]])
                 break
     return merges
+
+
+def binding_of(args: list) -> tuple[bool, str | None]:
+    """(``--auto`` given, the ``--match-head-commit`` value or None)."""
+    auto, match = False, None
+    for i, a in enumerate(args):
+        if a == "--auto":
+            auto = True
+        elif a == "--match-head-commit" and i + 1 < len(args):
+            match = args[i + 1]
+        elif a.startswith("--match-head-commit="):
+            match = a.split("=", 1)[1]
+    return auto, match
 
 
 def target_of(args: list) -> tuple[str, str]:
@@ -188,6 +216,14 @@ def exemption(facts: dict) -> str | None:
     return None
 
 
+def renamed_from(repo: str, number: str) -> list[str]:
+    """The previous paths of the PR's renamed files: ``gh pr view`` lists only
+    the new path, so a .py renamed to .md would otherwise read as a doc."""
+    out = gh(["api", "--paginate", f"repos/{repo}/pulls/{number}/files", "--jq",
+              ".[] | select(.previous_filename != null) | .previous_filename"])
+    return [line for line in out.splitlines() if line.strip()]
+
+
 def beads_in(subjects: list) -> list[str]:
     """Bead names in commit subjects, first seen first. GitHub's
     ``messageHeadline`` cuts a long subject with "…": its last word is then
@@ -207,11 +243,13 @@ def archives_for(root: Path, bead: str, repo_name: str) -> list[Path]:
     then the verdict.json of each epic-executor run of it, oldest first."""
     ident = bead[len("opensrm-"):]
     stems = dict.fromkeys([ident, ident.replace(".", "-")])
-    out = []
+    out: list[Path] = []
     for stem in stems:
-        for name in (f"r5-state-{stem}-completed.json",
-                     f"r5-state-{stem}-{repo_name}-completed.json"):
-            p = root / ".claude" / name
+        # 3a's second name carries the repo, by whatever name it was given
+        # ("-common", "-frontdoor"): every one is read, and judge() keeps only
+        # those whose record names this bead and this repo.
+        for p in [root / ".claude" / f"r5-state-{stem}-completed.json",
+                  *sorted((root / ".claude").glob(f"r5-state-{stem}-*-completed.json"))]:
             if p.is_file() and p not in out:
                 out.append(p)
     out += sorted((root / ".claude" / "r5-reports" / bead).glob("epic-*/verdict.json"))
@@ -225,13 +263,22 @@ def head_tree(repo: str, sha: str) -> str:
     return tree
 
 
-def judge(root: Path, repo: str, number: str) -> str:
-    """Why the merge may go ahead, or Refused."""
+def judge(root: Path, repo: str, number: str, args: list = ()) -> str:
+    """Why the merge may go ahead, or Refused. ``args`` are the merge's own
+    arguments: a gated merge must be bound to the head judged."""
     try:
         facts = pr_facts(repo, number)
     except GhError as exc:
         raise Refused(f"cannot read PR {repo}#{number}: {exc}") from exc
     why = exemption(facts)
+    if why and why.startswith("doc-only"):
+        try:
+            code = [p for p in renamed_from(repo, number)
+                    if not p.lower().endswith(DOC_SUFFIXES)]
+        except GhError as exc:
+            raise Refused(f"cannot read the renames of {repo}#{number}: {exc}") from exc
+        if code:
+            why = None  # a file renamed into a doc name was not a doc
     if why:
         return f"{repo}#{number} exempt: {why}"
     beads = beads_in(facts["subjects"])
@@ -242,6 +289,17 @@ def judge(root: Path, repo: str, number: str) -> str:
         tree = head_tree(repo, facts["head"])
     except GhError as exc:
         raise Refused(f"cannot read the head tree of {repo}#{number}: {exc}") from exc
+    # The tree is judged now; the merge happens later (much later with --auto).
+    # Bind it to this head, or a push in between merges an unjudged tree.
+    auto, match = binding_of(list(args))
+    head = facts["head"]
+    if auto:
+        raise Refused(f"{repo}#{number}: --auto merges whatever head the PR has later, "
+                      "which this check never sees; merge without it")
+    if match is None or match.lower() != head.lower():
+        raise Refused(f"{repo}#{number}: bind the merge to the head judged: add "
+                      f"--match-head-commit {head}"
+                      + ("" if match is None else f" (got {match})"))
     name = repo.split("/", 1)[1]
     reasons = []
     for bead in beads:
@@ -254,6 +312,10 @@ def judge(root: Path, repo: str, number: str) -> str:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError) as exc:
                 reasons.append(f"{path.name}: unreadable ({exc})")
+                continue
+            if isinstance(data, dict) and "audit_trail" in data and \
+                    data.get("target_bead") != bead:
+                reasons.append(f"{path.name}: record of {data.get('target_bead')}, not {bead}")
                 continue
             try:
                 record_repo = r5_record.build(data).get("repo") if isinstance(data, dict) else None
@@ -291,7 +353,7 @@ def hook(root: Path, payload: str) -> int:
     try:
         merges = merges_in(command)
         for args in merges:
-            print(f"r5-merge-check: {judge(root, *target_of(args))}", file=sys.stderr)
+            print(f"r5-merge-check: {judge(root, *target_of(args), args)}", file=sys.stderr)
     except Refused as exc:
         print(f"r5-merge-check: merge refused [opensrm-6kqs.6]: {exc}. Gate the bead "
               "(/r5-supervise), or the owner merges by hand.", file=sys.stderr)
@@ -312,7 +374,7 @@ def main(argv: list) -> int:
             return 1
         return hook(root, sys.stdin.read())
     try:
-        result = judge(root, *target_of(argv[3:]))
+        result = judge(root, *target_of(argv[3:]), argv[3:])
     except Refused as exc:
         print(f"r5-merge-check: refused: {exc}", file=sys.stderr)
         return 2

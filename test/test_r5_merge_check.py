@@ -42,6 +42,8 @@ REPO = "rsionnach/nthlayer"
 HEAD = "c" * 40
 TREE = "ab" * 20
 OTHER_TREE = "cd" * 20
+# A gated merge binds itself to the head judged (edge-cases, opensrm-6kqs.6).
+BOUND = ["--match-head-commit", HEAD]
 
 
 def view(files=("scripts/x.py",), subjects=("chore: fix it [opensrm-fx.1]",),
@@ -83,6 +85,9 @@ def stub(monkeypatch):
             if isinstance(answers["view"], Exception):
                 raise answers["view"]
             return json.dumps(answers["view"])
+        if args[:2] == ["api", "--paginate"]:
+            assert args[2] == f"repos/{REPO}/pulls/7/files"
+            return "".join(p + "\n" for p in answers.get("renamed_from", ()))
         if args[0] == "api":
             assert args[1] == f"repos/{REPO}/commits/{answers['view']['headRefOid']}"
             return answers["tree"] + "\n"
@@ -102,14 +107,14 @@ def payload(command: str) -> str:
 
 def test_a_clean_verdict_for_the_head_tree_allows(tmp_path, stub):
     archive(tmp_path, "r5-state-fx.1-completed.json")
-    assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7")
+    assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_a_commit_after_the_gate_refuses_naming_the_mismatch(tmp_path, stub):
     archive(tmp_path, "r5-state-fx.1-completed.json")
     stub["tree"] = OTHER_TREE
     with pytest.raises(mc.Refused) as caught:
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
     assert "tree_mismatch" in str(caught.value)
     assert TREE in str(caught.value) and OTHER_TREE in str(caught.value)
 
@@ -117,12 +122,12 @@ def test_a_commit_after_the_gate_refuses_naming_the_mismatch(tmp_path, stub):
 def test_a_verdict_that_is_not_clean_refuses(tmp_path, stub):
     archive(tmp_path, "r5-state-fx.1-completed.json", state="ESCALATED")
     with pytest.raises(mc.Refused, match="not_clean: state ESCALATED"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_no_archive_refuses(tmp_path, stub):
     with pytest.raises(mc.Refused, match="opensrm-fx.1: no archive"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_an_archive_with_no_verdict_refuses(tmp_path, stub):
@@ -131,26 +136,26 @@ def test_an_archive_with_no_verdict_refuses(tmp_path, stub):
     rec["audit_trail"] = []
     path.write_text(json.dumps(rec))
     with pytest.raises(mc.Refused, match="no_verdict"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_an_archive_from_another_repo_says_nothing_about_this_pr(tmp_path, stub):
     archive(tmp_path, "r5-state-fx.1-completed.json", repo="nthlayer-common")
     with pytest.raises(mc.Refused, match="gated repo nthlayer-common, not nthlayer"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_the_repo_named_archive_is_read_when_the_plain_one_is_another_repos(tmp_path, stub):
     """Final step 3a: the second gate of a bead is r5-state-<bead>-<repo>-completed.json."""
     archive(tmp_path, "r5-state-fx.1-completed.json", repo="nthlayer-common")
     archive(tmp_path, "r5-state-fx.1-nthlayer-completed.json")
-    assert "r5-state-fx.1-nthlayer-completed.json" in mc.judge(tmp_path, REPO, "7")
+    assert "r5-state-fx.1-nthlayer-completed.json" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_a_hyphenated_archive_name_is_found(tmp_path, stub):
     """Older archives spell the bead's dots as hyphens (r5-state-wo62-4-1-...)."""
     archive(tmp_path, "r5-state-fx-1-completed.json")
-    assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7")
+    assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def _epic_verdict(root: Path, run: str, tree: str = TREE, state: str = "CLEAN") -> None:
@@ -164,21 +169,21 @@ def _epic_verdict(root: Path, run: str, tree: str = TREE, state: str = "CLEAN") 
 def test_an_epic_task_s_verdict_json_is_read(tmp_path, stub):
     _epic_verdict(tmp_path, "epic-20261114T100000Z", tree=OTHER_TREE)
     with pytest.raises(mc.Refused, match="tree_mismatch"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
     _epic_verdict(tmp_path, "epic-20261114T110000Z")
-    assert "verdict.json" in mc.judge(tmp_path, REPO, "7")
+    assert "verdict.json" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_an_epic_verdict_that_is_not_clean_refuses(tmp_path, stub):
     _epic_verdict(tmp_path, "epic-20261114T100000Z", state="ESCALATED")
     with pytest.raises(mc.Refused, match="not_clean"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_any_bead_in_the_subjects_with_a_matching_verdict_allows(tmp_path, stub):
     stub["view"] = view(subjects=("test: first [opensrm-fx.2]", "chore: then [opensrm-fx.1]"))
     archive(tmp_path, "r5-state-fx.1-completed.json")
-    assert "opensrm-fx.1 verdict CLEAN" in mc.judge(tmp_path, REPO, "7")
+    assert "opensrm-fx.1 verdict CLEAN" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_beads_come_from_subjects_only():
@@ -200,20 +205,20 @@ def test_a_subject_github_cut_short_loses_only_its_last_word(subject, expected):
 def test_no_bead_in_any_subject_refuses(tmp_path, stub):
     stub["view"] = view(subjects=("quick fix",))
     with pytest.raises(mc.Refused, match="no opensrm-<id> in any commit subject"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_a_head_tree_gh_cannot_give_refuses(tmp_path, stub):
     archive(tmp_path, "r5-state-fx.1-completed.json")
     stub["tree"] = "null"
     with pytest.raises(mc.Refused, match="cannot read the head tree"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_a_pr_gh_cannot_read_refuses(tmp_path, stub):
     stub["view"] = mc.GhError("gh pr view: exit 1: no pull requests found")
     with pytest.raises(mc.Refused, match="cannot read PR"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 # ------------------------------------------------------------ exemptions
@@ -223,8 +228,8 @@ def test_a_pr_gh_cannot_read_refuses(tmp_path, stub):
                          ids=["one-md", "md-rst-txt"])
 def test_a_doc_only_pr_is_exempt(tmp_path, stub, files):
     stub["view"] = view(files=files, subjects=("no bead here",))
-    assert "exempt: doc-only" in mc.judge(tmp_path, REPO, "7")
-    assert not any(c[0] == "api" for c in stub["calls"])
+    assert "exempt: doc-only" in mc.judge(tmp_path, REPO, "7", BOUND)
+    assert not any(c[:2] == ["api", f"repos/{REPO}/commits/{HEAD}"] for c in stub["calls"])
 
 
 @pytest.mark.parametrize("files,changed", [(("CLAUDE.md", "scripts/x.py"), None),
@@ -234,20 +239,20 @@ def test_a_doc_only_pr_is_exempt(tmp_path, stub, files):
 def test_a_pr_that_is_not_only_docs_is_not_exempt(tmp_path, stub, files, changed):
     stub["view"] = view(files=files, changed=changed, subjects=("no bead here",))
     with pytest.raises(mc.Refused, match="no opensrm-<id>"):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 @pytest.mark.parametrize("branch", ["release-please--branches--main--components--meta",
                                     "dependabot/uv/meta-package/nthlayer-core-5.0.0"])
 def test_release_please_and_dependabot_prs_are_exempt(tmp_path, stub, branch):
     stub["view"] = view(branch=branch, subjects=("chore(main): release meta 1.2.0",))
-    assert "exempt: branch" in mc.judge(tmp_path, REPO, "7")
+    assert "exempt: branch" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 def test_a_branch_merely_mentioning_release_please_is_not_exempt(tmp_path, stub):
     stub["view"] = view(branch="fix-release-please--config", subjects=("x",))
     with pytest.raises(mc.Refused):
-        mc.judge(tmp_path, REPO, "7")
+        mc.judge(tmp_path, REPO, "7", BOUND)
 
 
 # --------------------------------------------------------- command parsing
@@ -311,19 +316,19 @@ def test_hook_allows_a_command_that_is_not_a_merge(tmp_path, stub, capsys):
 
 
 def test_hook_refuses_with_exit_2_and_says_why(tmp_path, stub, capsys):
-    assert mc.hook(tmp_path, payload("gh pr merge 7 -R rsionnach/nthlayer --merge")) == 2
+    assert mc.hook(tmp_path, payload(f"gh pr merge 7 -R rsionnach/nthlayer --merge --match-head-commit {HEAD}")) == 2
     err = capsys.readouterr().err
     assert "merge refused" in err and "no archive" in err
 
 
 def test_hook_allows_a_gated_merge(tmp_path, stub, capsys):
     archive(tmp_path, "r5-state-fx.1-completed.json")
-    assert mc.hook(tmp_path, payload("gh pr merge 7 -R rsionnach/nthlayer --merge")) == 0
+    assert mc.hook(tmp_path, payload(f"gh pr merge 7 -R rsionnach/nthlayer --merge --match-head-commit {HEAD}")) == 0
 
 
 def test_hook_refuses_when_any_merge_in_the_command_is_ungated(tmp_path, stub, capsys):
     archive(tmp_path, "r5-state-fx.1-completed.json")
-    cmd = "gh pr merge 7 -R rsionnach/nthlayer && gh pr merge 8"
+    cmd = f"gh pr merge 7 -R rsionnach/nthlayer --match-head-commit {HEAD} && gh pr merge 8"
     assert mc.hook(tmp_path, payload(cmd)) == 2
     assert "pass -R" in capsys.readouterr().err
 
@@ -355,7 +360,7 @@ def test_the_hook_end_to_end_with_a_fake_gh(tmp_path):
     env = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     run = lambda: subprocess.run(  # noqa: E731
         [sys.executable, str(SCRIPT), "hook", "--root", str(tmp_path)],
-        input=payload(f"gh pr merge 7 -R {REPO} --merge"), capture_output=True, text=True,
+        input=payload(f"gh pr merge 7 -R {REPO} --merge --match-head-commit {HEAD}"), capture_output=True, text=True,
         env=env)
     refused = run()
     assert refused.returncode == 2 and "no archive" in refused.stderr
@@ -375,3 +380,71 @@ def test_pr_with_no_pr_named_is_refused_not_a_usage_error():
     out = subprocess.run([sys.executable, str(SCRIPT), "pr", "--root", "x"],
                          capture_output=True, text=True)
     assert out.returncode == 2 and "name exactly one PR" in out.stderr
+
+
+# ------------------------------------- edge-cases pass findings [6kqs.6]
+
+
+@pytest.mark.parametrize("args,match", [
+    (["--auto"] + BOUND, "--auto merges whatever head"),
+    ([], f"add --match-head-commit {HEAD}"),
+    (["--match-head-commit", "e" * 40], "got eeee"),
+    (["--match-head-commit=" + HEAD[:12]], "got cccccccccccc"),
+], ids=["auto", "unbound", "other-head", "short-head"])
+def test_a_gated_merge_must_be_bound_to_the_head_judged(tmp_path, stub, args, match):
+    """gh merges later than this check reads the head (much later with
+    --auto): a push in between would merge a tree no verdict holds for."""
+    archive(tmp_path, "r5-state-fx.1-completed.json")
+    with pytest.raises(mc.Refused, match=match):
+        mc.judge(tmp_path, REPO, "7", args)
+
+
+def test_the_equals_form_of_the_binding_is_read(tmp_path, stub):
+    archive(tmp_path, "r5-state-fx.1-completed.json")
+    assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7", [f"--match-head-commit={HEAD}"])
+
+
+def test_an_exempt_pr_needs_no_binding(tmp_path, stub):
+    stub["view"] = view(files=("CLAUDE.md",), subjects=("x",))
+    assert "exempt" in mc.judge(tmp_path, REPO, "7", ["--auto"])
+
+
+@pytest.mark.parametrize("name", ["r5-state-fx.1-common-completed.json",
+                                  "r5-state-fx.1-frontdoor-completed.json"])
+def test_a_second_archive_under_any_short_repo_name_is_read(tmp_path, stub, name):
+    """Final step 3a names the second gate's archive by its repo, and the
+    archives on disk use short names (zo0o-common, h0at-frontdoor)."""
+    archive(tmp_path, "r5-state-fx.1-completed.json", repo="nthlayer-common")
+    archive(tmp_path, name)
+    assert name in mc.judge(tmp_path, REPO, "7", BOUND)
+
+
+def test_a_glob_match_of_another_bead_is_not_its_record(tmp_path, stub):
+    """r5-state-fx-1-*-completed.json also matches bead fx.1.2's hyphenated
+    archive: the record's target_bead decides."""
+    archive(tmp_path, "r5-state-fx-1-2-completed.json", bead="opensrm-fx.1.2")
+    with pytest.raises(mc.Refused, match="record of opensrm-fx.1.2, not opensrm-fx.1"):
+        mc.judge(tmp_path, REPO, "7", BOUND)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("gh pr  merge 5 -R o/r", [["5", "-R", "o/r"]]),
+    ("echo $(gh pr merge 5 -R o/r)", [["5", "-R", "o/r"]]),
+    ("(gh pr merge 5 -R o/r)", [["5", "-R", "o/r"]]),
+    ("echo `gh pr merge 5 -R o/r`", [["5", "-R", "o/r"]]),
+    ("gh pr merge 5 \\\n  -R o/r", [["5", "-R", "o/r"]]),
+], ids=["two-spaces", "dollar-paren", "subshell", "backticks", "continuation"])
+def test_merges_in_finds_the_shell_forms_edge_cases_named(command, expected):
+    assert mc.merges_in(command) == expected
+
+
+def test_a_code_file_renamed_to_a_doc_name_is_not_doc_only(tmp_path, stub):
+    """gh pr view lists a rename by its new path only."""
+    stub["view"] = view(files=("notes.md",), subjects=("x",))
+    stub["renamed_from"] = ["scripts/x.py"]
+    with pytest.raises(mc.Refused, match="no opensrm-<id>"):
+        mc.judge(tmp_path, REPO, "7", BOUND)
+    stub["renamed_from"] = ["old-notes.txt"]
+    assert "exempt: doc-only" in mc.judge(tmp_path, REPO, "7", BOUND)
+
+

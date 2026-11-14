@@ -203,7 +203,9 @@ The merge side runs before `gh pr merge` as a Claude Code PreToolUse hook
 (`scripts/r5_merge_check.py`), since the records are private and CI cannot
 read them. It checks the PR head's tree against the archive of a bead named
 in the PR's commit subjects, gated in the same repo, or against the
-`verdict.json` epic-executor writes in each task's run directory. Doc-only PRs
+`verdict.json` epic-executor writes in each task's run directory. The merge
+must carry `--match-head-commit <the head judged>` and no `--auto`, so a push
+between the check and the merge cannot merge an unjudged tree. Doc-only PRs
 (`.md`, `.rst`, `.txt`), which skip R5, and release-please and dependabot PRs
 are exempt. A gate over several repos records no verdict: gate each repo on
 its own.
