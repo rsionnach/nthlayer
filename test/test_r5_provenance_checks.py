@@ -942,6 +942,34 @@ def test_an_interrupt_of_the_script_leaves_no_pytest_behind(repo, tmp_path, sign
                 os.kill(int(pid_file.read_text()), signal.SIGKILL)
 
 
+def test_leaving_the_signal_scope_restores_every_previous_handler():
+    """Edge (opensrm-6kqs.15): ``_signals_raise`` promises the previous
+    handlers back on the way out. Sentinel handlers before, SIGQUIT ignored:
+    inside, the others raise Terminated and SIGQUIT stays ignored; after, every
+    sentinel and the ignore are back."""
+    def sentinel_term(signum, frame):  # never called: identity only
+        pass
+
+    def sentinel_hup(signum, frame):
+        pass
+
+    before = {signal.SIGTERM: sentinel_term, signal.SIGHUP: sentinel_hup,
+              signal.SIGQUIT: signal.SIG_IGN}
+    assert set(before) == set(checks.TERMINATING)
+    saved = {signum: signal.getsignal(signum) for signum in before}
+    try:
+        for signum, handler in before.items():
+            signal.signal(signum, handler)
+        with checks._signals_raise():
+            assert signal.getsignal(signal.SIGTERM) is checks._raise_terminated
+            assert signal.getsignal(signal.SIGHUP) is checks._raise_terminated
+            assert signal.getsignal(signal.SIGQUIT) is signal.SIG_IGN
+        assert {s: signal.getsignal(s) for s in before} == before
+    finally:
+        for signum, handler in saved.items():
+            signal.signal(signum, handler)
+
+
 @pytest.mark.parametrize("signum", [signal.SIGHUP, signal.SIGQUIT], ids=["SIGHUP", "SIGQUIT"])
 def test_an_ignored_signal_stays_ignored_and_the_check_finishes(repo, tmp_path, signum):
     """Edge: a caller that ignores a signal (``nohup`` sets SIGHUP to SIG_IGN)
