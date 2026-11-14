@@ -653,6 +653,16 @@ def test_cli_usage_errors_exit_1(args):
     assert out.returncode == 1
 
 
+@pytest.mark.parametrize("args", [["--help"], ["-h"], ["check", "--help"]],
+                         ids=["top", "short", "check"])
+def test_cli_help_exits_0_and_prints_usage(args):
+    """Edge (opensrm-6kqs.15): asking for help is not a usage error. argparse
+    prints the help and raises SystemExit(0); the CLI must exit 0, not 1."""
+    out = subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.startswith("usage: r5_provenance_checks.py")
+
+
 def _real_range(repo: Path) -> tuple[str, str]:
     base = commit(repo, {"README": "x\n"}, "base")
     head = commit(repo, {"tests/test_m.py": "def test_a():\n    assert 1\n"}, "head")
@@ -888,12 +898,14 @@ def _dead(pid: int) -> bool:
     return False
 
 
-@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM], ids=["SIGINT", "SIGTERM"])
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT],
+                         ids=["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"])
 def test_an_interrupt_of_the_script_leaves_no_pytest_behind(repo, tmp_path, signum):
     """Edge: the pytest run is its own session, so a signal to the script's
-    process group (Ctrl-C, or a tool timeout killing the group) never reaches
-    it. The script must kill the run's group on the way out, then still print
-    its JSON object and exit 1."""
+    process group (Ctrl-C, a tool timeout killing the group, a closed terminal's
+    SIGHUP, Ctrl-\\'s SIGQUIT) never reaches it. The script must kill the run's
+    group on the way out, then still print its JSON object and exit 1. SIGHUP
+    and SIGQUIT added by opensrm-6kqs.15."""
     pid_file = tmp_path / "pid"
     base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
     head = commit(repo, {"tests/test_m.py": f"""
