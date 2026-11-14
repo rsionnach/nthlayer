@@ -163,7 +163,9 @@ examples, generator-specific scripts.
     archived `.claude/r5-state-*-completed.json` records (R5 Gate v2
     Phase A, opensrm-6kqs.1): per bead and lens, reviews, findings by
     severity per review, model steps, lens order;
-    `--json` for the replay corpus's `sequential_steps`. Standard library
+    `--json` for the replay corpus's `sequential_steps`; `steps_source` says
+    which derivation each pass used, `rounds` for a record that carries
+    `rounds[]` (opensrm-6kqs.14). Standard library
     only. Tests: `test/test_r5_baseline.py`, run by `ci.yml` on the runner's
     Python and on 3.9 (as the shim runs), over synthetic fixtures, one per
     archive pattern (opensrm-6kqs.8). The
@@ -194,7 +196,11 @@ examples, generator-specific scripts.
     opensrm-6kqs.4). `build` derives `rounds[]` (and the top-level `bead`,
     `repo`, `branch`, `base`, `head`) from an `r5-state.json`'s
     `audit_trail`, keeping every existing field; `validate` checks the shape;
-    `sweep <dir>` re-derives every archive in a directory. It never edits its
+    `sweep <dir>` re-derives every archive in a directory;
+    `refused_dispatches` lists the dispatches the hook refused, by a
+    `reviewer_dispatch_blocked` event in a record started before
+    `STEP3_CUTOFF` or by a row of the history-only `KNOWN_REFUSED` table
+    (opensrm-6kqs.14). It never edits its
     input and refuses, with a reason from a fixed set, a record whose rounds
     would contradict its own `completed_passes`. r5-supervise calls it at
     archive time through the workspace shim `.claude/bin/r5-record.sh`, and
