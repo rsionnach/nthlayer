@@ -30,10 +30,15 @@ _spec.loader.exec_module(r5_baseline)
 # The fixtures are synthetic (README.md), so the known-data tables' real keys
 # match none of them. Each test runs with the tables keyed to the synthetic
 # counterparts of the real entries instead: same pattern, invented identity.
-SYNTHETIC_BLOCKED_DISPATCHES = frozenset({
-    ("fx-blocked-dispatch-after-launch", "correctness", "2000-01-01T00:00:03Z"),
-    ("fx-blocked-dispatch-before-launch", "correctness", "2000-01-01T00:00:01Z"),
-})
+# The refused-dispatch table is r5_record.KNOWN_REFUSED, which this script reads
+# by import (opensrm-6kqs.16), so that is the one patched; its rows carry a
+# reason and an evidence pointer.
+SYNTHETIC_KNOWN_REFUSED = {
+    ("fx-blocked-dispatch-after-launch", "correctness", "2000-01-01T00:00:03Z"):
+        {"reason": "hook refused the launch", "evidence": "synthetic"},
+    ("fx-blocked-dispatch-before-launch", "correctness", "2000-01-01T00:00:01Z"):
+        {"reason": "hook refused the launch", "evidence": "synthetic"},
+}
 SYNTHETIC_PASSLESS_EVENTS = {
     ("fx-checkpointed-bead", "fix_dispatched", "2000-01-01T00:00:42Z"): "scoped(correctness+edge)",
     ("fx-checkpointed-bead", "fixes_applied", "2000-01-01T00:00:43Z"): "scoped(correctness+edge)",
@@ -42,7 +47,7 @@ SYNTHETIC_PASSLESS_EVENTS = {
 
 @pytest.fixture(autouse=True)
 def _synthetic_known_data(monkeypatch):
-    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", SYNTHETIC_BLOCKED_DISPATCHES)
+    monkeypatch.setattr(r5_baseline.r5_record, "KNOWN_REFUSED", SYNTHETIC_KNOWN_REFUSED)
     monkeypatch.setattr(r5_baseline, "PASSLESS_EVENTS", SYNTHETIC_PASSLESS_EVENTS)
 
 
@@ -314,7 +319,7 @@ def test_a_pass_started_but_never_reviewed_is_not_a_lens_run():
     assert row["lenses"] == {} and row["lens_order"] == [] and row["sequential_steps"] == 0
 
 
-# The two fixtures modelling BLOCKED_DISPATCHES: a dispatch the hook refused,
+# The two fixtures modelling KNOWN_REFUSED rows: a dispatch the hook refused,
 # so no review came of it (one refused after launch, one before). Hand counts from each one's events, per lens
 # reviews + fix rounds:
 #   fx-blocked-dispatch-after-launch
@@ -495,10 +500,11 @@ def test_a_directory_without_a_key_s_bead_is_a_subset_not_an_error():
 def test_a_mistyped_key_for_a_bead_that_is_present_is_refused(tmp_path, monkeypatch):
     # The key's ts is off by a second, inside the record's span: the blocked
     # dispatch would count as a review. main() must refuse, not print a table.
-    bead, lens, ts = sorted(SYNTHETIC_BLOCKED_DISPATCHES)[0]
+    bead, lens, ts = sorted(SYNTHETIC_KNOWN_REFUSED)[0]
     typo = ts.replace(":03Z", ":04Z")
     assert typo != ts
-    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({(bead, lens, typo)}))
+    monkeypatch.setattr(r5_baseline.r5_record, "KNOWN_REFUSED",
+                        {(bead, lens, typo): SYNTHETIC_KNOWN_REFUSED[(bead, lens, ts)]})
     shutil.copy(FIXTURES / f"r5-state-{bead}-completed.json", tmp_path)
     rows = [r5_baseline.analyse_record(json.loads(p.read_text())) for p in tmp_path.glob("*.json")]
     assert r5_baseline.unmatched_table_entries(rows) == [(bead, lens, typo)]
@@ -516,9 +522,10 @@ def test_another_checkpoint_of_the_key_s_bead_is_a_subset_not_an_error(tmp_path)
 
 
 def test_a_key_with_an_unparseable_ts_for_a_present_bead_is_refused(monkeypatch):
-    bead, lens, _ts = sorted(SYNTHETIC_BLOCKED_DISPATCHES)[0]
+    bead, lens, ts = sorted(SYNTHETIC_KNOWN_REFUSED)[0]
     bad = (bead, lens, "2000-01-1T00:00:03Z")  # a dropped digit
-    monkeypatch.setattr(r5_baseline, "BLOCKED_DISPATCHES", frozenset({bad}))
+    monkeypatch.setattr(r5_baseline.r5_record, "KNOWN_REFUSED",
+                        {bad: SYNTHETIC_KNOWN_REFUSED[(bead, lens, ts)]})
     assert r5_baseline.unmatched_table_entries([_row(bead)]) == [bad]
 
 
@@ -581,7 +588,7 @@ def test_a_round_record_does_not_count_a_dispatch_the_hook_refused():
     # The ir5m / 6kqs.2 shape, before STEP3_CUTOFF (the event rule):
     # reviewer_dispatched logged before launch, the hook refuses the Agent
     # call, reviewer_dispatch_blocked, the same iteration re-sent. No reviewer
-    # ran for the first dispatch, and BLOCKED_DISPATCHES holds no key for it.
+    # ran for the first dispatch, and KNOWN_REFUSED holds no key for it.
     # (6kqs.4 logs supervisor_blocked instead: the table test below.)
     # correctness: review (2 dispatches, 1 reviewer), fix, verify = 2 reviews,
     # 1 fix round. edge-cases: one review, clean.
@@ -617,8 +624,8 @@ def test_a_round_record_does_not_count_a_dispatch_a_table_row_refuses(monkeypatc
     # reviewer_dispatch_blocked), the same iteration is re-sent. Only the
     # history-only KNOWN_REFUSED table marks it refused
     # (opensrm-6kqs.14). The row here is synthetic, keyed like the real 6kqs.4 row
-    # (bead, schema lens, the dispatch ts as logged), as the BLOCKED_DISPATCHES
-    # fixture above is.
+    # (bead, schema lens, the dispatch ts as logged), as the KNOWN_REFUSED
+    # fixtures above are.
     trail = [
         {"event": "pass_started", "pass": "correctness"},
         {"event": "reviewer_dispatched", "pass": "correctness"},
@@ -641,6 +648,65 @@ def test_a_round_record_does_not_count_a_dispatch_a_table_row_refuses(monkeypatc
     correctness = r5_baseline.analyse_record(record)["lenses"]["correctness"]
     assert (correctness["reviews"], correctness["fix_rounds"]) == (1, 0)
     assert correctness["steps_source"] == "rounds"
+
+
+def test_both_consumers_read_the_one_refused_dispatch_table(monkeypatch):
+    """opensrm-6kqs.16: one table of hook-refused dispatches,
+    r5_record.KNOWN_REFUSED, read by r5_record's rounds and by this script's
+    audit-trail count alike; r5_baseline keeps no copy of its own.
+
+    The record is the wo62.4.1 / 6kqs.4 archive shape as r5_record's docstring
+    and r5-supervise Step 3 describe it (reviewer_dispatched logged before the
+    launch, the hook refuses it, supervisor_blocked, the same iteration
+    re-sent, then findings_received), with no rounds[], so r5_baseline counts
+    it from audit_trail. The pass is edge-cases, the r5-state spelling; the
+    table is keyed by the schema lens, edge_cases (r5_record's key shape), so
+    the one row must be found from both spellings."""
+    assert not hasattr(r5_baseline, "BLOCKED_DISPATCHES")
+    sys.path.insert(0, str(HERE.parent / "scripts"))
+    import r5_record
+    assert r5_baseline.r5_record is r5_record
+
+    bead = "fx-shared-refused-table"
+    trail = [
+        {"ts": "2000-01-01T00:00:00Z", "event": "pass_started", "pass": "edge-cases"},
+        {"ts": "2000-01-01T00:00:01Z", "event": "reviewer_dispatched", "pass": "edge-cases",
+         "iteration": 1},
+        {"ts": "2000-01-01T00:00:02Z", "event": "supervisor_blocked", "pass": "edge-cases",
+         "note": "dispatch logged before launch tripped the parallel-block hook"},
+        {"ts": "2000-01-01T00:00:03Z", "event": "reviewer_dispatched", "pass": "edge-cases",
+         "iteration": 1},
+        {"ts": "2000-01-01T00:00:04Z", "event": "findings_received", "pass": "edge-cases",
+         "iteration": 1, "counts": {"critical": 0, "important": 0, "minor": 0}},
+        {"ts": "2000-01-01T00:00:05Z", "event": "pass_completed", "pass": "edge-cases",
+         "fix_iterations": 0},
+    ]
+    record = {
+        "supervisor": "r5-supervise", "version": 2, "target_bead": bead,
+        "started_at": "2000-01-01T00:00:00Z", "dry_run": False, "status": "completed",
+        "completed_passes": [{"name": "edge-cases", "findings_count_initial": 0,
+                              "fix_iterations": 0}],
+        "audit_trail": trail,
+    }
+    key = (bead, "edge_cases", "2000-01-01T00:00:01Z")
+
+    # No row: supervisor_blocked is a pause, so both read a stall and re-send,
+    # two reviewers run.
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED", {})
+    row = r5_baseline.analyse_record(record)
+    assert row["lenses"]["edge-cases"]["reviews"] == 2 and row["table_hits"] == []
+    assert r5_record.refused_dispatches(record) == []
+
+    # One row, patched in one place: both now read one refused dispatch and
+    # one reviewer run.
+    monkeypatch.setattr(r5_record, "KNOWN_REFUSED",
+                        {key: {"reason": "hook refused the launch", "evidence": "synthetic"}})
+    row = r5_baseline.analyse_record(record)
+    assert row["lenses"]["edge-cases"]["reviews"] == 1
+    assert [tuple(k) for k in row["table_hits"]] == [key]
+    assert r5_baseline.unmatched_table_entries([dict(row, file="x")]) == []
+    assert r5_record.refused_dispatches(record) == [("edge_cases", key[2], "table")]
+    assert [r["kind"] for r in r5_record.build(record)["rounds"]] == ["review"]
 
 
 def test_a_round_record_counts_an_unavailable_reviewer_as_a_review():

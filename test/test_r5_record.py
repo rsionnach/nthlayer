@@ -1035,8 +1035,9 @@ def test_an_unmatched_table_row_is_refused(monkeypatch):
 
 def test_the_real_table_is_history_with_reasons():
     """opensrm-6kqs.14: each row carries a reason and an evidence pointer and
-    predates STEP3_CUTOFF."""
-    assert len(r5_record.KNOWN_REFUSED) == 2
+    predates STEP3_CUTOFF. Three rows since opensrm-6kqs.16 merged
+    r5_baseline's BLOCKED_DISPATCHES (ir5m, wo62.4.1) into this table."""
+    assert len(r5_record.KNOWN_REFUSED) == 3
     for (bead, lens, ts), row in r5_record.KNOWN_REFUSED.items():
         assert bead.startswith("opensrm-") and lens in r5_record.LENSES
         assert r5_record._instant(ts) < r5_record._instant(r5_record.STEP3_CUTOFF)
