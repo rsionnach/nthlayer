@@ -101,3 +101,12 @@ jobs:
         run: uv run --no-project --with pytest pytest -q test/test_r5_record.py
       - name: r5-record tests (Python 3.9, as the shim runs)
         run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_record.py
+
+      # r5_provenance_checks's tests (opensrm-6kqs.5): round 0's R5-R33 checks
+      # over synthetic git repos built in tmp_path, the runtime ones running a
+      # tiny pytest project with the current interpreter; no network.
+      # Standard library plus pytest; on 3.9 too, as the shim runs.
+      - name: r5-provenance-checks tests
+        run: uv run --no-project --with pytest pytest -q test/test_r5_provenance_checks.py
+      - name: r5-provenance-checks tests (Python 3.9, as the shim runs)
+        run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_provenance_checks.py

@@ -200,6 +200,18 @@ examples, generator-specific scripts.
     archive time through the workspace shim `.claude/bin/r5-record.sh`, and
     `r5_baseline.py` re-derives a record's rounds to check them. Tests:
     `test/test_r5_record.py`, on the runner's Python and on 3.9.
+    A `round0_completed` audit event becomes a `preflight` round, round 1
+    (opensrm-6kqs.5).
+  - `r5_provenance_checks.py` — round 0's provenance mechanical checks
+    (R5 Gate v2 Phase A.5, opensrm-6kqs.5; R5-R1, R5-R33): over the test
+    files changed in `BASE..HEAD`, static checks read at HEAD with `ast`
+    (module-level skip, layout-relative path, early return in a test body,
+    swallowing except, collection-time parametrise without a minimum) and,
+    unless `--static-only`, runtime checks in the repo's own environment
+    (zero-collecting module, changed test SKIPPED or deselected). Each hit is
+    a blocking section 6 provenance finding; exit 0 clean, 2 hits, 1 a
+    check that could not run. Standard library and git only. Tests:
+    `test/test_r5_provenance_checks.py`, on the runner's Python and on 3.9.
   - `meta-resolve-check.sh` — fails when `pip install nthlayer` would
     hold a tier below its newest in-range release, or a tier's newest
     release is outside its range [opensrm-z1kq].
@@ -212,8 +224,9 @@ examples, generator-specific scripts.
     (opensrm-u5dw.1); the `test_eco_doctor.sh` regression suite
     (opensrm-8hn3); `test/test_r5_baseline.py` (opensrm-6kqs.1);
     `test/test_r5_corpus.py` (opensrm-6kqs.2);
-    `test/test_r5_findings.py` (opensrm-6kqs.3); and
-    `test/test_r5_record.py` (opensrm-6kqs.4).
+    `test/test_r5_findings.py` (opensrm-6kqs.3);
+    `test/test_r5_record.py` (opensrm-6kqs.4); and
+    `test/test_r5_provenance_checks.py` (opensrm-6kqs.5).
   - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
