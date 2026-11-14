@@ -429,7 +429,7 @@ REFUSAL_CASES = {
     "round_after_preflight_failed": lambda: _gate_after(round0(suite_ok=False,
                                                                verdict="PREFLIGHT_FAILED")),
     # opensrm-6kqs.6: the verdict_recorded event (spec section 6 verdict).
-    "bad_verdict_event": lambda: _gate_with(verdict_ev(tree="ab12")),
+    "bad_verdict_event": lambda: _gate_with(verdict_ev(tree="AB" * 20)),
     "second_verdict": lambda: _gate_with(verdict_ev(), verdict_ev("10:40")),
     "verdict_on_multi_repo": lambda: state([verdict_ev()], [], diff_range={
         "nthlayer": {"base": BASE, "head": HEAD0}, "opensrm": {"base": BASE, "head": HEAD0}}),
@@ -1569,7 +1569,12 @@ def test_a_bare_verdict_file_is_checked(gated, tmp_path):
     {"state": "clean", "tree_sha": "0" * 40, "head_sha": "0" * 40},
     {"state": "CLEAN", "tree_sha": "0" * 40},
     ["CLEAN"],
-], ids=["short-tree", "lower-state", "no-head", "not-an-object"])
+    # `git rev-parse` prints lower-case hex; anything else is not its output.
+    {"state": "CLEAN", "tree_sha": "AB" * 20, "head_sha": "0" * 40},
+    {"state": "CLEAN", "tree_sha": "g" * 40, "head_sha": "0" * 40},
+    {"state": "CLEAN", "tree_sha": "0" * 40, "head_sha": "0" * 40, "at": 5},
+], ids=["short-tree", "lower-state", "no-head", "not-an-object", "upper-case-tree",
+        "non-hex-tree", "at-not-a-string"])
 def test_a_malformed_bare_verdict_refuses(bare):
     out = r5_record.check(bare, "0" * 40)
     assert (out["ok"], out["reason"]) == (False, "bad_verdict")
@@ -1616,7 +1621,12 @@ def test_archives_before_bead_6_build_with_no_verdict():
     lambda: ev("10:40", "reviewer_dispatched", **{"pass": "clarity", "iteration": 2}),
     lambda: ev("10:40", "fixes_applied", **{"pass": "correctness", "statuses": {}}),
     lambda: round0("10:40"),
-], ids=["dispatch", "fix", "round0"])
+    lambda: received("10:40", "correctness", 3, []),
+    lambda: ev("10:40", "reviewer_unavailable", **{"pass": "correctness", "iteration": 3}),
+    lambda: ev("10:40", "advisory_pass_completed", **{"pass": "clarity", "counts": {},
+                                                      "findings": [], "verdict": "PASS"}),
+], ids=["dispatch", "fix", "round0", "findings_received", "reviewer_unavailable",
+        "advisory_pass_completed"])
 def test_no_round_follows_the_verdict(late):
     assert _refusal(_gate_with(verdict_ev(), late())) == "round_after_verdict"
 
@@ -1625,3 +1635,16 @@ def test_informational_events_may_follow_the_verdict():
     """bead_closed and the lock release come after the verdict (Final step)."""
     g = _gate_with(verdict_ev(), ev("10:40", "bead_closed", reason="clean"))
     assert r5_record.build(g)["verdict"]["state"] == "CLEAN"
+
+
+def test_validate_refuses_a_verdict_on_a_multi_repo_record():
+    """Ruling M1: one tree per verdict; a hand-set one on several repos is an error."""
+    rec = r5_record.build(state([], [], diff_range={
+        "nthlayer": {"base": BASE, "head": HEAD0}, "opensrm": {"base": BASE, "head": HEAD0}}))
+    rec["verdict"] = {"state": "CLEAN", "tree_sha": TREE, "head_sha": FIX1_FULL, "at": None}
+    assert any("multi-repo gate" in e for e in r5_record.validate(rec)["errors"])
+
+
+@pytest.mark.parametrize("tree", ["ab12", "g" * 40])
+def test_short_and_non_hex_verdict_trees_are_refused_at_build(tree):
+    assert _refusal(_gate_with(verdict_ev(tree=tree))) == "bad_verdict_event"

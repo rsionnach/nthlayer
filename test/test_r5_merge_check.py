@@ -87,6 +87,8 @@ def stub(monkeypatch):
             return json.dumps(answers["view"])
         if args[:2] == ["api", "--paginate"]:
             assert args[2] == f"repos/{REPO}/pulls/7/files"
+            if isinstance(answers.get("renamed_from"), Exception):
+                raise answers["renamed_from"]
             return "".join(p + "\n" for p in answers.get("renamed_from", ()))
         if args[0] == "api":
             assert args[1] == f"repos/{REPO}/commits/{answers['view']['headRefOid']}"
@@ -461,3 +463,16 @@ def test_a_code_file_renamed_to_a_doc_name_is_not_doc_only(tmp_path, stub):
     assert "exempt: doc-only" in mc.judge(tmp_path, REPO, "7", BOUND)
 
 
+
+
+def test_a_newline_separates_two_merges():
+    """Without the newline rule the second gh would read as the first's argument."""
+    assert mc.merges_in("gh pr merge 1 -R a/b\ngh pr merge 2 -R a/c") == \
+        [["1", "-R", "a/b"], ["2", "-R", "a/c"]]
+
+
+def test_a_doc_only_pr_whose_renames_cannot_be_read_is_refused(tmp_path, stub):
+    stub["view"] = view(files=("notes.md",), subjects=("x",))
+    stub["renamed_from"] = mc.GhError("gh api --paginate repos: exit 1")
+    with pytest.raises(mc.Refused, match="cannot read the renames"):
+        mc.judge(tmp_path, REPO, "7", BOUND)
