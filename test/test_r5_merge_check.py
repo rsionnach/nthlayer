@@ -599,3 +599,26 @@ def test_an_unparseable_command_with_quoted_merge_words_is_refused(command):
 def test_a_file_target_after_dup_operator_is_not_an_argument():
     assert mc.merges_in("gh pr merge 5 -R o/r >&log") == [["5", "-R", "o/r"]]
     assert mc.merges_in("gh pr merge 5 -R o/r >& log") == [["5", "-R", "o/r"]]
+
+
+
+@pytest.mark.parametrize("command", [
+    'echo "a\nx <<EOF"\ngh pr merge 5 -R o/r\nEOF',
+    "# see x <<EOF\ngh pr merge 5 -R o/r\nEOF",
+    "echo hi # x <<EOF\ngh pr merge 5 -R o/r\nEOF",
+], ids=["multi-line-quote", "comment-line", "trailing-comment"])
+def test_a_double_angle_in_a_multi_line_quote_or_a_comment_opens_no_body(command):
+    """Correctness verify (6kqs.18): quote state spans lines; a comment is text."""
+    assert ["5", "-R", "o/r"] in mc.merges_in(command)
+
+
+def test_a_hash_inside_a_word_is_not_a_comment():
+    cmd = "cat a#b <<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+@pytest.mark.parametrize("command", ["gh pr merge 5 -R o/r >&2x", "gh pr merge 5 -R o/r >&2",
+                                     "gh pr merge 5 -R o/r 2>&-", "gh pr merge 5 -R o/r 1>&2-"],
+                         ids=["file-2x", "dup-2", "close", "move-2"])
+def test_a_dup_target_is_a_number_or_dash_or_else_a_file(command):
+    assert mc.merges_in(command) == [["5", "-R", "o/r"]]

@@ -123,7 +123,7 @@ def without_heredocs(command: str) -> str:
     merge fed to a shell through a real heredoc is outside this check's scope
     (the module docstring)."""
     lines = command.split("\n")
-    out, pending, held = [], [], []
+    out, pending, held, quote = [], [], [], None
     for line in lines:
         if pending:
             dash, word = pending[0]
@@ -136,7 +136,8 @@ def without_heredocs(command: str) -> str:
         out.append(line)
         # Where the operator is comes from the blanked line; its delimiter,
         # which may itself be quoted ('EOF'), from the line as written.
-        blank = _unquoted(line)
+        # The quote state carries over: a "..." may span lines.
+        blank, quote = _unquoted(line, quote)
         pending = [(m.group(1) == "-", m.group(3))
                    for m in (HEREDOC.match(line, i) for i in _operators(blank)) if m]
     # An unclosed body: never a heredoc, so nothing is hidden.
@@ -150,10 +151,11 @@ def _operators(blank: str) -> list:
             and not blank.startswith("<<<", i)]
 
 
-def _unquoted(line: str) -> str:
-    """The line with quoted text and arithmetic blanked out (same length), so a
-    ``<<`` found in it is an operator, not text or a shift."""
-    out, quote, depth, i = [], None, 0, 0
+def _unquoted(line: str, quote: str | None = None) -> tuple:
+    """(the line with quoted text, arithmetic and a trailing ``#`` comment
+    blanked out, same length; the quote still open at its end). A ``<<``
+    found in the blanked line is an operator, not text, a shift or a remark."""
+    out, depth, i = [], 0, 0
     while i < len(line):
         c = line[i]
         if quote:
@@ -177,10 +179,13 @@ def _unquoted(line: str) -> str:
             out.append("  ")
             i += 2
             continue
+        elif c == "#" and not depth and (i == 0 or line[i - 1] in " \t;&|("):
+            out.append(" " * (len(line) - i))  # a comment, to the line's end
+            break
         else:
             out.append(" " if depth else c)
         i += 1
-    return "".join(out)
+    return "".join(out), quote
 
 
 def without_redirections(text: str) -> str:
@@ -230,9 +235,14 @@ def without_redirections(text: str) -> str:
         dup = text[k - 1] in "<>" and k < n and text[k] == "&"
         if dup:
             k += 1
-        if dup and k < n and (text[k].isdigit() or text[k] == "-"):
-            while k < n and (text[k].isdigit() or text[k] == "-"):
-                k += 1
+        end = k
+        while end < n and text[end] not in " \t;&|()\n":
+            end += 1
+        # A dup only when the whole word is a number or "-" (>&2, >&-);
+        # >&2x names a file, as >&log does.
+        word = text[k:end]
+        if dup and (word == "-" or word.rstrip("-").isdigit()):
+            k = end
         else:
             # A target word, also after >& when it names a file (>&log).
             while k < n and text[k] in " \t":
