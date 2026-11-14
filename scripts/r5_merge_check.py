@@ -159,16 +159,27 @@ def _unquoted(line: str, quote: str | None = None) -> tuple:
     while i < len(line):
         c = line[i]
         if quote:
-            if c == "\\" and quote == '"' and i + 1 < len(line):
+            # A backslash escapes inside "..." and ANSI-C $'...', not '...'.
+            if c == "\\" and quote != "'" and i + 1 < len(line):
                 out.append("  ")
                 i += 2
                 continue
-            if c == quote:
+            if c == quote[-1]:
                 quote = None
             out.append(" ")
+        elif c == "$" and line.startswith("$'", i):
+            quote = "$'"
+            out.append("  ")
+            i += 2
+            continue
         elif c in "'\"":
             quote = c
             out.append(" ")
+        elif c == "\\":
+            # An unquoted escape is a literal character (\<<EOF is no heredoc).
+            out.append(" " * len(line[i:i + 2]))
+            i += 2
+            continue
         elif line.startswith("((", i):
             depth += 1
             out.append("  ")
@@ -201,12 +212,17 @@ def without_redirections(text: str) -> str:
         c = text[i]
         if quote:
             out.append(c)
-            if c == "\\" and quote == '"' and i + 1 < n:
+            if c == "\\" and quote != "'" and i + 1 < n:
                 out.append(text[i + 1])
                 i += 1
-            elif c == quote:
+            elif c == quote[-1]:
                 quote = None
             i += 1
+            continue
+        if c == "$" and text.startswith("$'", i):
+            quote = "$'"
+            out.append("$'")
+            i += 2
             continue
         if c in "'\"":
             quote = c
@@ -249,9 +265,13 @@ def without_redirections(text: str) -> str:
                 k += 1
             # The target: one word, which may be quoted.
             while k < n and text[k] not in " \t;&|()\n":
-                if text[k] in "'\"":
+                if text[k] == "\\":
+                    k += 2  # an escaped character, a space included (a\ b)
+                elif text[k] in "'\"":
+                    # An unterminated quote ends the target here: it must
+                    # never swallow the rest of the command.
                     end = text.find(text[k], k + 1)
-                    k = n if end < 0 else end + 1
+                    k = k + 1 if end < 0 else end + 1
                 else:
                     k += 1
         out.append(" ")

@@ -622,3 +622,35 @@ def test_a_hash_inside_a_word_is_not_a_comment():
                          ids=["file-2x", "dup-2", "close", "move-2"])
 def test_a_dup_target_is_a_number_or_dash_or_else_a_file(command):
     assert mc.merges_in(command) == [["5", "-R", "o/r"]]
+
+
+
+# Edge-cases pass findings (6kqs.18), each checked against bash itself.
+@pytest.mark.parametrize("command", [
+    "echo \\<<EOF\ngh pr merge 5 -R o/r\nEOF",
+    "echo $'a\\'b <<EOF'\ngh pr merge 5 -R o/r\nEOF",
+], ids=["escaped-angle", "ansi-c-quote"])
+def test_an_escaped_or_ansi_c_quoted_double_angle_hides_no_later_merge(command):
+    """Seen, or refused because shlex cannot read $'...': never allowed unseen."""
+    try:
+        assert ["5", "-R", "o/r"] in mc.merges_in(command)
+    except mc.Refused as exc:
+        assert "cannot parse" in str(exc)
+
+
+def test_a_real_heredoc_after_an_ansi_c_string_still_hides_its_body():
+    cmd = "echo $'ab'; cat <<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+def test_an_unterminated_quote_in_a_target_swallows_no_later_merge():
+    """Seen or refused; before the fix the target ran to the end and hid it."""
+    cmd = "cat <<\"EOF\ngh pr merge 5 -R o/r"
+    try:
+        assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+    except mc.Refused as exc:
+        assert "cannot parse" in str(exc)
+
+
+def test_a_redirection_target_with_an_escaped_space_is_one_word():
+    assert mc.merges_in("gh pr merge 5 -R o/r > a\\ b") == [["5", "-R", "o/r"]]
