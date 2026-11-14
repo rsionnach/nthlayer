@@ -735,3 +735,11 @@ def test_an_angle_inside_ansi_c_quotes_is_text_and_the_merge_is_refused():
     assert mc.without_redirections(cmd) == cmd
     with pytest.raises(mc.Refused, match="cannot parse"):
         mc.merges_in(cmd)
+
+
+
+def test_a_backslash_inside_single_quotes_does_not_hide_a_redirection():
+    """bash(1) QUOTING: no backslash escapes inside '...', so 'a\\' closes the
+    string and the > after it is a redirection, stripped."""
+    assert mc.merges_in("gh pr merge 5 -R o/r --body 'a\\' > b") == \
+        [["5", "-R", "o/r", "--body", "a\\"]]
