@@ -1957,3 +1957,80 @@ def test_main_reads_the_private_archive_under_the_archive_dir(workspace, tmp_pat
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
                            "--no-bd"]) == 0
     assert json.loads((out / "opensrm-pvd" / "meta.json").read_text())["brief_source"] == "reviewer_prompt"
+
+
+# --- the store and mask gates' excellence minors (opensrm-6kqs.9) ------------
+
+def test_a_conflicting_manifest_refusal_names_its_file(workspace, tmp_path):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "mpa", "opensrm-mpa")
+    entries = list(build(ws).values())
+    b1 = tmp_path / "b1"
+    r5_corpus.write_bundles(entries, ws, b1, TAG)
+    published = json.loads((b1 / "bundles.json").read_text())
+    committed = tmp_path / "out" / "bundles.json"
+    # The --bundles manifest at a later N...
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b2", "corpus-v2")
+    with pytest.raises(r5_corpus.CorpusError) as exc:
+        r5_corpus.write_bundles(entries, ws, tmp_path / "b2", TAG)
+    assert exc.value.path == tmp_path / "b2" / "bundles.json"
+    # ...the one beside the entries, with other bundles under the same tag...
+    changed = dict(published, bundles=[dict(b, sha256="0" * 64) for b in published["bundles"]])
+    with pytest.raises(r5_corpus.CorpusError) as exc:
+        r5_corpus.write_bundles(entries, ws, tmp_path / "b3", TAG, changed, committed)
+    assert exc.value.path == committed
+    # ...or naming no corpus-v<N> tag.
+    with pytest.raises(r5_corpus.CorpusError) as exc:
+        r5_corpus.write_bundles(entries, ws, tmp_path / "b4", TAG, dict(published, release_tag="v1"), committed)
+    assert exc.value.path == committed
+
+
+@pytest.mark.parametrize("pairing", [
+    ["--release-tag", TAG],                        # a tag with no --bundles
+    ["--bundles", "B"],                            # --bundles with no tag
+    ["--bundles", "B", "--release-tag", "corpus-v01"],  # a tag outside corpus-v<N>
+])
+def test_a_bad_bundles_and_tag_pairing_is_refused_before_the_build(workspace, tmp_path, monkeypatch, pairing):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "prb", "opensrm-prb")
+    built = []
+    monkeypatch.setattr(r5_corpus, "build", lambda *a, **k: built.append(a) or [])
+    args = [str(tmp_path / "b") if a == "B" else a for a in pairing]
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd", *args]) == 2
+    assert built == []
+    assert not (tmp_path / "out").exists() and not (tmp_path / "b").exists()
+
+
+def test_a_leak_names_its_form_and_file(monkeypatch):
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/Users/rob")))
+    entries = [
+        {"meta": {"entry": "opensrm-p"}, "brief": "see /Users/rob/x", "recorded": {"rounds": []}},
+        {"meta": {"entry": "opensrm-s"}, "brief": None,
+         "recorded": {"rounds": [{"findings": [{"claim": "under /var/folders/T/claude-501/-Users-rob-eco/s"}]}]}},
+        {"meta": {"entry": "opensrm-c"}, "brief": "see ~/x", "recorded": {"rounds": []}},
+    ]
+    assert r5_corpus.local_path_leak_forms(entries) == {
+        "opensrm-p": [("brief.md", "home_path")],
+        "opensrm-s": [("recorded.json", "home_slug")],
+    }
+    assert r5_corpus.local_path_leaks(entries) == ["opensrm-p", "opensrm-s"]
+    assert set(r5_corpus.LEAK_FORMS) == {"home_path", "home_slug"}
+
+
+def test_main_s_leak_refusal_does_not_print_the_home_path(workspace, tmp_path, monkeypatch, capsys):
+    # The refusal exists to keep the home path out of what is published, its
+    # own stderr included: the home path is absent from it.
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "lkf", "opensrm-lkf")
+    home = str(Path.home())
+    real_build = r5_corpus.build
+
+    def leaking_build(*a, **k):
+        entries = real_build(*a, **k)
+        entries[0]["brief"] = f"read {home}/notes.md"
+        return entries
+    monkeypatch.setattr(r5_corpus, "build", leaking_build)
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd"]) == 2
+    assert home not in capsys.readouterr().err
