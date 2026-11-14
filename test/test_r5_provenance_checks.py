@@ -653,6 +653,16 @@ def test_cli_usage_errors_exit_1(args):
     assert out.returncode == 1
 
 
+@pytest.mark.parametrize("args", [["--help"], ["-h"], ["check", "--help"]],
+                         ids=["top", "short", "check"])
+def test_cli_help_exits_0_and_prints_usage(args):
+    """Edge (opensrm-6kqs.15): asking for help is not a usage error. argparse
+    prints the help and raises SystemExit(0); the CLI must exit 0, not 1."""
+    out = subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.startswith("usage: r5_provenance_checks.py")
+
+
 def _real_range(repo: Path) -> tuple[str, str]:
     base = commit(repo, {"README": "x\n"}, "base")
     head = commit(repo, {"tests/test_m.py": "def test_a():\n    assert 1\n"}, "head")
@@ -888,12 +898,14 @@ def _dead(pid: int) -> bool:
     return False
 
 
-@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM], ids=["SIGINT", "SIGTERM"])
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT],
+                         ids=["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"])
 def test_an_interrupt_of_the_script_leaves_no_pytest_behind(repo, tmp_path, signum):
     """Edge: the pytest run is its own session, so a signal to the script's
-    process group (Ctrl-C, or a tool timeout killing the group) never reaches
-    it. The script must kill the run's group on the way out, then still print
-    its JSON object and exit 1."""
+    process group (Ctrl-C, a tool timeout killing the group, a closed terminal's
+    SIGHUP, Ctrl-\\'s SIGQUIT) never reaches it. The script must kill the run's
+    group on the way out, then still print its JSON object and exit 1. SIGHUP
+    and SIGQUIT added by opensrm-6kqs.15."""
     pid_file = tmp_path / "pid"
     base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
     head = commit(repo, {"tests/test_m.py": f"""
@@ -928,6 +940,67 @@ def test_an_interrupt_of_the_script_leaves_no_pytest_behind(repo, tmp_path, sign
         if pid_file.exists() and pid_file.read_text():
             with contextlib.suppress(ProcessLookupError):
                 os.kill(int(pid_file.read_text()), signal.SIGKILL)
+
+
+def test_leaving_the_signal_scope_restores_every_previous_handler():
+    """Edge (opensrm-6kqs.15): ``_signals_raise`` promises the previous
+    handlers back on the way out. Sentinel handlers before, SIGQUIT ignored:
+    inside, the others raise Terminated and SIGQUIT stays ignored; after, every
+    sentinel and the ignore are back."""
+    def sentinel_term(signum, frame):  # never called: identity only
+        pass
+
+    def sentinel_hup(signum, frame):
+        pass
+
+    before = {signal.SIGTERM: sentinel_term, signal.SIGHUP: sentinel_hup,
+              signal.SIGQUIT: signal.SIG_IGN}
+    assert set(before) == set(checks.TERMINATING)
+    saved = {signum: signal.getsignal(signum) for signum in before}
+    try:
+        for signum, handler in before.items():
+            signal.signal(signum, handler)
+        with checks._signals_raise():
+            assert signal.getsignal(signal.SIGTERM) is checks._raise_terminated
+            assert signal.getsignal(signal.SIGHUP) is checks._raise_terminated
+            assert signal.getsignal(signal.SIGQUIT) is signal.SIG_IGN
+        assert {s: signal.getsignal(s) for s in before} == before
+    finally:
+        for signum, handler in saved.items():
+            signal.signal(signum, handler)
+
+
+@pytest.mark.parametrize("signum", [signal.SIGHUP, signal.SIGQUIT], ids=["SIGHUP", "SIGQUIT"])
+def test_an_ignored_signal_stays_ignored_and_the_check_finishes(repo, tmp_path, signum):
+    """Edge: a caller that ignores a signal (``nohup`` sets SIGHUP to SIG_IGN)
+    chose to survive it. The script must not override that: the signal arrives
+    mid-run, and the check still finishes, exit 0 with no errors."""
+    pid_file = tmp_path / "pid"
+    base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
+    head = commit(repo, {"tests/test_m.py": f"""
+        import os, time
+        def test_waits():
+            with open({str(pid_file)!r}, "w") as handle:
+                handle.write(str(os.getpid()))
+            time.sleep(2)
+        """}, "head")
+
+    def ignore_it():
+        signal.signal(signum, signal.SIG_IGN)
+
+    script = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "check", "--repo", str(repo), "--base", base, "--head",
+         head, "--pytest", shlex.join(PYTEST)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True, preexec_fn=ignore_it)
+    try:
+        _wait_for(pid_file, 30)
+        os.kill(script.pid, signum)
+        out, err = script.communicate(timeout=60)
+        assert script.returncode == 0, err
+        assert json.loads(out)["errors"] == []
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(script.pid, signal.SIGKILL)
 
 
 def test_a_non_utf8_test_path_cannot_be_checked_but_hides_no_other_finding(repo):
