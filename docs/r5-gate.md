@@ -12,7 +12,10 @@ them is wrong and should be fixed, not silently preferred.
 > Each of its phases amends this description. Until an amendment lands,
 > where the two disagree the spec wins (its section 2). The gate mechanism
 > moves to cúramóir; Phase A (baseline, replay corpus, finding schema, round
-> record, round 0, tree-keyed verdict) is the NthLayer work now.
+> record, round 0, tree-keyed verdict) is the NthLayer work now. Phase A's
+> part 1 amendment is in (opensrm-6kqs.7): the baseline below, Records, round
+> 0 in the pre-flight, and the tree key. "Sequential, not parallel" waits for
+> Phase B or D.
 
 ## The roster (revised 2026-11-12)
 
@@ -26,8 +29,10 @@ them is wrong and should be fixed, not silently preferred.
 
 The blocking passes run **in that order, one at a time, never in parallel**.
 Each is a fix-loop: review, fix, run the suite, commit, re-review the same
-lens, until it reports no CRITICAL or IMPORTANT finding. Three iterations
-without converging escalates to a human. MINOR findings are fixed in passing
+lens, until the parser's open set for that lens holds no CRITICAL or
+IMPORTANT finding (see Records); the verdict word a reviewer writes is kept
+and decides nothing. Three fix iterations without converging escalate to a
+human. MINOR findings are fixed in passing
 when trivial and otherwise listed, never looped on.
 
 Clarity and excellence each run **once**, on the final tree, after the three
@@ -210,6 +215,30 @@ between the check and the merge cannot merge an unjudged tree. Doc-only PRs
 are exempt. A gate over several repos records no verdict: gate each repo on
 its own.
 
+## Records
+
+The shapes are the R5 Gate v2 spec's section 6, which cúramóir owns and this
+file does not restate; NthLayer's scripts implement them.
+
+- **Findings** (`scripts/r5_findings.py`, opensrm-6kqs.3). Every reviewer
+  template keeps its prose report and ends with one line,
+  `R5-FINDINGS: [...]`, an array of section 6 Finding objects (lens,
+  severity, path and range, claim, evidence, `verification_level`). The
+  parser, never the prose, decides: its open set (prior findings minus valid
+  closures, plus new and re-raised ones; silence never closes) is what a
+  blocking pass is clean against. A blocking finding below the verification
+  floor (default `script`) is UNPROVEN and still blocks. A report whose last
+  line is not the contract makes the reviewer UNAVAILABLE: re-dispatched
+  once, then escalated.
+- **Round record** (`scripts/r5_record.py`, opensrm-6kqs.4). `rounds[]` is
+  derived from the state file's audit trail at archive time, never written
+  by hand: round 0 (`preflight`), then one `review` or `verify` round per
+  reviewer and one `fix` round per fix, each with its head, timestamps and
+  per-lens measurements (null when unmeasured, never 0). It ends in the
+  `verdict`, below.
+- **Verdict** (opensrm-6kqs.6): state, `tree_sha`, `head_sha`; see "The
+  verdict is keyed to a tree".
+
 ## Running it
 
 - `/r5-supervise <bead-id>` runs the roster above for one bead, from the main
@@ -235,6 +264,24 @@ and aborts on a **range** finding (`STALE`, `LOCK<FLOOR`, `SIBLING>CEILING`,
 exit code. A gate run against a sibling older than the declared floor tests
 the wrong version and still produces a clean record (opensrm-p3bm).
 
+### Round 0 (opensrm-6kqs.5, R5-R1, R5-R33)
+
+Before any reviewer is dispatched, and with no model involved, the supervisor
+runs each affected repo's lint, its type check where one is configured, its
+full suite, and `scripts/r5_provenance_checks.py` over `BASE..HEAD`. The
+checks read the changed test files for a module-level skip, a
+layout-relative path, an early return in a test body, a swallowing except
+and a collection-time parametrise list with no minimum, and run them for a
+module that collects nothing and a new test that is skipped or deselected.
+A red tool, a check hit, or a check that could not run ends the gate
+`PREFLIGHT_FAILED` before any model is dispatched: the author fixes and
+re-runs it, and a hit is never waived in flight. Round 0 is the record's
+first round. The checks run again after every fix commit, beside the suite;
+a hit there fails that step as a red suite does. They catch the silent skip
+that hid `test_manifest_v2_archetypes.py` (opensrm-ih0v). They do not catch
+oh27's kind, a predicate that never fires on fixtures as unreal as it is:
+that is the provenance pass's kill check.
+
 ### Lock and state
 
 - **Lock.** `.claude/hooks/r5-lock.sh` keeps one gate per member repo at a
@@ -248,14 +295,20 @@ the wrong version and still produces a clean record (opensrm-p3bm).
   in flight. Its window opens when the supervisor logs `reviewer_dispatched`.
 - **State.** The audit trail is `<ecosystem root>/.claude/r5-state.json`,
   never a worktree's own `.claude/` (reaping the worktree would delete it,
-  untracked and unwarned). A completed run is archived as
-  `.claude/r5-state-<bead>[-<part>]-completed.json`.
+  untracked and unwarned). A completed run is archived, as its built record,
+  to `.claude/r5-state-<bead>-completed.json`, or
+  `r5-state-<bead>-<repo>-completed.json` for a bead's second gate in another
+  repo; an archive is never overwritten.
 
 ### What a clean gate means
 
-All three blocking passes ended with zero CRITICAL and IMPORTANT findings, the
-suite and lint passed after every fix commit, and the provenance kill checks
-ran and went red. The supervisor records a `CLEAN` verdict for the final
-tree, checks it, and then closes the bead, unless the bead has
-further checkpoints, in which case it stays open and the gate record names
-the checkpoint.
+Round 0 was clean; each of the three blocking passes ended with no CRITICAL
+or IMPORTANT finding in its parsed open set; the suite, lint and round 0's
+provenance checks passed after every fix commit; and the provenance kill
+checks ran and went red. The advisory reads ran on the final tree. The
+supervisor then records a `CLEAN` verdict keyed to that tree (`tree_sha`,
+the tree of the commit the gate ended on), checks the tree being closed
+against it, and closes the bead. The same verdict is what the merge check
+reads, so a clean gate means clean for exactly that tree and no other; a
+commit after it needs the bead gated again. A bead with further checkpoints
+stays open instead, and the gate record names the checkpoint.
