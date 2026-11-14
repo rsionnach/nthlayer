@@ -133,7 +133,8 @@ def merges_in(command: str) -> list[list[str]]:
         for i in range(len(words) - 2):
             if Path(names[i]).name == "gh" and words[i + 1:i + 3] == ["pr", "merge"]:
                 # ...and closes on the last word: "o/r)".
-                merges.append([w.rstrip(")`") for w in words[i + 3:]])
+                # A spaced "( gh ... )" leaves ")" a word of its own: dropped.
+                merges.append([w for w in (w.rstrip(")`") for w in words[i + 3:]) if w])
                 break
     return merges
 
@@ -144,6 +145,10 @@ def binding_of(args: list) -> tuple[bool, str | None]:
     for i, a in enumerate(args):
         if a == "--auto":
             auto = True
+        elif a.startswith("--auto="):
+            # gh reads the value as a Go bool (strconv.ParseBool): only its
+            # false spellings leave auto-merge off.
+            auto = a.split("=", 1)[1].lower() not in ("false", "f", "0")
         elif a == "--match-head-commit" and i + 1 < len(args):
             match = args[i + 1]
         elif a.startswith("--match-head-commit="):

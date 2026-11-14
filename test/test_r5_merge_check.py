@@ -387,16 +387,24 @@ def test_pr_with_no_pr_named_is_refused_not_a_usage_error():
 
 @pytest.mark.parametrize("args,match", [
     (["--auto"] + BOUND, "--auto merges whatever head"),
+    (["--auto=true"] + BOUND, "--auto merges whatever head"),
+    (["--auto=1"] + BOUND, "--auto merges whatever head"),
     ([], f"add --match-head-commit {HEAD}"),
     (["--match-head-commit", "e" * 40], "got eeee"),
     (["--match-head-commit=" + HEAD[:12]], "got cccccccccccc"),
-], ids=["auto", "unbound", "other-head", "short-head"])
+], ids=["auto", "auto-true", "auto-1", "unbound", "other-head", "short-head"])
 def test_a_gated_merge_must_be_bound_to_the_head_judged(tmp_path, stub, args, match):
     """gh merges later than this check reads the head (much later with
     --auto): a push in between would merge a tree no verdict holds for."""
     archive(tmp_path, "r5-state-fx.1-completed.json")
     with pytest.raises(mc.Refused, match=match):
         mc.judge(tmp_path, REPO, "7", args)
+
+
+@pytest.mark.parametrize("off", ["--auto=false", "--auto=False", "--auto=0"])
+def test_auto_spelled_false_is_off(tmp_path, stub, off):
+    archive(tmp_path, "r5-state-fx.1-completed.json")
+    assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7", [off] + BOUND)
 
 
 def test_the_equals_form_of_the_binding_is_read(tmp_path, stub):
@@ -433,7 +441,10 @@ def test_a_glob_match_of_another_bead_is_not_its_record(tmp_path, stub):
     ("(gh pr merge 5 -R o/r)", [["5", "-R", "o/r"]]),
     ("echo `gh pr merge 5 -R o/r`", [["5", "-R", "o/r"]]),
     ("gh pr merge 5 \\\n  -R o/r", [["5", "-R", "o/r"]]),
-], ids=["two-spaces", "dollar-paren", "subshell", "backticks", "continuation"])
+    ("( gh pr merge 5 -R o/r )", [["5", "-R", "o/r"]]),
+    ("echo $( gh pr merge 5 -R o/r )", [["5", "-R", "o/r"]]),
+], ids=["two-spaces", "dollar-paren", "subshell", "backticks", "continuation",
+        "spaced-subshell", "spaced-dollar-paren"])
 def test_merges_in_finds_the_shell_forms_edge_cases_named(command, expected):
     assert mc.merges_in(command) == expected
 
