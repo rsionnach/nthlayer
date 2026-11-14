@@ -476,3 +476,88 @@ def test_a_doc_only_pr_whose_renames_cannot_be_read_is_refused(tmp_path, stub):
     stub["renamed_from"] = mc.GhError("gh api --paginate repos: exit 1")
     with pytest.raises(mc.Refused, match="cannot read the renames"):
         mc.judge(tmp_path, REPO, "7", BOUND)
+
+
+# --------------------------------- parse false positives [opensrm-6kqs.18]
+#
+# Bash's own grammar (bash(1), REDIRECTION and Here Documents) fixes every
+# shape here: a heredoc body is data, not commands, up to a line holding only
+# its delimiter (leading tabs stripped for <<-); a redirection is an optional
+# fd number, an operator (<, >, >>, &>, >&, <&, <<<) and a target word, or
+# &N / &- right after >& / <&. The two refusals that prompted the bead, a
+# heredoc with an apostrophe in its body and "2>&1" after a merge, are the
+# first cases.
+
+HEREDOC_APOSTROPHE = ("cat >> plan.md <<'EOF'\n"
+                      "the merge hook's fallback; gh is not run here\n"
+                      "EOF\n"
+                      "echo done")
+
+
+def test_an_unparseable_heredoc_that_mentions_gh_and_merge_is_allowed():
+    assert mc.merges_in(HEREDOC_APOSTROPHE) == []
+
+
+def test_a_heredoc_body_line_that_reads_like_a_merge_is_not_one():
+    cmd = "cat > notes.md <<EOF\ngh pr merge 5 -R a/b --merge\nEOF"
+    assert mc.merges_in(cmd) == []
+
+
+def test_a_merge_after_a_heredoc_is_still_seen():
+    cmd = "cat > x <<'EOF'\nit's text\nEOF\ngh pr merge 5 -R a/b"
+    assert mc.merges_in(cmd) == [["5", "-R", "a/b"]]
+
+
+def test_a_dash_heredoc_ends_at_a_tab_indented_delimiter():
+    cmd = "cat <<-END\n\tit's text\n\tEND\ngh pr merge 6 -R a/b"
+    assert mc.merges_in(cmd) == [["6", "-R", "a/b"]]
+
+
+def test_a_here_string_is_not_a_heredoc():
+    cmd = "grep x <<< 'abc'\ngh pr merge 7 -R a/b"
+    assert mc.merges_in(cmd) == [["7", "-R", "a/b"]]
+
+
+@pytest.mark.parametrize("command", [
+    "gh pr merge 208 -R a/b --merge 2>&1",
+    "gh pr merge 208 -R a/b --merge 2>&1 | tail -2",
+    "gh pr merge 208 -R a/b >/dev/null 2>&1",
+    "gh pr merge 208 -R a/b > out.txt",
+    "gh pr merge 208 -R a/b &> log",
+    "gh pr merge 208 -R a/b 2> err.txt",
+    "gh pr merge 208 -R a/b >> log 2>&-",
+    "gh pr merge 208 < /dev/null -R a/b",
+], ids=["2>&1", "2>&1-pipe", "devnull", "stdout-file", "both", "stderr-file",
+        "append-close", "stdin"])
+def test_redirections_are_not_arguments(command):
+    args = ["208", "-R", "a/b"] + (["--merge"] if "--merge" in command else [])
+    assert mc.merges_in(command) == [args]
+
+
+def test_a_quoted_redirection_stays_an_argument():
+    """Inside quotes, > is text: a --body value keeps it."""
+    assert mc.merges_in('gh pr merge 5 -R a/b --body "x > y"') == \
+        [["5", "-R", "a/b", "--body", "x > y"]]
+
+
+def test_a_pr_number_before_a_spaced_redirect_is_kept():
+    """A digit word is an fd number only when the operator touches it."""
+    assert mc.merges_in("gh pr merge 208 > out") == [["208"]]
+
+
+def test_an_unparseable_command_with_the_merge_words_is_still_refused():
+    with pytest.raises(mc.Refused, match="cannot parse"):
+        mc.merges_in("gh pr merge 5 -R a/b --body \"it's")
+
+
+@pytest.mark.parametrize("command", [
+    'echo "the gh tool can merge; it' + "'s fine",
+    "echo 'merge it' \"and gh",
+], ids=["gh-and-merge-in-prose", "split-words"])
+def test_an_unparseable_command_without_the_merge_words_is_allowed(command):
+    assert mc.merges_in(command) == []
+
+
+def test_the_hook_allows_the_heredoc_that_prompted_the_bead(tmp_path, stub):
+    assert mc.hook(tmp_path, payload(HEREDOC_APOSTROPHE)) == 0
+    assert stub["calls"] == []
