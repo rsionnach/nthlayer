@@ -281,6 +281,7 @@ def test_an_unparseable_command_that_may_merge_refuses():
     (["https://github.com/a/b/pull/12"], ("a/b", "12")),
     (["-R", "a/b", "https://github.com/a/b/pull/12/"], ("a/b", "12")),
     (["7", "-R", "a/b", "--body", "merge 8", "--merge"], ("a/b", "7")),
+    (["5", "-R", "o/r", "-A", "me@example.invalid"], ("o/r", "5")),
 ])
 def test_target_of(args, expected):
     assert mc.target_of(args) == expected
@@ -329,8 +330,16 @@ def test_hook_refuses_when_any_merge_in_the_command_is_ungated(tmp_path, stub, c
 
 @pytest.mark.parametrize("raw", ["", "not json", json.dumps(["x"]), json.dumps({"tool_input": 5})])
 def test_hook_lets_an_unreadable_payload_through(tmp_path, stub, raw):
-    """Not a Bash payload it can read, so not a merge it can see."""
+    """Not a Bash payload it can read, and no merge in it."""
     assert mc.hook(tmp_path, raw) == 0
+
+
+@pytest.mark.parametrize("raw", ['{"tool_input": "gh pr merge 5"}', 'gh pr merge 5 -R a/b',
+                                 json.dumps({"tool_input": {"command": ["gh pr merge 5"]}})])
+def test_hook_refuses_an_unreadable_payload_that_mentions_a_merge(tmp_path, stub, raw, capsys):
+    """The module docstring: a merge it cannot judge is refused."""
+    assert mc.hook(tmp_path, raw) == 2
+    assert "unreadable" in capsys.readouterr().err
 
 
 def test_the_hook_end_to_end_with_a_fake_gh(tmp_path):

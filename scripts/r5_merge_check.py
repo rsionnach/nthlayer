@@ -140,7 +140,7 @@ def target_of(args: list) -> tuple[str, str]:
         elif not a.startswith("-"):
             positional.append(a)
         elif a in ("-b", "--body", "-F", "--body-file", "-t", "--subject",
-                   "--author-email", "--match-head-commit"):
+                   "-A", "--author-email", "--match-head-commit"):
             i += 1  # a flag that takes a value: skip it
         i += 1
     if len(positional) != 1:
@@ -278,8 +278,15 @@ def hook(root: Path, payload: str) -> int:
         data = json.loads(payload)
         command = data.get("tool_input", {}).get("command", "")
     except (ValueError, AttributeError):
-        return 0  # not a Bash payload this hook can read: not a merge it can see
-    if not isinstance(command, str) or "merge" not in command:
+        command = None
+    if not isinstance(command, str):
+        if "pr merge" not in payload:
+            return 0  # not a payload this hook can read, and no merge in it
+        print("r5-merge-check: merge refused [opensrm-6kqs.6]: the hook payload is "
+              "unreadable and mentions pr merge, so the merge cannot be judged.",
+              file=sys.stderr)
+        return 2
+    if "merge" not in command:
         return 0
     try:
         merges = merges_in(command)
