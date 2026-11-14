@@ -444,7 +444,13 @@ def test_a_per_repo_map_of_shas_names_its_commits_not_its_repos():
     assert out["rounds"][2]["head"] == FIX1
 
 
-@pytest.mark.parametrize("reason", sorted(REFUSAL_CASES))
+# Collected at import, so guarded at import: an empty list would collect zero
+# cases and pass (R5-R33, collection-time parametrise without a minimum).
+REFUSAL_REASONS = sorted(REFUSAL_CASES)
+assert len(REFUSAL_REASONS) >= 18
+
+
+@pytest.mark.parametrize("reason", REFUSAL_REASONS)
 def test_each_refusal(reason, monkeypatch):
     if reason in TABLE_FOR:
         monkeypatch.setattr(r5_record, "KNOWN_REFUSED", TABLE_FOR[reason])
