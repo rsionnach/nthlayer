@@ -55,9 +55,13 @@ What a "changed test file" is: a path added, modified, renamed or copied in
 basename matches pytest's default ``python_files``: ``test_*.py`` or
 ``*_test.py``. A repository that configures other ``python_files``, and
 ``conftest.py``, are not covered. Static checks read each file at HEAD with
-``git cat-file``; they never check out or modify anything. A file that does
-not parse under the interpreter running this script cannot be checked
-(exit 1).
+``git cat-file``; they never check out or modify anything. Git output is
+read as bytes: diff text and paths decode as UTF-8 with undecodable bytes
+kept (``surrogateescape``), and each test file is parsed from its bytes, so a
+PEP 263 coding cookie applies. A test file that does not decode or parse
+under the interpreter running this script cannot be checked (exit 1). Any
+unexpected error still prints the JSON object, with the error in ``errors``,
+and exits 1.
 
 Static checks, exactly:
 
@@ -130,7 +134,11 @@ to a temporary directory on ``PYTHONPATH``, which records the collected and
 deselected node ids, collection errors and skips, and each test's outcome as
 structured data, so the result never depends on parsing pytest's output or on
 the repository's ``-q`` in ``addopts``. One run gives what ``--collect-only``
-would, plus the outcomes. A module whose collection errors, or a run that
+would, plus the outcomes. The probe turns pytest-xdist's distribution off for
+the run (``-n``/``--dist`` in ``addopts`` would otherwise collect in workers and
+leave the probe's process with no items); without xdist it changes nothing.
+The run is its own process group, and ``--timeout`` kills the whole group, not
+only the prefix's wrapper (POSIX only). A module whose collection errors, or a run that
 exits other than 0, 1 or 5 or writes no probe output, cannot be checked
 (exit 1). Test failures are the suite's business, not this check's.
 
@@ -152,13 +160,17 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
+import io
 import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
+import tokenize
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -184,12 +196,61 @@ class CannotRun(Exception):
 # ------------------------------------------------------------------- git
 
 
-def _git(repo: Path, *args: str) -> str:
+def _git_bytes(repo: Path, *args: str) -> bytes:
     out = subprocess.run(["git", "-C", str(repo), "-c", "core.quotePath=false", *args],
-                         capture_output=True, text=True)
+                         capture_output=True)
     if out.returncode != 0:
-        raise CannotRun(f"git {' '.join(args)}: {out.stderr.strip()}")
+        raise CannotRun(f"git {' '.join(args)}: "
+                        f"{out.stderr.decode('utf-8', 'backslashreplace').strip()}")
     return out.stdout
+
+
+def _git(repo: Path, *args: str) -> str:
+    """git's stdout as text. Paths and diff content are bytes, not UTF-8:
+    undecodable bytes are kept as surrogates (``surrogateescape``) so a
+    latin-1 file in the range never stops the check [opensrm-6kqs.5 edge-cases]."""
+    return _git_bytes(repo, *args).decode("utf-8", "surrogateescape")
+
+
+def read_test_blob(repo: Path, commit: str, path: str) -> tuple[ast.Module, str]:
+    """A test file at ``commit``, parsed from its bytes so a PEP 263 coding
+    cookie applies, and its source text decoded the same way. A blob that does
+    not decode or parse cannot be checked."""
+    blob = _git_bytes(repo, "cat-file", "blob", f"{commit}:{path}")
+    version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    try:
+        tree = ast.parse(blob, filename=path)
+        encoding, _ = tokenize.detect_encoding(io.BytesIO(blob).readline)
+        source = blob.decode(encoding)
+    except (SyntaxError, ValueError, LookupError) as exc:  # UnicodeDecodeError is a ValueError
+        raise CannotRun(f"{path} does not parse under Python {version}: {exc}") from None
+    return tree, source
+
+
+_C_ESCAPES = {ord("a"): 7, ord("b"): 8, ord("t"): 9, ord("n"): 10, ord("v"): 11,
+              ord("f"): 12, ord("r"): 13, ord('"'): 34, ord("\\"): 92}
+
+
+def _diff_path(field: str) -> str:
+    """The path in a ``+++ `` header: git C-quotes a name holding a quote, a
+    backslash or a control character (``"b/a\\tb"``, octal ``\\ooo`` for
+    bytes), and appends a tab to an unquoted name holding a space."""
+    if not field.startswith('"'):
+        return field[:-1] if field.endswith("\t") else field
+    raw = field.encode("utf-8", "surrogateescape")
+    out, i, end = bytearray(), 1, raw.rindex(b'"')
+    while i < end:
+        byte = raw[i]
+        if byte == 92 and raw[i + 1:i + 2].isdigit():
+            out.append(int(raw[i + 1:i + 4], 8))
+            i += 4
+        elif byte == 92:
+            out.append(_C_ESCAPES.get(raw[i + 1], raw[i + 1]))
+            i += 2
+        else:
+            out.append(byte)
+            i += 1
+    return bytes(out).decode("utf-8", "surrogateescape")
 
 
 def _commit(repo: Path, rev: str) -> str:
@@ -227,9 +288,9 @@ def changed_lines(repo: Path, base: str, head: str) -> dict[str, set[int]]:
                "--src-prefix=a/", "--dst-prefix=b/", base, head)
     out: dict[str, set[int]] = {}
     current: set[int] | None = None
-    for line in raw.splitlines():
+    for line in raw.split("\n"):  # not splitlines: a diff line may hold \r, \f, \x1c...
         if line.startswith("+++ "):
-            target = line[4:]
+            target = _diff_path(line[4:])
             current = out.setdefault(target[2:], set()) if target.startswith("b/") else None
             continue
         m = _HUNK.match(line)
@@ -676,13 +737,8 @@ def check_unguarded_parametrize(tree: ast.Module) -> list[dict]:
     return hits
 
 
-def static_hits(path: str, source: str) -> list[dict]:
-    """Every static check's hits on one test file's source."""
-    try:
-        tree = ast.parse(source, filename=path)
-    except SyntaxError as exc:
-        raise CannotRun(f"{path} does not parse under Python "
-                        f"{sys.version_info[0]}.{sys.version_info[1]}: {exc}") from None
+def static_hits(path: str, tree: ast.Module) -> list[dict]:
+    """Every static check's hits on one test file's parsed source."""
     hits = []
     hits += check_module_level_skip(tree)
     hits += check_layout_relative_path(tree, path)
@@ -732,6 +788,8 @@ PROBE_SOURCE = '''\
 import json
 import os
 
+import pytest
+
 _DATA = {"collected": [], "deselected": [], "collect_errors": [], "collect_skips": [],
          "outcomes": {}}
 
@@ -740,6 +798,19 @@ def _text(longrepr):
     if isinstance(longrepr, tuple) and len(longrepr) == 3:
         return str(longrepr[2])
     return str(longrepr)[-2000:]
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    # pytest-xdist (-n/--dist in addopts) collects in its workers, never in
+    # this process, so session.items stays empty and every module would read
+    # as collecting zero. Its trylast pytest_configure starts distribution
+    # only when dist != "no" and tx is set: turn both off before it runs.
+    # Without xdist the options do not exist and nothing changes.
+    if hasattr(config.option, "dist"):
+        config.option.dist = "no"
+    if hasattr(config.option, "tx"):
+        config.option.tx = []
 
 
 def pytest_deselected(items):
@@ -789,12 +860,24 @@ def run_module(repo: Path, prefix: list[str], module: str, probe_dir: str,
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["R5_ROUND0_OUT"] = out_file
     command = [*prefix, "-rs", "-p", "no:cacheprovider", "-p", PROBE, module]
+    # Its own session (process group), so a timeout kills the whole tree: the
+    # prefix is usually a wrapper (uv run), and killing only the wrapper
+    # leaves pytest running. POSIX only, like the rest of the gate.
     try:
-        proc = subprocess.run(command, cwd=str(repo), env=env, capture_output=True,
-                              text=True, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        proc = subprocess.Popen(command, cwd=str(repo), env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+    except OSError as exc:
         raise CannotRun(f"{shlex.join(command)}: {exc}") from None
-    tail = _tail(proc.stdout + proc.stderr)
+    try:
+        stdout, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):  # the group is already gone
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()  # not communicate(): a descendant that left the group may hold the pipe
+        proc.stdout.close()
+        raise CannotRun(f"{shlex.join(command)}: timed out after {timeout} seconds; "
+                        "its process group was killed") from None
+    tail = _tail(stdout.decode("utf-8", "replace"))
     data = None
     if os.path.exists(out_file):
         with open(out_file, encoding="utf-8") as handle:
@@ -941,9 +1024,9 @@ def check(repo: Path, base: str, head: str, static_only: bool, prefix: list[str]
     static_errors = []
     for path in files:
         try:
-            source = _git(repo, "cat-file", "blob", f"{result['head']}:{path}")
-            hits += static_hits(path, source)
-            parsed[path] = (ast.parse(source, filename=path), source)
+            tree, source = read_test_blob(repo, result["head"], path)
+            hits += static_hits(path, tree)
+            parsed[path] = (tree, source)
         except CannotRun as exc:
             static_errors.append(str(exc))
     for name in STATIC_CHECKS:
@@ -1032,9 +1115,20 @@ def main(argv: list) -> int:
     if not repo.is_dir():
         print(f"r5_provenance_checks: {repo} is not a directory", file=sys.stderr)
         return 1
-    result, code = check(repo, args.base, args.head, args.static_only, prefix, args.timeout)
-    json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
-    sys.stdout.write("\n")
+    try:
+        result, code = check(repo, args.base, args.head, args.static_only, prefix, args.timeout)
+    except Exception as exc:  # never a traceback without the JSON
+        result = {"base": None, "head": None, "static_only": args.static_only, "test_files": [],
+                  "findings": [], "errors": [f"internal: {type(exc).__name__}: {exc}"],
+                  "checks": {name: {"ran": False, "hits": 0, "detail": {"error": "internal"}}
+                             for name in STATIC_CHECKS + RUNTIME_CHECKS}}
+        code = 1
+    try:  # a non-UTF-8 path is a surrogate here: escape it rather than fail to print
+        text = json.dumps(result, ensure_ascii=False, indent=1)
+        text.encode(sys.stdout.encoding or "utf-8")
+    except UnicodeEncodeError:
+        text = json.dumps(result, ensure_ascii=True, indent=1)
+    sys.stdout.write(text + "\n")
     return code
 
 

@@ -26,12 +26,14 @@ Run: uv run --no-project --with pytest pytest -q test/test_r5_provenance_checks.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -598,3 +600,186 @@ def test_cli_prints_one_json_object_and_exits_2_on_a_hit(repo):
 def test_cli_usage_errors_exit_1(args):
     out = subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
     assert out.returncode == 1
+
+
+# ---------------------- edges from the edge-cases pass [opensrm-6kqs.5]
+
+
+def commit_bytes(repo: Path, files: dict, message: str) -> str:
+    """Write raw bytes (no dedent, no encoding) and commit."""
+    for name, data in files.items():
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", message)
+    return git(repo, "rev-parse", "HEAD")
+
+
+def test_a_non_utf8_file_in_the_diff_still_prints_json(repo):
+    """Edge: a byte that is not UTF-8 anywhere in BASE..HEAD (here latin-1
+    text in a data file). Git diffs are bytes; the CLI must print its JSON
+    object and finish the check, not die decoding the diff."""
+    base = commit(repo, {"README": "x\n"}, "base")
+    head = commit_bytes(repo, {"data.txt": b"caf\xe9\n",
+                               "tests/test_m.py": b"def test_a():\n    assert 1\n"}, "head")
+    out = subprocess.run([sys.executable, str(SCRIPT), "check", "--repo", str(repo), "--base",
+                          base, "--head", head, "--static-only"], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    data = json.loads(out.stdout)
+    assert data["test_files"] == ["tests/test_m.py"] and data["errors"] == []
+
+
+def test_a_latin1_test_file_with_a_coding_cookie_is_checked(repo):
+    """Edge: a test blob in latin-1 with a PEP 263 cookie is valid Python; it
+    is parsed from its bytes (the cookie applies), checked statically, and
+    run, and its module-level skip is still found at its line."""
+    src = ("# -*- coding: latin-1 -*-\nimport pytest\nCAFE = 'caf\xe9'\n"
+           "pytestmark = pytest.mark.skip(reason='later')\n"
+           "def test_a():\n    assert len(CAFE) == 4\n").encode("latin-1")
+    base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
+    head = commit_bytes(repo, {"tests/test_m.py": src}, "head")
+    result, code = checks.check(repo, base, head, False, PYTEST, 120)
+    assert code == 2 and result["errors"] == []
+    assert [f["start_line"] for f in hits(result, "module_level_skip")] == [4]
+
+
+def test_a_test_blob_that_does_not_decode_cannot_be_checked(repo):
+    """Edge: latin-1 bytes with no cookie are not valid Python source (PEP 3120
+    makes UTF-8 the default). That is a check that cannot run: exit 1 with the
+    JSON object, never a traceback."""
+    base = commit(repo, {"README": "x\n"}, "base")
+    head = commit_bytes(repo, {"tests/test_m.py": b"X = 'caf\xe9'\ndef test_a():\n    assert X\n"},
+                        "head")
+    out = subprocess.run([sys.executable, str(SCRIPT), "check", "--repo", str(repo), "--base",
+                          base, "--head", head, "--static-only"], capture_output=True, text=True)
+    assert out.returncode == 1, out.stderr
+    data = json.loads(out.stdout)
+    assert "does not parse" in data["errors"][0]
+    assert data["checks"]["early_return"]["ran"] is False
+
+
+# A stand-in for pytest-xdist, which this suite's environment does not ship.
+# It reproduces the two facts the probe depends on, from xdist's plugin.py:
+# the options are ``dist`` and ``tx``, and a trylast pytest_configure registers
+# the distributing session when dist != "no" and tx is set; that session
+# collects in workers, so the controller's session.items stays empty.
+FAKE_XDIST = """
+    import pytest
+
+    def pytest_addoption(parser):
+        parser.addoption("--dist", default="no")
+        parser.addoption("--tx", action="append", default=[])
+
+    class Controller:
+        @pytest.hookimpl(tryfirst=True)
+        def pytest_collection(self, session):
+            return True  # the workers collect, not this process
+
+        @pytest.hookimpl(tryfirst=True)
+        def pytest_runtestloop(self, session):
+            return True
+
+    @pytest.hookimpl(trylast=True)
+    def pytest_configure(config):
+        if config.getoption("dist") != "no" and config.getoption("tx"):
+            config.pluginmanager.register(Controller(), "dsession")
+    """
+
+
+def test_xdist_in_addopts_does_not_read_as_zero_collected(repo):
+    """Edge: a repository whose addopts distribute the run (``-n 2`` sets
+    dist and tx in pytest-xdist). The probe turns distribution off, so the
+    module's one test is collected and nothing is hit."""
+    result, code = gate(repo, {
+        "conftest.py": FAKE_XDIST,
+        "pytest.ini": "[pytest]\naddopts = --dist load --tx popen --tx popen\n",
+        "tests/test_m.py": "def test_a():\n    assert 1\n"}, static_only=False)
+    assert code == 0, (result["findings"], result["errors"])
+    assert result["checks"]["zero_collected"]["detail"]["modules"]["tests/test_m.py"][
+        "collected"] == 1
+
+
+def test_the_fake_xdist_does_empty_the_collection_without_the_probe(repo):
+    """The stand-in above is live: without the probe's override the same
+    project collects nothing, which is what xdist does to the probe."""
+    commit(repo, {"conftest.py": FAKE_XDIST,
+                  "pytest.ini": "[pytest]\naddopts = --dist load --tx popen\n",
+                  "tests/test_m.py": "def test_a():\n    assert 1\n"}, "head")
+    plain = subprocess.run([*PYTEST, "-p", "no:cacheprovider", "-o", "addopts=", "-q",
+                            "tests/test_m.py"], cwd=repo, capture_output=True, text=True)
+    run = subprocess.run([*PYTEST, "-p", "no:cacheprovider", "-q", "tests/test_m.py"],
+                         cwd=repo, capture_output=True, text=True)
+    assert plain.returncode == 0
+    assert run.returncode == 5  # no tests collected: the controller collected nothing
+
+
+def test_a_timeout_leaves_no_process_behind(repo, tmp_path):
+    """Edge: a test that hangs past --timeout under a wrapper prefix (here sh,
+    standing in for uv run, which forks pytest rather than exec-ing it). The
+    whole process group is killed, so the pytest the wrapper started is gone."""
+    pid_file = tmp_path / "pid"
+    base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
+    head = commit(repo, {"tests/test_m.py": f"""
+        import os, time
+        def test_hangs():
+            with open({str(pid_file)!r}, "w") as handle:
+                handle.write(str(os.getpid()))
+            time.sleep(60)
+        """}, "head")
+    wrapper = ["sh", "-c", '"$@"; exit $?', "sh", *PYTEST]
+    try:
+        started = time.monotonic()
+        result, code = checks.check(repo, base, head, False, wrapper, 8)
+        # Returning only when the 60 s sleep ends would mean the run was never killed.
+        assert time.monotonic() - started < 40
+        assert code == 1 and "timed out" in result["errors"][0]
+        pid = int(pid_file.read_text())
+        alive = True
+        for _ in range(50):  # the reaper may need a moment after SIGKILL
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                alive = False
+                break
+            time.sleep(0.1)
+        assert not alive, f"pytest {pid} outlived the timeout"
+    finally:
+        if pid_file.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_file.read_text()), 9)
+
+
+def test_a_changed_test_file_whose_path_has_a_space_is_checked(repo):
+    """Edge: git writes ``+++ b/sp ace/test_c.py`` with a trailing tab when the
+    name holds a space; the changed test in it must still count as changed."""
+    before = "import pytest\ndef test_c():\n    assert 1\n"
+    after = "import pytest\ndef test_c():\n    pytest.skip('now')\n"
+    result, code = gate(repo, {"sp ace/test_c.py": after}, {"sp ace/test_c.py": before},
+                        static_only=False)
+    assert code == 2, result["errors"]
+    assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
+        "changed test test_c is SKIPPED when run"]
+
+
+def test_changed_lines_unquotes_git_c_quoted_paths(repo):
+    """Edge: git C-quotes a name holding a quote or a backslash
+    (``+++ "b/q\\"uote/test_d.py"``); the key is the real path."""
+    names = ['q"uote/test_d.py', "back\\slash/test_e.py", "sp ace/test_c.py"]
+    base = commit(repo, {n: "def test_a():\n    assert 1\n" for n in names}, "base")
+    head = commit(repo, {n: "def test_a():\n    assert 2\n" for n in names}, "head")
+    assert {n: checks.changed_lines(repo, base, head).get(n) for n in names} == {
+        n: {2} for n in names}
+
+
+def test_an_unexpected_error_still_prints_json_and_exits_1(repo, monkeypatch, capsys):
+    """Edge: a bug anywhere under check() must not turn into a traceback with
+    no JSON; the caller records the object, so it is printed with the error."""
+    def broken(*args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(checks, "check", broken)
+    code = checks.main(["check", "--repo", str(repo), "--base", "a", "--head", "b"])
+    data = json.loads(capsys.readouterr().out)
+    assert code == 1 and data["errors"] == ["internal: RuntimeError: boom"]
+    assert not any(c["ran"] for c in data["checks"].values())
