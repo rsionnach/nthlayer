@@ -1688,7 +1688,7 @@ def test_main_refuses_to_publish_a_leaking_entry(workspace, tmp_path, monkeypatc
     ws = workspace["ws"]
     write_record(ws, "lk", record("opensrm-lk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
-    monkeypatch.setattr(r5_corpus, "local_path_leaks", lambda entries: ["opensrm-lk"])
+    monkeypatch.setattr(r5_corpus, "local_path_leak_forms", lambda entries: {"opensrm-lk": [("brief.md", "home_path")]})
     out = tmp_path / "out"
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
                            "--no-bd"]) == 2
