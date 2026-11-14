@@ -41,6 +41,22 @@ r5_record = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(r5_record)
 
 BASE, HEAD0, FIX1, FIX2 = "1111111", "2222222", "3333333", "4444444"
+# Full SHAs for a verdict (section 6: tree_sha is `git rev-parse HEAD^{tree}`,
+# which prints 40 hex digits); each head is the abbreviated one's commit.
+TREE = "ab" * 20
+HEAD0_FULL, FIX1_FULL = HEAD0 + "0" * 33, FIX1 + "0" * 33
+
+
+def verdict_ev(ts: str = "10:30", state_: str = "CLEAN", tree: str = TREE,
+               head: str = FIX1_FULL) -> dict:
+    """r5-supervise's Final step logs the verdict last (opensrm-6kqs.6)."""
+    return ev(ts, "verdict_recorded", state=state_, tree_sha=tree, head_sha=head)
+
+
+def _gate_with(*events) -> dict:
+    g = full_gate()
+    g["audit_trail"] += list(events)
+    return g
 
 
 def ev(ts: str, event: str, **fields) -> dict:
@@ -412,6 +428,15 @@ REFUSAL_CASES = {
     "preflight_verdict_mismatch": lambda: _gate_after(round0(verdict="PREFLIGHT_FAILED")),
     "round_after_preflight_failed": lambda: _gate_after(round0(suite_ok=False,
                                                                verdict="PREFLIGHT_FAILED")),
+    # opensrm-6kqs.6: the verdict_recorded event (spec section 6 verdict).
+    "bad_verdict_event": lambda: _gate_with(verdict_ev(tree="AB" * 20)),
+    "second_verdict": lambda: _gate_with(verdict_ev(), verdict_ev("10:40")),
+    "verdict_on_multi_repo": lambda: state([verdict_ev()], [], diff_range={
+        "nthlayer": {"base": BASE, "head": HEAD0}, "opensrm": {"base": BASE, "head": HEAD0}}),
+    "verdict_state_mismatch": lambda: _gate_with(verdict_ev(state_="PREFLIGHT_FAILED")),
+    "verdict_head_mismatch": lambda: _gate_with(verdict_ev(head=HEAD0_FULL)),
+    "round_after_verdict": lambda: _gate_with(
+        verdict_ev(), ev("10:40", "commit_made", sha=FIX2, repo="nthlayer")),
 }
 # The KNOWN_REFUSED a case is built against, where it needs one.
 TABLE_FOR = {
@@ -447,7 +472,7 @@ def test_a_per_repo_map_of_shas_names_its_commits_not_its_repos():
 # Collected at import, so guarded at import: an empty list would collect zero
 # cases and pass (R5-R33, collection-time parametrise without a minimum).
 REFUSAL_REASONS = sorted(REFUSAL_CASES)
-assert len(REFUSAL_REASONS) >= 18
+assert len(REFUSAL_REASONS) >= 24
 
 
 @pytest.mark.parametrize("reason", REFUSAL_REASONS)
@@ -460,7 +485,7 @@ def test_each_refusal(reason, monkeypatch):
 def test_every_refusal_reason_has_a_case():
     # The parametrise list above must not shrink silently below the set.
     assert set(REFUSAL_CASES) == set(r5_record.REFUSALS)
-    assert len(REFUSAL_CASES) >= 18
+    assert len(REFUSAL_CASES) >= 24
 
 
 # --------------------------------------------------------------- validate
@@ -518,7 +543,11 @@ def test_validate_accepts_zero_and_null_measurements():
 
 def test_validate_accepts_a_section_6_verdict():
     """Section 6 verdict block (bead 6 writes it); its state is checked."""
-    assert _errors(lambda o: o.update(verdict={"state": "CLEAN", "tree_sha": "t"})) == []
+    assert _errors(lambda o: o.update(verdict={"state": "CLEAN", "tree_sha": TREE,
+                                               "head_sha": FIX1_FULL, "at": None})) == []
+    assert _errors(lambda o: o.update(verdict={"state": "CLEAN", "tree_sha": "t"})) == [
+        "verdict.tree_sha: not a full 40-hex lower-case SHA",
+        "verdict.head_sha: not a full 40-hex lower-case SHA"]
 
 
 # ------------------------------------------------------------------ sweep
@@ -1204,10 +1233,11 @@ def _gate_after(event: dict) -> dict:
 
 def _stopped(event: dict) -> dict:
     """A gate that stopped at round 0: no dispatch, no pass completed."""
-    rec = state([ev("00:00", "supervisor_started"), event], [])
-    rec["verdict"] = {"state": "PREFLIGHT_FAILED", "tree_sha": None, "head_sha": HEAD0,
-                      "at": event["ts"]}
-    return rec
+    # Its verdict follows round 0's (opensrm-6kqs.6), on the head round 0 ran on.
+    head = event.get("head") or HEAD0
+    state_ = "PREFLIGHT_FAILED" if event.get("verdict") == "PREFLIGHT_FAILED" else "CLEAN"
+    return state([ev("00:00", "supervisor_started"), event,
+                  verdict_ev("00:06", state_, head=head + "0" * (40 - len(head)))], [])
 
 
 def test_a_clean_round_0_is_round_1_and_the_gate_follows():
@@ -1348,7 +1378,7 @@ def test_no_round_of_any_kind_follows_a_failed_round_0(after):
     A fix opener, a receipt and an unavailable reviewer each make a round, so
     each is refused, not only a dispatch."""
     rec = _stopped(round0(suite_ok=False, verdict="PREFLIGHT_FAILED"))
-    rec["audit_trail"].append(after)
+    rec["audit_trail"].insert(-1, after)  # before the verdict, which ends the trail
     assert _refusal(rec) == "round_after_preflight_failed"
 
 
@@ -1376,3 +1406,245 @@ def test_round_0_s_head_is_its_own_event_s_head():
     out = r5_record.build(_stopped(event))
     assert HEAD0 != "5555555"
     assert out["rounds"][0]["head"] == "5555555"
+
+
+# ------------------------------------------- verdict check [opensrm-6kqs.6]
+#
+# Section 6, "Verdict check": a close, push or merge gate passes when
+# verdict.state is CLEAN and `git rev-parse HEAD^{tree}` equals
+# verdict.tree_sha; anything else refuses, naming the state or the mismatch.
+# A squash, reorder or message edit that leaves the tree identical keeps its
+# verdict. Bead 6 closes when a content-free rebase keeps a clean verdict and
+# a one-line change after the gate refuses `bd close`. Each repo below is a
+# real git repository, so every tree id is git's, never a literal.
+
+
+def _git(repo: Path, *args: str) -> str:
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+           "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+           "PATH": "/usr/bin:/bin:/usr/local/bin"}
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                          text=True, env=env).stdout.strip()
+
+
+def _commit(repo: Path, name: str, text: str, message: str) -> str:
+    (repo / name).write_text(text)
+    _git(repo, "add", name)
+    _git(repo, "commit", "-q", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def gated(tmp_path):
+    """A repo whose gate ran over two commits after a base, and its record:
+    the r5-state.json r5-supervise archives, ending in verdict_recorded."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    base = _commit(repo, "a.py", "x = 1\n", "base")
+    _commit(repo, "a.py", "x = 2\n", "fix one")
+    head = _commit(repo, "b.py", "y = 1\n", "fix two")
+    tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    record = state([verdict_ev("10:30", "CLEAN", tree=tree, head=head)], [],
+                   diff_range={"repo": {"base": base, "head": head, "worktree": None}})
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps(record))
+    return repo, base, head, tree, path
+
+
+def _check(path: Path, *args: str) -> tuple[int, dict]:
+    out = _cli("check", str(path), *args)
+    return out.returncode, (json.loads(out.stdout) if out.stdout.strip() else {})
+
+
+def test_the_verdict_holds_for_the_gated_tree(gated):
+    repo, _, head, tree, path = gated
+    rc, out = _check(path, "--repo", str(repo))
+    assert (rc, out["ok"], out["reason"], out["tree_sha"], out["head_sha"]) == \
+        (0, True, None, tree, head)
+
+
+def test_a_message_edit_keeps_the_verdict(gated):
+    repo, _, head, tree, path = gated
+    _git(repo, "commit", "-q", "--amend", "-m", "fix two, reworded")
+    assert _git(repo, "rev-parse", "HEAD") != head
+    assert _check(path, "--repo", str(repo))[0] == 0
+
+
+def test_a_content_free_rebase_keeps_the_verdict(gated):
+    """Squashing the gate's two commits onto its base: new commits, same tree."""
+    repo, base, head, tree, path = gated
+    _git(repo, "reset", "-q", "--soft", base)
+    _git(repo, "commit", "-q", "-m", "both fixes, squashed")
+    assert _git(repo, "rev-parse", "HEAD") != head
+    assert _git(repo, "rev-parse", "HEAD^{tree}") == tree
+    assert _check(path, "--repo", str(repo))[0] == 0
+
+
+def test_a_one_line_change_after_the_gate_refuses(gated):
+    repo, _, _, tree, path = gated
+    _commit(repo, "a.py", "x = 3\n", "one more line")
+    rc, out = _check(path, "--repo", str(repo))
+    now = _git(repo, "rev-parse", "HEAD^{tree}")
+    assert (rc, out["ok"], out["reason"], out["tree"]) == (2, False, "tree_mismatch", now)
+    # Naming the mismatch: both trees are in the detail.
+    assert tree in out["detail"] and now in out["detail"]
+
+
+def test_ref_picks_the_commit_checked(gated):
+    repo, _, head, _, path = gated
+    _commit(repo, "a.py", "x = 3\n", "one more line")
+    assert _check(path, "--repo", str(repo), "--ref", head)[0] == 0
+    assert _check(path, "--repo", str(repo), "--ref", "HEAD")[0] == 2
+
+
+def test_tree_checks_a_given_tree(gated):
+    """The merge check has the PR head's tree from GitHub, not a checkout."""
+    _, _, _, tree, path = gated
+    assert _check(path, "--tree", tree)[0] == 0
+    assert _check(path, "--tree", tree.upper())[0] == 0
+    assert _check(path, "--tree", "0" * 40)[1]["reason"] == "tree_mismatch"
+
+
+@pytest.mark.parametrize("state_", ["ESCALATED", "BUDGET"])
+def test_a_verdict_that_is_not_clean_refuses_naming_its_state(gated, state_):
+    repo, _, head, tree, path = gated
+    rec = json.loads(path.read_text())
+    rec["audit_trail"] = [verdict_ev("10:30", state_, tree=tree, head=head)]
+    path.write_text(json.dumps(rec))
+    rc, out = _check(path, "--repo", str(repo))
+    assert (rc, out["reason"], out["state"]) == (2, "not_clean", state_)
+    assert state_ in out["detail"]
+
+
+def test_a_failed_round_0_refuses_as_not_clean(tmp_path):
+    rec = _stopped(round0(suite_ok=False, verdict="PREFLIGHT_FAILED"))
+    out = r5_record.check(rec, TREE)
+    assert (out["ok"], out["reason"], out["state"]) == (False, "not_clean", "PREFLIGHT_FAILED")
+
+
+def test_a_record_with_no_verdict_refuses(gated):
+    _, _, _, tree, _ = gated
+    out = r5_record.check(full_gate(), tree)
+    assert (out["ok"], out["reason"]) == (False, "no_verdict")
+
+
+def test_a_multi_repo_record_refuses_by_name():
+    """Ruling M1 (opensrm-6kqs.6): no one tree, so gate each repo on its own."""
+    rec = state([], [], diff_range={"nthlayer": {"base": BASE, "head": HEAD0},
+                                    "opensrm": {"base": BASE, "head": HEAD0}})
+    out = r5_record.check(rec, TREE)
+    assert (out["ok"], out["reason"]) == (False, "multi_repo")
+    assert "nthlayer" in out["detail"] and "opensrm" in out["detail"]
+
+
+def test_a_record_that_does_not_build_refuses_with_its_reason():
+    out = r5_record.check(_gate_with(verdict_ev(), verdict_ev("10:40")), TREE)
+    assert (out["ok"], out["reason"]) == (False, "record_refused")
+    assert out["detail"].startswith("second_verdict")
+
+
+def test_a_built_record_checks_like_its_state_file(gated):
+    """The archive step builds record.json; either file can be checked."""
+    repo, _, _, tree, path = gated
+    built = r5_record.build(json.loads(path.read_text()))
+    path.write_text(json.dumps(built))
+    assert _check(path, "--repo", str(repo))[0] == 0
+
+
+def test_a_bare_verdict_file_is_checked(gated, tmp_path):
+    """Ruling M3: epic-executor writes <run-dir>/verdict.json."""
+    repo, _, head, tree, _ = gated
+    bare = tmp_path / "verdict.json"
+    bare.write_text(json.dumps({"state": "CLEAN", "tree_sha": tree, "head_sha": head,
+                                "at": "2026-11-14T10:00:00+00:00"}))
+    assert _check(bare, "--repo", str(repo))[0] == 0
+    _commit(repo, "a.py", "x = 3\n", "one more line")
+    assert _check(bare, "--repo", str(repo))[1]["reason"] == "tree_mismatch"
+
+
+@pytest.mark.parametrize("bare", [
+    {"state": "CLEAN", "tree_sha": "abc", "head_sha": "0" * 40},
+    {"state": "clean", "tree_sha": "0" * 40, "head_sha": "0" * 40},
+    {"state": "CLEAN", "tree_sha": "0" * 40},
+    ["CLEAN"],
+    # `git rev-parse` prints lower-case hex; anything else is not its output.
+    {"state": "CLEAN", "tree_sha": "AB" * 20, "head_sha": "0" * 40},
+    {"state": "CLEAN", "tree_sha": "g" * 40, "head_sha": "0" * 40},
+    {"state": "CLEAN", "tree_sha": "0" * 40, "head_sha": "0" * 40, "at": 5},
+], ids=["short-tree", "lower-state", "no-head", "not-an-object", "upper-case-tree",
+        "non-hex-tree", "at-not-a-string"])
+def test_a_malformed_bare_verdict_refuses(bare):
+    out = r5_record.check(bare, "0" * 40)
+    assert (out["ok"], out["reason"]) == (False, "bad_verdict")
+
+
+@pytest.mark.parametrize("args", [
+    [], ["--repo", "x"], ["F"], ["F", "--repo"], ["F", "--tree", "0" * 40, "--repo", "."],
+    ["F", "--ref", "HEAD"], ["F", "--tree", "0" * 40, "--ref", "HEAD"],
+    ["F", "--repo", ".", "--repo", "."], ["F", "--other", "x"],
+], ids=["none", "no-file", "no-target", "dangling", "both", "ref-alone", "tree-ref",
+        "repeated", "unknown"])
+def test_check_usage_errors_exit_1(gated, args):
+    _, _, _, _, path = gated
+    args = [str(path) if a == "F" else a for a in args]
+    out = _cli("check", *args)
+    assert (out.returncode, out.stdout) == (1, "")
+
+
+def test_check_cannot_run_exits_1(gated, tmp_path):
+    """A tree git cannot name, a short --tree, an unreadable file: not a pass
+    and not a refusal."""
+    repo, _, _, _, path = gated
+    assert _cli("check", str(path), "--repo", str(repo), "--ref", "nosuchref").returncode == 1
+    assert _cli("check", str(path), "--repo", str(tmp_path / "nowhere")).returncode == 1
+    assert _cli("check", str(path), "--tree", "abc123").returncode == 1
+    assert _cli("check", str(tmp_path / "missing.json"), "--tree", "0" * 40).returncode == 1
+
+
+def test_validate_holds_the_verdict_to_its_shape():
+    built = r5_record.build(_gate_with(verdict_ev()))
+    assert r5_record.validate(built)["valid"]
+    assert built["verdict"] == {"state": "CLEAN", "tree_sha": TREE, "head_sha": FIX1_FULL,
+                                "at": "2026-11-13T10:10:30+00:00"}
+    built["verdict"]["tree_sha"] = TREE[:12]
+    assert r5_record.validate(built)["errors"] == [
+        "verdict.tree_sha: not a full 40-hex lower-case SHA"]
+
+
+def test_archives_before_bead_6_build_with_no_verdict():
+    assert r5_record.build(full_gate())["verdict"] is None
+
+
+@pytest.mark.parametrize("late", [
+    lambda: ev("10:40", "reviewer_dispatched", **{"pass": "clarity", "iteration": 2}),
+    lambda: ev("10:40", "fixes_applied", **{"pass": "correctness", "statuses": {}}),
+    lambda: round0("10:40"),
+    lambda: received("10:40", "correctness", 3, []),
+    lambda: ev("10:40", "reviewer_unavailable", **{"pass": "correctness", "iteration": 3}),
+    lambda: ev("10:40", "advisory_pass_completed", **{"pass": "clarity", "counts": {},
+                                                      "findings": [], "verdict": "PASS"}),
+], ids=["dispatch", "fix", "round0", "findings_received", "reviewer_unavailable",
+        "advisory_pass_completed"])
+def test_no_round_follows_the_verdict(late):
+    assert _refusal(_gate_with(verdict_ev(), late())) == "round_after_verdict"
+
+
+def test_informational_events_may_follow_the_verdict():
+    """bead_closed and the lock release come after the verdict (Final step)."""
+    g = _gate_with(verdict_ev(), ev("10:40", "bead_closed", reason="clean"))
+    assert r5_record.build(g)["verdict"]["state"] == "CLEAN"
+
+
+def test_validate_refuses_a_verdict_on_a_multi_repo_record():
+    """Ruling M1: one tree per verdict; a hand-set one on several repos is an error."""
+    rec = r5_record.build(state([], [], diff_range={
+        "nthlayer": {"base": BASE, "head": HEAD0}, "opensrm": {"base": BASE, "head": HEAD0}}))
+    rec["verdict"] = {"state": "CLEAN", "tree_sha": TREE, "head_sha": FIX1_FULL, "at": None}
+    assert any("multi-repo gate" in e for e in r5_record.validate(rec)["errors"])
+
+
+@pytest.mark.parametrize("tree", ["ab12", "g" * 40])
+def test_short_and_non_hex_verdict_trees_are_refused_at_build(tree):
+    assert _refusal(_gate_with(verdict_ev(tree=tree))) == "bad_verdict_event"

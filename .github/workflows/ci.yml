@@ -110,3 +110,11 @@ jobs:
         run: uv run --no-project --with pytest pytest -q test/test_r5_provenance_checks.py
       - name: r5-provenance-checks tests (Python 3.9, as the shim runs)
         run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_provenance_checks.py
+
+      # r5_merge_check's tests (opensrm-6kqs.6): the PR merge check behind the
+      # gh pr merge hook, with gh stubbed (in-process and as a script on PATH);
+      # no network. Standard library plus pytest; on 3.9 too, as the shim runs.
+      - name: r5-merge-check tests
+        run: uv run --no-project --with pytest pytest -q test/test_r5_merge_check.py
+      - name: r5-merge-check tests (Python 3.9, as the shim runs)
+        run: uv run --no-project --python 3.9 --with pytest pytest -q test/test_r5_merge_check.py

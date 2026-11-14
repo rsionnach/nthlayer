@@ -187,6 +187,29 @@ passes, only the order varying:
 For a bead spanning `nthlayer-common` and a consumer, gate and release the
 common side first, then build the consumer against the released version.
 
+### The verdict is keyed to a tree (opensrm-6kqs.6, R5-R49)
+
+A gate's record ends in a `verdict`: its state (`CLEAN`, `ESCALATED`,
+`PREFLIGHT_FAILED`, `BUDGET`), `tree_sha` (`git rev-parse HEAD^{tree}` at the
+commit the gate ended on) and `head_sha`. Closing the bead and merging its PR
+both pass only when the state is `CLEAN` and the tree being closed or merged
+is that tree; anything else refuses, naming the state or the mismatch
+(`scripts/r5_record.py check`). A squash, a reorder or a reworded message
+leaves the tree, and so the verdict, intact. Any change to the content after
+the verdict, one line included, refuses until the bead is gated again. That
+covers advisory fixes too: fold them in before the verdict, or re-gate.
+
+The merge side runs before `gh pr merge` as a Claude Code PreToolUse hook
+(`scripts/r5_merge_check.py`), since the records are private and CI cannot
+read them. It checks the PR head's tree against the archive of a bead named
+in the PR's commit subjects, gated in the same repo, or against the
+`verdict.json` epic-executor writes in each task's run directory. The merge
+must carry `--match-head-commit <the head judged>` and no `--auto`, so a push
+between the check and the merge cannot merge an unjudged tree. Doc-only PRs
+(`.md`, `.rst`, `.txt`), which skip R5, and release-please and dependabot PRs
+are exempt. A gate over several repos records no verdict: gate each repo on
+its own.
+
 ## Running it
 
 - `/r5-supervise <bead-id>` runs the roster above for one bead, from the main
@@ -232,6 +255,7 @@ the wrong version and still produces a clean record (opensrm-p3bm).
 
 All three blocking passes ended with zero CRITICAL and IMPORTANT findings, the
 suite and lint passed after every fix commit, and the provenance kill checks
-ran and went red. The supervisor then closes the bead, unless the bead has
+ran and went red. The supervisor records a `CLEAN` verdict for the final
+tree, checks it, and then closes the bead, unless the bead has
 further checkpoints, in which case it stays open and the gate record names
 the checkpoint.

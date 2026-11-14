@@ -207,7 +207,23 @@ examples, generator-specific scripts.
     `r5_baseline.py` re-derives a record's rounds to check them. Tests:
     `test/test_r5_record.py`, on the runner's Python and on 3.9.
     A `round0_completed` audit event becomes a `preflight` round, round 1
-    (opensrm-6kqs.5).
+    (opensrm-6kqs.5). A `verdict_recorded` event, logged last, becomes the
+    record's `verdict` (state, `tree_sha`, `head_sha`); `check <record or
+    verdict.json> (--repo <path> [--ref <rev>] | --tree <sha>)` is section 6's
+    verdict check, which r5-supervise and epic-executor run before `bd close`:
+    exit 0 when the verdict is CLEAN for that exact tree, 2 refused (naming
+    the state or the mismatch; a multi-repo record always refuses), 1 could
+    not run (opensrm-6kqs.6).
+  - `r5_merge_check.py` — the PR merge check (opensrm-6kqs.6, R5-R49), run by
+    the workspace's PreToolUse hook `.claude/hooks/r5-merge-gate.sh` before a
+    `gh pr merge`: the PR (named by number with `-R`, or URL) merges only when
+    a bead in its commit subjects has an archive for this repo (or an
+    epic-executor run's `verdict.json`) whose verdict is CLEAN for the PR
+    head's tree (from `gh api`), and the merge is bound to that head
+    (`--match-head-commit`, no `--auto`). Doc-only (`.md`, `.rst`,
+    `.txt`), release-please and dependabot PRs are exempt. A merge it cannot
+    judge is refused. Standard library only. Tests:
+    `test/test_r5_merge_check.py`, on the runner's Python and on 3.9.
   - `r5_provenance_checks.py` — round 0's provenance mechanical checks
     (R5 Gate v2 Phase A.5, opensrm-6kqs.5; R5-R1, R5-R33): over the test
     files changed in `BASE..HEAD`, static checks read at HEAD with `ast`
@@ -231,8 +247,9 @@ examples, generator-specific scripts.
     (opensrm-8hn3); `test/test_r5_baseline.py` (opensrm-6kqs.1);
     `test/test_r5_corpus.py` (opensrm-6kqs.2);
     `test/test_r5_findings.py` (opensrm-6kqs.3);
-    `test/test_r5_record.py` (opensrm-6kqs.4); and
-    `test/test_r5_provenance_checks.py` (opensrm-6kqs.5).
+    `test/test_r5_record.py` (opensrm-6kqs.4);
+    `test/test_r5_provenance_checks.py` (opensrm-6kqs.5); and
+    `test/test_r5_merge_check.py` (opensrm-6kqs.6).
   - `meta-resolve.yml` — `scripts/meta-resolve-check.sh`, nightly and on
     PRs (opensrm-z1kq).
   - `error-budget-seam.yml` — `test/test_error_budget_seam.py` against
