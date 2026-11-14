@@ -1035,8 +1035,9 @@ def test_an_unmatched_table_row_is_refused(monkeypatch):
 
 def test_the_real_table_is_history_with_reasons():
     """opensrm-6kqs.14: each row carries a reason and an evidence pointer and
-    predates STEP3_CUTOFF."""
-    assert len(r5_record.KNOWN_REFUSED) == 2
+    predates STEP3_CUTOFF. Three rows since opensrm-6kqs.16 merged
+    r5_baseline's BLOCKED_DISPATCHES (ir5m, wo62.4.1) into this table."""
+    assert len(r5_record.KNOWN_REFUSED) == 3
     for (bead, lens, ts), row in r5_record.KNOWN_REFUSED.items():
         assert bead.startswith("opensrm-") and lens in r5_record.LENSES
         assert r5_record._instant(ts) < r5_record._instant(r5_record.STEP3_CUTOFF)
@@ -1648,3 +1649,39 @@ def test_validate_refuses_a_verdict_on_a_multi_repo_record():
 @pytest.mark.parametrize("tree", ["ab12", "g" * 40])
 def test_short_and_non_hex_verdict_trees_are_refused_at_build(tree):
     assert _refusal(_gate_with(verdict_ev(tree=tree))) == "bad_verdict_event"
+
+
+# r5-state spells the pass "edge-cases" (r5-supervise Step 1's passes, and
+# Step 3 logs reviewer_dispatch_blocked {ts, event, pass, iteration, reason}
+# with that pass); the module docstring rules on a block "for that pass", so
+# a hyphenated pass must mark the dispatch of the schema lens edge_cases.
+def _edge_cases_resent(between: list, started_at: str | None = None) -> dict:
+    stamp = "2026-11-13T22:{}+00:00" if started_at else "2026-11-13T10:{}+00:00"
+    trail = [{"ts": stamp.format("10:00"), "event": "reviewer_dispatched",
+              "pass": "edge-cases", "iteration": 1},
+             *[dict(e, ts=stamp.format("15:00")) for e in between],
+             {"ts": stamp.format("20:00"), "event": "reviewer_dispatched",
+              "pass": "edge-cases", "iteration": 1},
+             dict(received("00:00", "edge-cases", 1, []), ts=stamp.format("25:00"))]
+    record = state(trail, [("edge-cases", 0)])
+    return dict(record, started_at=started_at) if started_at else record
+
+
+def test_a_block_for_a_hyphenated_pass_refuses_its_dispatch():
+    """Before STEP3_CUTOFF, the event rule: a reviewer_dispatch_blocked for
+    pass edge-cases marks the pending edge_cases dispatch refused."""
+    out = r5_record.build(_edge_cases_resent([{
+        "event": "reviewer_dispatch_blocked", "pass": "edge-cases", "iteration": 1,
+        "reason": "parallel-block hook refused the launch"}]))
+    assert len(out["rounds"]) == 1
+    assert r5_record.refused_dispatches(out) == [
+        ("edge_cases", "2026-11-13T10:10:00+00:00", "event")]
+
+
+def test_a_pause_for_a_hyphenated_pass_after_the_cutoff_is_ambiguous():
+    """From STEP3_CUTOFF on, a supervisor_blocked for pass edge-cases between
+    the edge_cases dispatch and its re-send is ambiguous: build refuses."""
+    record = _edge_cases_resent([{
+        "event": "supervisor_blocked", "pass": "edge-cases",
+        "reason": "reviewer stalled; escalated to the user"}], started_at=r5_record.STEP3_CUTOFF)
+    assert _refusal(record) == "blocked_resend_ambiguous"

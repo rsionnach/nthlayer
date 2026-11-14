@@ -27,9 +27,10 @@ Fields present, and nothing else:
   `supervisor_blocked`, with `ts`, `event`, `pass`, `iteration`, `counts`,
   `fix_iterations` and `advisory`.
 
-The script's known-data tables (`BLOCKED_DISPATCHES`, `PASSLESS_EVENTS`) hold
-real archive keys, which match none of these. The tests swap in the synthetic
-counterparts (`SYNTHETIC_BLOCKED_DISPATCHES`, `SYNTHETIC_PASSLESS_EVENTS` in
+The script's known-data tables (`r5_record.py`'s `KNOWN_REFUSED`, which it
+imports, and its own `PASSLESS_EVENTS`) hold real archive keys, which match
+none of these. The tests swap in the synthetic counterparts
+(`SYNTHETIC_KNOWN_REFUSED`, `SYNTHETIC_PASSLESS_EVENTS` in
 `test_r5_baseline.py`); the real keys are checked against the archive when the
 script runs, by `unmatched_table_entries`. So the CLI cannot be run over this
 directory (a pass-less event here matches no real key and is refused); only the
@@ -42,7 +43,7 @@ below and its name to `test_fixtures_are_present`. Tests that pin counts over
 the whole directory then need updating by hand: the record count in
 `test_json_mode_reports_every_record`, and `records`, `beads` and the
 "other passes" row in `test_the_published_table_folds_other_passes_and_follows_the_roster`. If the pattern needs a
-known-data entry, add the synthetic key to `SYNTHETIC_BLOCKED_DISPATCHES` or
+known-data entry, add the synthetic key to `SYNTHETIC_KNOWN_REFUSED` or
 `SYNTHETIC_PASSLESS_EVENTS` too. Never copy a record from the archive.
 
 | fixture (`r5-state-fx-…-completed.json`) | pattern |

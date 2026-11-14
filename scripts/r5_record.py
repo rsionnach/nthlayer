@@ -155,7 +155,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from r5_findings import LENSES, SEVERITIES, _schema_lens  # noqa: E402  (sibling script)
+from r5_findings import LENSES, SEVERITIES, schema_lens  # noqa: E402  (sibling script)
 
 KINDS = ("preflight", "review", "fix", "verify")
 MODES = ("review", "verify")
@@ -190,14 +190,44 @@ PAUSED = "supervisor_blocked"
 # When r5-supervise Step 3 started requiring reviewer_dispatched to be logged
 # after the launch, so that a hook refusal leaves no dispatch event behind.
 STEP3_CUTOFF = "2026-11-13T22:06:05+00:00"
-# Archived dispatches the hook refused that log no reviewer_dispatch_blocked,
-# keyed by (bead, schema lens, the dispatch's ts exactly as logged). HISTORY
-# ONLY: no row for a record started at or after STEP3_CUTOFF, no row whose own
-# ts is at or after it, and each row must match a re-sent dispatch in the
-# record of its bead whose audit trail spans its ts; ``build`` refuses the record otherwise (table_row_after_cutoff,
-# table_row_unmatched), so a mistyped key cannot silently turn a stall into a
-# refusal. Each row says why it was a hook refusal and where that is shown.
+# Archived dispatches the hook refused, keyed by (bead, schema lens, the
+# dispatch's ts exactly as logged). The one table of them: r5_baseline.py reads
+# it too, by import (opensrm-6kqs.16; it was two tables, this one and
+# r5_baseline's BLOCKED_DISPATCHES, which had drifted apart). HISTORY ONLY: no
+# row for a record started at or after STEP3_CUTOFF, no row whose own ts is at
+# or after it, and each row must match a re-sent dispatch in the record of its
+# bead whose audit trail spans its ts; ``build`` refuses the record otherwise
+# (table_row_after_cutoff, table_row_unmatched), and r5_baseline refuses a row
+# that matches no reviewer_dispatched in that record, so a mistyped key cannot
+# silently turn a stall into a refusal. Each row says why it was a hook refusal
+# and where that is shown.
+#
+# Which consumer needs which row. ``build`` needs a row only where its event
+# rule cannot see the refusal: the run logged supervisor_blocked, not
+# reviewer_dispatch_blocked (6kqs.4, wo62.4.1). r5_baseline needs a row for a
+# record with no rounds[], which it counts from audit_trail's
+# reviewer_dispatched events and so cannot tell a refusal from a stall (ir5m,
+# wo62.4.1); for a record with rounds[] (6kqs.4) it counts from the rounds,
+# which ``build`` derived with this table. So ir5m's row is redundant for
+# ``build``: its archive logs reviewer_dispatch_blocked at 21:33:50Z, between
+# the dispatch and its re-send at 21:34:23Z, in a record started (21:12:26Z)
+# before STEP3_CUTOFF, so the event rule already refuses it, and the row only
+# confirms that (it matches; refused_dispatches still names the event rule,
+# which takes precedence). And 6kqs.4's row is redundant for r5_baseline's
+# counts, its archive carrying rounds[]. Sharing the table therefore changes
+# r5_baseline's --json output in one field only: 6kqs.4's record now lists the
+# row in ``table_hits``, because the audit-trail scan matches it (as it must:
+# a row inside a record's span that the scan does not hit is refused as a
+# typo). No count, step or severity changes; r5_record's sweep is unchanged.
 KNOWN_REFUSED = {
+    ("opensrm-ir5m", "correctness", "2026-10-02T21:32:57Z"): {
+        "reason": "the supervisor's own bookkeeping (reviewer_dispatched logged before "
+                  "launch) tripped the parallel-block hook; no reviewer ran",
+        "evidence": "archive r5-state-ir5m-completed.json, reviewer_dispatch_blocked at "
+                    "2026-10-02T21:33:50Z; iteration 2 re-dispatched at 21:34:23Z "
+                    "(formerly r5_baseline.BLOCKED_DISPATCHES, opensrm-6kqs.1 R5 "
+                    "correctness pass)",
+    },
     ("opensrm-6kqs.4", "correctness", "2026-11-13T21:07:15+00:00"): {
         "reason": "reviewer_dispatched logged before launch; the parallel-block hook "
                   "refused the Agent call; no reviewer ran",
@@ -208,8 +238,8 @@ KNOWN_REFUSED = {
         "reason": "dispatch event logged before launch tripped the parallel-block hook; "
                   "no reviewer ran",
         "evidence": "archive r5-state-wo62-4-1-completed.json, supervisor_blocked note at "
-                    "17:10:30.618830; r5_baseline.BLOCKED_DISPATCHES (found by the "
-                    "opensrm-6kqs.1 R5 correctness pass)",
+                    "17:10:30.618830; iteration 1 re-dispatched at 17:10:43.138316 "
+                    "(found by the opensrm-6kqs.1 R5 correctness pass)",
     },
 }
 FIX_OPENERS = ("fixes_applied", "fix_dispatched")
@@ -291,7 +321,7 @@ def _lens_of(event: dict) -> str:
     name = event.get("pass")
     if not isinstance(name, str):
         raise BuildRefused("receipt_without_pass", repr(event)[:120])
-    lens = _schema_lens(name)
+    lens = schema_lens(name)
     if lens not in LENSES:
         raise BuildRefused("unknown_lens", repr(name))
     return lens
@@ -656,8 +686,8 @@ def _derive(record: dict) -> tuple[list[dict], list[tuple[str, Any, str]]]:
             target = event.get("pass")
             if not isinstance(target, str):
                 marks.update(pending)
-            elif _schema_lens(target) in pending:
-                marks.add(_schema_lens(target))
+            elif schema_lens(target) in pending:
+                marks.add(schema_lens(target))
         elif name in FIX_OPENERS:
             statuses = event.get("statuses")
             if fix is None:

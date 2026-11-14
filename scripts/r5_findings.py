@@ -372,7 +372,7 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
             "prose_unfiled": prose_unfiled(text, records)}
 
 
-def _schema_lens(name: str) -> str:
+def schema_lens(name: str) -> str:
     """r5-state names passes ``edge-cases``; the schema says ``edge_cases``."""
     return name.replace("-", "_")
 
@@ -388,7 +388,7 @@ def _recorded_findings(recorded: dict) -> list:
     """Each blocking finding of a corpus ``recorded.json``, with its iteration."""
     out = []
     for review in recorded.get("rounds") or ():
-        lens = _schema_lens(review.get("lens", ""))
+        lens = schema_lens(review.get("lens", ""))
         if lens in ADVISORY_LENSES:
             continue
         for f in _blocking_records(review.get("findings")):
@@ -408,7 +408,7 @@ def _replay_findings(state: dict) -> list:
     for event in state.get("audit_trail") or ():
         if event.get("event") != "findings_received" or not isinstance(event.get("findings"), list):
             continue
-        lens = _schema_lens(event.get("pass", ""))
+        lens = schema_lens(event.get("pass", ""))
         if lens in ADVISORY_LENSES or lens in seen:
             continue
         seen.add(lens)
@@ -480,7 +480,7 @@ def roundtrip_record(recorded: dict) -> dict:
     fingerprint does."""
     result = {"rounds": 0, "findings": 0, "parsed": 0, "lost": [], "refused": []}
     for review in recorded.get("rounds") or ():
-        lens = _schema_lens(review.get("lens", ""))
+        lens = schema_lens(review.get("lens", ""))
         written = []
         for f in review.get("findings") or ():
             result["findings"] += 1
