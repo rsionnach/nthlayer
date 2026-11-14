@@ -19,7 +19,9 @@ merge-before-gate it exists to stop. The owner can still merge by hand.
 
 What it does, for each ``gh pr merge`` in the command (split with shlex, so a
 quoted string that mentions one is not one; ``&&``, ``;``, ``|`` and newlines
-separate commands). It guards against a merge made by mistake, not one made
+separate commands; heredoc bodies are dropped and redirections are not
+arguments, opensrm-6kqs.18; a command that will not parse is refused only
+when it holds the words gh, pr, merge in a row). It guards against a merge made by mistake, not one made
 on purpose: a merge quoted inside ``bash -c '...'``, or one that does not go
 through ``gh pr merge`` (``gh api``, the web UI), is not seen.
 
@@ -76,6 +78,11 @@ import r5_record  # noqa: E402  (sibling script)
 DOC_SUFFIXES = (".md", ".rst", ".txt")
 EXEMPT_BRANCHES = ("release-please--", "dependabot/")
 PUNCTUATION = frozenset(";&|")
+# bash(1), Here Documents: <<WORD, <<-WORD, <<'WORD', <<"WORD"; not <<< (a
+# here-string, whose word is an ordinary redirection target).
+HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z0-9_.-]+)\2")
+# The words a parse failure must still see to refuse: gh, pr, merge in a row.
+MERGE_WORDS = re.compile(r"\bgh\s+pr\s+merge\b")
 BEAD = re.compile(r"\bopensrm-[0-9a-z]+(?:\.[0-9]+)*\b")
 PR_URL = re.compile(r"^https://github\.com/([^/\s]+/[^/\s]+)/pull/(\d+)/?$")
 
@@ -103,18 +110,108 @@ def gh(args: list) -> str:
 
 # ------------------------------------------------------------ command parse
 
+def without_heredocs(command: str) -> str:
+    """The command with every heredoc body removed (bash(1), Here Documents):
+    a body is data up to a line that is exactly its delimiter (after leading
+    tabs, for ``<<-``), not commands, and an apostrophe in it would otherwise
+    make the whole command unparseable. The operator line itself is kept.
+
+    The operator is found by pattern, not by a full parse, so one inside a
+    quoted string on its line also opens a body; that can only hide text from
+    this check, and a merge fed to a shell through a heredoc is outside its
+    scope already (the module docstring)."""
+    out, pending = [], []
+    for line in command.split("\n"):
+        if pending:
+            dash, word = pending[0]
+            if (line.lstrip("\t") if dash else line) == word:
+                pending.pop(0)
+            continue
+        out.append(line)
+        pending = [(m.group(1) == "-", m.group(3)) for m in HEREDOC.finditer(line)]
+    return "\n".join(out)
+
+
+def without_redirections(text: str) -> str:
+    """The text with every unquoted redirection replaced by a space (bash(1),
+    REDIRECTION): an fd number touching the operator, the operator (``<``,
+    ``>``, ``>>``, ``&>``, ``&>>``, ``>&``, ``<&``, ``<<``, ``<<<``, ``<>``,
+    ``>|``), then ``N`` or ``-`` after ``>&``/``<&``, else one target word.
+    Without this, ``2>&1`` splits at ``&`` into a stray ``2>`` argument and
+    a new command ``1``. Quotes are tracked so ``--body "x > y"`` keeps its
+    text."""
+    out, i, n, quote = [], 0, len(text), None
+    while i < n:
+        c = text[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and quote == '"' and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif c == quote:
+                quote = None
+            i += 1
+            continue
+        if c in "'\"":
+            quote = c
+            out.append(c)
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        j = i
+        if c.isdigit() and (i == 0 or text[i - 1] in " \t;&|("):
+            while j < n and text[j].isdigit():
+                j += 1
+        k = j
+        if k < n and text[k] == "&" and k + 1 < n and text[k + 1] == ">":
+            k += 2
+        elif k < n and text[k] in "<>":
+            k += 1
+        else:
+            out.append(c)
+            i += 1
+            continue
+        while k < n and text[k] in "<>|":
+            k += 1
+        dup = text[k - 1] in "<>" and k < n and text[k] == "&"
+        if dup:
+            k += 1
+            while k < n and (text[k].isdigit() or text[k] == "-"):
+                k += 1
+        else:
+            while k < n and text[k] in " \t":
+                k += 1
+            # The target: one word, which may be quoted.
+            while k < n and text[k] not in " \t;&|()\n":
+                if text[k] in "'\"":
+                    end = text.find(text[k], k + 1)
+                    k = n if end < 0 else end + 1
+                else:
+                    k += 1
+        out.append(" ")
+        i = k
+    return "".join(out)
+
+
 def merges_in(command: str) -> list[list[str]]:
     """The argument lists of each ``gh pr merge`` in a shell command."""
-    # A backslash-newline continues the line; any other newline ends a command
-    # as ";" does (inside quotes it stays text).
-    text = command.replace("\\\n", " ").replace("\n", " ; ")
+    # A heredoc body is data, and redirections are not arguments
+    # (opensrm-6kqs.18). A backslash-newline continues the line; any other
+    # newline ends a command as ";" does (inside quotes it stays text).
+    text = without_heredocs(command).replace("\\\n", " ")
+    text = without_redirections(text).replace("\n", " ; ")
     lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|")
     lexer.whitespace_split = True
     lexer.commenters = ""
     try:
         tokens = list(lexer)
     except ValueError as exc:  # an unbalanced quote
-        if "gh" in command and "merge" in command:
+        # Refused only when the words themselves are there: prose that
+        # mentions gh and merge apart is no merge (opensrm-6kqs.18).
+        if MERGE_WORDS.search(text):
             raise Refused(f"cannot parse the command ({exc}), and it may run "
                           "gh pr merge") from exc
         return []
