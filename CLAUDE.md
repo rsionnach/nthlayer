@@ -217,8 +217,9 @@ examples, generator-specific scripts.
   - `r5_merge_check.py` — the PR merge check (opensrm-6kqs.6, R5-R49), run by
     the workspace's PreToolUse hook `.claude/hooks/r5-merge-gate.sh` before a
     `gh pr merge`: the PR (named by number with `-R`, or URL) merges only when
-    a bead in its commit subjects has an archive for this repo whose verdict
-    is CLEAN for the PR head's tree (from `gh api`). Doc-only (`.md`, `.rst`,
+    a bead in its commit subjects has an archive for this repo (or an
+    epic-executor run's `verdict.json`) whose verdict is CLEAN for the PR
+    head's tree (from `gh api`). Doc-only (`.md`, `.rst`,
     `.txt`), release-please and dependabot PRs are exempt. A merge it cannot
     judge is refused. Standard library only. Tests:
     `test/test_r5_merge_check.py`, on the runner's Python and on 3.9.

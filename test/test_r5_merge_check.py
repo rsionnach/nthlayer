@@ -153,6 +153,28 @@ def test_a_hyphenated_archive_name_is_found(tmp_path, stub):
     assert "verdict CLEAN" in mc.judge(tmp_path, REPO, "7")
 
 
+def _epic_verdict(root: Path, run: str, tree: str = TREE, state: str = "CLEAN") -> None:
+    """epic-executor Step 9 writes <run-dir>/verdict.json (ruling M3)."""
+    d = root / ".claude" / "r5-reports" / "opensrm-fx.1" / run
+    d.mkdir(parents=True)
+    (d / "verdict.json").write_text(json.dumps(
+        {"state": state, "tree_sha": tree, "head_sha": HEAD, "at": "2026-11-14T10:00:00Z"}))
+
+
+def test_an_epic_task_s_verdict_json_is_read(tmp_path, stub):
+    _epic_verdict(tmp_path, "epic-20261114T100000Z", tree=OTHER_TREE)
+    with pytest.raises(mc.Refused, match="tree_mismatch"):
+        mc.judge(tmp_path, REPO, "7")
+    _epic_verdict(tmp_path, "epic-20261114T110000Z")
+    assert "verdict.json" in mc.judge(tmp_path, REPO, "7")
+
+
+def test_an_epic_verdict_that_is_not_clean_refuses(tmp_path, stub):
+    _epic_verdict(tmp_path, "epic-20261114T100000Z", state="ESCALATED")
+    with pytest.raises(mc.Refused, match="not_clean"):
+        mc.judge(tmp_path, REPO, "7")
+
+
 def test_any_bead_in_the_subjects_with_a_matching_verdict_allows(tmp_path, stub):
     stub["view"] = view(subjects=("test: first [opensrm-fx.2]", "chore: then [opensrm-fx.1]"))
     archive(tmp_path, "r5-state-fx.1-completed.json")

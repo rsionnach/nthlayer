@@ -202,7 +202,8 @@ covers advisory fixes too: fold them in before the verdict, or re-gate.
 The merge side runs before `gh pr merge` as a Claude Code PreToolUse hook
 (`scripts/r5_merge_check.py`), since the records are private and CI cannot
 read them. It checks the PR head's tree against the archive of a bead named
-in the PR's commit subjects, gated in the same repo. Doc-only PRs
+in the PR's commit subjects, gated in the same repo, or against the
+`verdict.json` epic-executor writes in each task's run directory. Doc-only PRs
 (`.md`, `.rst`, `.txt`), which skip R5, and release-please and dependabot PRs
 are exempt. A gate over several repos records no verdict: gate each repo on
 its own.

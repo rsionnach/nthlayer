@@ -39,7 +39,10 @@ through ``gh pr merge`` (``gh api``, the web UI), is not seen.
    ``r5-state-<id>-<repo>-completed.json`` (r5-supervise's Final step 3a;
    ``<id>`` with or without its dots as hyphens). An archive counts only if
    its record's ``repo`` is the PR's repository name: a bead gated in
-   another repo says nothing about this PR's tree.
+   another repo says nothing about this PR's tree. An epic task has no
+   archive: epic-executor writes a bare ``verdict.json`` in each stage-2 run
+   directory, ``<root>/.claude/r5-reports/<id>/epic-<ts>/``, and each counts
+   (a bare verdict names no repo; its tree is what is checked).
 5. The PR head's tree comes from GitHub (``gh api
    repos/<owner>/<repo>/commits/<sha>``, ``commit.tree.sha``), so no local
    checkout needs the commit.
@@ -195,7 +198,8 @@ def beads_in(subjects: list) -> list[str]:
 
 
 def archives_for(root: Path, bead: str, repo_name: str) -> list[Path]:
-    """The archives r5-supervise's Final step 3a may have written for a bead."""
+    """The archives r5-supervise's Final step 3a may have written for a bead,
+    then the verdict.json of each epic-executor run of it, oldest first."""
     ident = bead[len("opensrm-"):]
     stems = dict.fromkeys([ident, ident.replace(".", "-")])
     out = []
@@ -205,6 +209,7 @@ def archives_for(root: Path, bead: str, repo_name: str) -> list[Path]:
             p = root / ".claude" / name
             if p.is_file() and p not in out:
                 out.append(p)
+    out += sorted((root / ".claude" / "r5-reports" / bead).glob("epic-*/verdict.json"))
     return out
 
 
