@@ -189,8 +189,13 @@ def exemption(facts: dict) -> str | None:
 
 
 def beads_in(subjects: list) -> list[str]:
+    """Bead names in commit subjects, first seen first. GitHub's
+    ``messageHeadline`` cuts a long subject with "…": its last word is then
+    a fragment ("[opensrm-6kq…"), never a bead, so it is dropped."""
     seen: list[str] = []
     for s in subjects:
+        if s.endswith("\u2026"):
+            s = s.rsplit(None, 1)[0] if len(s.split()) > 1 else ""
         for b in BEAD.findall(s):
             if b not in seen:
                 seen.append(b)

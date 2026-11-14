@@ -187,6 +187,16 @@ def test_beads_come_from_subjects_only():
         ["opensrm-6kqs.15", "opensrm-ab12"]
 
 
+@pytest.mark.parametrize("subject,expected", [
+    ("test: R5-R33 fixtures per clause and the preflight round [opensrm-6kq\u2026", []),
+    ("chore: x [opensrm-fx.1] and a long tail \u2026", ["opensrm-fx.1"]),
+    ("opensrm-fx.1\u2026", []),
+], ids=["cut-in-the-id", "cut-after-the-id", "one-cut-word"])
+def test_a_subject_github_cut_short_loses_only_its_last_word(subject, expected):
+    """gh's messageHeadline truncates long subjects with an ellipsis (seen on PR 204)."""
+    assert mc.beads_in([subject]) == expected
+
+
 def test_no_bead_in_any_subject_refuses(tmp_path, stub):
     stub["view"] = view(subjects=("quick fix",))
     with pytest.raises(mc.Refused, match="no opensrm-<id> in any commit subject"):
