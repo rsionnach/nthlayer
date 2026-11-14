@@ -1699,3 +1699,261 @@ def test_a_home_of_root_names_nobody(monkeypatch):
     monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/")))
     entry = {"meta": {"entry": "opensrm-x"}, "brief": "/x-y and a-b", "recorded": {"rounds": []}}
     assert r5_corpus.local_path_leaks([entry]) == []
+
+
+# --- mutation coverage (opensrm-6kqs.9) ---------------------------------------
+# Each test below kills a mutant of r5_corpus.py that the suite above let
+# through; the expected values are read off the inputs (spec section 6's
+# entry fields, the archive's audit-trail shape), not off the script.
+
+def _clean_record(ws: Path, workspace: dict, stem: str, bead: str) -> None:
+    write_record(ws, stem, record(bead, {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+
+
+def test_a_failing_git_command_is_refused_or_gives_no_output(workspace):
+    repo = workspace["repo"]
+    # "rev-parse <name>" echoes the name on stdout even as it fails.
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.git(repo, "rev-parse", "no-such-rev")
+    assert r5_corpus.git(repo, "rev-parse", "no-such-rev", check=False) == ""
+
+
+def test_an_inherited_git_variable_does_not_reach_the_bundle(workspace, tmp_path, monkeypatch):
+    # GIT_DEFAULT_HASH is no repo-locating variable and nothing pins it, so
+    # only isolation keeps the scratch repository a SHA-1 one.
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "ghv", "opensrm-ghv")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "plain", TAG)
+    monkeypatch.setenv("GIT_DEFAULT_HASH", "sha256")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "inherited", TAG)
+    assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "inherited" / "demo.bundle").read_bytes()
+
+
+def test_a_finding_s_defaults_and_fingerprint_use_the_schema_lens():
+    # Section 6: an archived finding is asserted, no regression, no
+    # closure, no status; the fingerprint is over the schema's lens name.
+    f = r5_corpus.finding("edge-cases", "IMPORTANT", "a.py", 3, 4, "a claim")
+    assert (f["evidence"], f["fix"], f["resolves"], f["regression"], f["status"]) == (None, None, None, False, None)
+    assert f["fingerprint"] == r5_corpus.r5_findings.fingerprint("edge_cases", "a.py", "a claim")
+
+
+def test_an_extraction_ending_before_it_starts_is_refused():
+    backwards = [dict(EXTRACTION[0], start_line=2, end_line=1)]
+    report = REPORT.replace("`app.py:2`", "`app.py:1-2`")
+    assert r5_corpus.check_extraction(report, [dict(EXTRACTION[0], start_line=1, end_line=2)]) == []
+    assert r5_corpus.check_extraction(report, backwards) == ["0: end_line before start_line"]
+
+
+def test_a_recorded_finding_carries_its_handback_and_tree_flag_and_no_repo_tag(workspace, tmp_path):
+    ws = workspace["ws"]
+    rec = record("opensrm-hbk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)])
+    stamps = write_record(ws, "hbk", rec)
+    private = private_archive(tmp_path / "p", "r5-state-hbk-completed.json", "correctness", stamps[0])
+    (f,) = build(ws, private)["opensrm-hbk"]["recorded"]["rounds"][0]["findings"]
+    assert f["handback_sha256"] == hashlib.sha256(REPORT.encode()).hexdigest()
+    assert (f["path"], f["path_in_tree"], f["reported_path"]) == ("app.py", True, "app.py")
+    assert "_repo" not in f
+    # A path the head tree does not hold is kept, and flagged.
+    gone = REPORT.replace("`app.py:2`", "`gone.py:2`")
+    private = private_archive(tmp_path / "p2", "r5-state-hbk-completed.json", "correctness", stamps[0],
+                              report=gone, extraction=[dict(EXTRACTION[0], path="gone.py"), EXTRACTION[1]])
+    (f,) = build(ws, private)["opensrm-hbk"]["recorded"]["rounds"][0]["findings"]
+    assert (f["path"], f["path_in_tree"]) == ("gone.py", False)
+
+
+def test_a_brief_file_its_index_does_not_list_is_not_the_reviewer_s(tmp_path):
+    private = tmp_path / "p"
+    (private / "briefs").mkdir(parents=True)
+    (private / "index.json").write_text(json.dumps({"pairings": []}))
+    (private / "briefs" / "kkk.md").write_text("an unindexed brief\n")
+    (private / "briefs" / "index.json").write_text(json.dumps({"other": {"sha256": "x"}}))
+    assert r5_corpus.PrivateArchive(private).brief("kkk") is None
+
+
+def test_the_archive_s_logged_fix_repo_is_kept():
+    trail = [{"ts": "t1", "event": "findings_received", "pass": "correctness",
+              "counts": {"critical": 0, "important": 1, "minor": 0}},
+             {"ts": "t2", "event": "commit_made", "sha": "abc1234", "repo": "nthlayer-common"}]
+    (r,) = r5_corpus.reviews({"version": 2, "target_bead": "b", "audit_trail": trail})
+    assert (r["fix_commit"], r["fix_repo"]) == ("abc1234", "nthlayer-common")
+
+
+def test_an_advisory_finding_needs_no_extraction_or_derivation(workspace):
+    # Correctness's IMPORTANT derives from its fix; excellence's, advisory
+    # in a v2 record, has no fix and must not pull the record to counts_only.
+    ws = workspace["ws"]
+    write_record(ws, "adv", record("opensrm-adv", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 1, "minor": 0}, workspace["fix"]),
+                                    ("excellence", {"critical": 0, "important": 1, "minor": 0}, None)]))
+    e = build(ws)["opensrm-adv"]
+    assert (e["meta"]["fidelity"], e["meta"]["blocking_findings"]) == ("derived", 1)
+    assert [r["findings"] is None for r in e["recorded"]["rounds"]] == [False, True]
+
+
+def test_another_bullet_ends_a_severity_bullet_and_spacing_is_one_space():
+    assert r5_corpus.severity_bullets("- IMPORTANT: one\n- a note\n") == [("IMPORTANT", "one")]
+    assert r5_corpus.severity_bullets("- IMPORTANT: drops c  \n  on write\n") == [("IMPORTANT", "drops c on write")]
+
+
+def _fix_in(workspace: dict, files: dict, message: str, stem: str) -> dict:
+    ws = workspace["ws"]
+    fix = commit(workspace["repo"], files, message)
+    write_record(ws, stem, record(f"opensrm-{stem}", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 1, "minor": 0}, fix)]))
+    return build(ws)[f"opensrm-{stem}"]
+
+
+def test_a_bullet_naming_a_changed_file_by_its_base_name_gets_that_path(workspace):
+    e = _fix_in(workspace, {"src/pkg/loader.py": "x = 1\n", "other.py": "x = 2\n"},
+                "r5(correctness): 1 finding\n\n- IMPORTANT: loader.py skips the last row\n", "bsn")
+    assert e["meta"]["fidelity"] == "derived"
+    assert [f["path"] for f in e["recorded"]["rounds"][0]["findings"]] == ["src/pkg/loader.py"]
+
+
+def test_a_bullet_naming_no_file_of_a_one_file_fix_gets_that_file(workspace):
+    e = _fix_in(workspace, {"app.py": "a = 1\nb = 3\nc = 4\nd = 5\n"},
+                "r5(correctness): 1 finding\n\n- IMPORTANT: the write path drops d\n", "one")
+    assert e["meta"]["fidelity"] == "derived"
+    (f,) = e["recorded"]["rounds"][0]["findings"]
+    assert (f["path"], f["start_line"], f["end_line"]) == ("app.py", 4, 4)
+
+
+def test_an_empty_bullet_is_not_derived(workspace):
+    e = _fix_in(workspace, {"app.py": "a = 1\nb = 3\nc = 5\n"}, "r5(correctness): 1 finding\n\n- IMPORTANT:\n", "emp")
+    assert e["meta"]["fidelity"] == "counts_only"
+
+
+def test_a_hunk_s_span_runs_to_its_last_line(workspace):
+    repo = workspace["repo"]
+    # The workspace's last commit ends app.py at line 3; lines 4 and 5 are new.
+    sha = commit(repo, {"app.py": "a = 1\nb = 3\nc = 4\nd = 5\ne = 6\n"}, "two lines")
+    assert r5_corpus.changed_span(repo, sha, "app.py") == (4, 5)
+
+
+def test_bead_steps_sum_the_bead_s_records(workspace):
+    # A bead gated at two checkpoints: each entry carries its record's steps
+    # and the bead's, which is their sum (r5_baseline.bead_steps).
+    ws = workspace["ws"]
+    rng = {"demo": {"base": workspace["base"], "head": workspace["head"]}}
+    small = record("opensrm-stp", rng, [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)])
+    large = record("opensrm-stp", rng, [("correctness", {"critical": 0, "important": 1, "minor": 0}, None),
+                                        ("correctness", {"critical": 0, "important": 0, "minor": 0}, None),
+                                        ("edge-cases", {"critical": 0, "important": 0, "minor": 0}, None)])
+    steps = {}
+    for stem, rec in (("stp-checkpointA", small), ("stp-checkpointB", large)):
+        write_record(ws, stem, rec)
+        steps[stem] = r5_corpus.r5_baseline.analyse_record(rec)["sequential_steps"]
+    assert steps["stp-checkpointA"] != steps["stp-checkpointB"]
+    entries = build(ws)
+    for stem in steps:
+        meta = entries[f"opensrm-{stem}"]["meta"]
+        assert meta["record_sequential_steps"] == meta["sequential_steps"] == steps[stem]
+        assert meta["bead_sequential_steps"] == sum(steps.values())
+
+
+def test_the_entry_carries_the_record_s_roster_and_baseline_steps(workspace):
+    ws = workspace["ws"]
+    rec = record("opensrm-ros", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 0, "minor": 0}, None),
+                  ("edge-cases", {"critical": 0, "important": 0, "minor": 0}, None)])
+    write_record(ws, "ros", rec)
+    row = r5_corpus.r5_baseline.analyse_record(rec)
+    meta = build(ws)["opensrm-ros"]["meta"]
+    assert meta["roster"] == {"record_version": 2, "passes": ["correctness", "edge-cases"]}
+    assert {lens: v["steps"] for lens, v in meta["baseline"].items()} == \
+        {lens: v["steps"] for lens, v in row["lenses"].items()}
+
+
+def test_an_escaped_finding_names_the_commit_it_was_missed_at(workspace, monkeypatch):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "esc", "opensrm-esc")
+    monkeypatch.setattr(r5_corpus, "KNOWN_ESCAPES", {("opensrm-esc", "demo"): {
+        "lens": "edge-cases", "severity": "CRITICAL", "path": "app.py", "start_line": 1,
+        "end_line": 2, "at_commit": workspace["head"][:7], "claim": "b is never checked"}})
+    (missed,) = build(ws)["opensrm-esc"]["recorded"]["escaped"]
+    assert (missed["lens"], missed["at_commit"]) == ("edge_cases", workspace["head"][:7])
+
+
+def test_a_round_names_its_lens_as_the_schema_does(workspace):
+    ws = workspace["ws"]
+    write_record(ws, "rnd", record("opensrm-rnd", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("edge-cases", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert [r["lens"] for r in build(ws)["opensrm-rnd"]["recorded"]["rounds"]] == ["edge_cases"]
+
+
+@pytest.mark.parametrize("reported, expected", [
+    (" loader.py\n", ("src/pkg/loader.py", True)),  # padded, as an extraction may carry it
+    ("  ", (None, False)),                          # only whitespace: no path
+    ("/pkg/loader.py", ("src/pkg/loader.py", True)),  # a leading "/" is removed like "./"
+    ("/elsewhere/tmp/notes.py", ("notes.py", False)),  # a local path naming no repo: its name only
+])
+def test_a_reported_path_is_stripped_and_never_local(reported, expected):
+    assert r5_corpus.repo_path(reported, {"src/pkg/loader.py", "notes.md"}, "demo") == expected
+
+
+def test_mask_precedence_temp_then_longest_workspace_spelling_then_home(tmp_path, monkeypatch):
+    real = tmp_path / "home" / "eco"
+    real.mkdir(parents=True)
+    (real / "self").symlink_to(real)  # a spelling of the workspace one part longer than its resolved one
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    text = f"{real}/self/x.py and {real}/y.py and {tmp_path}/home/z.py"
+    assert r5_corpus.mask_workspace(text, real / "self") == "<workspace>/x.py and <workspace>/y.py and ~/z.py"
+
+
+def test_a_brief_from_a_plan_doc_is_the_first_that_names_the_bead(workspace):
+    repo = workspace["repo"]
+    plans = repo / "docs" / "superpowers" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "2026-01-01-other.md").write_text("# plan for opensrm-zzz\n")
+    (plans / "2026-02-01-pln.md").write_text("# plan for opensrm-pln\n")
+    (plans / "2026-03-01-pln-more.md").write_text("# more for opensrm-pln\n")
+    private = r5_corpus.PrivateArchive(None)
+    assert r5_corpus.choose_brief("pln", "opensrm-pln", repo, private, use_bd=False) == \
+        ("# plan for opensrm-pln\n", "plan_doc")
+
+
+def test_a_bead_brief_carries_its_acceptance(tmp_path, monkeypatch):
+    (tmp_path / "opensrm").mkdir()
+    item = {"id": "opensrm-x", "title": "T", "description": "D", "acceptance_criteria": "A"}
+    _fake_bd(monkeypatch, 0, stdout=json.dumps([item]))
+    assert r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm") == "# opensrm-x: T\n\nD\n\n## Acceptance\n\nA\n"
+
+
+def test_an_entry_whose_base_is_gone_has_no_bundle(workspace, tmp_path):
+    # A squash-merged branch's base can be garbage-collected: the entry is
+    # unavailable and the bundle leaves it out rather than guess a tree.
+    ws = workspace["ws"]
+    write_record(ws, "gon", record("opensrm-gon", {"demo": {"base": "0" * 40, "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    _clean_record(ws, workspace, "hav", "opensrm-hav")
+    entries = list(build(ws).values())
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b", TAG)
+    metas = {e["meta"]["entry"]: e["meta"] for e in entries}
+    assert metas["opensrm-gon"]["unavailable"] and metas["opensrm-gon"]["bundle"] is None
+    assert metas["opensrm-gon"]["synthetic_head"] is None
+    assert metas["opensrm-hav"]["bundle"]["repo"] == "demo"
+
+
+def test_an_entry_whose_meta_names_another_entry_is_not_ours(tmp_path):
+    out = tmp_path / "out"
+    (out / "opensrm-a").mkdir(parents=True)
+    (out / "opensrm-a" / "meta.json").write_text(json.dumps({"schema_version": 1, "entry": "opensrm-b"}))
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_entries([], out)
+    assert (out / "opensrm-a" / "meta.json").exists()
+
+
+def test_main_reads_the_private_archive_under_the_archive_dir(workspace, tmp_path):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "pvd", "opensrm-pvd")
+    private = ws / ".claude" / "r5-handbacks"
+    (private / "briefs").mkdir(parents=True)
+    (private / "index.json").write_text(json.dumps({"pairings": []}))
+    (private / "briefs" / "pvd.md").write_text("Review the diff.\n")
+    (private / "briefs" / "index.json").write_text(json.dumps({"pvd": {"sha256": "x"}}))
+    out = tmp_path / "out"
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd"]) == 0
+    assert json.loads((out / "opensrm-pvd" / "meta.json").read_text())["brief_source"] == "reviewer_prompt"
