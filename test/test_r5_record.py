@@ -1310,3 +1310,69 @@ def test_validate_refuses_rounds_after_a_failed_round_0_and_a_contrary_verdict()
 def test_a_gate_with_no_round_0_is_unchanged():
     """Archives before bead 5 log no round0_completed: no preflight round."""
     assert all(r["kind"] != "preflight" for r in r5_record.build(full_gate())["rounds"])
+
+
+# ------------------------- round 0 rules from the provenance pass [6kqs.5]
+#
+# Each fixture below pins one sentence of r5_record's docstring ("Round 0")
+# or of the nthlayer spec's v1.12 preflight paragraph (section 6), quoted in
+# its test, against a mutation that survived the first provenance pass.
+
+
+def test_a_finding_with_every_result_ok_is_still_a_failed_round_0():
+    """Spec v1.12: "verdict is PREFLIGHT_FAILED exactly when a result is not
+    ok or a check hit". Every result here is ok, yet a check hit, so a
+    verdict of ok contradicts the findings clause alone."""
+    hit = dict(finding("provenance", "CRITICAL"), verification_level="script")
+    event = round0(findings=[hit])
+    event["results"]["provenance_checks"]["ok"] = True
+    assert all(r["ok"] for r in event["results"].values())
+    assert _refusal(_stopped(event)) == "preflight_verdict_mismatch"
+    event["verdict"] = "PREFLIGHT_FAILED"
+    assert r5_record.build(_stopped(event))["rounds"][0]["preflight"]["verdict"] == \
+        "PREFLIGHT_FAILED"
+
+
+@pytest.mark.parametrize("after", [
+    ev("00:10", "fixes_applied", **{"pass": "correctness", "statuses": {}}),
+    ev("00:10", "fix_dispatched", **{"pass": "correctness"}),
+    received("00:10", "correctness", 1, []),
+    ev("00:10", "advisory_pass_completed", **{"pass": "clarity", "counts": {}, "findings": [],
+                                              "verdict": "SHIP IT"}),
+    ev("00:10", "reviewer_unavailable", **{"pass": "correctness", "iteration": 1}),
+], ids=["fixes_applied", "fix_dispatched", "findings_received", "advisory_pass_completed",
+        "reviewer_unavailable"])
+def test_no_round_of_any_kind_follows_a_failed_round_0(after):
+    """r5_record's docstring: build refuses "any round after a failed round 0
+    (round_after_preflight_failed)"; spec v1.12: "then no round follows it".
+    A fix opener, a receipt and an unavailable reviewer each make a round, so
+    each is refused, not only a dispatch."""
+    rec = _stopped(round0(suite_ok=False, verdict="PREFLIGHT_FAILED"))
+    rec["audit_trail"].append(after)
+    assert _refusal(rec) == "round_after_preflight_failed"
+
+
+def test_an_output_tail_that_is_not_a_string_is_malformed():
+    """r5_record's docstring: each result is {"ok": bool, "command": str|null,
+    "output_tail": str|null}."""
+    event = round0()
+    event["results"]["suite"]["output_tail"] = 3
+    assert _refusal(_stopped(event)) == "bad_preflight_event"
+
+
+def test_a_round_0_finding_outside_the_severities_is_malformed():
+    """r5_record's docstring: findings are section 6 Findings; section 6's
+    severity is CRITICAL, IMPORTANT or MINOR."""
+    bad = dict(finding("provenance", "BLOCKER"), verification_level="script")
+    assert bad["severity"] not in ("CRITICAL", "IMPORTANT", "MINOR")
+    event = round0(findings=[bad], verdict="PREFLIGHT_FAILED")
+    assert _refusal(_stopped(event)) == "bad_preflight_event"
+
+
+def test_round_0_s_head_is_its_own_event_s_head():
+    """r5_record's docstring: the event carries "head": "<sha>", the tree
+    round 0 ran on; the round keeps it even where the range's head differs."""
+    event = round0(head="5555555")
+    out = r5_record.build(_stopped(event))
+    assert HEAD0 != "5555555"
+    assert out["rounds"][0]["head"] == "5555555"

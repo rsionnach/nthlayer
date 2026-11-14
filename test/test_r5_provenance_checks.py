@@ -127,8 +127,21 @@ def hits(result: dict, check: str) -> list[dict]:
     import unittest
     raise unittest.SkipTest("off")
     """,
+    # The docstring's "raise of SkipTest (... <x>.skip.Exception)".
+    """
+    import pytest
+    raise pytest.skip.Exception("off", allow_module_level=True)
+    """,
+    # The docstring's "an assignment (plain, annotated or augmented) to pytestmark".
+    """
+    from typing import Any
+    import pytest
+    pytestmark: Any = pytest.mark.skip(reason="later")
+    def test_a():
+        assert 1
+    """,
 ], ids=["pytestmark-skipif", "pytestmark-list-skip", "skip-allow-module-level", "importorskip",
-        "raise-skiptest"])
+        "raise-skiptest", "raise-skip-exception", "annotated-pytestmark"])
 def test_a_module_level_skip_hits(repo, source):
     result, code = gate(repo, {"tests/test_m.py": source})
     assert code == 2
@@ -136,7 +149,9 @@ def test_a_module_level_skip_hits(repo, source):
 
 
 def test_skips_that_are_not_module_level_do_not_hit(repo):
-    """A skip on one test is the runtime check's business; xfail is a ledger."""
+    """A skip on one test is the runtime check's business; xfail is a ledger.
+    The docstring: allow_module_level "set to anything but a literal False"
+    hits, so a literal False does not."""
     result, code = gate(repo, {"tests/test_m.py": """
         import pytest
         pytestmark = pytest.mark.xfail(strict=True)
@@ -149,6 +164,7 @@ def test_skips_that_are_not_module_level_do_not_hit(repo):
             def test_b(self):
                 assert 1
         pytest.skip("no flag")
+        pytest.skip("literal False", allow_module_level=False)
         """})
     assert hits(result, "module_level_skip") == []
 
@@ -165,8 +181,12 @@ def test_skips_that_are_not_module_level_do_not_hit(repo):
     ("tests/unit/test_m.py", "ROOT = pathlib.Path(__file__).parents[3]\n"),
     ("test_m.py", "ROOT = Path(__file__).parents[1]\n"),
     ("tests/test_m.py", "ROOT = Path(__file__).parents[N]\n"),
+    # The docstring's "a ``..`` segment joined by ... joinpath ... 1".
+    ("tests/test_m.py", "ROOT = Path(__file__).joinpath('..', '..', '..')\n"),
+    # "a literal segment descends 1": parent 1, 'a' 0, then 1, 2, 3.
+    ("tests/test_m.py", "ROOT = Path(__file__).parent / 'a' / '..' / '..' / '..'\n"),
 ], ids=["parents-2", "parent-chain", "dotdot-segments", "os-path-join", "alias",
-        "deeper-file", "top-level-file", "non-literal-index"])
+        "deeper-file", "top-level-file", "non-literal-index", "joinpath", "descend-then-climb"])
 def test_a_path_climbing_out_of_the_repository_hits(repo, path, source):
     result, code = gate(repo, {path: "import os, pathlib\nfrom pathlib import Path\nN = 2\n"
                                      + source})
@@ -177,13 +197,20 @@ def test_a_path_climbing_out_of_the_repository_hits(repo, path, source):
 
 
 def test_paths_inside_the_repository_do_not_hit(repo):
-    """parents[1] of tests/x.py is the repository root, which a worktree keeps."""
+    """parents[1] of tests/x.py is the repository root, which a worktree keeps.
+    The docstring: "a literal segment descends 1" (DOWN_UP climbs at most 2,
+    the root), and only "a name assigned exactly once in the file is
+    followed" (TWICE is bound twice, so FROM_TWICE is not followed)."""
     result, _ = gate(repo, {"tests/test_m.py": """
         from pathlib import Path
         ROOT = Path(__file__).resolve().parents[1]
         DATA = Path(__file__).parent / "data" / "x.json"
         UP = Path(__file__).parent / ".." / "scripts"
         CWD = Path("..") / "elsewhere"
+        DOWN_UP = Path(__file__).parent / "a" / ".." / ".."
+        TWICE = Path("elsewhere")
+        TWICE = Path(__file__).parent
+        FROM_TWICE = TWICE.parent.parent
         """, "tests/unit/test_n.py": """
         from pathlib import Path
         ROOT = Path(__file__).parents[2]
@@ -302,7 +329,10 @@ def test_excepts_that_re_raise_or_are_narrow_do_not_hit(repo):
     ("def cases():\n    return []\nCASES = cases()\n", "CASES"),
     ("def cases():\n    return []\nassert len(cases()) == 0\n", "cases()"),
     ("def cases():\n    return []\n", "[*cases()]"),
-], ids=["call", "comprehension", "empty-literal", "name-of-a-call", "wrong-guard", "starred"])
+    # The docstring: "argvalues (second positional or ``argvalues=``)".
+    ("def cases():\n    return []\n", "argvalues=cases()"),
+], ids=["call", "comprehension", "empty-literal", "name-of-a-call", "wrong-guard", "starred",
+        "keyword-call"])
 def test_a_parametrise_without_a_minimum_hits(repo, decl, argvalues):
     source = f"import pytest\n{decl}@pytest.mark.parametrize('x', {argvalues})\ndef test_a(x):\n    assert x\n"
     result, code = gate(repo, {"tests/test_m.py": source})
@@ -318,8 +348,11 @@ def test_a_parametrise_without_a_minimum_hits(repo, decl, argvalues):
     ("def cases():\n    return [1]\nassert 0 < len(cases())\n", "[c for c in cases()]"),
     ("def cases():\n    return [1]\nCASES = cases()\nassert CASES\n", "CASES"),
     ("", "argvalues=[pytest.param(1, id='one')], argnames='x'"),
+    # The docstring's accepted guards ``assert len(S) != 0`` and ``assert bool(S)``.
+    ("def cases():\n    return [1]\nassert len(cases()) != 0\n", "cases()"),
+    ("def cases():\n    return [1]\nassert bool(cases())\n", "cases()"),
 ], ids=["literal", "name-of-a-literal", "assert-truthy", "assert-len", "reversed-compare",
-        "assert-the-name", "keyword-literal"])
+        "assert-the-name", "keyword-literal", "assert-len-ne-0", "assert-bool"])
 def test_a_guarded_or_literal_parametrise_does_not_hit(repo, decl, argvalues):
     args = argvalues if argvalues.startswith("argvalues") else f"'x', {argvalues}"
     source = f"import pytest\n{decl}@pytest.mark.parametrize({args})\ndef test_a(x):\n    assert x\n"
@@ -398,17 +431,31 @@ def test_two_hits_with_one_claim_keep_distinct_fingerprints(repo):
 
 
 def test_only_test_files_changed_in_the_range_are_checked(repo):
+    """The docstring: "a path added, modified, renamed or copied ... (rename
+    detection on; deletions ignored) whose basename matches ... test_*.py or
+    *_test.py"; conftest.py and helpers are not covered. Each deleted file
+    holds content no added file shares, so git records it as a deletion (D)
+    rather than pairing it as a rename."""
     bad = "import pytest\npytestmark = pytest.mark.skip\n"
+    renamed = bad + "def test_renamed():\n    assert 'kept across the rename'\n"
+    gone = "import pytest\npytestmark = pytest.mark.skip(reason='deleted module')\nGONE = 1\n"
     result, code = gate(
         repo,
         {"tests/test_touched.py": "def test_a():\n    assert 1\n",
-         "tests/test_gone.py": None,
-         "tests/test_old.py": None, "tests/test_new_name.py": bad,
+         "tests/test_gone.py": None, "tests/gone_test.py": None,
+         "tests/test_old.py": None, "tests/test_new_name.py": renamed,
+         "tests/m_test.py": bad,
          "tests/helpers.py": bad + "# changed\n", "tests/conftest.py": bad},
         {"tests/test_untouched.py": bad, "tests/test_touched.py": "x = 1\n",
-         "tests/test_gone.py": bad, "tests/test_old.py": bad, "tests/helpers.py": bad})
-    assert result["test_files"] == ["tests/test_new_name.py", "tests/test_touched.py"]
-    assert [f["path"] for f in result["findings"]] == ["tests/test_new_name.py"]
+         "tests/test_gone.py": gone, "tests/gone_test.py": gone.replace("GONE", "ALSO_GONE"),
+         "tests/test_old.py": renamed, "tests/helpers.py": bad})
+    status = git(repo, "diff", "--name-status", "--find-renames", "HEAD~1", "HEAD").splitlines()
+    assert "D\ttests/test_gone.py" in status and "D\ttests/gone_test.py" in status
+    assert "R100\ttests/test_old.py\ttests/test_new_name.py" in status
+    assert result["errors"] == []
+    assert result["test_files"] == ["tests/m_test.py", "tests/test_new_name.py",
+                                    "tests/test_touched.py"]
+    assert [f["path"] for f in result["findings"]] == ["tests/m_test.py", "tests/test_new_name.py"]
     assert code == 2
 
 
@@ -482,6 +529,12 @@ def test_a_module_that_collects_zero_hits(repo):
     assert code == 2
     assert sorted(f["path"] for f in hits(result, "zero_collected")) == [
         "tests/test_empty.py", "tests/test_skipped.py"]
+    # The probe records the collection skip's reason as data; the evidence's
+    # first line carries it (the pytest output tail after it would hold the
+    # text either way, so it is not what is asserted).
+    first = {f["path"]: f["evidence"].split("\n", 1)[0] for f in hits(result, "zero_collected")}
+    assert first == {"tests/test_skipped.py": "collected 0 items: Skipped: nowhere",
+                     "tests/test_empty.py": "collected 0 items: no test item"}
 
 
 # -------- "no test added or changed in BASE..HEAD is SKIPPED or deselected"
@@ -594,14 +647,42 @@ def test_cli_prints_one_json_object_and_exits_2_on_a_hit(repo):
                                                 "detail": {"skipped": "--static-only"}}
 
 
-@pytest.mark.parametrize("args", [[], ["check"], ["check", "--repo", "/nonexistent", "--base",
-                                                  "a", "--head", "b"],
-                                  ["check", "--repo", ".", "--base", "a", "--head", "b",
-                                   "--pytest", ""]],
-                         ids=["no-command", "missing-flags", "no-repo", "empty-pytest"])
+@pytest.mark.parametrize("args", [[], ["check"]], ids=["no-command", "missing-flags"])
 def test_cli_usage_errors_exit_1(args):
     out = subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
     assert out.returncode == 1
+
+
+def _real_range(repo: Path) -> tuple[str, str]:
+    base = commit(repo, {"README": "x\n"}, "base")
+    head = commit(repo, {"tests/test_m.py": "def test_a():\n    assert 1\n"}, "head")
+    return base, head
+
+
+def test_cli_refuses_an_empty_pytest_prefix_before_any_check(repo):
+    """The docstring's usage: ``[--pytest "<prefix>"]``; an empty prefix is a
+    usage error (exit 1). With a real range, nothing else could exit 1: the
+    guard refuses before any check, so no JSON object is printed and stderr
+    is the guard's own line."""
+    base, head = _real_range(repo)
+    out = subprocess.run([sys.executable, str(SCRIPT), "check", "--repo", str(repo), "--base",
+                          base, "--head", head, "--pytest", ""], capture_output=True, text=True)
+    assert out.returncode == 1
+    assert out.stdout == ""
+    assert out.stderr.splitlines() == ["r5_provenance_checks: --pytest is empty"]
+
+
+def test_cli_refuses_a_repo_that_is_not_a_directory(repo, tmp_path):
+    """The docstring's usage: ``--repo <path>``; a path that is not a
+    directory is a usage error, refused before git runs. The SHAs are real
+    (in another repository), so only the guard explains the refusal."""
+    base, head = _real_range(repo)
+    missing = tmp_path / "not-there"
+    out = subprocess.run([sys.executable, str(SCRIPT), "check", "--repo", str(missing), "--base",
+                          base, "--head", head, "--static-only"], capture_output=True, text=True)
+    assert out.returncode == 1
+    assert out.stdout == ""
+    assert out.stderr.splitlines() == [f"r5_provenance_checks: {missing} is not a directory"]
 
 
 # ---------------------- edges from the edge-cases pass [opensrm-6kqs.5]
@@ -881,3 +962,152 @@ def test_a_changed_line_starting_plus_plus_space_is_not_a_file_header(repo):
     assert code == 2, result["errors"]
     assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
         "changed test test_new is SKIPPED when run"]
+
+
+# -------------------- fixtures from the first provenance pass [opensrm-6kqs.5]
+#
+# Each pins one sentence of the script's docstring (quoted in its test)
+# against a mutation of that behaviour that survived the pass.
+
+
+def test_a_claim_names_the_test_it_is_in(repo):
+    """static_hits: the claim names where the hit is, "(in <owner>)", so two
+    hits of one check in different functions keep distinct fingerprints."""
+    body = "    try:\n        f()\n    except:\n        pass\n"
+    result, _ = gate(repo, {"tests/test_m.py": f"def test_a():\n{body}def test_b():\n{body}"})
+    assert [f["claim"] for f in hits(result, "swallowing_except")] == [
+        "a bare except swallows every error without re-raising (in test_a)",
+        "a bare except swallows every error without re-raising (in test_b)"]
+
+
+CLASS_BASE = """\
+import pytest
+
+
+class TestK:
+    LIMIT = 1
+
+    def test_a(self):
+        pytest.skip("a")
+
+    def test_b(self):
+        pytest.skip("b")
+
+
+@pytest.mark.skipif(False, reason="never")
+def test_d():
+    pytest.skip("d")
+
+
+def test_e():
+    x = 1
+    pytest.skip("e")
+"""
+
+
+@pytest.mark.parametrize("old,new,expected", [
+    # "class-level code, or a helper or fixture method: every test of the class"
+    ("    LIMIT = 1\n", "    LIMIT = 2\n", ["TestK::test_a", "TestK::test_b"]),
+    # a changed method is that test alone
+    ('pytest.skip("a")', 'pytest.skip("a, changed")', ["TestK::test_a"]),
+    # a decorator belongs to its def's span, not to module scope
+    ('skipif(False, reason="never")', 'skipif(False, reason="still never")', ["test_d"]),
+    # a pure deletion counts at the line it was deleted before (and after)
+    ("    x = 1\n", "", ["test_e"]),
+], ids=["class-level-line", "one-method", "decorator-only", "pure-deletion"])
+def test_a_changed_line_is_attributed_to_its_tests(repo, old, new, expected):
+    """R5-R33: "no test added or changed in BASE..HEAD is SKIPPED". Every
+    test here skips, so the SKIPPED hits are exactly the tests the change is
+    attributed to (changed_tests, changed_lines)."""
+    head = CLASS_BASE.replace(old, new)
+    assert head != CLASS_BASE
+    result, code = gate(repo, {"tests/test_k.py": head}, {"tests/test_k.py": CLASS_BASE},
+                        static_only=False)
+    assert code == 2 and result["errors"] == []
+    assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
+        f"changed test {name} is SKIPPED when run" for name in expected]
+
+
+def test_a_failing_test_still_leaves_the_module_checked(repo):
+    """The docstring's exit codes: pytest exit 1 (tests failed) is a usable
+    run, so a module with a failing test is still checked, and its skipped
+    changed test is a hit, not a check that could not run."""
+    result, code = gate(repo, {"tests/test_m.py": """
+        import pytest
+        def test_fails():
+            assert 0
+        def test_skips():
+            pytest.skip("later")
+        """}, static_only=False)
+    assert result["errors"] == []
+    assert result["checks"]["zero_collected"]["detail"]["modules"]["tests/test_m.py"][
+        "exitstatus"] == 1
+    assert code == 2
+    assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
+        "changed test test_skips is SKIPPED when run"]
+
+
+def test_a_run_that_exits_outside_0_1_5_cannot_be_checked(repo):
+    """A check that cannot run is never passed: a prefix that exits 3 after
+    pytest wrote the probe's data is still not a usable run."""
+    base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
+    head = commit(repo, {"tests/test_m.py": "def test_a():\n    assert 1\n"}, "head")
+    wrapper = ["sh", "-c", '"$@"; exit 3', "sh", *PYTEST]
+    result, code = checks.check(repo, base, head, False, wrapper, 120)
+    assert code == 1
+    assert len(result["errors"]) == 1 and " exited 3 with no usable result" in result["errors"][0]
+    assert result["checks"]["skipped_or_deselected"]["ran"] is False
+
+
+def test_a_run_that_changes_a_tracked_file_cannot_be_checked(repo):
+    """The runtime checks "refuse ... unless ... no tracked file differs from
+    HEAD"; a run that leaves one changed is not a clean run either."""
+    result, code = gate(repo, {"tests/test_m.py": """
+        from pathlib import Path
+        def test_writes():
+            Path("README").write_text("rewritten by a test\\n")
+        """}, static_only=False)
+    assert code == 1
+    assert result["errors"] == ["the pytest runs changed tracked files in the checkout"]
+    assert result["checks"]["zero_collected"]["ran"] is False
+
+
+def test_a_module_whose_tests_are_all_deselected_is_not_zero_collected(repo):
+    """R5-R33 names two hits: "SKIPPED or deselected" and "collects zero". A
+    module whose every test is deselected collects them (the probe counts
+    deselected node ids), so each is a deselected hit and the module is not
+    zero-collecting."""
+    result, code = gate(repo, {
+        "pytest.ini": "[pytest]\naddopts = -m 'not slow'\nmarkers = slow\n",
+        "tests/test_m.py": """
+            import pytest
+            pytestmark = pytest.mark.slow
+            def test_a():
+                assert 1
+            def test_b():
+                assert 1
+            """}, static_only=False)
+    assert code == 2 and result["errors"] == []
+    assert hits(result, "zero_collected") == []
+    assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
+        "changed test test_a is deselected", "changed test test_b is deselected"]
+
+
+def test_a_changed_test_dropped_from_collection_collects_no_item(repo):
+    """R5-R33: a changed test must run. One that a conftest removes from the
+    items without deselecting it is neither collected nor deselected, and is
+    a hit of its own ("collects no item")."""
+    result, code = gate(repo, {
+        "tests/conftest.py": """
+            def pytest_collection_modifyitems(items):
+                items[:] = [i for i in items if i.name != "test_dropped"]
+            """,
+        "tests/test_m.py": """
+            def test_kept():
+                assert 1
+            def test_dropped():
+                assert 1
+            """}, static_only=False)
+    assert code == 2 and result["errors"] == []
+    assert [f["claim"] for f in hits(result, "skipped_or_deselected")] == [
+        "changed test test_dropped collects no item"]
