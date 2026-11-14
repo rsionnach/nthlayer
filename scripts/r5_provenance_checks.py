@@ -847,11 +847,13 @@ def changed_tests(tree: ast.Module, source: str, lines: set[int] | None) -> set[
 
 
 def _key_of(nodeid: str) -> tuple:
-    parts = nodeid.split("::")[1:]
+    # Strip the parametrise id before splitting: an id may itself contain
+    # "::" (test_ids[a::b]), which would otherwise read as a class boundary.
+    _, _, rest = nodeid.partition("::")
+    parts = rest.split("[", 1)[0].split("::") if rest else []
     if not parts:
         return (None, "")
-    name = parts[-1].split("[", 1)[0]
-    return (parts[-2] if len(parts) >= 2 else None, name)
+    return (parts[-2] if len(parts) >= 2 else None, parts[-1])
 
 
 def runtime_hits(repo: Path, prefix: list[str], module: str, tree: ast.Module, source: str,

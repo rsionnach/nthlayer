@@ -564,6 +564,16 @@ def test_a_clean_runtime_run_exits_0_and_leaves_the_repository_untouched(repo):
     assert git(repo, "status", "--porcelain", "--untracked-files=all") == ""
 
 
+def test_a_param_id_containing_double_colon_is_still_its_test(repo):
+    """A parametrise id may contain "::" (pytest keeps ids verbatim), so the
+    id is not a class boundary: the changed test ran, and nothing is hit."""
+    src = ("import pytest\n\n\n@pytest.mark.parametrize('x', ['a::b'])\n"
+           "def test_ids(x):\n    assert x\n")
+    result, code = gate(repo, {"tests/test_k.py": src}, static_only=False)
+    assert code == 0, result["findings"]
+    assert result["checks"]["skipped_or_deselected"]["hits"] == 0
+
+
 # --------------------------------------------------------------------- CLI
 
 
