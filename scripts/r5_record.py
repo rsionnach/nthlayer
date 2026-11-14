@@ -15,6 +15,8 @@ shape is a re-derivation over the whole archive, not a migration.
     r5_record.py build <state.json>       derived record on stdout
     r5_record.py validate <record.json>   report on stdout
     r5_record.py sweep <dir>              build + validate every archive in <dir>
+    r5_record.py check <record|verdict.json> (--repo <path> [--ref <rev>] | --tree <sha>)
+                                          the verdict check (opensrm-6kqs.6)
 
 Exit codes: 0 ok; 2 the record cannot be derived (``build``, with a named
 reason) or does not match the shape (``validate``); 1 usage or unreadable file.
@@ -81,8 +83,7 @@ is not the lens's first review), started at the stalled dispatch and ended at
 the re-send. Its ``duration_s`` is null: the span to the re-send is how long
 the supervisor waited, not a measurement of the reviewer, which may have
 stopped long before (null when unmeasured, above). ``merge`` and
-``mutations`` are Phase B's and bead 10's, and ``verdict`` bead 6's: this
-script writes none of them.
+``mutations`` are Phase B's and bead 10's: this script writes neither.
 
 Round 0 (opensrm-6kqs.5, R5-R1). Before the first reviewer, r5-supervise runs
 lint, the type check, the full suite and ``scripts/r5_provenance_checks.py``
@@ -111,6 +112,35 @@ round 0 is a complete record of a gate that stopped: it builds and validates
 with that single round. Archives written before bead 5 hold no such event,
 so their rounds are unchanged.
 
+Verdict (opensrm-6kqs.6, R5-R49). The supervisor logs ONE event last, once
+the gate's outcome is settled, with the tree of the commit the gate ended on:
+
+    {"ts": "<iso8601>", "event": "verdict_recorded",
+     "state": "CLEAN" | "ESCALATED" | "PREFLIGHT_FAILED" | "BUDGET",
+     "tree_sha": "<git rev-parse <head>^{tree}, 40 hex>", "head_sha": "<40 hex>"}
+
+``build`` turns it into the record's ``verdict``, ``{state, tree_sha,
+head_sha, at}`` (``at`` is the event's ts), and the record's top-level
+``verdict`` is null when no event was logged (every archive before bead 6).
+It refuses a malformed event (``bad_verdict_event``), a second one
+(``second_verdict``), one on a gate over several repos, which has no one tree
+(``verdict_on_multi_repo``), a state that disagrees with round 0
+(``verdict_state_mismatch``: PREFLIGHT_FAILED exactly when round 0 failed), a
+``head_sha`` that is not the commit the gate ended on
+(``verdict_head_mismatch``), and a round 0, dispatch, receipt, fix or commit
+after it (``round_after_verdict``): a verdict holds for the tree it names, so
+nothing that changes or reviews the tree may follow it.
+
+``check`` is section 6's verdict check, for ``bd close`` and the merge check
+(``scripts/r5_merge_check.py``): it passes when the verdict is CLEAN and its
+``tree_sha`` equals the tree given (``--tree``) or the tree of ``--ref``
+(default HEAD) in ``--repo``. It reads a state file or built record (built
+afresh, so the verdict is always derived) or a bare verdict object, which
+epic-executor writes as ``verdict.json`` since it keeps no state file. Exit 0
+passes; 2 refuses, with a reason from ``CHECK_REFUSALS`` naming the state or
+both trees; 1 means it could not run (git cannot name the tree, an unreadable
+file), which is never a pass.
+
 Standard library only, Python 3.9 compatible, like the other gate scripts.
 """
 
@@ -119,6 +149,7 @@ from __future__ import annotations
 import copy
 import datetime
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -136,7 +167,7 @@ VERDICT_STATES = ("CLEAN", "ESCALATED", "PREFLIGHT_FAILED", "BUDGET")
 PARSER_LISTS = ("findings", "closures", "closure_rejected", "unaccounted",
                 "downgrades_refused", "prose_unfiled")
 MEASURED = ("model", "tier", "tokens_in", "tokens_out", "tokens_total", "duration_s")
-DERIVED_KEYS = ("bead", "repo", "branch", "base", "head", "rounds")
+DERIVED_KEYS = ("bead", "repo", "branch", "base", "head", "rounds", "verdict")
 
 # The audit events that make rounds. Every other event (preflight drift,
 # tests, decisions, notes...) is informational and ignored here.
@@ -185,6 +216,10 @@ FIX_OPENERS = ("fixes_applied", "fix_dispatched")
 ROUND0 = "round0_completed"
 PREFLIGHT_VERDICTS = ("ok", "PREFLIGHT_FAILED")
 COMMIT = "commit_made"
+# The gate's verdict (opensrm-6kqs.6, R5-R49), logged once, last: the state and
+# the tree it holds for. Nothing that changes the tree or reviews it may follow.
+VERDICT = "verdict_recorded"
+AFTER_VERDICT = (ROUND0, DISPATCH, UNAVAILABLE, *RECEIPTS, *FIX_OPENERS, COMMIT)
 
 # Why ``build`` refuses a record. A fixed set, so a test can hold the whole
 # archive to it: each record builds, or refuses for one of these.
@@ -211,6 +246,16 @@ REFUSALS = {
     "preflight_verdict_mismatch": "a round0_completed verdict disagrees with its results "
                                   "and findings",
     "round_after_preflight_failed": "a round follows a round 0 that ended PREFLIGHT_FAILED",
+    "bad_verdict_event": "a verdict_recorded event is not {state, tree_sha, head_sha} with "
+                         "full SHAs and a section 6 state",
+    "second_verdict": "audit_trail holds more than one verdict_recorded",
+    "verdict_on_multi_repo": "a gate over several repos logs a verdict_recorded (one tree "
+                             "per verdict: gate each repo on its own)",
+    "verdict_state_mismatch": "a verdict's state disagrees with round 0 (PREFLIGHT_FAILED "
+                              "exactly when round 0 failed)",
+    "verdict_head_mismatch": "a verdict's head_sha is not the commit the gate ended on",
+    "round_after_verdict": "a round 0, dispatch, receipt, fix or commit follows the "
+                           "verdict_recorded",
 }
 
 
@@ -423,6 +468,70 @@ def _preflight_round(event: dict, head: str | None) -> dict:
     started = event.get("started") if isinstance(event.get("started"), str) else event.get("ts")
     return {"kind": "preflight", "head": round_head if isinstance(round_head, str) else None,
             "started": started, "ended": event.get("ts"), "lenses": {}, "preflight": pre}
+
+
+def _full_sha(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 40 and set(value) <= _HEX
+
+
+def verdict_problems(verdict: Any) -> list[str]:
+    """What is wrong with a verdict object (section 6), as a bare verdict file
+    or a record's ``verdict``: state, and full lower-case tree and head SHAs."""
+    if not isinstance(verdict, dict):
+        return ["not an object"]
+    errors = []
+    if verdict.get("state") not in VERDICT_STATES:
+        errors.append(f"state: {verdict.get('state')!r} not in {VERDICT_STATES}")
+    for key in ("tree_sha", "head_sha"):
+        if not _full_sha(verdict.get(key)):
+            errors.append(f"{key}: not a full 40-hex lower-case SHA")
+    if not _is_str_or_none(verdict.get("at")):
+        errors.append("at: not a string or null")
+    return errors
+
+
+def _refuse_round_after_verdict(record: dict) -> None:
+    """Checked before the rounds are derived, so that a round after the
+    verdict is named as such rather than as whatever it leaves unfinished."""
+    trail = record.get("audit_trail")
+    if not isinstance(trail, list):
+        return
+    seen = False
+    for e in trail:
+        name = e.get("event") if isinstance(e, dict) else None
+        if seen and name in AFTER_VERDICT:
+            raise BuildRefused("round_after_verdict", f"{name} at {e.get('ts')}")
+        seen = seen or name == VERDICT
+
+
+def derive_verdict(record: dict, rounds: list[dict], head: str | None) -> dict | None:
+    """The record's ``verdict`` from its one ``verdict_recorded`` event, or None
+    for a gate that logged none (every archive before opensrm-6kqs.6)."""
+    trail = record["audit_trail"]
+    at = [i for i, e in enumerate(trail) if e.get("event") == VERDICT]
+    if not at:
+        return None
+    if len(at) > 1:
+        raise BuildRefused("second_verdict", ", ".join(str(trail[i].get("ts")) for i in at))
+    event = trail[at[0]]
+    dr = record.get("diff_range")
+    if isinstance(dr, dict) and len(dr) > 1:
+        raise BuildRefused("verdict_on_multi_repo", f"{sorted(dr)}")
+    verdict = {"state": event.get("state"), "tree_sha": event.get("tree_sha"),
+               "head_sha": event.get("head_sha"),
+               "at": event.get("ts") if isinstance(event.get("ts"), str) else None}
+    problems = verdict_problems(verdict)
+    if problems:
+        raise BuildRefused("bad_verdict_event", "; ".join(problems))
+    failed = bool(rounds) and rounds[0]["kind"] == "preflight" and \
+        rounds[0]["preflight"]["verdict"] == "PREFLIGHT_FAILED"
+    if failed != (verdict["state"] == "PREFLIGHT_FAILED"):
+        raise BuildRefused("verdict_state_mismatch",
+                           f"{verdict['state']} with round 0 "
+                           + ("failed" if failed else "not failed"))
+    if head is not None and not _same_commit(verdict["head_sha"], head):
+        raise BuildRefused("verdict_head_mismatch", f"{verdict['head_sha']} vs head {head}")
+    return verdict
 
 
 def derive_rounds(record: dict) -> list[dict]:
@@ -644,6 +753,7 @@ def build(record: Any) -> dict:
     """The record with its derived keys replaced; the input is not touched."""
     if not isinstance(record, dict):
         raise BuildRefused("not_an_object", type(record).__name__)
+    _refuse_round_after_verdict(record)
     rounds = derive_rounds(record)
     check_against_summary(record, rounds)
     out = {k: copy.deepcopy(v) for k, v in record.items() if k not in DERIVED_KEYS}
@@ -657,7 +767,8 @@ def build(record: Any) -> dict:
     out.update({"bead": bead if isinstance(bead, str) else None, "repo": repo,
                 # r5-state records no branch (Step 1's shape, 0 of 96 archives).
                 "branch": None,
-                "base": base, "head": head, "rounds": rounds})
+                "base": base, "head": head, "rounds": rounds,
+                "verdict": derive_verdict(record, rounds, head)})
     return out
 
 
@@ -791,10 +902,123 @@ def validate(record: Any) -> dict:
         except BuildRefused:
             pass
     verdict = record.get("verdict")
-    if verdict is not None and (
-            not isinstance(verdict, dict) or verdict.get("state") not in VERDICT_STATES):
-        errors.append(f"verdict.state: not in {VERDICT_STATES}")
+    if verdict is not None:
+        errors += [f"verdict.{p}" if not p.startswith("not ") else f"verdict: {p}"
+                   for p in verdict_problems(verdict)]
+        if isinstance(dr, dict) and len(dr) > 1:
+            errors.append("verdict: set on a multi-repo gate (opensrm-6kqs.6: one tree per verdict)")
     return {"valid": not errors, "errors": errors, "notes": notes}
+
+
+# ------------------------------------------------------------ verdict check
+
+# Why the verdict check refuses (opensrm-6kqs.6, section 6 "Verdict check").
+CHECK_REFUSALS = {
+    "record_refused": "the record does not build (its reason follows)",
+    "multi_repo": "a gate over several repos has no one tree: gate each repo on its own",
+    "no_verdict": "the record carries no verdict (a gate archived before opensrm-6kqs.6, "
+                  "or one that did not finish)",
+    "bad_verdict": "the verdict is not the section 6 shape",
+    "not_clean": "the verdict's state is not CLEAN",
+    "tree_mismatch": "the tree checked is not the tree the verdict holds for",
+}
+
+
+class CheckError(RuntimeError):
+    """The check could not run (exit 1): never a pass, never a refusal."""
+
+
+def verdict_from(data: Any) -> tuple[dict | None, str | None, str]:
+    """(verdict, refusal, detail) from a record or state file, or a bare
+    verdict object (epic-executor's ``verdict.json``)."""
+    if not isinstance(data, dict):
+        return None, "bad_verdict", "not a JSON object"
+    if "audit_trail" not in data and "rounds" not in data:
+        problems = verdict_problems(data)
+        return (None, "bad_verdict", "; ".join(problems)) if problems else (data, None, "")
+    dr = data.get("diff_range")
+    if isinstance(dr, dict) and len(dr) > 1:
+        return None, "multi_repo", f"diff_range names {sorted(dr)}"
+    try:
+        built = build(data)
+    except BuildRefused as exc:
+        return None, "record_refused", str(exc)
+    if built["verdict"] is None:
+        return None, "no_verdict", f"bead {built.get('bead')}"
+    return built["verdict"], None, ""
+
+
+def tree_of(repo: str, ref: str) -> str:
+    """``git rev-parse <ref>^{tree}`` in ``repo``; CheckError when git cannot say."""
+
+    try:
+        out = subprocess.run(["git", "-C", repo, "rev-parse", "--verify", "--quiet",
+                              f"{ref}^{{tree}}"], capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise CheckError(f"git: {exc}") from exc
+    tree = out.stdout.strip()
+    if out.returncode != 0 or not _full_sha(tree):
+        raise CheckError(f"git -C {repo}: {ref} names no tree ({out.stderr.strip() or out.returncode})")
+    return tree
+
+
+def check(data: Any, tree: str) -> dict:
+    """Section 6's verdict check of ``data`` against ``tree`` (a full SHA):
+    passes when the verdict is CLEAN and holds for exactly that tree."""
+    verdict, reason, detail = verdict_from(data)
+    out = {"ok": False, "reason": reason, "detail": detail, "tree": tree,
+           "state": None, "tree_sha": None, "head_sha": None}
+    if verdict is None:
+        return out
+    out.update(state=verdict["state"], tree_sha=verdict["tree_sha"], head_sha=verdict["head_sha"])
+    if verdict["state"] != "CLEAN":
+        out.update(reason="not_clean", detail=f"state {verdict['state']}")
+    elif verdict["tree_sha"] != tree:
+        out.update(reason="tree_mismatch",
+                   detail=f"verdict holds for tree {verdict['tree_sha']} "
+                          f"(head {verdict['head_sha']}); checked tree {tree}")
+    else:
+        out.update(ok=True, reason=None, detail="")
+    return out
+
+
+def _check_cli(args: list) -> int:
+    usage = "usage: r5_record.py check <record|verdict.json> (--repo <path> [--ref <rev>] | --tree <sha>)"
+    if not args or args[0].startswith("-"):
+        print(usage, file=sys.stderr)
+        return 1
+    path, opts = args[0], args[1:]
+    if len(opts) % 2 or any(o not in ("--repo", "--ref", "--tree") for o in opts[::2]):
+        print(usage, file=sys.stderr)
+        return 1
+    o = {opts[i]: opts[i + 1] for i in range(0, len(opts), 2)}
+    if len(o) != len(opts) // 2 or ("--tree" in o) == ("--repo" in o) or \
+            ("--ref" in o and "--repo" not in o):
+        print(usage, file=sys.stderr)
+        return 1
+    try:
+        data = _load(path)
+    except (OSError, ValueError) as exc:
+        print(f"r5_record: cannot read {path}: {exc}", file=sys.stderr)
+        return 1
+    if "--tree" in o:
+        tree = o["--tree"].lower()
+        if not _full_sha(tree):
+            print(f"r5_record: --tree {o['--tree']!r} is not a full 40-hex SHA", file=sys.stderr)
+            return 1
+    else:
+        try:
+            tree = tree_of(o["--repo"], o.get("--ref", "HEAD"))
+        except CheckError as exc:
+            print(f"r5_record: {exc}", file=sys.stderr)
+            return 1
+    result = check(data, tree)
+    json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    if not result["ok"]:
+        print(f"r5_record: verdict check refused: {result['reason']}: {result['detail']}",
+              file=sys.stderr)
+    return 0 if result["ok"] else 2
 
 
 # --------------------------------------------------------------------- CLI
@@ -832,8 +1056,11 @@ def sweep(directory: Path) -> dict:
 
 
 def main(argv: list) -> int:
+    if argv[:1] == ["check"]:
+        return _check_cli(argv[1:])
     if len(argv) != 2 or argv[0] not in ("build", "validate", "sweep"):
-        print("usage: r5_record.py build <state.json> | validate <record.json> | sweep <dir>",
+        print("usage: r5_record.py build <state.json> | validate <record.json> | sweep <dir>"
+              " | check <record|verdict.json> (--repo <path> [--ref <rev>] | --tree <sha>)",
               file=sys.stderr)
         return 1
     command, path = argv
