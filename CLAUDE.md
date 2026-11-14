@@ -165,7 +165,9 @@ examples, generator-specific scripts.
     severity per review, model steps, lens order;
     `--json` for the replay corpus's `sequential_steps`; `steps_source` says
     which derivation each pass used, `rounds` for a record that carries
-    `rounds[]` (opensrm-6kqs.14). Standard library
+    `rounds[]` (opensrm-6kqs.14). Its hook-refused dispatches are
+    `r5_record.py`'s `KNOWN_REFUSED`, read by import, not a copy
+    (opensrm-6kqs.16). Standard library
     only. Tests: `test/test_r5_baseline.py`, run by `ci.yml` on the runner's
     Python and on 3.9 (as the shim runs), over synthetic fixtures, one per
     archive pattern (opensrm-6kqs.8). The
@@ -189,7 +191,9 @@ examples, generator-specific scripts.
     `compare` checks a dry-run replay against a corpus entry's
     `recorded.json`, recomputing fingerprints on both sides. It ports
     cúramóir's `.claude/hooks/lib/r5_findings.py`, which is normative, and
-    holds the one claim normaliser `r5_corpus.py` imports. r5-supervise
+    holds the one claim normaliser `r5_corpus.py` imports, and `schema_lens`
+    (r5-state's `edge-cases` to the schema's `edge_cases`), which
+    `r5_record.py` and `r5_baseline.py` use. r5-supervise
     calls it through the workspace shim `.claude/bin/r5-findings.sh`.
     Tests: `test/test_r5_findings.py`, on the runner's Python and on 3.9.
   - `r5_record.py` — the section 6 round record (R5 Gate v2 Phase A.4,
@@ -200,7 +204,8 @@ examples, generator-specific scripts.
     `refused_dispatches` lists the dispatches the hook refused, by a
     `reviewer_dispatch_blocked` event in a record started before
     `STEP3_CUTOFF` or by a row of the history-only `KNOWN_REFUSED` table
-    (opensrm-6kqs.14). It never edits its
+    (opensrm-6kqs.14), the one table of hook-refused dispatches, which
+    `r5_baseline.py` imports too (opensrm-6kqs.16). It never edits its
     input and refuses, with a reason from a fixed set, a record whose rounds
     would contradict its own `completed_passes`. r5-supervise calls it at
     archive time through the workspace shim `.claude/bin/r5-record.sh`, and

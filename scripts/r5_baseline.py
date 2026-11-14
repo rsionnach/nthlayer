@@ -29,7 +29,7 @@ review's and re-reviews are reported apart.
 Model steps, per pass, are reviews plus fix rounds:
 
 - reviews: one per ``findings_received`` event, or per ``reviewer_dispatched``
-  where more were sent than answered (less the known BLOCKED_DISPATCHES);
+  where more were sent than answered (less r5_record's KNOWN_REFUSED rows);
   failing those, each run's fix iterations plus one, from ``pass_completed``
   events, then from the pass summary.
 - fix rounds: the largest of the ``fixes_applied``/``fix_dispatched`` event
@@ -49,7 +49,7 @@ by the replay corpus (scripts/r5_corpus.py, opensrm-6kqs.2):
 
 - ``records``: one row per archive, by file name, each with ``counted`` (false
   for a dry run or a gate with no lens reviewed: listed, never totalled),
-  ``table_hits`` (the BLOCKED_DISPATCHES and PASSLESS_EVENTS keys it used) and
+  ``table_hits`` (the KNOWN_REFUSED and PASSLESS_EVENTS keys it used) and
   ``ts_span`` (its audit trail's first and last timestamps, as ISO 8601 in UTC,
   ``+00:00``; null with no timestamped event).
 - ``beads``: per bead, its counted records and ``sequential_steps``. A bead
@@ -66,7 +66,8 @@ differ, since then one of the two is wrong. For such a record each lens's
 reviews and fix rounds come from ``rounds[]`` (``steps_source`` "rounds",
 opensrm-6kqs.14), because rounds record dispatches exactly: a dispatch the
 hook refused, then re-sent, is one round, where the audit trail shows two
-``reviewer_dispatched`` and BLOCKED_DISPATCHES lists no gate run after bead 4.
+``reviewer_dispatched`` and KNOWN_REFUSED, history only, takes no row
+after STEP3_CUTOFF.
 Reviews are the lens's review and verify rounds, UNAVAILABLE ones included (a
 reviewer ran and its report was refused: a model step, as the audit-trail
 count of its dispatch makes it); fix rounds are the fix rounds that follow
@@ -108,28 +109,19 @@ SEVERITIES = ("critical", "important", "minor")
 # that is not here (none today) sorts after these, by name.
 LENS_ORDER = ("correctness", "clarity", "edge-cases", "provenance", "excellence")
 
-# Archived reviewer_dispatched events for which no reviewer ran: the hook
-# refused the launch and the supervisor re-dispatched the same iteration. A
+# Archived reviewer_dispatched events for which no reviewer ran (the hook
+# refused the launch and the supervisor re-dispatched the same iteration) are
+# r5_record.KNOWN_REFUSED, read from there, never copied (opensrm-6kqs.16). A
 # blocked dispatch is not a model step, but the archived state format cannot
 # tell one from a stalled review that was re-sent (wo62-4-2 logs a real stall
-# under the same event names), so the two known cases are listed here, keyed by
-# (bead, pass, ts), rather than inferred from free text. The archives are
-# frozen; Phase A.4's round record (opensrm-6kqs.4) records dispatches exactly,
-# so no entry is added for gates run after it. Found by the opensrm-6kqs.1 R5
-# correctness pass, iteration 3.
-BLOCKED_DISPATCHES = frozenset({
-    # reviewer_dispatch_blocked follows: the supervisor's own bookkeeping
-    # tripped the parallel-block hook; iteration 2 re-dispatched at 21:34:23Z.
-    ("opensrm-ir5m", "correctness", "2026-10-02T21:32:57Z"),
-    # supervisor_blocked follows: the dispatch was logged before launch and the
-    # hook refused it; iteration 1 re-dispatched at 17:10:43.
-    ("opensrm-wo62.4.1", "correctness", "2026-10-27T17:10:18.968444+00:00"),
-})
+# under the same event names), so they are listed, keyed by (bead, schema lens,
+# ts), rather than inferred from free text. That table's comment says which
+# rows this script needs and why.
 
 # Archived counting events logged without a ``pass``, mapped to the pass they
 # belong to. Any other counting event with no string ``pass`` is refused, as
 # guessing its pass is the silent miscount this script exists to avoid; these
-# two are known data, as BLOCKED_DISPATCHES are. Found by the opensrm-6kqs.1 R5
+# two are known data, as r5_record.KNOWN_REFUSED's rows are. Found by the opensrm-6kqs.1 R5
 # edge-cases pass, iteration 2.
 PASSLESS_EVENTS = {
     # The fix after the scoped(correctness+edge) re-check, dispatched and then
@@ -197,10 +189,10 @@ def _scan_events(record: dict) -> dict:
         "reviews": {},  # lens -> severity Counter per review
         "fix_events": {},  # lens -> Counter of fixes_applied / fix_dispatched
         "runs": {},  # lens -> fix_iterations of each pass_completed
-        "dispatched": Counter(),  # lens -> reviewer_dispatched, less BLOCKED_DISPATCHES
+        "dispatched": Counter(),  # lens -> reviewer_dispatched, less KNOWN_REFUSED
         "seen": [],  # first appearance of each pass in any event
         "sequence": [],  # pass_started in order, repeats kept
-        "table_hits": [],  # BLOCKED_DISPATCHES / PASSLESS_EVENTS keys used
+        "table_hits": [],  # KNOWN_REFUSED / PASSLESS_EVENTS keys used
     }
     advisory: dict[str, list[Counter]] = {}
     for event in record.get("audit_trail") or []:
@@ -239,8 +231,8 @@ def _scan_events(record: dict) -> dict:
                 _count(event["fix_iterations"], f"{lens} pass_completed fix_iterations")
             )
         elif kind == "reviewer_dispatched":
-            key = (record.get("target_bead"), lens, event.get("ts"))
-            if key in BLOCKED_DISPATCHES:
+            key = (record.get("target_bead"), r5_record.schema_lens(lens), event.get("ts"))
+            if key in r5_record.KNOWN_REFUSED:
                 scan["table_hits"].append(key)
             else:
                 scan["dispatched"][lens] += 1
@@ -325,7 +317,7 @@ def _round_counts(rounds: list[dict]) -> dict[str, dict[str, int]]:
 def _count_from_rounds(lenses: dict, rounds: list[dict]) -> None:
     """Replace each lens row's step counts with its rounds[] counts."""
     counts = _round_counts(rounds)
-    by_schema = {r5_record._schema_lens(lens): lens for lens in lenses}
+    by_schema = {r5_record.schema_lens(lens): lens for lens in lenses}
     if len(by_schema) != len(lenses):
         # Two audit-trail names (edge-cases, edge_cases) for one schema lens:
         # rounds[] holds one count for both rows, so either split is a guess.
@@ -338,10 +330,10 @@ def _count_from_rounds(lenses: dict, rounds: list[dict]) -> None:
             f"rounds[] reviews lenses {sorted(counts)} but audit_trail"
             f" {sorted(by_schema)}"
         )
-    for schema_lens, lens in by_schema.items():
+    for schema_name, lens in by_schema.items():
         row = lenses[lens]
-        row["reviews"] = counts[schema_lens]["reviews"]
-        row["fix_rounds"] = counts[schema_lens]["fix_rounds"]
+        row["reviews"] = counts[schema_name]["reviews"]
+        row["fix_rounds"] = counts[schema_name]["fix_rounds"]
         row["steps"] = row["reviews"] + row["fix_rounds"]
         row["steps_source"] = "rounds"
 
@@ -424,7 +416,7 @@ def _span(record: dict) -> list[str] | None:
 
 
 def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
-    """BLOCKED_DISPATCHES and PASSLESS_EVENTS keys that a record here should
+    """r5_record.KNOWN_REFUSED and PASSLESS_EVENTS keys that a record here should
     have matched but did not.
 
     A key belongs to the record of its bead whose audit trail spans the key's
@@ -447,7 +439,7 @@ def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
             for row in rows
         )
 
-    keys = set(BLOCKED_DISPATCHES) | set(PASSLESS_EVENTS)
+    keys = set(r5_record.KNOWN_REFUSED) | set(PASSLESS_EVENTS)
     return sorted((k for k in keys - hits if held_here(k)), key=str)
 
 
@@ -630,9 +622,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     unmatched = unmatched_table_entries(rows)
     for key in unmatched:
-        table = "BLOCKED_DISPATCHES" if key in BLOCKED_DISPATCHES else "PASSLESS_EVENTS"
+        table = ("KNOWN_REFUSED in scripts/r5_record.py" if key in r5_record.KNOWN_REFUSED
+                 else "PASSLESS_EVENTS in scripts/r5_baseline.py")
         print(f"r5-baseline: known-data entry {key} matches no event in its bead's"
-              f" record: correct it in {table} in scripts/r5_baseline.py (a mistyped"
+              f" record: correct it in {table} (a mistyped"
               " key would miscount silently)", file=sys.stderr)
     if unmatched:
         return 2
