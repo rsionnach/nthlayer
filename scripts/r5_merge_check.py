@@ -134,7 +134,9 @@ def merges_in(command: str) -> list[list[str]]:
             if Path(names[i]).name == "gh" and words[i + 1:i + 3] == ["pr", "merge"]:
                 # ...and closes on the last word: "o/r)".
                 # A spaced "( gh ... )" leaves ")" a word of its own: dropped.
-                merges.append([w for w in (w.rstrip(")`") for w in words[i + 3:]) if w])
+                # An empty word that was empty already ("") is a real argument.
+                merges.append([w.rstrip(")`") for w in words[i + 3:]
+                               if not w or w.rstrip(")`")])
                 break
     return merges
 

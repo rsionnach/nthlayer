@@ -287,6 +287,7 @@ def test_an_unparseable_command_that_may_merge_refuses():
     (["-R", "a/b", "https://github.com/a/b/pull/12/"], ("a/b", "12")),
     (["7", "-R", "a/b", "--body", "merge 8", "--merge"], ("a/b", "7")),
     (["5", "-R", "o/r", "-A", "me@example.invalid"], ("o/r", "5")),
+    (["-t", "", "5", "-R", "o/r"], ("o/r", "5")),
 ])
 def test_target_of(args, expected):
     assert mc.target_of(args) == expected
@@ -443,8 +444,9 @@ def test_a_glob_match_of_another_bead_is_not_its_record(tmp_path, stub):
     ("gh pr merge 5 \\\n  -R o/r", [["5", "-R", "o/r"]]),
     ("( gh pr merge 5 -R o/r )", [["5", "-R", "o/r"]]),
     ("echo $( gh pr merge 5 -R o/r )", [["5", "-R", "o/r"]]),
+    ('gh pr merge 5 -t "" -R o/r', [["5", "-t", "", "-R", "o/r"]]),
 ], ids=["two-spaces", "dollar-paren", "subshell", "backticks", "continuation",
-        "spaced-subshell", "spaced-dollar-paren"])
+        "spaced-subshell", "spaced-dollar-paren", "empty-quoted-value"])
 def test_merges_in_finds_the_shell_forms_edge_cases_named(command, expected):
     assert mc.merges_in(command) == expected
 
