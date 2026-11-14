@@ -561,3 +561,41 @@ def test_an_unparseable_command_without_the_merge_words_is_allowed(command):
 def test_the_hook_allows_the_heredoc_that_prompted_the_bead(tmp_path, stub):
     assert mc.hook(tmp_path, payload(HEREDOC_APOSTROPHE)) == 0
     assert stub["calls"] == []
+
+
+# --------------------------------- correctness pass findings [6kqs.18]
+
+
+@pytest.mark.parametrize("command", [
+    "n=$((1<<2))\ngh pr merge 5 -R o/r",
+    'git commit -m "shift x<<y"\ngh pr merge 5 -R o/r',
+    "echo 'a<<b'\ngh pr merge 5 -R o/r",
+    "((x<<=1))\ngh pr merge 5 -R o/r",
+], ids=["arithmetic", "double-quoted", "single-quoted", "arith-command"])
+def test_a_shift_or_quoted_double_angle_hides_no_later_merge(command):
+    """A << that is no heredoc operator opens no body: a merge after it is seen."""
+    assert mc.merges_in(command) == [["5", "-R", "o/r"]]
+
+
+def test_an_unclosed_heredoc_body_is_kept():
+    """A body that never reaches its delimiter was no heredoc: nothing is hidden."""
+    assert mc.merges_in("cat <<EOF\ngh pr merge 5 -R o/r") == [["5", "-R", "o/r"]]
+
+
+def test_a_closed_heredoc_still_hides_its_body_after_an_arithmetic_shift():
+    cmd = "n=$((1<<2)); cat <<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+@pytest.mark.parametrize("command", [
+    "\"gh\" pr merge 5 -R o/r\necho it's",
+    "gh 'pr' \"merge\" 5 -R o/r\necho it's",
+], ids=["quoted-gh", "quoted-pr-merge"])
+def test_an_unparseable_command_with_quoted_merge_words_is_refused(command):
+    with pytest.raises(mc.Refused, match="cannot parse"):
+        mc.merges_in(command)
+
+
+def test_a_file_target_after_dup_operator_is_not_an_argument():
+    assert mc.merges_in("gh pr merge 5 -R o/r >&log") == [["5", "-R", "o/r"]]
+    assert mc.merges_in("gh pr merge 5 -R o/r >& log") == [["5", "-R", "o/r"]]

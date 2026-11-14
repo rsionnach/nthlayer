@@ -81,8 +81,9 @@ PUNCTUATION = frozenset(";&|")
 # bash(1), Here Documents: <<WORD, <<-WORD, <<'WORD', <<"WORD"; not <<< (a
 # here-string, whose word is an ordinary redirection target).
 HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z0-9_.-]+)\2")
-# The words a parse failure must still see to refuse: gh, pr, merge in a row.
-MERGE_WORDS = re.compile(r"\bgh\s+pr\s+merge\b")
+# The words a parse failure must still see to refuse: gh, pr, merge in a row,
+# each possibly quoted ("gh" pr merge runs as gh pr merge does).
+MERGE_WORDS = re.compile(r"""(?<![\w-])['"]?gh['"]?\s+['"]?pr['"]?\s+['"]?merge(?![\w-])""")
 BEAD = re.compile(r"\bopensrm-[0-9a-z]+(?:\.[0-9]+)*\b")
 PR_URL = re.compile(r"^https://github\.com/([^/\s]+/[^/\s]+)/pull/(\d+)/?$")
 
@@ -116,20 +117,70 @@ def without_heredocs(command: str) -> str:
     tabs, for ``<<-``), not commands, and an apostrophe in it would otherwise
     make the whole command unparseable. The operator line itself is kept.
 
-    The operator is found by pattern, not by a full parse, so one inside a
-    quoted string on its line also opens a body; that can only hide text from
-    this check, and a merge fed to a shell through a heredoc is outside its
-    scope already (the module docstring)."""
-    out, pending = [], []
-    for line in command.split("\n"):
+    Dropping text can only hide a merge, so an operator counts only outside
+    quotes and outside arithmetic (``$((1<<2))``, ``((x<<=1))``), and a body
+    that never reaches its delimiter was no heredoc: its lines are kept. A
+    merge fed to a shell through a real heredoc is outside this check's scope
+    (the module docstring)."""
+    lines = command.split("\n")
+    out, pending, held = [], [], []
+    for line in lines:
         if pending:
             dash, word = pending[0]
+            held.append(line)
             if (line.lstrip("\t") if dash else line) == word:
                 pending.pop(0)
+                if not pending:
+                    held = []
             continue
         out.append(line)
-        pending = [(m.group(1) == "-", m.group(3)) for m in HEREDOC.finditer(line)]
-    return "\n".join(out)
+        # Where the operator is comes from the blanked line; its delimiter,
+        # which may itself be quoted ('EOF'), from the line as written.
+        blank = _unquoted(line)
+        pending = [(m.group(1) == "-", m.group(3))
+                   for m in (HEREDOC.match(line, i) for i in _operators(blank)) if m]
+    # An unclosed body: never a heredoc, so nothing is hidden.
+    return "\n".join(out + held)
+
+
+def _operators(blank: str) -> list:
+    """Offsets of each ``<<`` (not ``<<<``) in a blanked line."""
+    return [i for i in range(len(blank) - 1)
+            if blank.startswith("<<", i) and (i == 0 or blank[i - 1] != "<")
+            and not blank.startswith("<<<", i)]
+
+
+def _unquoted(line: str) -> str:
+    """The line with quoted text and arithmetic blanked out (same length), so a
+    ``<<`` found in it is an operator, not text or a shift."""
+    out, quote, depth, i = [], None, 0, 0
+    while i < len(line):
+        c = line[i]
+        if quote:
+            if c == "\\" and quote == '"' and i + 1 < len(line):
+                out.append("  ")
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            out.append(" ")
+        elif c in "'\"":
+            quote = c
+            out.append(" ")
+        elif line.startswith("((", i):
+            depth += 1
+            out.append("  ")
+            i += 2
+            continue
+        elif depth and line.startswith("))", i):
+            depth -= 1
+            out.append("  ")
+            i += 2
+            continue
+        else:
+            out.append(" " if depth else c)
+        i += 1
+    return "".join(out)
 
 
 def without_redirections(text: str) -> str:
@@ -179,9 +230,11 @@ def without_redirections(text: str) -> str:
         dup = text[k - 1] in "<>" and k < n and text[k] == "&"
         if dup:
             k += 1
+        if dup and k < n and (text[k].isdigit() or text[k] == "-"):
             while k < n and (text[k].isdigit() or text[k] == "-"):
                 k += 1
         else:
+            # A target word, also after >& when it names a file (>&log).
             while k < n and text[k] in " \t":
                 k += 1
             # The target: one word, which may be quoted.
