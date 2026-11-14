@@ -19,7 +19,9 @@ merge-before-gate it exists to stop. The owner can still merge by hand.
 
 What it does, for each ``gh pr merge`` in the command (split with shlex, so a
 quoted string that mentions one is not one; ``&&``, ``;``, ``|`` and newlines
-separate commands). It guards against a merge made by mistake, not one made
+separate commands; heredoc bodies are dropped and redirections are not
+arguments, opensrm-6kqs.18; a command that will not parse is refused only
+when it holds the words gh, pr, merge in a row). It guards against a merge made by mistake, not one made
 on purpose: a merge quoted inside ``bash -c '...'``, or one that does not go
 through ``gh pr merge`` (``gh api``, the web UI), is not seen.
 
@@ -76,6 +78,12 @@ import r5_record  # noqa: E402  (sibling script)
 DOC_SUFFIXES = (".md", ".rst", ".txt")
 EXEMPT_BRANCHES = ("release-please--", "dependabot/")
 PUNCTUATION = frozenset(";&|")
+# bash(1), Here Documents: <<WORD, <<-WORD, <<'WORD', <<"WORD"; not <<< (a
+# here-string, whose word is an ordinary redirection target).
+HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z0-9_.-]+)\2")
+# The words a parse failure must still see to refuse: gh, pr, merge in a row,
+# each possibly quoted ("gh" pr merge runs as gh pr merge does).
+MERGE_WORDS = re.compile(r"""(?<![\w-])['"]?gh['"]?\s+['"]?pr['"]?\s+['"]?merge(?![\w-])""")
 BEAD = re.compile(r"\bopensrm-[0-9a-z]+(?:\.[0-9]+)*\b")
 PR_URL = re.compile(r"^https://github\.com/([^/\s]+/[^/\s]+)/pull/(\d+)/?$")
 
@@ -103,18 +111,190 @@ def gh(args: list) -> str:
 
 # ------------------------------------------------------------ command parse
 
+def without_heredocs(command: str) -> str:
+    """The command with every heredoc body removed (bash(1), Here Documents):
+    a body is data up to a line that is exactly its delimiter (after leading
+    tabs, for ``<<-``), not commands, and an apostrophe in it would otherwise
+    make the whole command unparseable. The operator line itself is kept.
+
+    Dropping text can only hide a merge, so an operator counts only outside
+    quotes and outside arithmetic (``$((1<<2))``, ``((x<<=1))``), and a body
+    that never reaches its delimiter was no heredoc: its lines are kept. A
+    merge fed to a shell through a real heredoc is outside this check's scope
+    (the module docstring)."""
+    lines = command.split("\n")
+    out, pending, held, quote = [], [], [], None
+    for line in lines:
+        if pending:
+            dash, word = pending[0]
+            held.append(line)
+            if (line.lstrip("\t") if dash else line) == word:
+                pending.pop(0)
+                if not pending:
+                    held = []
+            continue
+        out.append(line)
+        # Where the operator is comes from the blanked line; its delimiter,
+        # which may itself be quoted ('EOF'), from the line as written.
+        # The quote state carries over: a "..." may span lines.
+        blank, quote = _unquoted(line, quote)
+        pending = [(m.group(1) == "-", m.group(3))
+                   for m in (HEREDOC.match(line, i) for i in _operators(blank)) if m]
+    # An unclosed body: never a heredoc, so nothing is hidden.
+    return "\n".join(out + held)
+
+
+def _operators(blank: str) -> list:
+    """Offsets of each ``<<`` (not ``<<<``) in a blanked line."""
+    return [i for i in range(len(blank) - 1)
+            if blank.startswith("<<", i) and (i == 0 or blank[i - 1] != "<")
+            and not blank.startswith("<<<", i)]
+
+
+def _unquoted(line: str, quote: str | None = None) -> tuple:
+    """(the line with quoted text, arithmetic and a trailing ``#`` comment
+    blanked out, same length; the quote still open at its end). A ``<<``
+    found in the blanked line is an operator, not text, a shift or a remark."""
+    out, depth, i = [], 0, 0
+    while i < len(line):
+        c = line[i]
+        if quote:
+            # A backslash escapes inside "..." and ANSI-C $'...', not '...'.
+            if c == "\\" and quote != "'" and i + 1 < len(line):
+                out.append("  ")
+                i += 2
+                continue
+            if c == quote[-1]:
+                quote = None
+            out.append(" ")
+        elif c == "$" and line.startswith("$'", i):
+            quote = "$'"
+            out.append("  ")
+            i += 2
+            continue
+        elif c in "'\"":
+            quote = c
+            out.append(" ")
+        elif c == "\\":
+            # An unquoted escape is a literal character (\<<EOF is no heredoc).
+            out.append(" " * len(line[i:i + 2]))
+            i += 2
+            continue
+        elif line.startswith("((", i):
+            depth += 1
+            out.append("  ")
+            i += 2
+            continue
+        elif depth and line.startswith("))", i):
+            depth -= 1
+            out.append("  ")
+            i += 2
+            continue
+        elif c == "#" and not depth and (i == 0 or line[i - 1] in " \t;&|("):
+            out.append(" " * (len(line) - i))  # a comment, to the line's end
+            break
+        else:
+            out.append(" " if depth else c)
+        i += 1
+    return "".join(out), quote
+
+
+def without_redirections(text: str) -> str:
+    """The text with every unquoted redirection replaced by a space (bash(1),
+    REDIRECTION): an fd number touching the operator, the operator (``<``,
+    ``>``, ``>>``, ``&>``, ``&>>``, ``>&``, ``<&``, ``<<``, ``<<<``, ``<>``,
+    ``>|``), then ``N`` or ``-`` after ``>&``/``<&``, else one target word.
+    Without this, ``2>&1`` splits at ``&`` into a stray ``2>`` argument and
+    a new command ``1``. Quotes are tracked so ``--body "x > y"`` keeps its
+    text."""
+    out, i, n, quote = [], 0, len(text), None
+    while i < n:
+        c = text[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and quote != "'" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif c == quote[-1]:
+                quote = None
+            i += 1
+            continue
+        if c == "$" and text.startswith("$'", i):
+            quote = "$'"
+            out.append("$'")
+            i += 2
+            continue
+        if c in "'\"":
+            quote = c
+            out.append(c)
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        j = i
+        if c.isdigit() and (i == 0 or text[i - 1] in " \t;&|("):
+            while j < n and text[j].isdigit():
+                j += 1
+        k = j
+        if k < n and text[k] == "&" and k + 1 < n and text[k + 1] == ">":
+            k += 2
+        elif k < n and text[k] in "<>":
+            k += 1
+        else:
+            out.append(c)
+            i += 1
+            continue
+        while k < n and text[k] in "<>|":
+            k += 1
+        dup = text[k - 1] in "<>" and k < n and text[k] == "&"
+        if dup:
+            k += 1
+        end = k
+        while end < n and text[end] not in " \t;&|()\n":
+            end += 1
+        # A dup only when the whole word is a number or "-" (>&2, >&-);
+        # >&2x names a file, as >&log does.
+        word = text[k:end]
+        if dup and (word == "-" or word.rstrip("-").isdigit()):
+            k = end
+        else:
+            # A target word, also after >& when it names a file (>&log).
+            while k < n and text[k] in " \t":
+                k += 1
+            # The target: one word, which may be quoted.
+            while k < n and text[k] not in " \t;&|()\n":
+                if text[k] == "\\":
+                    k += 2  # an escaped character, a space included (a\ b)
+                elif text[k] in "'\"":
+                    # An unterminated quote ends the target here: it must
+                    # never swallow the rest of the command.
+                    end = text.find(text[k], k + 1)
+                    k = k + 1 if end < 0 else end + 1
+                else:
+                    k += 1
+        out.append(" ")
+        i = k
+    return "".join(out)
+
+
 def merges_in(command: str) -> list[list[str]]:
     """The argument lists of each ``gh pr merge`` in a shell command."""
-    # A backslash-newline continues the line; any other newline ends a command
-    # as ";" does (inside quotes it stays text).
-    text = command.replace("\\\n", " ").replace("\n", " ; ")
+    # A heredoc body is data, and redirections are not arguments
+    # (opensrm-6kqs.18). A backslash-newline continues the line; any other
+    # newline ends a command as ";" does (inside quotes it stays text).
+    text = without_heredocs(command).replace("\\\n", " ")
+    text = without_redirections(text).replace("\n", " ; ")
     lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|")
     lexer.whitespace_split = True
     lexer.commenters = ""
     try:
         tokens = list(lexer)
     except ValueError as exc:  # an unbalanced quote
-        if "gh" in command and "merge" in command:
+        # Refused only when the words themselves are there: prose that
+        # mentions gh and merge apart is no merge (opensrm-6kqs.18).
+        if MERGE_WORDS.search(text):
             raise Refused(f"cannot parse the command ({exc}), and it may run "
                           "gh pr merge") from exc
         return []

@@ -476,3 +476,270 @@ def test_a_doc_only_pr_whose_renames_cannot_be_read_is_refused(tmp_path, stub):
     stub["renamed_from"] = mc.GhError("gh api --paginate repos: exit 1")
     with pytest.raises(mc.Refused, match="cannot read the renames"):
         mc.judge(tmp_path, REPO, "7", BOUND)
+
+
+# --------------------------------- parse false positives [opensrm-6kqs.18]
+#
+# Bash's own grammar (bash(1), REDIRECTION and Here Documents) fixes every
+# shape here: a heredoc body is data, not commands, up to a line holding only
+# its delimiter (leading tabs stripped for <<-); a redirection is an optional
+# fd number, an operator (<, >, >>, &>, >&, <&, <<<) and a target word, or
+# &N / &- right after >& / <&. The two refusals that prompted the bead, a
+# heredoc with an apostrophe in its body and "2>&1" after a merge, are the
+# first cases.
+
+HEREDOC_APOSTROPHE = ("cat >> plan.md <<'EOF'\n"
+                      "the merge hook's fallback; gh is not run here\n"
+                      "EOF\n"
+                      "echo done")
+
+
+def test_an_unparseable_heredoc_that_mentions_gh_and_merge_is_allowed():
+    assert mc.merges_in(HEREDOC_APOSTROPHE) == []
+
+
+def test_a_heredoc_body_line_that_reads_like_a_merge_is_not_one():
+    cmd = "cat > notes.md <<EOF\ngh pr merge 5 -R a/b --merge\nEOF"
+    assert mc.merges_in(cmd) == []
+
+
+def test_a_merge_after_a_heredoc_is_still_seen():
+    cmd = "cat > x <<'EOF'\nit's text\nEOF\ngh pr merge 5 -R a/b"
+    assert mc.merges_in(cmd) == [["5", "-R", "a/b"]]
+
+
+def test_a_dash_heredoc_ends_at_a_tab_indented_delimiter():
+    cmd = "cat <<-END\n\tit's text\n\tEND\ngh pr merge 6 -R a/b"
+    assert mc.merges_in(cmd) == [["6", "-R", "a/b"]]
+
+
+def test_a_here_string_is_not_a_heredoc():
+    cmd = "grep x <<< 'abc'\ngh pr merge 7 -R a/b"
+    assert mc.merges_in(cmd) == [["7", "-R", "a/b"]]
+
+
+@pytest.mark.parametrize("command", [
+    "gh pr merge 208 -R a/b --merge 2>&1",
+    "gh pr merge 208 -R a/b --merge 2>&1 | tail -2",
+    "gh pr merge 208 -R a/b >/dev/null 2>&1",
+    "gh pr merge 208 -R a/b > out.txt",
+    "gh pr merge 208 -R a/b &> log",
+    "gh pr merge 208 -R a/b 2> err.txt",
+    "gh pr merge 208 -R a/b >> log 2>&-",
+    "gh pr merge 208 < /dev/null -R a/b",
+], ids=["2>&1", "2>&1-pipe", "devnull", "stdout-file", "both", "stderr-file",
+        "append-close", "stdin"])
+def test_redirections_are_not_arguments(command):
+    args = ["208", "-R", "a/b"] + (["--merge"] if "--merge" in command else [])
+    assert mc.merges_in(command) == [args]
+
+
+def test_a_quoted_redirection_stays_an_argument():
+    """Inside quotes, > is text: a --body value keeps it."""
+    assert mc.merges_in('gh pr merge 5 -R a/b --body "x > y"') == \
+        [["5", "-R", "a/b", "--body", "x > y"]]
+
+
+def test_a_pr_number_before_a_spaced_redirect_is_kept():
+    """A digit word is an fd number only when the operator touches it."""
+    assert mc.merges_in("gh pr merge 208 > out") == [["208"]]
+
+
+def test_an_unparseable_command_with_the_merge_words_is_still_refused():
+    with pytest.raises(mc.Refused, match="cannot parse"):
+        mc.merges_in("gh pr merge 5 -R a/b --body \"it's")
+
+
+@pytest.mark.parametrize("command", [
+    'echo "the gh tool can merge; it' + "'s fine",
+    "echo 'merge it' \"and gh",
+], ids=["gh-and-merge-in-prose", "split-words"])
+def test_an_unparseable_command_without_the_merge_words_is_allowed(command):
+    assert mc.merges_in(command) == []
+
+
+def test_the_hook_allows_the_heredoc_that_prompted_the_bead(tmp_path, stub):
+    assert mc.hook(tmp_path, payload(HEREDOC_APOSTROPHE)) == 0
+    assert stub["calls"] == []
+
+
+# --------------------------------- correctness pass findings [6kqs.18]
+
+
+@pytest.mark.parametrize("command", [
+    "n=$((1<<2))\ngh pr merge 5 -R o/r",
+    'git commit -m "shift x<<y"\ngh pr merge 5 -R o/r',
+    "echo 'a<<b'\ngh pr merge 5 -R o/r",
+    "((x<<=1))\ngh pr merge 5 -R o/r",
+], ids=["arithmetic", "double-quoted", "single-quoted", "arith-command"])
+def test_a_shift_or_quoted_double_angle_hides_no_later_merge(command):
+    """A << that is no heredoc operator opens no body: a merge after it is seen."""
+    assert mc.merges_in(command) == [["5", "-R", "o/r"]]
+
+
+def test_an_unclosed_heredoc_body_is_kept():
+    """A body that never reaches its delimiter was no heredoc: nothing is hidden."""
+    assert mc.merges_in("cat <<EOF\ngh pr merge 5 -R o/r") == [["5", "-R", "o/r"]]
+
+
+def test_a_closed_heredoc_still_hides_its_body_after_an_arithmetic_shift():
+    cmd = "n=$((1<<2)); cat <<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+@pytest.mark.parametrize("command", [
+    "\"gh\" pr merge 5 -R o/r\necho it's",
+    "gh 'pr' \"merge\" 5 -R o/r\necho it's",
+], ids=["quoted-gh", "quoted-pr-merge"])
+def test_an_unparseable_command_with_quoted_merge_words_is_refused(command):
+    with pytest.raises(mc.Refused, match="cannot parse"):
+        mc.merges_in(command)
+
+
+def test_a_file_target_after_dup_operator_is_not_an_argument():
+    assert mc.merges_in("gh pr merge 5 -R o/r >&log") == [["5", "-R", "o/r"]]
+    assert mc.merges_in("gh pr merge 5 -R o/r >& log") == [["5", "-R", "o/r"]]
+
+
+
+@pytest.mark.parametrize("command", [
+    'echo "a\nx <<EOF"\ngh pr merge 5 -R o/r\nEOF',
+    "# see x <<EOF\ngh pr merge 5 -R o/r\nEOF",
+    "echo hi # x <<EOF\ngh pr merge 5 -R o/r\nEOF",
+], ids=["multi-line-quote", "comment-line", "trailing-comment"])
+def test_a_double_angle_in_a_multi_line_quote_or_a_comment_opens_no_body(command):
+    """Correctness verify (6kqs.18): quote state spans lines; a comment is text."""
+    assert ["5", "-R", "o/r"] in mc.merges_in(command)
+
+
+def test_a_hash_inside_a_word_is_not_a_comment():
+    cmd = "cat a#b <<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+@pytest.mark.parametrize("command", ["gh pr merge 5 -R o/r >&2x", "gh pr merge 5 -R o/r >&2",
+                                     "gh pr merge 5 -R o/r 2>&-", "gh pr merge 5 -R o/r 1>&2-"],
+                         ids=["file-2x", "dup-2", "close", "move-2"])
+def test_a_dup_target_is_a_number_or_dash_or_else_a_file(command):
+    assert mc.merges_in(command) == [["5", "-R", "o/r"]]
+
+
+
+# Edge-cases pass findings (6kqs.18), each checked against bash itself.
+@pytest.mark.parametrize("command", [
+    "echo \\<<EOF\ngh pr merge 5 -R o/r\nEOF",
+    "echo $'a\\'b <<EOF'\ngh pr merge 5 -R o/r\nEOF",
+], ids=["escaped-angle", "ansi-c-quote"])
+def test_an_escaped_or_ansi_c_quoted_double_angle_hides_no_later_merge(command):
+    """Seen, or refused because shlex cannot read $'...': never allowed unseen."""
+    try:
+        assert ["5", "-R", "o/r"] in mc.merges_in(command)
+    except mc.Refused as exc:
+        assert "cannot parse" in str(exc)
+
+
+def test_a_real_heredoc_after_an_ansi_c_string_still_hides_its_body():
+    cmd = "echo $'ab'; cat <<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+def test_an_unterminated_quote_in_a_target_swallows_no_later_merge():
+    """Seen or refused; before the fix the target ran to the end and hid it."""
+    cmd = "cat <<\"EOF\ngh pr merge 5 -R o/r"
+    try:
+        assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+    except mc.Refused as exc:
+        assert "cannot parse" in str(exc)
+
+
+def test_a_redirection_target_with_an_escaped_space_is_one_word():
+    assert mc.merges_in("gh pr merge 5 -R o/r > a\\ b") == [["5", "-R", "o/r"]]
+
+
+
+# ----------------------------- provenance pass findings [6kqs.18]
+#
+# Each fixture is a bash(1) shape (REDIRECTION, Here Documents, QUOTING) that
+# tells a surviving mutant from the code: what bash would run, the check sees.
+
+
+def test_the_fallback_reads_the_command_with_its_redirections_removed():
+    """gh 2>/dev/null pr merge runs gh pr merge; unparseable, it is refused."""
+    with pytest.raises(mc.Refused, match="cannot parse"):
+        mc.merges_in("gh 2>/dev/null pr merge 5 it's")
+
+
+@pytest.mark.parametrize("command", ["gh pr merge 5 >&2 -R o/r",
+                                     "gh pr merge 5 2>&1 -R o/r",
+                                     "gh pr merge 5 1>&- -R o/r"],
+                         ids=["dup-2", "dup-2-to-1", "close-1"])
+def test_a_dup_redirection_mid_command_takes_only_its_fd(command):
+    assert mc.merges_in(command) == [["5", "-R", "o/r"]]
+
+
+def test_digits_ending_a_word_are_not_an_fd_number():
+    """bash(1): the fd number is a word of its own; o/r2>&1 is the word o/r2."""
+    assert mc.merges_in("gh pr merge 5 -R o/r2>&1") == [["5", "-R", "o/r2"]]
+
+
+def test_a_here_string_word_on_a_later_line_closes_no_body():
+    cmd = "cat <<< abc\ngh pr merge 7 -R a/b\nabc"
+    assert mc.merges_in(cmd) == [["7", "-R", "a/b"]]
+
+
+@pytest.mark.parametrize("command", ['gh pr merge 5 -R o/r > "a b"',
+                                     "gh pr merge 5 -R o/r > 'a b'",
+                                     'gh pr merge 5 -R o/r 2>"x y"'],
+                         ids=["double", "single", "touching"])
+def test_a_quoted_redirection_target_is_one_word(command):
+    assert mc.merges_in(command) == [["5", "-R", "o/r"]]
+
+
+@pytest.mark.parametrize("command", ["sigh pr merge it's", "gh pr merged it's",
+                                     "my-gh pr merge it's"],
+                         ids=["sigh", "merged", "hyphen-gh"])
+def test_the_fallback_needs_whole_words(command):
+    assert mc.merges_in(command) == []
+
+
+def test_two_heredocs_on_one_line_hide_both_bodies():
+    cmd = ("cat <<A <<B\na\nA\ngh pr merge 9 -R o/r\nB\n"
+           "gh pr merge 5 -R o/r")
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+def test_a_tab_indented_delimiter_closes_only_a_dash_heredoc():
+    """Plain << needs the delimiter alone on its line; a tab before it is body."""
+    cmd = "cat <<EOF\n\tEOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+def test_a_backslash_inside_single_quotes_escapes_nothing():
+    """'a\\' is a complete string, so the << after it is a real heredoc."""
+    cmd = "echo 'a\\'<<EOF\ngh pr merge 9 -R o/r\nEOF\ngh pr merge 5 -R o/r"
+    assert mc.merges_in(cmd) == [["5", "-R", "o/r"]]
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("gh pr merge 5 -R o/r --body \\>x", ["5", "-R", "o/r", "--body", ">x"]),
+    ('gh pr merge 5 -R o/r --body "a\\" > b"', ["5", "-R", "o/r", "--body", 'a" > b']),
+], ids=["escaped-angle", "escaped-quote-in-double"])
+def test_an_escaped_or_quoted_angle_is_text_not_a_redirection(command, expected):
+    assert mc.merges_in(command) == [expected]
+
+
+def test_an_angle_inside_ansi_c_quotes_is_text_and_the_merge_is_refused():
+    """$'a\\' > b' is one string in bash: its > is no redirection, so nothing
+    is stripped; shlex cannot read $'...', so the merge fails closed."""
+    cmd = "gh pr merge 5 -R o/r --body $'a\\' > b'"
+    assert mc.without_redirections(cmd) == cmd
+    with pytest.raises(mc.Refused, match="cannot parse"):
+        mc.merges_in(cmd)
+
+
+
+def test_a_backslash_inside_single_quotes_does_not_hide_a_redirection():
+    """bash(1) QUOTING: no backslash escapes inside '...', so 'a\\' closes the
+    string and the > after it is a redirection, stripped."""
+    assert mc.merges_in("gh pr merge 5 -R o/r --body 'a\\' > b") == \
+        [["5", "-R", "o/r", "--body", "a\\"]]
