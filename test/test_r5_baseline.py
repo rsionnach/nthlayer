@@ -511,6 +511,28 @@ def test_a_mistyped_key_for_a_bead_that_is_present_is_refused(tmp_path, monkeypa
     assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
 
 
+def test_an_unmatched_key_names_the_table_that_holds_it():
+    # main()'s message for an unmatched key names its table and script:
+    # KNOWN_REFUSED lives in r5_record.py (opensrm-6kqs.16), PASSLESS_EVENTS here.
+    refused = sorted(SYNTHETIC_KNOWN_REFUSED)[0]
+    passless = sorted(SYNTHETIC_PASSLESS_EVENTS)[0]
+    assert r5_baseline.table_of(refused) == ("KNOWN_REFUSED", "scripts/r5_record.py")
+    assert r5_baseline.table_of(passless) == ("PASSLESS_EVENTS", "scripts/r5_baseline.py")
+
+
+def test_main_names_each_unmatched_key_s_table(tmp_path, monkeypatch):
+    bead, lens, ts = sorted(SYNTHETIC_KNOWN_REFUSED)[0]
+    typo = (bead, lens, ts.replace(":03Z", ":04Z"))
+    monkeypatch.setattr(r5_baseline.r5_record, "KNOWN_REFUSED",
+                        {typo: SYNTHETIC_KNOWN_REFUSED[(bead, lens, ts)]})
+    shutil.copy(FIXTURES / f"r5-state-{bead}-completed.json", tmp_path)
+    asked = []
+    real = r5_baseline.table_of
+    monkeypatch.setattr(r5_baseline, "table_of", lambda key: asked.append(key) or real(key))
+    assert r5_baseline.main(["--archive-dir", str(tmp_path)]) == 2
+    assert asked == [typo]
+
+
 def test_another_checkpoint_of_the_key_s_bead_is_a_subset_not_an_error(tmp_path):
     # fx-checkpointed-bead has two records; its PASSLESS_EVENTS keys fall in
     # fx-passless-fix-events (2000-01-01), not in fx-re-run-passes (2000-01-02).

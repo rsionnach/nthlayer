@@ -415,6 +415,15 @@ def _span(record: dict) -> list[str] | None:
     return [min(moments).isoformat(), max(moments).isoformat()] if moments else None
 
 
+def table_of(key: tuple) -> tuple[str, str]:
+    """(table name, the script that holds it) for a known-data key: a key of
+    r5_record.KNOWN_REFUSED, else one of PASSLESS_EVENTS. main() names it when
+    the key matches nothing, so the operator corrects the right table."""
+    if key in r5_record.KNOWN_REFUSED:
+        return "KNOWN_REFUSED", "scripts/r5_record.py"
+    return "PASSLESS_EVENTS", "scripts/r5_baseline.py"
+
+
 def unmatched_table_entries(rows: list[dict]) -> list[tuple]:
     """r5_record.KNOWN_REFUSED and PASSLESS_EVENTS keys that a record here should
     have matched but did not.
@@ -622,10 +631,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     unmatched = unmatched_table_entries(rows)
     for key in unmatched:
-        table = ("KNOWN_REFUSED in scripts/r5_record.py" if key in r5_record.KNOWN_REFUSED
-                 else "PASSLESS_EVENTS in scripts/r5_baseline.py")
+        name, script = table_of(key)
         print(f"r5-baseline: known-data entry {key} matches no event in its bead's"
-              f" record: correct it in {table} (a mistyped"
+              f" record: correct it in {name} in {script} (a mistyped"
               " key would miscount silently)", file=sys.stderr)
     if unmatched:
         return 2
