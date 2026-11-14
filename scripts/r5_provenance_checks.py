@@ -226,13 +226,15 @@ def _raise_terminated(signum, frame):
 @contextlib.contextmanager
 def _signals_raise() -> Iterator[None]:
     """Each TERMINATING signal raises Terminated inside the block; the previous
-    handlers are restored after. Signal handlers can only be set from the main
-    thread."""
+    handlers are restored after. A signal the caller ignores (SIG_IGN, as
+    ``nohup`` sets for SIGHUP) stays ignored: the caller chose to survive it.
+    Signal handlers can only be set from the main thread."""
     import threading
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    previous = {signum: signal.signal(signum, _raise_terminated) for signum in TERMINATING}
+    previous = {signum: signal.signal(signum, _raise_terminated) for signum in TERMINATING
+                if signal.getsignal(signum) is not signal.SIG_IGN}
     try:
         yield
     finally:

@@ -942,6 +942,39 @@ def test_an_interrupt_of_the_script_leaves_no_pytest_behind(repo, tmp_path, sign
                 os.kill(int(pid_file.read_text()), signal.SIGKILL)
 
 
+@pytest.mark.parametrize("signum", [signal.SIGHUP, signal.SIGQUIT], ids=["SIGHUP", "SIGQUIT"])
+def test_an_ignored_signal_stays_ignored_and_the_check_finishes(repo, tmp_path, signum):
+    """Edge: a caller that ignores a signal (``nohup`` sets SIGHUP to SIG_IGN)
+    chose to survive it. The script must not override that: the signal arrives
+    mid-run, and the check still finishes, exit 0 with no errors."""
+    pid_file = tmp_path / "pid"
+    base = commit(repo, {"README": "x\n", "pytest.ini": "[pytest]\n"}, "base")
+    head = commit(repo, {"tests/test_m.py": f"""
+        import os, time
+        def test_waits():
+            with open({str(pid_file)!r}, "w") as handle:
+                handle.write(str(os.getpid()))
+            time.sleep(2)
+        """}, "head")
+
+    def ignore_it():
+        signal.signal(signum, signal.SIG_IGN)
+
+    script = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "check", "--repo", str(repo), "--base", base, "--head",
+         head, "--pytest", shlex.join(PYTEST)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True, preexec_fn=ignore_it)
+    try:
+        _wait_for(pid_file, 30)
+        os.kill(script.pid, signum)
+        out, err = script.communicate(timeout=60)
+        assert script.returncode == 0, err
+        assert json.loads(out)["errors"] == []
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(script.pid, signal.SIGKILL)
+
+
 def test_a_non_utf8_test_path_cannot_be_checked_but_hides_no_other_finding(repo):
     """Edge: a test directory whose name is latin-1 bytes (``caf\\xe9``), next
     to a normal file; both hold a module-level skip. The path cannot be named
