@@ -2047,8 +2047,15 @@ def test_main_s_leak_refusal_does_not_print_the_home_path(workspace, tmp_path, m
         entries[0]["brief"] = f"read {home}/notes.md"
         return entries
     monkeypatch.setattr(r5_corpus, "build", leaking_build)
+    # main builds its refusal with leak_refusal from local_path_leak_forms'
+    # (file, form) pairs: the leak written into the brief above is named as
+    # the home path in brief.md (opensrm-6kqs.9 provenance, iteration 2).
+    refused = []
+    real_refusal = r5_corpus.leak_refusal
+    monkeypatch.setattr(r5_corpus, "leak_refusal", lambda leaking: refused.append(leaking) or real_refusal(leaking))
     assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
                            "--workspace", str(ws), "--no-bd"]) == 2
+    assert [list(r.values()) for r in refused] == [[[("brief.md", "home_path")]]]
     assert home not in capsys.readouterr().err
 
 
