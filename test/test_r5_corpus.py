@@ -1620,17 +1620,26 @@ def test_a_manifest_that_is_not_a_plain_file_is_refused(workspace, tmp_path, kin
     assert target.read_text() == good and not (tmp_path / "b").exists()
 
 
-def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path):
-    real = tmp_path / "real"
+def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path, monkeypatch):
+    """./real and ./REAL on a case-insensitive disk: resolve() keeps the two
+    spellings apart and only os.path.samefile says they are one directory.
+    A case-sensitive disk cannot make that pair, so the pair here is two real
+    directories that os.path.samefile, by its contract (the same device and
+    inode), reports as one (opensrm-6kqs.9: this test used to skip on Linux)."""
+    real, upper = tmp_path / "real", tmp_path / "REAL"
     real.mkdir()
-    if not (tmp_path / "REAL").exists():
-        pytest.skip("case-sensitive filesystem: ./real and ./REAL are two directories")
+    upper.mkdir()
+    assert real.resolve() != upper.resolve()  # the resolve() comparison alone misses it
+    pair = {str(real), str(upper)}
+    samefile = r5_corpus.os.path.samefile
+    monkeypatch.setattr(r5_corpus.os.path, "samefile",
+                        lambda a, b: {str(a), str(b)} == pair or samefile(a, b))
     ws = workspace["ws"]
     write_record(ws, "cs", record("opensrm-cs", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
-    assert r5_corpus.main(["--out", str(real), "--bundles", str(tmp_path / "REAL"), "--release-tag", TAG,
+    assert r5_corpus.main(["--out", str(real), "--bundles", str(upper), "--release-tag", TAG,
                            "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
-    assert list(real.iterdir()) == []
+    assert list(real.iterdir()) == [] and list(upper.iterdir()) == []
 
 
 def test_one_new_directory_for_both_is_refused_before_it_is_created(workspace, tmp_path):
