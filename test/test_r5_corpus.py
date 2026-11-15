@@ -1620,17 +1620,28 @@ def test_a_manifest_that_is_not_a_plain_file_is_refused(workspace, tmp_path, kin
     assert target.read_text() == good and not (tmp_path / "b").exists()
 
 
-def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path):
-    real = tmp_path / "real"
+def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path, monkeypatch):
+    """./real and ./REAL on a case-insensitive disk: resolve() keeps the two
+    spellings apart and only os.path.samefile says they are one directory.
+    A case-sensitive disk cannot make that pair, so the pair here is two real
+    directories that os.path.samefile, by its contract (the same device and
+    inode), reports as one (opensrm-6kqs.9: this test used to skip on Linux).
+    Their names are not case variants, so the test runs on either kind of
+    disk: on a case-insensitive one ./REAL would already be ./real."""
+    real, upper = tmp_path / "real", tmp_path / "spelled-otherwise"
     real.mkdir()
-    if not (tmp_path / "REAL").exists():
-        pytest.skip("case-sensitive filesystem: ./real and ./REAL are two directories")
+    upper.mkdir()
+    assert real.resolve() != upper.resolve()  # the resolve() comparison alone misses it
+    pair = {str(real), str(upper)}
+    samefile = r5_corpus.os.path.samefile
+    monkeypatch.setattr(r5_corpus.os.path, "samefile",
+                        lambda a, b: {str(a), str(b)} == pair or samefile(a, b))
     ws = workspace["ws"]
     write_record(ws, "cs", record("opensrm-cs", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
-    assert r5_corpus.main(["--out", str(real), "--bundles", str(tmp_path / "REAL"), "--release-tag", TAG,
+    assert r5_corpus.main(["--out", str(real), "--bundles", str(upper), "--release-tag", TAG,
                            "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 2
-    assert list(real.iterdir()) == []
+    assert list(real.iterdir()) == [] and list(upper.iterdir()) == []
 
 
 def test_one_new_directory_for_both_is_refused_before_it_is_created(workspace, tmp_path):
@@ -1688,7 +1699,7 @@ def test_main_refuses_to_publish_a_leaking_entry(workspace, tmp_path, monkeypatc
     ws = workspace["ws"]
     write_record(ws, "lk", record("opensrm-lk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
-    monkeypatch.setattr(r5_corpus, "local_path_leaks", lambda entries: ["opensrm-lk"])
+    monkeypatch.setattr(r5_corpus, "local_path_leak_forms", lambda entries: {"opensrm-lk": [("brief.md", "home_path")]})
     out = tmp_path / "out"
     assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
                            "--no-bd"]) == 2
@@ -1699,3 +1710,393 @@ def test_a_home_of_root_names_nobody(monkeypatch):
     monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/")))
     entry = {"meta": {"entry": "opensrm-x"}, "brief": "/x-y and a-b", "recorded": {"rounds": []}}
     assert r5_corpus.local_path_leaks([entry]) == []
+
+
+# --- mutation coverage (opensrm-6kqs.9) ---------------------------------------
+# Each test below kills a mutant of r5_corpus.py that the suite above let
+# through; the expected values are read off the inputs (spec section 6's
+# entry fields, the archive's audit-trail shape), not off the script.
+
+def _clean_record(ws: Path, workspace: dict, stem: str, bead: str) -> None:
+    write_record(ws, stem, record(bead, {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+
+
+def test_a_failing_git_command_is_refused_or_gives_no_output(workspace):
+    repo = workspace["repo"]
+    # "rev-parse <name>" echoes the name on stdout even as it fails.
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.git(repo, "rev-parse", "no-such-rev")
+    assert r5_corpus.git(repo, "rev-parse", "no-such-rev", check=False) == ""
+
+
+def test_an_inherited_git_variable_does_not_reach_the_bundle(workspace, tmp_path, monkeypatch):
+    # GIT_DEFAULT_HASH is no repo-locating variable and nothing pins it, so
+    # only isolation keeps the scratch repository a SHA-1 one.
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "ghv", "opensrm-ghv")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "plain", TAG)
+    monkeypatch.setenv("GIT_DEFAULT_HASH", "sha256")
+    r5_corpus.write_bundles(list(build(ws).values()), ws, tmp_path / "inherited", TAG)
+    assert (tmp_path / "plain" / "demo.bundle").read_bytes() == (tmp_path / "inherited" / "demo.bundle").read_bytes()
+
+
+def test_a_finding_s_defaults_and_fingerprint_use_the_schema_lens():
+    # Section 6: an archived finding is asserted, no regression, no
+    # closure, no status; the fingerprint is over the schema's lens name.
+    f = r5_corpus.finding("edge-cases", "IMPORTANT", "a.py", 3, 4, "a claim")
+    assert (f["evidence"], f["fix"], f["resolves"], f["regression"], f["status"]) == (None, None, None, False, None)
+    assert f["fingerprint"] == r5_corpus.r5_findings.fingerprint("edge_cases", "a.py", "a claim")
+
+
+def test_an_extraction_ending_before_it_starts_is_refused():
+    backwards = [dict(EXTRACTION[0], start_line=2, end_line=1)]
+    report = REPORT.replace("`app.py:2`", "`app.py:1-2`")
+    assert r5_corpus.check_extraction(report, [dict(EXTRACTION[0], start_line=1, end_line=2)]) == []
+    assert r5_corpus.check_extraction(report, backwards) == ["0: end_line before start_line"]
+
+
+def test_a_recorded_finding_carries_its_handback_and_tree_flag_and_no_repo_tag(workspace, tmp_path):
+    ws = workspace["ws"]
+    rec = record("opensrm-hbk", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 1, "minor": 1}, None)])
+    stamps = write_record(ws, "hbk", rec)
+    private = private_archive(tmp_path / "p", "r5-state-hbk-completed.json", "correctness", stamps[0])
+    (f,) = build(ws, private)["opensrm-hbk"]["recorded"]["rounds"][0]["findings"]
+    assert f["handback_sha256"] == hashlib.sha256(REPORT.encode()).hexdigest()
+    assert (f["path"], f["path_in_tree"], f["reported_path"]) == ("app.py", True, "app.py")
+    assert "_repo" not in f
+    # A path the head tree does not hold is kept, and flagged.
+    gone = REPORT.replace("`app.py:2`", "`gone.py:2`")
+    private = private_archive(tmp_path / "p2", "r5-state-hbk-completed.json", "correctness", stamps[0],
+                              report=gone, extraction=[dict(EXTRACTION[0], path="gone.py"), EXTRACTION[1]])
+    (f,) = build(ws, private)["opensrm-hbk"]["recorded"]["rounds"][0]["findings"]
+    assert (f["path"], f["path_in_tree"]) == ("gone.py", False)
+
+
+def test_a_brief_file_its_index_does_not_list_is_not_the_reviewer_s(tmp_path):
+    private = tmp_path / "p"
+    (private / "briefs").mkdir(parents=True)
+    (private / "index.json").write_text(json.dumps({"pairings": []}))
+    (private / "briefs" / "kkk.md").write_text("an unindexed brief\n")
+    (private / "briefs" / "index.json").write_text(json.dumps({"other": {"sha256": "x"}}))
+    assert r5_corpus.PrivateArchive(private).brief("kkk") is None
+
+
+def test_the_archive_s_logged_fix_repo_is_kept():
+    trail = [{"ts": "t1", "event": "findings_received", "pass": "correctness",
+              "counts": {"critical": 0, "important": 1, "minor": 0}},
+             {"ts": "t2", "event": "commit_made", "sha": "abc1234", "repo": "nthlayer-common"}]
+    (r,) = r5_corpus.reviews({"version": 2, "target_bead": "b", "audit_trail": trail})
+    assert (r["fix_commit"], r["fix_repo"]) == ("abc1234", "nthlayer-common")
+
+
+def test_an_advisory_finding_needs_no_extraction_or_derivation(workspace):
+    # Correctness's IMPORTANT derives from its fix; excellence's, advisory
+    # in a v2 record, has no fix and must not pull the record to counts_only.
+    ws = workspace["ws"]
+    write_record(ws, "adv", record("opensrm-adv", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 1, "minor": 0}, workspace["fix"]),
+                                    ("excellence", {"critical": 0, "important": 1, "minor": 0}, None)]))
+    e = build(ws)["opensrm-adv"]
+    assert (e["meta"]["fidelity"], e["meta"]["blocking_findings"]) == ("derived", 1)
+    assert [r["findings"] is None for r in e["recorded"]["rounds"]] == [False, True]
+
+
+def test_another_bullet_ends_a_severity_bullet_and_spacing_is_one_space():
+    assert r5_corpus.severity_bullets("- IMPORTANT: one\n- a note\n") == [("IMPORTANT", "one")]
+    assert r5_corpus.severity_bullets("- IMPORTANT: drops c  \n  on write\n") == [("IMPORTANT", "drops c on write")]
+
+
+def _fix_in(workspace: dict, files: dict, message: str, stem: str) -> dict:
+    ws = workspace["ws"]
+    fix = commit(workspace["repo"], files, message)
+    write_record(ws, stem, record(f"opensrm-{stem}", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                  [("correctness", {"critical": 0, "important": 1, "minor": 0}, fix)]))
+    return build(ws)[f"opensrm-{stem}"]
+
+
+def test_a_bullet_naming_a_changed_file_by_its_base_name_gets_that_path(workspace):
+    e = _fix_in(workspace, {"src/pkg/loader.py": "x = 1\n", "other.py": "x = 2\n"},
+                "r5(correctness): 1 finding\n\n- IMPORTANT: loader.py skips the last row\n", "bsn")
+    assert e["meta"]["fidelity"] == "derived"
+    assert [f["path"] for f in e["recorded"]["rounds"][0]["findings"]] == ["src/pkg/loader.py"]
+
+
+def test_a_bullet_naming_no_file_of_a_one_file_fix_gets_that_file(workspace):
+    e = _fix_in(workspace, {"app.py": "a = 1\nb = 3\nc = 4\nd = 5\n"},
+                "r5(correctness): 1 finding\n\n- IMPORTANT: the write path drops d\n", "one")
+    assert e["meta"]["fidelity"] == "derived"
+    (f,) = e["recorded"]["rounds"][0]["findings"]
+    assert (f["path"], f["start_line"], f["end_line"]) == ("app.py", 4, 4)
+
+
+def test_an_empty_bullet_is_not_derived(workspace):
+    e = _fix_in(workspace, {"app.py": "a = 1\nb = 3\nc = 5\n"}, "r5(correctness): 1 finding\n\n- IMPORTANT:\n", "emp")
+    assert e["meta"]["fidelity"] == "counts_only"
+
+
+def test_a_hunk_s_span_runs_to_its_last_line(workspace):
+    repo = workspace["repo"]
+    # The workspace's last commit ends app.py at line 3; lines 4 and 5 are new.
+    sha = commit(repo, {"app.py": "a = 1\nb = 3\nc = 4\nd = 5\ne = 6\n"}, "two lines")
+    assert r5_corpus.changed_span(repo, sha, "app.py") == (4, 5)
+
+
+def test_bead_steps_sum_the_bead_s_records(workspace):
+    # A bead gated at two checkpoints: each entry carries its record's steps
+    # and the bead's, which is their sum (r5_baseline.bead_steps).
+    ws = workspace["ws"]
+    rng = {"demo": {"base": workspace["base"], "head": workspace["head"]}}
+    small = record("opensrm-stp", rng, [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)])
+    large = record("opensrm-stp", rng, [("correctness", {"critical": 0, "important": 1, "minor": 0}, None),
+                                        ("correctness", {"critical": 0, "important": 0, "minor": 0}, None),
+                                        ("edge-cases", {"critical": 0, "important": 0, "minor": 0}, None)])
+    steps = {}
+    for stem, rec in (("stp-checkpointA", small), ("stp-checkpointB", large)):
+        write_record(ws, stem, rec)
+        steps[stem] = r5_corpus.r5_baseline.analyse_record(rec)["sequential_steps"]
+    assert steps["stp-checkpointA"] != steps["stp-checkpointB"]
+    entries = build(ws)
+    for stem in steps:
+        meta = entries[f"opensrm-{stem}"]["meta"]
+        assert meta["record_sequential_steps"] == meta["sequential_steps"] == steps[stem]
+        assert meta["bead_sequential_steps"] == sum(steps.values())
+
+
+def test_the_entry_carries_the_record_s_roster_and_baseline_steps(workspace):
+    ws = workspace["ws"]
+    rec = record("opensrm-ros", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                 [("correctness", {"critical": 0, "important": 0, "minor": 0}, None),
+                  ("edge-cases", {"critical": 0, "important": 0, "minor": 0}, None)])
+    write_record(ws, "ros", rec)
+    row = r5_corpus.r5_baseline.analyse_record(rec)
+    meta = build(ws)["opensrm-ros"]["meta"]
+    assert meta["roster"] == {"record_version": 2, "passes": ["correctness", "edge-cases"]}
+    assert {lens: v["steps"] for lens, v in meta["baseline"].items()} == \
+        {lens: v["steps"] for lens, v in row["lenses"].items()}
+
+
+def test_an_escaped_finding_names_the_commit_it_was_missed_at(workspace, monkeypatch):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "esc", "opensrm-esc")
+    monkeypatch.setattr(r5_corpus, "KNOWN_ESCAPES", {("opensrm-esc", "demo"): {
+        "lens": "edge-cases", "severity": "CRITICAL", "path": "app.py", "start_line": 1,
+        "end_line": 2, "at_commit": workspace["head"][:7], "claim": "b is never checked"}})
+    (missed,) = build(ws)["opensrm-esc"]["recorded"]["escaped"]
+    assert (missed["lens"], missed["at_commit"]) == ("edge_cases", workspace["head"][:7])
+
+
+def test_a_round_names_its_lens_as_the_schema_does(workspace):
+    ws = workspace["ws"]
+    write_record(ws, "rnd", record("opensrm-rnd", {"demo": {"base": workspace["base"], "head": workspace["head"]}},
+                                   [("edge-cases", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    assert [r["lens"] for r in build(ws)["opensrm-rnd"]["recorded"]["rounds"]] == ["edge_cases"]
+
+
+@pytest.mark.parametrize("reported, expected", [
+    (" loader.py\n", ("src/pkg/loader.py", True)),  # padded, as an extraction may carry it
+    ("  ", (None, False)),                          # only whitespace: no path
+    ("/pkg/loader.py", ("src/pkg/loader.py", True)),  # a leading "/" is removed like "./"
+    ("/elsewhere/tmp/notes.py", ("notes.py", False)),  # a local path naming no repo: its name only
+])
+def test_a_reported_path_is_stripped_and_never_local(reported, expected):
+    assert r5_corpus.repo_path(reported, {"src/pkg/loader.py", "notes.md"}, "demo") == expected
+
+
+def test_a_longer_workspace_spelling_under_home_is_masked_whole(tmp_path, monkeypatch):
+    # The workspace path is not published (6kqs.2's masking). Two spellings
+    # of it, one a prefix of the other, both under home: unless the longer is
+    # masked whole first, a tail of it ("self", "eco") is left behind.
+    real = tmp_path / "home" / "eco"
+    real.mkdir(parents=True)
+    (real / "self").symlink_to(real)  # a spelling of the workspace one part longer than its resolved one
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    text = f"{real}/self/x.py and {real}/y.py and {tmp_path}/home/z.py"
+    masked = r5_corpus.mask_workspace(text, real / "self")
+    assert [part for part in (str(tmp_path), "eco", "self") if part in masked] == []
+    assert [name for name in ("/x.py", "/y.py", "/z.py") if name in masked] == ["/x.py", "/y.py", "/z.py"]
+
+
+def test_a_brief_from_a_plan_doc_is_the_first_that_names_the_bead(workspace):
+    repo = workspace["repo"]
+    plans = repo / "docs" / "superpowers" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "2026-01-01-other.md").write_text("# plan for opensrm-zzz\n")
+    (plans / "2026-02-01-pln.md").write_text("# plan for opensrm-pln\n")
+    (plans / "2026-03-01-pln-more.md").write_text("# more for opensrm-pln\n")
+    private = r5_corpus.PrivateArchive(None)
+    assert r5_corpus.choose_brief("pln", "opensrm-pln", repo, private, use_bd=False) == \
+        ("# plan for opensrm-pln\n", "plan_doc")
+
+
+def test_a_bead_brief_carries_its_acceptance(tmp_path, monkeypatch):
+    (tmp_path / "opensrm").mkdir()
+    item = {"id": "opensrm-x", "title": "T", "description": "D", "acceptance_criteria": "A"}
+    _fake_bd(monkeypatch, 0, stdout=json.dumps([item]))
+    assert r5_corpus.bead_description("opensrm-x", tmp_path / "opensrm") == "# opensrm-x: T\n\nD\n\n## Acceptance\n\nA\n"
+
+
+def test_an_entry_whose_base_is_gone_has_no_bundle(workspace, tmp_path):
+    # A squash-merged branch's base can be garbage-collected: the entry is
+    # unavailable and the bundle leaves it out rather than guess a tree.
+    ws = workspace["ws"]
+    write_record(ws, "gon", record("opensrm-gon", {"demo": {"base": "0" * 40, "head": workspace["head"]}},
+                                   [("correctness", {"critical": 0, "important": 0, "minor": 0}, None)]))
+    _clean_record(ws, workspace, "hav", "opensrm-hav")
+    entries = list(build(ws).values())
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b", TAG)
+    metas = {e["meta"]["entry"]: e["meta"] for e in entries}
+    assert metas["opensrm-gon"]["unavailable"] and metas["opensrm-gon"]["bundle"] is None
+    assert metas["opensrm-gon"]["synthetic_head"] is None
+    assert metas["opensrm-hav"]["bundle"]["repo"] == "demo"
+
+
+def test_an_entry_whose_meta_names_another_entry_is_not_ours(tmp_path):
+    out = tmp_path / "out"
+    (out / "opensrm-a").mkdir(parents=True)
+    (out / "opensrm-a" / "meta.json").write_text(json.dumps({"schema_version": 1, "entry": "opensrm-b"}))
+    with pytest.raises(r5_corpus.CorpusError):
+        r5_corpus.write_entries([], out)
+    assert (out / "opensrm-a" / "meta.json").exists()
+
+
+def test_main_reads_the_private_archive_under_the_archive_dir(workspace, tmp_path):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "pvd", "opensrm-pvd")
+    private = ws / ".claude" / "r5-handbacks"
+    (private / "briefs").mkdir(parents=True)
+    (private / "index.json").write_text(json.dumps({"pairings": []}))
+    (private / "briefs" / "pvd.md").write_text("Review the diff.\n")
+    (private / "briefs" / "index.json").write_text(json.dumps({"pvd": {"sha256": "x"}}))
+    out = tmp_path / "out"
+    assert r5_corpus.main(["--out", str(out), "--archive-dir", str(ws / ".claude"), "--workspace", str(ws),
+                           "--no-bd"]) == 0
+    assert json.loads((out / "opensrm-pvd" / "meta.json").read_text())["brief_source"] == "reviewer_prompt"
+
+
+# --- the store and mask gates' excellence minors (opensrm-6kqs.9) ------------
+
+def test_a_conflicting_manifest_refusal_names_its_file(workspace, tmp_path):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "mpa", "opensrm-mpa")
+    entries = list(build(ws).values())
+    b1 = tmp_path / "b1"
+    r5_corpus.write_bundles(entries, ws, b1, TAG)
+    published = json.loads((b1 / "bundles.json").read_text())
+    committed = tmp_path / "out" / "bundles.json"
+    # The --bundles manifest at a later N...
+    r5_corpus.write_bundles(entries, ws, tmp_path / "b2", "corpus-v2")
+    with pytest.raises(r5_corpus.CorpusError) as exc:
+        r5_corpus.write_bundles(entries, ws, tmp_path / "b2", TAG)
+    assert exc.value.path == tmp_path / "b2" / "bundles.json"
+    # ...the one beside the entries, with other bundles under the same tag...
+    changed = dict(published, bundles=[dict(b, sha256="0" * 64) for b in published["bundles"]])
+    with pytest.raises(r5_corpus.CorpusError) as exc:
+        r5_corpus.write_bundles(entries, ws, tmp_path / "b3", TAG, changed, committed)
+    assert exc.value.path == committed
+    # ...or naming no corpus-v<N> tag.
+    with pytest.raises(r5_corpus.CorpusError) as exc:
+        r5_corpus.write_bundles(entries, ws, tmp_path / "b4", TAG, dict(published, release_tag="v1"), committed)
+    assert exc.value.path == committed
+
+
+@pytest.mark.parametrize("pairing", [
+    ["--release-tag", TAG],                        # a tag with no --bundles
+    ["--bundles", "B"],                            # --bundles with no tag
+    ["--bundles", "B", "--release-tag", "corpus-v01"],  # a tag outside corpus-v<N>
+])
+def test_a_bad_bundles_and_tag_pairing_is_refused_before_the_build(workspace, tmp_path, monkeypatch, pairing):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "prb", "opensrm-prb")
+    built = []
+    monkeypatch.setattr(r5_corpus, "build", lambda *a, **k: built.append(a) or [])
+    args = [str(tmp_path / "b") if a == "B" else a for a in pairing]
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd", *args]) == 2
+    assert built == []
+    assert not (tmp_path / "out").exists() and not (tmp_path / "b").exists()
+
+
+def test_a_leak_names_its_form_and_file(monkeypatch):
+    monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: Path("/Users/rob")))
+    entries = [
+        {"meta": {"entry": "opensrm-p"}, "brief": "see /Users/rob/x", "recorded": {"rounds": []}},
+        {"meta": {"entry": "opensrm-s"}, "brief": None,
+         "recorded": {"rounds": [{"findings": [{"claim": "under /var/folders/T/claude-501/-Users-rob-eco/s"}]}]}},
+        {"meta": {"entry": "opensrm-c"}, "brief": "see ~/x", "recorded": {"rounds": []}},
+    ]
+    assert r5_corpus.local_path_leak_forms(entries) == {
+        "opensrm-p": [("brief.md", "home_path")],
+        "opensrm-s": [("recorded.json", "home_slug")],
+    }
+    assert r5_corpus.local_path_leaks(entries) == ["opensrm-p", "opensrm-s"]
+    assert set(r5_corpus.LEAK_FORMS) == {"home_path", "home_slug"}
+
+
+def test_main_s_leak_refusal_does_not_print_the_home_path(workspace, tmp_path, monkeypatch, capsys):
+    # The refusal exists to keep the home path out of what is published, its
+    # own stderr included: the home path is absent from it.
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "lkf", "opensrm-lkf")
+    home = str(Path.home())
+    real_build = r5_corpus.build
+
+    def leaking_build(*a, **k):
+        entries = real_build(*a, **k)
+        entries[0]["brief"] = f"read {home}/notes.md"
+        return entries
+    monkeypatch.setattr(r5_corpus, "build", leaking_build)
+    # main builds its refusal with leak_refusal from local_path_leak_forms'
+    # (file, form) pairs: the leak written into the brief above is named as
+    # the home path in brief.md (opensrm-6kqs.9 provenance, iteration 2).
+    # The entry is the record's stem as spec section 6 names directories
+    # (one repo: no suffix), and what main reports is the very error
+    # leak_refusal made from those pairs (iteration 4).
+    refused, made, printed = [], [], []
+    real_refusal = r5_corpus.leak_refusal
+
+    def spy(leaking):
+        refused.append(leaking)
+        made.append(real_refusal(leaking))
+        return made[-1]
+    monkeypatch.setattr(r5_corpus, "leak_refusal", spy)
+    monkeypatch.setattr(r5_corpus, "print", lambda *a, **k: printed.append(a), raising=False)
+    assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
+                           "--workspace", str(ws), "--no-bd"]) == 2
+    assert refused == [{"opensrm-lkf": [("brief.md", "home_path")]}]
+    assert len(made) == 1 and printed == [(f"r5-corpus: {made[0]}",)]
+    assert home not in capsys.readouterr().err and all(home not in str(a) for a in printed)
+
+
+def test_a_manifest_refusal_names_its_manifest_s_path():
+    committed = Path("/somewhere/out/bundles.json")
+    assert r5_corpus._manifest_name(committed) == str(committed)
+    assert r5_corpus._manifest_name(None) == "the manifest in --out"
+
+
+def test_main_checks_bundles_against_the_manifest_beside_the_entries(workspace, tmp_path, monkeypatch):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "mpp", "opensrm-mpp")
+    calls = []
+    monkeypatch.setattr(r5_corpus, "write_bundles", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(r5_corpus, "write_entries", lambda *a, **k: None)
+    out = tmp_path / "out"
+    assert r5_corpus.main(["--out", str(out), "--bundles", str(tmp_path / "b"), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 0
+    ((args, _),) = calls
+    assert args[5] == out / "bundles.json"  # write_bundles' published_path
+
+
+def test_a_leak_refusal_names_each_form_and_file_for_three_entries():
+    leaking = {
+        "opensrm-a": [("brief.md", "home_path"), ("recorded.json", "home_slug")],
+        "opensrm-b": [("recorded.json", "home_path")],
+        "opensrm-c": [("brief.md", "home_slug")],
+        "opensrm-d": [("brief.md", "home_path")],
+    }
+    message = str(r5_corpus.leak_refusal(leaking))
+    for entry in ("opensrm-a", "opensrm-b", "opensrm-c"):
+        assert all(f"{form} in {file}" in message for file, form in leaking[entry]), entry
+    assert "opensrm-d" not in message
+    assert message.startswith("4 entries")

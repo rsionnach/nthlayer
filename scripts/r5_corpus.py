@@ -39,6 +39,18 @@ repo's git content. A rebuild under a tag that the manifest in --bundles or
 beside the entries in --out already names must reproduce its bundles byte for
 byte; a changed corpus is a new N.
 
+Publishing a corpus version (CLAUDE.md rule 4) is one command, run by hand
+once the build has exited 0, from the front-door commit that built it; the
+assets are the bundles alone (bundles.json goes beside the entries, not in the
+release), and --latest=false keeps the meta-package the latest release:
+
+    gh release create corpus-v<N> <bundles DIR>/*.bundle --repo rsionnach/nthlayer \
+        --target <front-door commit> --latest=false --title corpus-v<N> \
+        --notes "R5 replay corpus bundles; bundles.json lists each sha256"
+
+A published release is never edited (no gh release upload --clobber, no
+delete and re-create): a changed corpus is built and published as a new N.
+
 Fidelity is provenance (FIDELITIES), decided once per record, never an
 exclusion; ``blocking_findings`` (an integer, null when the archive's
 severities are incomplete) is what it found, and 0 is a clean entry:
@@ -56,6 +68,14 @@ severities are incomplete) is what it found, and 0 is a clean entry:
 A multi-repo record's findings go to the entry whose repo holds their path
 (for a derived one, the repo its fix commit was made in); one no single repo
 holds is listed under ``cross_repo_findings`` in every sub-entry.
+
+Before anything is published, the text taken from the private archive (a
+brief, a recorded finding's claim and reported path) is masked by
+mask_workspace: Claude Code's temp directories become ``<claude-tmp>``, the
+workspace's absolute path ``<workspace>`` and the home directory ``~``, each
+only at a path boundary. An entry whose brief or recorded findings still name
+the home directory afterwards, as a path or as its dash-spelled slug, is
+refused (exit 2), naming the form and the file but not the path.
 
 Inputs: the archives (``--archive-dir``, the workspace's ``.claude/``), the
 member repos (``--workspace``), and the private archive (``--private-dir``,
@@ -112,6 +132,9 @@ TAG_PREFIX = "corpus-v"
 BD_TIMEOUT_S = 60
 CORPUS_REPO = "rsionnach/nthlayer"
 BUNDLE_URL = "https://github.com/" + CORPUS_REPO + "/releases/download/{tag}/{name}"
+# The prefix of write_bundles' staging directory inside --bundles; a killed
+# run's is found, and removed, by it.
+STAGING_PREFIX = ".staging-"
 
 # Synthetic commits are fixed in identity and time, so the same trees give the
 # same commit SHAs on every run.
@@ -150,7 +173,14 @@ SEVERITY_WORDS = ("CRITICAL", "IMPORTANT", "MINOR")
 
 
 class CorpusError(ValueError):
-    """An input this script cannot turn into a corpus entry without guessing."""
+    """An input this script cannot turn into a corpus entry without guessing.
+    ``path``, where given, is the file the refusal is about: structured data
+    for a caller acting on that file. main prints only the message, which
+    names the same file (see _manifest_name)."""
+
+    def __init__(self, message: str, path: Path | None = None):
+        super().__init__(message)
+        self.path = path
 
 
 # Variables that would point a "git -C <repo>" call at another repository.
@@ -619,7 +649,13 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     """``text`` with the local workspace's absolute path written ``<workspace>``,
     home ``~`` and Claude Code's temp directories ``<claude-tmp>``.
     Reviewer reports and briefs name files by where they sat on one machine;
-    that path says nothing about the code and is not published."""
+    that path says nothing about the code and is not published.
+
+    Where several forms match one path, the first applied wins: the temp
+    directory, then the workspace (its longer spelling first, of the resolved
+    and the unresolved absolute path), then home. So a workspace under home is
+    ``<workspace>``, never ``~/...``, and a spelling that is a prefix of the
+    other cannot leave the longer one's tail behind."""
     if text is None:
         return None
     text = _CLAUDE_TMP.sub("<claude-tmp>", text)
@@ -629,7 +665,26 @@ def mask_workspace(text: str | None, workspace: Path) -> str | None:
     return re.sub(re.escape(str(Path.home())) + _PATH_END, "~", text)
 
 
+# The two forms of the home directory local_path_leak_forms looks for.
+LEAK_FORMS = ("home_path", "home_slug")
+
+
 def local_path_leaks(entries: list[dict]) -> list[str]:
+    """The entries local_path_leak_forms refuses, in order."""
+    return list(local_path_leak_forms(entries))
+
+
+def leak_refusal(leaking: dict[str, list[tuple[str, str]]]) -> CorpusError:
+    """main's refusal of local_path_leak_forms' output: how many entries leak
+    and, for the first three, which form remained in which file; never the
+    home path itself, which is what the refusal keeps out of the corpus."""
+    named = "; ".join(f"{entry}: " + ", ".join(f"{form} in {file}" for file, form in forms)
+                      for entry, forms in list(leaking.items())[:3])
+    return CorpusError(f"{len(leaking)} entries still name the home directory after masking"
+                       f" ({named}); extend mask_workspace before publishing")
+
+
+def local_path_leak_forms(entries: list[dict]) -> dict[str, list[tuple[str, str]]]:
     """The entries whose transcript-derived text (brief, recorded findings)
     still names the home directory, as a path or as the dash-spelled slug
     Claude Code makes of it, after masking: a form mask_workspace does not
@@ -637,14 +692,23 @@ def local_path_leaks(entries: list[dict]) -> list[str]:
     rather than published. A plain substring test, so it refuses loudly where
     the mask would respect a path boundary (/Users/robert under /Users/rob);
     a text that escapes its slashes or splits the username is not caught.
-    diff.patch is not checked: it is a public repository's own content."""
+    diff.patch is not checked: it is a public repository's own content.
+
+    Each is mapped to the (file, form) pairs that remain: the file ``brief.md`` or
+    ``recorded.json``, the form one of LEAK_FORMS (``home_path``, the path;
+    ``home_slug``, its dash spelling), so a refusal can say what leaked
+    without printing it."""
     home = str(Path.home())
     if home.strip("/") == "":
-        return []  # a home of "/" names nobody, and would match every path
-    slug = re.sub(r"[^A-Za-z0-9]", "-", home)
-    return [e["meta"]["entry"] for e in entries
-            if any(home in t or slug in t
-                   for t in (e["brief"] or "", json.dumps(e["recorded"], ensure_ascii=False)))]
+        return {}  # a home of "/" names nobody, and would match every path
+    needles = {"home_path": home, "home_slug": re.sub(r"[^A-Za-z0-9]", "-", home)}  # LEAK_FORMS
+    out: dict[str, list[tuple[str, str]]] = {}
+    for e in entries:
+        texts = (("brief.md", e["brief"] or ""), ("recorded.json", json.dumps(e["recorded"], ensure_ascii=False)))
+        forms = [(file, form) for file, text in texts for form, needle in needles.items() if needle in text]
+        if forms:
+            out[e["meta"]["entry"]] = forms
+    return out
 
 
 class Classified(NamedTuple):
@@ -903,11 +967,14 @@ def previous_assets(out: Path) -> tuple[set[str], dict]:
     if not out.is_dir():
         raise CorpusError(f"--bundles {out} is not a directory")
     manifest = out / "bundles.json"
-    try:
-        prior = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {"bundles": []}
-        listed = {b["asset"] for b in prior["bundles"]}
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise CorpusError(f"{manifest}: unreadable ({exc}); choose another --bundles") from exc
+    prior: dict = {}
+    listed: set = set()
+    if manifest.is_file():
+        try:
+            prior = json.loads(manifest.read_text(encoding="utf-8"))
+            listed = {b["asset"] for b in prior["bundles"]}
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise CorpusError(f"{manifest}: unreadable ({exc}); choose another --bundles", manifest) from exc
     # Only plain bundle names: a listed "../x" or absolute path would be
     # deleted outside --bundles.
     bad = sorted(str(a) for a in listed if not isinstance(a, str) or Path(a).name != a or not a.endswith(".bundle"))
@@ -918,7 +985,7 @@ def previous_assets(out: Path) -> tuple[set[str], dict]:
         raise CorpusError(f"{out} holds bundles bundles.json does not list: {foreign[:3]} (an earlier run"
                           " interrupted before writing bundles.json leaves these); choose another --bundles,"
                           " or remove them if they are that run's")
-    return listed, prior if manifest.is_file() else {}
+    return listed, prior
 
 
 def check_release_tag(tag: str) -> int:
@@ -930,7 +997,7 @@ def check_release_tag(tag: str) -> int:
 
 
 def write_bundles(entries: list[dict], workspace: Path, out: Path, release_tag: str,
-                  published: dict | None = None) -> None:
+                  published: dict | None = None, published_path: Path | None = None) -> None:
     """One bundle per repo: each entry's base and head trees as a synthetic
     two-commit history under refs/r5/<entry>/{base,head}, and bundles.json,
     the manifest write_entries copies beside the entries. Fills each meta's
@@ -938,33 +1005,39 @@ def write_bundles(entries: list[dict], workspace: Path, out: Path, release_tag: 
     directory and moved into ``out`` only once they agree with every manifest
     known for ``release_tag``: the one in ``out`` and ``published``, the one
     beside the entries (which, unlike --bundles, is committed and so outlives
-    a temporary build directory). A published release is never edited."""
+    a temporary build directory, and is read from ``published_path``). A
+    published release is never edited; a refusal names the manifest that
+    refused it, as the CorpusError's ``path``."""
     check_release_tag(release_tag)
     previous, prior = previous_assets(out)  # refuses a foreign --bundles before writing anything
     out.mkdir(parents=True, exist_ok=True)
     for leftover in out.glob(STAGING_PREFIX + "*"):  # a killed run's; ours by name
         shutil.rmtree(leftover, ignore_errors=True)
-    priors = [m for m in (prior, published or {}) if m]
-    for known in priors:  # before minutes of packing, not after
+    priors = [(path, m) for path, m in ((out / "bundles.json", prior), (published_path, published or {})) if m]
+    for path, known in priors:  # before minutes of packing, not after
         try:
             known_n = check_release_tag(known.get("release_tag"))
         except CorpusError:
-            raise CorpusError(f"a manifest in {out} or --out names no {TAG_PREFIX}<N> release tag"
-                              f" ({known.get('release_tag')!r}); choose another directory") from None
+            raise CorpusError(f"{_manifest_name(path)} names no {TAG_PREFIX}<N> release tag"
+                              f" ({known.get('release_tag')!r}); choose another directory", path) from None
         # A known manifest at a later N means this tag is published and behind
         # it: an old command replayed, not a new version.
         if known_n > check_release_tag(release_tag):
-            raise CorpusError(f"a manifest already names {known['release_tag']}, later than {release_tag};"
-                              " a published release is never rebuilt, so give a new --release-tag")
+            raise CorpusError(f"{_manifest_name(path)} already names {known['release_tag']}, later than"
+                              f" {release_tag}; a published release is never rebuilt, so give a new --release-tag",
+                              path)
     with tempfile.TemporaryDirectory(dir=out, prefix=STAGING_PREFIX) as staging:
         _write_bundles(entries, workspace, out, Path(staging), release_tag, previous, priors)
 
 
-STAGING_PREFIX = ".staging-"
+def _manifest_name(path: Path | None) -> str:
+    """A known manifest as a refusal names it: its path, or, for one passed
+    without its path, the --out it came from."""
+    return str(path) if path is not None else "the manifest in --out"
 
 
 def _write_bundles(entries: list[dict], workspace: Path, out: Path, staging: Path, release_tag: str,
-                   previous: set[str], priors: list[dict]) -> None:
+                   previous: set[str], priors: list[tuple[Path | None, dict]]) -> None:
     manifest: list[dict] = []
     by_repo: dict[str, list[dict]] = {}
     for e in entries:
@@ -1003,15 +1076,16 @@ def _write_bundles(entries: list[dict], workspace: Path, out: Path, staging: Pat
                          "url": BUNDLE_URL.format(tag=release_tag, name=target.name),
                          "git_version": git(source, "--version").strip()})
     now = {b["asset"]: b["sha256"] for b in manifest}
-    for prior in priors:
+    for path, prior in priors:
         if prior.get("release_tag") != release_tag:
             continue
         was = {b.get("asset"): b.get("sha256") for b in prior.get("bundles", [])}
         if was != now:
             changed = sorted(a for a in set(was) | set(now) if was.get(a) != now.get(a))
-            raise CorpusError(f"a manifest already names {release_tag} with other bundles ({changed[:3]});"
-                              " a release is never edited, so give a changed corpus a new --release-tag"
-                              " (or, if an interrupted run left --bundles half-written, remove it and rebuild)")
+            raise CorpusError(f"{_manifest_name(path)} already names {release_tag} with other bundles"
+                              f" ({changed[:3]}); a release is never edited, so give a changed corpus a new"
+                              " --release-tag (or, if an interrupted run left --bundles half-written, remove it"
+                              " and rebuild)", path)
     for staged in staging.glob("*.bundle"):
         os.replace(staged, out / staged.name)
     listed = {b["asset"] for b in manifest}
@@ -1204,32 +1278,34 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     private_dir = args.private_dir or args.archive_dir / "r5-handbacks"
     try:
+        # The arguments' own pairing first: it needs no build.
+        if args.release_tag is not None and not args.bundles:
+            raise CorpusError("--release-tag names the release --bundles go to; give --bundles too")
+        if args.bundles:
+            if args.release_tag is None:  # check_release_tag would refuse too; this says why
+                raise CorpusError("--bundles needs --release-tag corpus-v<N>, the release the bundles go to")
+            check_release_tag(args.release_tag)
         entries = build(args.archive_dir, args.workspace,
                         PrivateArchive(private_dir if private_dir.is_dir() else None), not args.no_bd)
         # Every refusal main can make comes before the first write; SAME_DIRECTORY
         # names the one it cannot.
-        leaking = local_path_leaks(entries)
+        leaking = local_path_leak_forms(entries)
         if leaking:
-            raise CorpusError(f"{len(leaking)} entries still name the home directory after masking"
-                              f" ({leaking[:3]}); extend mask_workspace before publishing")
+            raise leak_refusal(leaking)
         previous_entries(args.out)  # a foreign --out
         published = previous_manifest(args.out)  # or a foreign manifest in it
-        if args.release_tag is not None and not args.bundles:
-            raise CorpusError("--release-tag names the release --bundles go to; give --bundles too")
         if published and not args.bundles:
             # It is the committed record of a published release, and the only
             # one a fresh --bundles is checked against; never drop it quietly.
             raise CorpusError(f"{args.out / 'bundles.json'} records {published['release_tag']}; rebuild with"
                               " --bundles and --release-tag, or remove it yourself if that is intended")
         if args.bundles:
-            if args.release_tag is None:  # check_release_tag would refuse too; this says why
-                raise CorpusError("--bundles needs --release-tag corpus-v<N>, the release the bundles go to")
-            check_release_tag(args.release_tag)
             previous_assets(args.bundles)  # a foreign --bundles
             if args.bundles.resolve() == args.out.resolve() or (
                     args.bundles.is_dir() and args.out.is_dir() and os.path.samefile(args.bundles, args.out)):
                 raise CorpusError(SAME_DIRECTORY)
-            write_bundles(entries, args.workspace, args.bundles, args.release_tag, published)
+            write_bundles(entries, args.workspace, args.bundles, args.release_tag, published,
+                          args.out / "bundles.json")
         write_entries(entries, args.out, args.bundles)
     except (CorpusError, r5_baseline.RecordError) as exc:
         print(f"r5-corpus: {exc}", file=sys.stderr)

@@ -179,7 +179,10 @@ examples, generator-specific scripts.
     and with `--bundles` one synthetic git bundle per repo plus
     `bundles.json`. The bundles are release assets on this repo under a
     `corpus-v*` tag (rule 4), never committed; `bundles.json` is copied
-    beside the entries, in cúramóir's `fixtures/r5-replay/`. Reads reviewer
+    beside the entries, in cúramóir's `fixtures/r5-replay/`. The one
+    publishing command, `gh release create corpus-v<N> <DIR>/*.bundle
+    --latest=false ...`, is written out in its module docstring
+    (opensrm-6kqs.9). Reads reviewer
     reports and their extractions from the private archive
     `.claude/r5-handbacks/`; only findings and briefs leave it. Standard
     library and git only. Tests: `test/test_r5_corpus.py`, on the runner's
