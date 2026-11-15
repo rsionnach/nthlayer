@@ -1625,8 +1625,10 @@ def test_two_case_spellings_of_one_directory_are_refused(workspace, tmp_path, mo
     spellings apart and only os.path.samefile says they are one directory.
     A case-sensitive disk cannot make that pair, so the pair here is two real
     directories that os.path.samefile, by its contract (the same device and
-    inode), reports as one (opensrm-6kqs.9: this test used to skip on Linux)."""
-    real, upper = tmp_path / "real", tmp_path / "REAL"
+    inode), reports as one (opensrm-6kqs.9: this test used to skip on Linux).
+    Their names are not case variants, so the test runs on either kind of
+    disk: on a case-insensitive one ./REAL would already be ./real."""
+    real, upper = tmp_path / "real", tmp_path / "spelled-otherwise"
     real.mkdir()
     upper.mkdir()
     assert real.resolve() != upper.resolve()  # the resolve() comparison alone misses it
