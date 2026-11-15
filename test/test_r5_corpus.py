@@ -2050,13 +2050,23 @@ def test_main_s_leak_refusal_does_not_print_the_home_path(workspace, tmp_path, m
     # main builds its refusal with leak_refusal from local_path_leak_forms'
     # (file, form) pairs: the leak written into the brief above is named as
     # the home path in brief.md (opensrm-6kqs.9 provenance, iteration 2).
-    refused = []
+    # The entry is the record's stem as spec section 6 names directories
+    # (one repo: no suffix), and what main reports is the very error
+    # leak_refusal made from those pairs (iteration 4).
+    refused, made, printed = [], [], []
     real_refusal = r5_corpus.leak_refusal
-    monkeypatch.setattr(r5_corpus, "leak_refusal", lambda leaking: refused.append(leaking) or real_refusal(leaking))
+
+    def spy(leaking):
+        refused.append(leaking)
+        made.append(real_refusal(leaking))
+        return made[-1]
+    monkeypatch.setattr(r5_corpus, "leak_refusal", spy)
+    monkeypatch.setattr(r5_corpus, "print", lambda *a, **k: printed.append(a), raising=False)
     assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
                            "--workspace", str(ws), "--no-bd"]) == 2
-    assert [list(r.values()) for r in refused] == [[[("brief.md", "home_path")]]]
-    assert home not in capsys.readouterr().err
+    assert refused == [{"opensrm-lkf": [("brief.md", "home_path")]}]
+    assert len(made) == 1 and printed == [(f"r5-corpus: {made[0]}",)]
+    assert home not in capsys.readouterr().err and all(home not in str(a) for a in printed)
 
 
 def test_a_manifest_refusal_names_its_manifest_s_path():
