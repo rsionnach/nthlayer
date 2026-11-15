@@ -174,7 +174,9 @@ SEVERITY_WORDS = ("CRITICAL", "IMPORTANT", "MINOR")
 
 class CorpusError(ValueError):
     """An input this script cannot turn into a corpus entry without guessing.
-    ``path``, where given, is the file the refusal is about."""
+    ``path``, where given, is the file the refusal is about: structured data
+    for a caller acting on that file. main prints only the message, which
+    names the same file (see _manifest_name)."""
 
     def __init__(self, message: str, path: Path | None = None):
         super().__init__(message)
@@ -670,6 +672,16 @@ LEAK_FORMS = ("home_path", "home_slug")
 def local_path_leaks(entries: list[dict]) -> list[str]:
     """The entries local_path_leak_forms refuses, in order."""
     return list(local_path_leak_forms(entries))
+
+
+def leak_refusal(leaking: dict[str, list[tuple[str, str]]]) -> CorpusError:
+    """main's refusal of local_path_leak_forms' output: how many entries leak
+    and, for the first three, which form remained in which file; never the
+    home path itself, which is what the refusal keeps out of the corpus."""
+    named = "; ".join(f"{entry}: " + ", ".join(f"{form} in {file}" for file, form in forms)
+                      for entry, forms in list(leaking.items())[:3])
+    return CorpusError(f"{len(leaking)} entries still name the home directory after masking"
+                       f" ({named}); extend mask_workspace before publishing")
 
 
 def local_path_leak_forms(entries: list[dict]) -> dict[str, list[tuple[str, str]]]:
@@ -1279,12 +1291,7 @@ def main(argv: list[str] | None = None) -> int:
         # names the one it cannot.
         leaking = local_path_leak_forms(entries)
         if leaking:
-            # Which form remained, in which file; never the home path itself,
-            # which is what the refusal keeps out of the corpus.
-            named = "; ".join(f"{entry}: " + ", ".join(f"{form} in {file}" for file, form in forms)
-                              for entry, forms in list(leaking.items())[:3])
-            raise CorpusError(f"{len(leaking)} entries still name the home directory after masking"
-                              f" ({named}); extend mask_workspace before publishing")
+            raise leak_refusal(leaking)
         previous_entries(args.out)  # a foreign --out
         published = previous_manifest(args.out)  # or a foreign manifest in it
         if published and not args.bundles:

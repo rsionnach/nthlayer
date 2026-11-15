@@ -1904,13 +1904,18 @@ def test_a_reported_path_is_stripped_and_never_local(reported, expected):
     assert r5_corpus.repo_path(reported, {"src/pkg/loader.py", "notes.md"}, "demo") == expected
 
 
-def test_mask_precedence_temp_then_longest_workspace_spelling_then_home(tmp_path, monkeypatch):
+def test_a_longer_workspace_spelling_under_home_is_masked_whole(tmp_path, monkeypatch):
+    # The workspace path is not published (6kqs.2's masking). Two spellings
+    # of it, one a prefix of the other, both under home: unless the longer is
+    # masked whole first, a tail of it ("self", "eco") is left behind.
     real = tmp_path / "home" / "eco"
     real.mkdir(parents=True)
     (real / "self").symlink_to(real)  # a spelling of the workspace one part longer than its resolved one
     monkeypatch.setattr(r5_corpus.Path, "home", classmethod(lambda cls: tmp_path / "home"))
     text = f"{real}/self/x.py and {real}/y.py and {tmp_path}/home/z.py"
-    assert r5_corpus.mask_workspace(text, real / "self") == "<workspace>/x.py and <workspace>/y.py and ~/z.py"
+    masked = r5_corpus.mask_workspace(text, real / "self")
+    assert [part for part in (str(tmp_path), "eco", "self") if part in masked] == []
+    assert [name for name in ("/x.py", "/y.py", "/z.py") if name in masked] == ["/x.py", "/y.py", "/z.py"]
 
 
 def test_a_brief_from_a_plan_doc_is_the_first_that_names_the_bead(workspace):
@@ -2045,3 +2050,36 @@ def test_main_s_leak_refusal_does_not_print_the_home_path(workspace, tmp_path, m
     assert r5_corpus.main(["--out", str(tmp_path / "out"), "--archive-dir", str(ws / ".claude"),
                            "--workspace", str(ws), "--no-bd"]) == 2
     assert home not in capsys.readouterr().err
+
+
+def test_a_manifest_refusal_names_its_manifest_s_path():
+    committed = Path("/somewhere/out/bundles.json")
+    assert r5_corpus._manifest_name(committed) == str(committed)
+    assert r5_corpus._manifest_name(None) == "the manifest in --out"
+
+
+def test_main_checks_bundles_against_the_manifest_beside_the_entries(workspace, tmp_path, monkeypatch):
+    ws = workspace["ws"]
+    _clean_record(ws, workspace, "mpp", "opensrm-mpp")
+    calls = []
+    monkeypatch.setattr(r5_corpus, "write_bundles", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(r5_corpus, "write_entries", lambda *a, **k: None)
+    out = tmp_path / "out"
+    assert r5_corpus.main(["--out", str(out), "--bundles", str(tmp_path / "b"), "--release-tag", TAG,
+                           "--archive-dir", str(ws / ".claude"), "--workspace", str(ws), "--no-bd"]) == 0
+    ((args, _),) = calls
+    assert args[5] == out / "bundles.json"  # write_bundles' published_path
+
+
+def test_a_leak_refusal_names_each_form_and_file_for_three_entries():
+    leaking = {
+        "opensrm-a": [("brief.md", "home_path"), ("recorded.json", "home_slug")],
+        "opensrm-b": [("recorded.json", "home_path")],
+        "opensrm-c": [("brief.md", "home_slug")],
+        "opensrm-d": [("brief.md", "home_path")],
+    }
+    message = str(r5_corpus.leak_refusal(leaking))
+    for entry in ("opensrm-a", "opensrm-b", "opensrm-c"):
+        assert all(f"{form} in {file}" in message for file, form in leaking[entry]), entry
+    assert "opensrm-d" not in message
+    assert message.startswith("4 entries")
