@@ -287,18 +287,31 @@ that is the provenance pass's kill check.
 - **Lock.** `.claude/hooks/r5-lock.sh` keeps one gate per member repo at a
   time, keyed by `git rev-parse --git-common-dir`, so a worktree contends with
   its parent repo while gates in different repos run concurrently. 15-minute
-  lease, refreshed on every dispatch. The helper resolves the lock from the
-  current directory, so acquire, refresh and release from inside the repo
-  being gated.
+  lease, refreshed on every dispatch. Every call names the repo with
+  `--repo <member>` (a worktree maps to its parent repo), so a call is right
+  from any directory; one made from a directory outside every member, with
+  no `--repo`, is refused rather than guessed (opensrm-otq5).
+- **Ownership.** `--target <bead>` keeps the lock with its run: if the
+  session id changes during a long gate, the same supervisor gating the same
+  bead takes its own lock over instead of being refused by it
+  (opensrm-gamw).
 - **Parallel-block hook.** `.claude/hooks/r5-parallel-block.sh` runs on every
   subagent dispatch and refuses one while a reviewer from another session is
   in flight. Its window opens when the supervisor logs `reviewer_dispatched`.
-- **State.** The audit trail is `<ecosystem root>/.claude/r5-state.json`,
-  never a worktree's own `.claude/` (reaping the worktree would delete it,
-  untracked and unwarned). A completed run is archived, as its built record,
+  A session holding a lock is checked against its own gate, wherever it
+  stands; one holding none, against the repo it stands in. A reviewer in
+  flight in another repo does not block it.
+- **State.** The audit trail is one file per member repo,
+  `<ecosystem root>/.claude/r5-active-<repo>.json`
+  (`r5-lock.sh state-path --repo <member>` prints it), never a worktree's own
+  `.claude/` (reaping the worktree would delete it, untracked and unwarned)
+  (opensrm-r6vd). A completed run is archived, as its built record,
   to `.claude/r5-state-<bead>-completed.json`, or
   `r5-state-<bead>-<repo>-completed.json` for a bead's second gate in another
   repo; an archive is never overwritten.
+- **Tests.** The lock and the hook are tested by
+  `.claude/hooks/test-sandbox.sh`, which builds a throwaway ecosystem and
+  touches nothing live.
 
 ### What a clean gate means
 
