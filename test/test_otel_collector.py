@@ -21,12 +21,18 @@ test is a green suite that checks nothing.
 
 from __future__ import annotations
 
+import ast
 import json
+import os
 import shutil
+import socket
 import subprocess
+import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -331,8 +337,9 @@ def _host_port(container, port):
     return int(out.rpartition(":")[2])
 
 
-def _get(url):
-    with urllib.request.urlopen(url, timeout=5) as resp:
+def _get(url, headers=None):
+    req = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=5) as resp:
         return resp.read().decode()
 
 
@@ -345,19 +352,28 @@ def collector():
         pytest.fail(f"needs docker: `docker info` failed:\n{info.stderr.strip()}")
 
     image = pinned_image()
+    # A network of its own, so the Prometheus below scrapes the collector by
+    # container name.
+    suffix = uuid.uuid4().hex[:12]
+    network, name = f"otel-test-{suffix}", f"otel-test-collector-{suffix}"
+    net = _docker("network", "create", network, check=False)
+    if net.returncode != 0:
+        pytest.fail(f"could not create a docker network:\n{net.stderr.strip()}")
     run = _docker(
-        "run", "-d", "--rm",
+        "run", "-d", "--rm", "--name", name, "--network", network,
         "-v", f"{CONFIG}:/etc/otelcol-contrib/config.yaml:ro",
-        "-p", "127.0.0.1::4318", "-p", "127.0.0.1::8889",
+        "-p", "127.0.0.1::4317", "-p", "127.0.0.1::4318", "-p", "127.0.0.1::8889",
         image, "--config=/etc/otelcol-contrib/config.yaml",
         check=False,
     )
     if run.returncode != 0:
+        _docker("network", "rm", network, check=False)
         pytest.fail(f"could not start {image}:\n{run.stderr.strip()}")
     container = run.stdout.strip()
     try:
         metrics_url = f"http://127.0.0.1:{_host_port(container, 8889)}/metrics"
         logs_url = f"http://127.0.0.1:{_host_port(container, 4318)}/v1/logs"
+        grpc_url = f"http://127.0.0.1:{_host_port(container, 4317)}"
         deadline = time.monotonic() + 60
         while True:
             try:
@@ -368,9 +384,11 @@ def collector():
                     logs = _docker("logs", container, check=False)
                     pytest.fail(f"collector exporter not up in 60s:\n{logs.stderr}{logs.stdout}")
                 time.sleep(0.5)
-        yield {"container": container, "metrics": metrics_url, "logs": logs_url}
+        yield {"container": container, "metrics": metrics_url, "logs": logs_url,
+               "grpc": grpc_url, "network": network, "name": name}
     finally:
         _docker("rm", "-f", container, check=False)
+        _docker("network", "rm", network, check=False)
 
 
 def send(collector, body):
@@ -447,6 +465,7 @@ def wait_for_series(collector, family, labels, value, timeout=30):
         fam = parse_exposition(text)[0].get(family, {})
         if fam.get(_key(labels)) == value or time.monotonic() > deadline:
             return fam, text
+        time.sleep(0.5)
 
 
 def _of_service(fam, service):
@@ -478,36 +497,74 @@ def test_concurrent_exports_to_one_series_are_all_counted(collector):
     )
 
 
+# Each of the six counted attributes is Required (§4.1-§4.3 Req. column):
+# nthlayer.decision.type and .value, nthlayer.reversal.type and .actor_type,
+# nthlayer.outcome.value and .source. One event lacks each, its other counted
+# attribute present, so each `unknown` is that attribute's own default.
+MISSING_REQUIRED = [
+    # (event name, attributes sent, family, expected labels besides service)
+    ("nthlayer.decision",
+     {"nthlayer.decision.id": "bafy-fixture-malformed-1",
+      "nthlayer.decision.value": "approve", "nthlayer.decision.autonomous": True},
+     "nthlayer_decisions_total", {"decision_type": "unknown", "decision_value": "approve"}),
+    ("nthlayer.decision",
+     {"nthlayer.decision.id": "bafy-fixture-malformed-2",
+      "nthlayer.decision.type": "triage", "nthlayer.decision.autonomous": True},
+     "nthlayer_decisions_total", {"decision_type": "triage", "decision_value": "unknown"}),
+    ("nthlayer.reversal",
+     {"nthlayer.reversal.decision_id": "bafy-fixture-malformed-1",
+      "nthlayer.reversal.actor_type": "human"},
+     "nthlayer_reversals_total", {"reversal_type": "unknown", "reversal_actor_type": "human"}),
+    ("nthlayer.reversal",
+     {"nthlayer.reversal.decision_id": "bafy-fixture-malformed-2",
+      "nthlayer.reversal.type": "human_override"},
+     "nthlayer_reversals_total",
+     {"reversal_type": "human_override", "reversal_actor_type": "unknown"}),
+    ("nthlayer.outcome",
+     {"nthlayer.outcome.decision_id": "bafy-fixture-malformed-1",
+      "nthlayer.outcome.source": "human_audit"},
+     "nthlayer_outcomes_total", {"outcome_value": "unknown", "outcome_source": "human_audit"}),
+    ("nthlayer.outcome",
+     {"nthlayer.outcome.decision_id": "bafy-fixture-malformed-2",
+      "nthlayer.outcome.value": "correct"},
+     "nthlayer_outcomes_total", {"outcome_value": "correct", "outcome_source": "unknown"}),
+]
+
+
 def test_missing_required_attribute_is_counted_as_unknown(collector):
-    # §4.1-§4.3 mark these attributes Required; an event lacking one is still
-    # an event, and dropping it would undercount the §4.6 denominator. It is
-    # counted with the label value `unknown`.
+    # An event lacking a Required attribute is still an event, and dropping it
+    # would undercount the §4.6 denominator. It is counted with the label
+    # value `unknown`.
     svc = "malformed-gate"
     send(collector, payload({svc: [
-        record("nthlayer.decision",
-               {"nthlayer.decision.id": "bafy-fixture-malformed-1",
-                "nthlayer.decision.value": "approve",
-                "nthlayer.decision.autonomous": True}, NOW_NS),
-        record("nthlayer.reversal",
-               {"nthlayer.reversal.decision_id": "bafy-fixture-malformed-1",
-                "nthlayer.reversal.type": "human_override"}, NOW_NS + 1),
-        record("nthlayer.outcome",
-               {"nthlayer.outcome.decision_id": "bafy-fixture-malformed-1",
-                "nthlayer.outcome.source": "human_audit"}, NOW_NS + 2),
+        record(name, attrs, NOW_NS + i) for i, (name, attrs, _, _) in enumerate(MISSING_REQUIRED)
     ]}))
-    expected = {
-        "nthlayer_decisions_total": {"service": svc, "decision_type": "unknown",
-                                     "decision_value": "approve"},
-        "nthlayer_reversals_total": {"service": svc, "reversal_type": "human_override",
-                                     "reversal_actor_type": "unknown"},
-        "nthlayer_outcomes_total": {"service": svc, "outcome_value": "unknown",
-                                    "outcome_source": "human_audit"},
-    }
-    for family, labels in expected.items():
-        fam, text = wait_for_series(collector, family, labels, 1)
-        assert _of_service(fam, svc) == {tuple(sorted(_key(labels))): 1}, (
+    expected = {}
+    for _, _, family, labels in MISSING_REQUIRED:
+        expected.setdefault(family, {})[tuple(sorted({"service": svc, **labels}.items()))] = 1
+    for family, series in expected.items():
+        for key in series:
+            fam, text = wait_for_series(collector, family, dict(key), 1)
+        assert _of_service(fam, svc) == series, (
             f"{family}: got {_of_service(fam, svc)}\nexporter output:\n{text}"
         )
+
+
+def test_resource_without_service_name_is_counted_as_unknown(collector):
+    # N3's `service` comes from the resource service.name; an emitter that
+    # sets none still has its events counted, under service="unknown".
+    body = {"resourceLogs": [{
+        "resource": {"attributes": []},
+        "scopeLogs": [{"scope": {"name": "nthlayer"}, "logRecords": [
+            decision("bafy-fixture-anonymous-1", "triage", "page", True, NOW_NS),
+        ]}],
+    }]}
+    send(collector, body)
+    labels = {"service": "unknown", "decision_type": "triage", "decision_value": "page"}
+    fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 1)
+    assert _of_service(fam, "unknown") == {tuple(sorted(labels.items())): 1}, text
+    # Nothing counted without a service label.
+    assert all(any(k == "service" for k, _ in key) for key in fam), text
 
 
 def test_service_label_comes_from_the_resource(collector):
@@ -527,3 +584,279 @@ def test_service_label_comes_from_the_resource(collector):
 
 def test_pinned_image_is_exact():
     assert pinned_image().startswith("otel/opentelemetry-collector-contrib:")
+
+
+def test_exporter_escapes_names_for_a_utf8_scraper(collector):
+    # translation_strategy UnderscoreEscapingWithSuffixes: the names are the
+    # §4.5 underscore names even for a scraper that accepts UTF-8 names (the
+    # pinned Prometheus v2.51 does not offer that, so it cannot pin this).
+    svc = "escaping-gate"
+    send(collector, payload({svc: [
+        decision("bafy-fixture-escaping-1", "triage", "page", True, NOW_NS),
+        reversal("bafy-fixture-escaping-1", "human_override", "human", NOW_NS + 1),
+        outcome("bafy-fixture-escaping-1", "correct", "human_audit", NOW_NS + 2),
+    ]}))
+    wait_for_series(collector, "nthlayer_outcomes_total",
+                    {"service": svc, "outcome_value": "correct",
+                     "outcome_source": "human_audit"}, 1)
+    text = _get(collector["metrics"], headers={
+        "Accept": "text/plain;version=1.0.0;escaping=allow-utf-8"})
+    _, types = parse_exposition(text)
+    for family in FAMILIES:
+        assert types.get(family) == "counter", (family, text)
+    samples = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
+    assert not [ln for ln in samples if ln.startswith("{") or "nthlayer." in ln], text
+
+
+# ---------------------------------------------------------------------------
+# test/fake-service.py as an ai-gate, against the collector
+# ---------------------------------------------------------------------------
+
+FAKE_SERVICE = TEST_DIR / "fake-service.py"
+FAKE_NAME = "fraud-detect"  # demo/specs/fraud-detect.yaml's metadata.name
+# The published package, as CI installs it (no sibling checkout). The floor
+# is the release this was verified against: emit_event(timestamp=) and
+# init_telemetry's TelemetryStatus.
+NTHLAYER_COMMON = os.environ.get("NTHLAYER_COMMON_OTEL", "nthlayer-common[otel]>=5.12")
+# §4.2 and §4.3 enumerations.
+REVERSAL_TYPES = {"human_override", "self_reconsideration", "automated", "appeal"}
+ACTOR_TYPES = {"human", "service", "policy"}
+OUTCOME_VALUES = {"correct", "incorrect", "indeterminate"}
+# fake-service ramps a /control change over RAMP_STEPS * RAMP_INTERVAL (15s).
+RAMP_SETTLE_S = 20
+WINDOW_S = 15
+
+
+def _fake_constant(name):
+    """A module-level string constant of fake-service.py (its own vocabulary)."""
+    for node in ast.parse(FAKE_SERVICE.read_text()).body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"{name} not found in {FAKE_SERVICE}")
+
+
+def _free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _post(url, body):
+    req = urllib.request.Request(url, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+
+
+@pytest.fixture(scope="module")
+def fake_gate(collector, tmp_path_factory):
+    """fake-service.py --type ai-gate exporting to the collector, reversal_rate 1.0.
+
+    Yields after the ramp has settled, so every non-escalate decision from
+    then on is reversed.
+    """
+    if shutil.which("uv") is None:
+        pytest.fail("needs uv: `uv` is not on PATH")
+    port = _free_port()
+    log = tmp_path_factory.mktemp("fake-service") / "fake-service.log"
+    with open(log, "w") as out:
+        proc = subprocess.Popen(
+            ["uv", "run", "--isolated", "--no-project", "--python", sys.executable,
+             "--with", NTHLAYER_COMMON, "--with", "prometheus-client",
+             "python", str(FAKE_SERVICE), "--name", FAKE_NAME, "--type", "ai-gate",
+             "--port", str(port), "--rps", "100", "--outcome-delay", "1",
+             "--otlp-endpoint", collector["grpc"]],
+            stdout=out, stderr=subprocess.STDOUT,
+        )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        deadline = time.monotonic() + 300  # first run installs the otel SDK
+        while True:
+            if proc.poll() is not None:
+                pytest.fail(f"fake-service exited {proc.returncode}:\n{log.read_text()}")
+            try:
+                _get(f"{base}/health")
+                break
+            except (urllib.error.URLError, ConnectionError, OSError):
+                if time.monotonic() > deadline:
+                    pytest.fail(f"fake-service not up in 300s:\n{log.read_text()}")
+                time.sleep(0.5)
+        _post(f"{base}/control", {"reversal_rate": 1.0})
+        time.sleep(RAMP_SETTLE_S)
+        yield {"url": base, "log": log}
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def _service_samples(collector, service):
+    text = _get(collector["metrics"])
+    samples = parse_exposition(text)[0]
+    return {f: {k: v for k, v in samples.get(f, {}).items() if ("service", service) in k}
+            for f in FAMILIES}, text
+
+
+def _total(fam, pred=lambda labels: True):
+    return sum(v for k, v in fam.items() if pred(dict(k)))
+
+
+def test_fake_service_events_are_counted_with_n3_labels(collector, fake_gate):
+    decision_type = _fake_constant("DECISION_TYPE")
+    outcome_source = _fake_constant("OUTCOME_SOURCE")
+    deadline = time.monotonic() + 60
+    while True:
+        got, text = _service_samples(collector, FAKE_NAME)
+        if all(got.values()) or time.monotonic() > deadline:
+            break
+        time.sleep(0.5)
+    for family, label_names in (
+        ("nthlayer_decisions_total", {"service", "decision_type", "decision_value"}),
+        ("nthlayer_reversals_total", {"service", "reversal_type", "reversal_actor_type"}),
+        ("nthlayer_outcomes_total", {"service", "outcome_value", "outcome_source"}),
+    ):
+        assert got[family], f"no {family} for {FAKE_NAME}:\n{text}"
+        for key in got[family]:
+            assert {k for k, _ in key} == label_names, (family, key)
+    for key in got["nthlayer_decisions_total"]:
+        labels = dict(key)
+        assert labels["decision_type"] == decision_type, labels
+        assert labels["decision_value"] != "unknown", labels
+    assert any(dict(k)["decision_value"] == "escalate" for k in got["nthlayer_decisions_total"])
+    for key in got["nthlayer_reversals_total"]:
+        labels = dict(key)
+        assert labels["reversal_type"] in REVERSAL_TYPES, labels
+        assert labels["reversal_actor_type"] in ACTOR_TYPES, labels
+    for key in got["nthlayer_outcomes_total"]:
+        labels = dict(key)
+        assert labels["outcome_value"] in OUTCOME_VALUES, labels
+        assert labels["outcome_source"] == outcome_source, labels
+
+
+def test_fake_service_never_reverses_an_escalation(collector, fake_gate):
+    # §6.4: escalate routes the decision to a human; there is no option to
+    # overturn. At reversal_rate 1.0 every other decision is reversed, so over
+    # a window the reversals equal the non-escalate decisions, and would
+    # exceed them by the escalations if escalations were reversed too.
+    def counts():
+        got, _ = _service_samples(collector, FAKE_NAME)
+        dec = got["nthlayer_decisions_total"]
+        return (_total(got["nthlayer_reversals_total"]),
+                _total(dec, lambda lb: lb["decision_value"] != "escalate"),
+                _total(dec, lambda lb: lb["decision_value"] == "escalate"))
+
+    rev0, auto0, esc0 = counts()
+    time.sleep(WINDOW_S)
+    rev1, auto1, esc1 = counts()
+    d_rev, d_auto, d_esc = rev1 - rev0, auto1 - auto0, esc1 - esc0
+    print(f"window: reversals {d_rev}, non-escalate {d_auto}, escalate {d_esc}")
+    # Enough escalations that reversing them would show (~5% of ~1000+).
+    assert d_esc >= 20, (d_rev, d_auto, d_esc)
+    # A decision and its reversal are emitted back to back; at most a few
+    # straddle an export boundary at either end of the window.
+    assert abs(d_rev - d_auto) <= 5, (d_rev, d_auto, d_esc)
+
+
+def test_fake_service_exports_the_bridge_counters(fake_gate):
+    # Ruling R1a (until opensrm-vgub): nthlayer-workers' measure worker reads
+    # these from the fake service's own /metrics.
+    samples = parse_exposition(_get(f"{fake_gate['url']}/metrics"))[0]
+    for name in ("gen_ai_decisions_total", "gen_ai_overrides_total",
+                 "gen_ai_overrides_hcf_total"):
+        fam = samples.get(name, {})
+        assert any(("service", FAKE_NAME) in k and v > 0 for k, v in fam.items()), (name, fam)
+    actions = {dict(k).get("action") for k in samples["gen_ai_decisions_total"]}
+    assert {"approve", "reject", "escalate"} <= actions, actions
+
+
+# ---------------------------------------------------------------------------
+# Prometheus over the collector: the demo's nthlayer_* queries
+# ---------------------------------------------------------------------------
+
+FRAUD_SPEC = TEST_DIR.parent / "demo" / "specs" / "fraud-detect.yaml"
+DEMO_RULES = TEST_DIR / "rules" / "demo-alerts.yml"
+
+
+def pinned_prometheus():
+    image = yaml.safe_load(COMPOSE.read_text())["services"]["prometheus"]["image"]
+    tag = image.rpartition(":")[2]
+    assert tag.startswith("v") and tag[1:].count(".") == 2 and tag[1:].replace(".", "").isdigit(), image
+    return image
+
+
+@pytest.fixture(scope="module")
+def prometheus(collector, fake_gate, tmp_path_factory):
+    cfg = tmp_path_factory.mktemp("prometheus") / "prometheus.yml"
+    cfg.write_text(yaml.safe_dump({
+        "global": {"scrape_interval": "1s", "evaluation_interval": "1s"},
+        "scrape_configs": [{"job_name": "otel-collector",
+                            "static_configs": [{"targets": [f"{collector['name']}:8889"]}]}],
+    }))
+    cfg.chmod(0o644)  # read by the image's `nobody`
+    image = pinned_prometheus()
+    run = _docker(
+        "run", "-d", "--rm", "--network", collector["network"],
+        "-v", f"{cfg}:/etc/prometheus/prometheus.yml:ro", "-p", "127.0.0.1::9090",
+        image, "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.path=/prometheus",
+        check=False,
+    )
+    if run.returncode != 0:
+        pytest.fail(f"could not start {image}:\n{run.stderr.strip()}")
+    container = run.stdout.strip()
+    try:
+        base = f"http://127.0.0.1:{_host_port(container, 9090)}"
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                _get(f"{base}/-/ready")
+                break
+            except (urllib.error.URLError, ConnectionError, OSError):
+                if time.monotonic() > deadline:
+                    logs = _docker("logs", container, check=False)
+                    pytest.fail(f"prometheus not ready in 60s:\n{logs.stderr}{logs.stdout}")
+                time.sleep(0.5)
+        yield base
+    finally:
+        _docker("rm", "-f", container, check=False)
+
+
+def promql(base, expr, until, timeout=90):
+    """Poll an instant query until `until(result)`; return the last result."""
+    deadline = time.monotonic() + timeout
+    while True:
+        url = f"{base}/api/v1/query?" + urllib.parse.urlencode({"query": expr})
+        body = json.loads(_get(url))
+        assert body["status"] == "success", body
+        result = body["data"]["result"]
+        if until(result) or time.monotonic() > deadline:
+            return result
+        time.sleep(1)
+
+
+def test_fraud_detect_reversal_sli_query_reads_the_collector(prometheus):
+    spec = yaml.safe_load(FRAUD_SPEC.read_text())
+    expr = spec["spec"]["slos"]["reversal_rate"]["indicator"]["query"]
+    assert "nthlayer_reversals_total" in expr and "nthlayer_decisions_total" in expr, expr
+    # 1 - reversals/decisions; the fake gate reverses every non-escalate
+    # decision once the ramp settles, so the SLI is well below 1 but >= 0.
+    result = promql(prometheus, expr, lambda r: bool(r) and float(r[0]["value"][1]) < 0.9)
+    assert len(result) == 1, result
+    value = float(result[0]["value"][1])
+    assert 0.0 <= value < 0.9, result
+
+
+def test_demo_nthlayer_alert_expressions_read_the_collector(prometheus):
+    rules = [r for g in yaml.safe_load(DEMO_RULES.read_text())["groups"]
+             for r in g["rules"] if "nthlayer_" in r["expr"]]
+    assert rules, f"no nthlayer_* rule in {DEMO_RULES}"
+    for rule in rules:
+        expr = rule["expr"]
+        result = promql(prometheus, expr, lambda r: any(
+            s["metric"].get("service") == FAKE_NAME for s in r))
+        mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
+        assert len(mine) == 1, (rule.get("alert"), result)
+        assert 0.0 < float(mine[0]["value"][1]) <= 1.0, (rule.get("alert"), mine)

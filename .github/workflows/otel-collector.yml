@@ -4,8 +4,13 @@ name: otel-collector
 # §4.5 nthlayer_* counters for the demo and test stack. This runs the
 # collector image pinned in test/docker-compose.yml with that config, sends
 # a fixed set of OTLP log events and asserts every series' name, labels and
-# count. Needs Docker (on the runner); no sibling checkouts. The test fails,
-# never skips, when Docker or the collector is unavailable.
+# count. It also runs test/fake-service.py as an ai-gate (published
+# nthlayer-common[otel] from PyPI, in an ephemeral uv env) against the
+# collector, and the pinned Prometheus over the collector to evaluate
+# demo/specs/fraud-detect.yaml's SLI query and test/rules/demo-alerts.yml's
+# nthlayer_* rules. Needs Docker and uv (on the runner); no sibling
+# checkouts. The test fails, never skips, when Docker, uv or a container is
+# unavailable.
 
 on:
   push:
@@ -19,7 +24,7 @@ permissions:
 jobs:
   collector:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
