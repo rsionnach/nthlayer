@@ -1,0 +1,136 @@
+# OTel Collector config for the demo and test stack [opensrm-s4ui].
+#
+# Turns NthLayer's log-based events (OpenSRM Addendum A1 §4.0; carried by
+# nthlayer_common.telemetry: LogRecord.event_name is the event name, every
+# field an attribute, no body) into the A1 §4.5 counters, exposed for
+# Prometheus on :8889:
+#
+#   nthlayer_decisions_total{service, decision_type, decision_value}
+#   nthlayer_reversals_total{service, reversal_type, reversal_actor_type}
+#   nthlayer_outcomes_total{service, outcome_value, outcome_source}
+#
+# Labels follow §4.5 N3: `service` is the emitter's resource service.name,
+# which an NthLayer emitter sets to the manifest's metadata.name; a label
+# from a §4 attribute is the attribute without the `nthlayer.` prefix, dots
+# as underscores. Only low-cardinality attributes are counted by: ids
+# (nthlayer.decision.id, *.decision_id), free text (nthlayer.reversal.reason)
+# and actor refs never become labels, because the count connector keeps
+# only the attributes listed under each metric and drops the rest.
+#
+# Deliberately absent §4.5 rows (follow-up opensrm-taz2). Each needs a join
+# of an nthlayer.outcome to its nthlayer.decision on the decision id (or a
+# value per decision, not a count of events), which a stateless count
+# connector cannot do:
+#   - nthlayer_high_confidence_failures_total: decision confidence joined to
+#     outcome value.
+#   - nthlayer_outcomes_total's decision_value and confidence-threshold
+#     labels: both are properties of the decision, not of the outcome event.
+#   - nthlayer_decision_confidence (gauge) and the calibration gauges
+#     (computed, A5).
+#   - nthlayer_feedback_latency_seconds: decision Timestamp to outcome
+#     Timestamp (T1), a per-decision interval.
+#
+# Pipeline: otlp receiver -> logs pipeline -> count connector -> metrics
+# pipeline -> transform (labels, timestamps) -> delta_to_cumulative ->
+# prometheus exporter. Image pinned in test/docker-compose.yml.
+
+receivers:
+  otlp:
+    protocols:
+      # nthlayer_common.telemetry exports over gRPC only.
+      grpc:
+        endpoint: 0.0.0.0:4317
+      # OTLP/HTTP for test/test_otel_collector.py, which sends JSON with
+      # the standard library.
+      http:
+        endpoint: 0.0.0.0:4318
+
+connectors:
+  count:
+    logs:
+      # Prometheus name nthlayer_decisions_total (counter: `_total` added by
+      # the exporter's translation, below).
+      nthlayer.decisions:
+        description: nthlayer.decision events (A1 §4.1), per §4.5.
+        conditions:
+          - 'log.event_name == "nthlayer.decision"'
+        attributes:
+          # Not on the log record, so the connector falls back to the
+          # resource attribute.
+          - key: service.name
+          - key: nthlayer.decision.type
+          - key: nthlayer.decision.value
+      nthlayer.reversals:
+        description: nthlayer.reversal events (A1 §4.2), per §4.5.
+        conditions:
+          - 'log.event_name == "nthlayer.reversal"'
+        attributes:
+          - key: service.name
+          - key: nthlayer.reversal.type
+          - key: nthlayer.reversal.actor_type
+      nthlayer.outcomes:
+        description: nthlayer.outcome events (A1 §4.3), per §4.5 and N5.
+        conditions:
+          - 'log.event_name == "nthlayer.outcome"'
+        attributes:
+          - key: service.name
+          - key: nthlayer.outcome.value
+          - key: nthlayer.outcome.source
+
+processors:
+  transform/nthlayer_labels:
+    # A statement error drops the batch rather than exporting a series with
+    # the wrong labels.
+    error_mode: propagate
+    metric_statements:
+      - statements:
+          # §4.5 N3 label names.
+          - set(datapoint.attributes["service"], datapoint.attributes["service.name"]) where datapoint.attributes["service.name"] != nil
+          - set(datapoint.attributes["decision_type"], datapoint.attributes["nthlayer.decision.type"]) where datapoint.attributes["nthlayer.decision.type"] != nil
+          - set(datapoint.attributes["decision_value"], datapoint.attributes["nthlayer.decision.value"]) where datapoint.attributes["nthlayer.decision.value"] != nil
+          - set(datapoint.attributes["reversal_type"], datapoint.attributes["nthlayer.reversal.type"]) where datapoint.attributes["nthlayer.reversal.type"] != nil
+          - set(datapoint.attributes["reversal_actor_type"], datapoint.attributes["nthlayer.reversal.actor_type"]) where datapoint.attributes["nthlayer.reversal.actor_type"] != nil
+          - set(datapoint.attributes["outcome_value"], datapoint.attributes["nthlayer.outcome.value"]) where datapoint.attributes["nthlayer.outcome.value"] != nil
+          - set(datapoint.attributes["outcome_source"], datapoint.attributes["nthlayer.outcome.source"]) where datapoint.attributes["nthlayer.outcome.source"] != nil
+          - delete_key(datapoint.attributes, "service.name")
+          - delete_key(datapoint.attributes, "nthlayer.decision.type")
+          - delete_key(datapoint.attributes, "nthlayer.decision.value")
+          - delete_key(datapoint.attributes, "nthlayer.reversal.type")
+          - delete_key(datapoint.attributes, "nthlayer.reversal.actor_type")
+          - delete_key(datapoint.attributes, "nthlayer.outcome.value")
+          - delete_key(datapoint.attributes, "nthlayer.outcome.source")
+          # The count connector stamps each delta with the earliest and
+          # latest event Timestamp in the batch. Event Timestamps are the
+          # events' own times (T1): an outcome resolved after the fact is
+          # backdated, and two batches' ranges can overlap, which
+          # delta_to_cumulative would drop as out of order. A counter counts
+          # arrivals, so stamp each delta with the time it is counted. The
+          # events themselves are not modified.
+          - set(datapoint.time, Now())
+          - set(datapoint.start_time, datapoint.time)
+      - statements:
+          # The emitter's resource would otherwise add job/instance labels
+          # (from service.name) beside `service`; `service` already carries it.
+          - keep_keys(resource.attributes, [])
+
+  delta_to_cumulative:
+    # Long enough that a demo left idle keeps its counters.
+    max_stale: 60m
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    translation_strategy: UnderscoreEscapingWithSuffixes
+    # No otel_scope_* labels: the only labels are the §4.5 ones.
+    without_scope_info: true
+    metric_expiration: 60m
+
+service:
+  pipelines:
+    logs/nthlayer_events:
+      receivers: [otlp]
+      exporters: [count]
+    metrics/nthlayer_counts:
+      receivers: [count]
+      processors: [transform/nthlayer_labels, delta_to_cumulative]
+      exporters: [prometheus]
