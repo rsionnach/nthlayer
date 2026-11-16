@@ -30,7 +30,7 @@
 #   - nthlayer_feedback_latency_seconds: decision Timestamp to outcome
 #     Timestamp (T1), a per-decision interval.
 #
-# Pipeline: otlp receiver -> logs pipeline -> count connector -> metrics
+# Pipeline: otlp receiver -> logs pipeline (batch) -> count connector -> metrics
 # pipeline -> transform (labels, timestamps) -> delta_to_cumulative ->
 # prometheus exporter. Image pinned in test/docker-compose.yml.
 
@@ -47,6 +47,17 @@ receivers:
 
 connectors:
   count:
+    # Every listed attribute has default_value `unknown`. Without one, the
+    # connector skips an event that lacks the attribute, so a decision
+    # missing a §4.1 Required attribute (nthlayer.decision.type, say) would
+    # vanish from the §4.6 denominator. A malformed event is counted under
+    # `unknown`, where it is visible, instead of silently undercounting.
+    #
+    # `service` is not listed here: the connector looks an attribute up on
+    # the log record first and only then on the resource, so a record-level
+    # service.name would replace the emitter's. N3's `service` is the
+    # manifest's metadata.name, which the emitter carries as the RESOURCE
+    # service.name; the transform below reads it from the resource only.
     logs:
       # Prometheus name nthlayer_decisions_total (counter: `_total` added by
       # the exporter's translation, below).
@@ -55,29 +66,41 @@ connectors:
         conditions:
           - 'log.event_name == "nthlayer.decision"'
         attributes:
-          # Not on the log record, so the connector falls back to the
-          # resource attribute.
-          - key: service.name
           - key: nthlayer.decision.type
+            default_value: unknown
           - key: nthlayer.decision.value
+            default_value: unknown
       nthlayer.reversals:
         description: nthlayer.reversal events (A1 §4.2), per §4.5.
         conditions:
           - 'log.event_name == "nthlayer.reversal"'
         attributes:
-          - key: service.name
           - key: nthlayer.reversal.type
+            default_value: unknown
           - key: nthlayer.reversal.actor_type
+            default_value: unknown
       nthlayer.outcomes:
         description: nthlayer.outcome events (A1 §4.3), per §4.5 and N5.
         conditions:
           - 'log.event_name == "nthlayer.outcome"'
         attributes:
-          - key: service.name
           - key: nthlayer.outcome.value
+            default_value: unknown
           - key: nthlayer.outcome.source
+            default_value: unknown
 
 processors:
+  # Serialises the logs pipeline. The OTLP receiver runs each export on its
+  # own goroutine; without this, two concurrent exports to one series can be
+  # stamped Now() in one order and reach delta_to_cumulative in the other,
+  # which drops the older-stamped delta as out of order: a count lost with
+  # nothing logged. The batch processor (one shard: no metadata_keys) hands
+  # batches on from a single goroutine, synchronously, so count -> transform
+  # (Now()) -> delta_to_cumulative runs one batch at a time and each delta is
+  # stamped later than the one before it.
+  batch/serialise:
+    timeout: 200ms
+
   transform/nthlayer_labels:
     # A statement error drops the batch rather than exporting a series with
     # the wrong labels.
@@ -85,14 +108,16 @@ processors:
     metric_statements:
       - statements:
           # §4.5 N3 label names.
-          - set(datapoint.attributes["service"], datapoint.attributes["service.name"]) where datapoint.attributes["service.name"] != nil
+          # From the resource only (see the count connector above); the
+          # connector copies each ResourceLogs' resource to its metrics.
+          - set(datapoint.attributes["service"], resource.attributes["service.name"]) where resource.attributes["service.name"] != nil
+          - set(datapoint.attributes["service"], "unknown") where resource.attributes["service.name"] == nil
           - set(datapoint.attributes["decision_type"], datapoint.attributes["nthlayer.decision.type"]) where datapoint.attributes["nthlayer.decision.type"] != nil
           - set(datapoint.attributes["decision_value"], datapoint.attributes["nthlayer.decision.value"]) where datapoint.attributes["nthlayer.decision.value"] != nil
           - set(datapoint.attributes["reversal_type"], datapoint.attributes["nthlayer.reversal.type"]) where datapoint.attributes["nthlayer.reversal.type"] != nil
           - set(datapoint.attributes["reversal_actor_type"], datapoint.attributes["nthlayer.reversal.actor_type"]) where datapoint.attributes["nthlayer.reversal.actor_type"] != nil
           - set(datapoint.attributes["outcome_value"], datapoint.attributes["nthlayer.outcome.value"]) where datapoint.attributes["nthlayer.outcome.value"] != nil
           - set(datapoint.attributes["outcome_source"], datapoint.attributes["nthlayer.outcome.source"]) where datapoint.attributes["nthlayer.outcome.source"] != nil
-          - delete_key(datapoint.attributes, "service.name")
           - delete_key(datapoint.attributes, "nthlayer.decision.type")
           - delete_key(datapoint.attributes, "nthlayer.decision.value")
           - delete_key(datapoint.attributes, "nthlayer.reversal.type")
@@ -105,7 +130,9 @@ processors:
           # backdated, and two batches' ranges can overlap, which
           # delta_to_cumulative would drop as out of order. A counter counts
           # arrivals, so stamp each delta with the time it is counted. The
-          # events themselves are not modified.
+          # events themselves are not modified. Now() order is only arrival
+          # order at delta_to_cumulative because the batch processor in the
+          # logs pipeline serialises everything downstream of it (above).
           - set(datapoint.time, Now())
           - set(datapoint.start_time, datapoint.time)
       - statements:
@@ -129,6 +156,7 @@ service:
   pipelines:
     logs/nthlayer_events:
       receivers: [otlp]
+      processors: [batch/serialise]
       exporters: [count]
     metrics/nthlayer_counts:
       receivers: [count]

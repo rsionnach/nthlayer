@@ -27,6 +27,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -432,6 +433,96 @@ def test_counts_accumulate_across_batches(collector):
     send(collector, BATCH_2)
     text = check_scrape(collector, EXPECTED_AFTER_2)
     print("\n".join(line for line in text.splitlines() if line.startswith("nthlayer_")))
+
+
+# The tests below each use their own service, so they add series without
+# touching the ones the two tests above compare exactly; they run after them.
+
+
+def wait_for_series(collector, family, labels, value, timeout=30):
+    """Poll until family{labels} == value; return the last scrape's family."""
+    deadline = time.monotonic() + timeout
+    while True:
+        text = _get(collector["metrics"])
+        fam = parse_exposition(text)[0].get(family, {})
+        if fam.get(_key(labels)) == value or time.monotonic() > deadline:
+            return fam, text
+
+
+def _of_service(fam, service):
+    return {k: v for k, v in _show(fam).items() if ("service", service) in k}
+
+
+CONCURRENT_EXPORTS = 500
+
+
+def test_concurrent_exports_to_one_series_are_all_counted(collector):
+    # Many exporters (or one exporter's parallel exports) hitting one series
+    # at once: every decision is counted, exactly (§4.6 divides by it).
+    svc = "concurrent-gate"
+    bodies = [
+        payload({svc: [decision(f"bafy-fixture-concurrent-{i}", "triage", "page",
+                                True, NOW_NS + i)]})
+        for i in range(CONCURRENT_EXPORTS)
+    ]
+    with ThreadPoolExecutor(max_workers=50) as pool:
+        list(pool.map(lambda b: send(collector, b), bodies))
+    labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
+    fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels,
+                                CONCURRENT_EXPORTS)
+    # Give a late or lost delta time to show: the value must stay exact.
+    time.sleep(2)
+    fam = parse_exposition(_get(collector["metrics"]))[0]["nthlayer_decisions_total"]
+    assert _of_service(fam, svc) == {tuple(sorted(_key(labels))): CONCURRENT_EXPORTS}, (
+        f"got {_of_service(fam, svc)}"
+    )
+
+
+def test_missing_required_attribute_is_counted_as_unknown(collector):
+    # §4.1-§4.3 mark these attributes Required; an event lacking one is still
+    # an event, and dropping it would undercount the §4.6 denominator. It is
+    # counted with the label value `unknown`.
+    svc = "malformed-gate"
+    send(collector, payload({svc: [
+        record("nthlayer.decision",
+               {"nthlayer.decision.id": "bafy-fixture-malformed-1",
+                "nthlayer.decision.value": "approve",
+                "nthlayer.decision.autonomous": True}, NOW_NS),
+        record("nthlayer.reversal",
+               {"nthlayer.reversal.decision_id": "bafy-fixture-malformed-1",
+                "nthlayer.reversal.type": "human_override"}, NOW_NS + 1),
+        record("nthlayer.outcome",
+               {"nthlayer.outcome.decision_id": "bafy-fixture-malformed-1",
+                "nthlayer.outcome.source": "human_audit"}, NOW_NS + 2),
+    ]}))
+    expected = {
+        "nthlayer_decisions_total": {"service": svc, "decision_type": "unknown",
+                                     "decision_value": "approve"},
+        "nthlayer_reversals_total": {"service": svc, "reversal_type": "human_override",
+                                     "reversal_actor_type": "unknown"},
+        "nthlayer_outcomes_total": {"service": svc, "outcome_value": "unknown",
+                                    "outcome_source": "human_audit"},
+    }
+    for family, labels in expected.items():
+        fam, text = wait_for_series(collector, family, labels, 1)
+        assert _of_service(fam, svc) == {tuple(sorted(_key(labels))): 1}, (
+            f"{family}: got {_of_service(fam, svc)}\nexporter output:\n{text}"
+        )
+
+
+def test_service_label_comes_from_the_resource(collector):
+    # N3: `service` is the manifest's metadata.name, carried as the emitter's
+    # RESOURCE service.name. A record attribute of the same name must not
+    # replace it.
+    svc = "resource-gate"
+    send(collector, payload({svc: [
+        decision("bafy-fixture-spoof-1", "triage", "page", True, NOW_NS,
+                 **{"service.name": "spoofed-gate"}),
+    ]}))
+    labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
+    fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 1)
+    assert _of_service(fam, svc) == {tuple(sorted(_key(labels))): 1}, text
+    assert not _of_service(fam, "spoofed-gate"), text
 
 
 def test_pinned_image_is_exact():
