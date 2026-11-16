@@ -1,6 +1,6 @@
 # NthLayer integration testing
 
-Five test surfaces in `test/`, two of which share a boot/teardown
+Six test surfaces in `test/`, two of which share a boot/teardown
 library. See script headers for invocation details; this file is the
 cross-reference.
 
@@ -22,6 +22,14 @@ cross-reference.
   positives); EXIT hook removes the lock on normal exit, on `exit 1`
   (0b refusal), and on SIGINT. Runs in ~5s, no Docker. CI:
   `.github/workflows/demo-start-lock.yml` (push/PR to main).
+- `test/test_otel_collector.py` — the OTel Collector config
+  (`test/otel-collector.yaml`, opensrm-s4ui) turns A1 §4.1-§4.3 log
+  events into `nthlayer_decisions_total`, `nthlayer_reversals_total` and
+  `nthlayer_outcomes_total` with the §4.5 labels. Runs the otelcol-contrib
+  image pinned in `test/docker-compose.yml`, sends fixed OTLP/HTTP JSON
+  events, asserts names, labels, counts and exclusions. Needs Docker and
+  fails (never skips) without it. CI: `.github/workflows/otel-collector.yml`
+  (push/PR to main).
 - `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
   ship-readiness test (real core API + workers + bench-via-API). Boots
   Docker stack, drives reversal_rate breach via fake-service, asserts
@@ -161,12 +169,14 @@ sign-off, commit c1307a4).
 
 ### Boot sequence (always-fresh)
 
-1. `docker compose up -d prometheus` — Prometheus only;
-   Grafana/AlertManager omitted (flaky file-mount, not queried by
-   assertions).
+1. `docker compose up -d prometheus otel-collector` — the collector
+   counts fake-service's OTLP events into the `nthlayer_*` series the
+   fraud-detect manifest reads (opensrm-s4ui); Grafana/AlertManager
+   omitted (flaky file-mount, not queried by assertions).
 2. Poll Prometheus `/-/ready` (60s).
-3. Start `fake-service.py --name fraud-detect --type ai-gate` (15s
-   health check).
+3. Start `fake-service.py --name fraud-detect --type ai-gate` under
+   `uv run --directory nthlayer-common --extra otel --with
+   prometheus-client` (15s health check, after the environment resolves).
 4. Start `nthlayer-core serve` with `NTHLAYER_STORE_PATH` +
    `NTHLAYER_MANIFESTS_DIR`; poll `/health` (30s); sanity-check
    `GET /manifests` returns ≥1 manifest.
@@ -226,8 +236,9 @@ known-blocker guidance.
   `ref: main`. Pinning trade-off: `main` is correct while
   components co-evolve in v1.5; switch to released versions
   post-v1.0.
-- Installs: `uv` via `astral-sh/setup-uv@v7`; `jq` via apt;
-  `prometheus-client` via pip3 (for fake-service).
+- Installs: `uv` via `astral-sh/setup-uv@v7`; `jq` via apt.
+  fake-service's deps (nthlayer-common's otel extra, prometheus-client)
+  come from `uv run` against the nthlayer-common checkout.
 - On failure: prints `core.log` (last 100 lines) and `workers.log`
   (last 200 lines) inline, then uploads `/tmp/three-tier-debug-*`
   as artifact `three-tier-debug-logs` (7-day retention,
