@@ -43,6 +43,9 @@ SPECS_DIR="$DEMO_DIR/specs"
 RUN_CORE="uv run --directory $WORKSPACE_ROOT/nthlayer-core"
 RUN_WORKERS="uv run --directory $WORKSPACE_ROOT/nthlayer-workers"
 RUN_BENCH="uv run --directory $WORKSPACE_ROOT/nthlayer-bench"
+# fake-service.py emits ai-gate events through nthlayer_common.telemetry,
+# which needs the otel extra; prometheus-client is its own exporter.
+RUN_FAKE="uv run --directory $WORKSPACE_ROOT/nthlayer-common --extra otel --with prometheus-client"
 
 # Persistent state file paths under OUTPUT_DIR
 STATE_DB="$OUTPUT_DIR/three-tier.db"
@@ -321,16 +324,17 @@ cmd_start() {
     info "Creating $OUTPUT_DIR"
     mkdir -p "$OUTPUT_DIR"
 
-    # 2. Docker stack — selective bring-up of prometheus + alertmanager
-    #    only. The full test/docker-compose.yml also includes Grafana but
+    # 2. Docker stack — selective bring-up of prometheus + alertmanager +
+    #    otel-collector (which counts the ai-gate fake-service's OTLP
+    #    events into the nthlayer_* series, opensrm-s4ui). The full test/docker-compose.yml also includes Grafana but
     #    its provisioning bind-mount is flaky on some Docker Desktop
     #    setups. The browser demo's Grafana link still works if a
     #    Grafana instance is running separately; the demo does not depend
     #    on the dashboard's data path.
     header "Starting Docker Stack"
-    info "Running: docker compose up -d prometheus alertmanager (in $TEST_DIR)"
-    docker compose -f "$TEST_DIR/docker-compose.yml" up -d prometheus alertmanager
-    success "Prometheus + AlertManager started"
+    info "Running: docker compose up -d prometheus alertmanager otel-collector (in $TEST_DIR)"
+    docker compose -f "$TEST_DIR/docker-compose.yml" up -d prometheus alertmanager otel-collector
+    success "Prometheus + AlertManager + OTel Collector started"
 
     # 3. Wait for Prometheus
     header "Waiting for Prometheus"
@@ -362,6 +366,12 @@ cmd_start() {
         "analytics-api:api:8008"
     )
 
+    # Resolve fake-service's environment once, before eight processes
+    # contend for it.
+    info "Resolving fake-service environment (nthlayer-common[otel] + prometheus-client)"
+    $RUN_FAKE python -c "import nthlayer_common.telemetry, prometheus_client" \
+        || { error "fake-service environment did not resolve"; exit 1; }
+
     for svc in "${services[@]}"; do
         local name type port
         name="${svc%%:*}"
@@ -369,7 +379,7 @@ cmd_start() {
         port="${svc##*:}"
 
         info "Starting $name ($type) on port $port"
-        python3 "$FAKE_SERVICE_SCRIPT" \
+        $RUN_FAKE python "$FAKE_SERVICE_SCRIPT" \
             --name "$name" \
             --type "$type" \
             --port "$port" \
