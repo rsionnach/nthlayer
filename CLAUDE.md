@@ -116,7 +116,7 @@ examples, generator-specific scripts.
     it.
   - `docs/testing.md`, `docs/COSTOPTIMISATION.md`,
     `docs/metrics-contract.md` — cross-cutting operational docs.
-  - `docs/integration-testing.md` — five-test-surface harness
+  - `docs/integration-testing.md` — six-test-surface harness
     cross-reference (new under the auto-memory retirement).
   - `docs/release-runbook.md` — operator runbook for the full
     ecosystem-wide release pipeline (Phase 5).
@@ -125,7 +125,11 @@ examples, generator-specific scripts.
     lock and state files [opensrm-xf73].
 - `test/` — cross-repo integration test infrastructure (see
   `docs/integration-testing.md`). Also `test_eco_doctor.sh`, the
-  regression suite for `scripts/eco_doctor.py`.
+  regression suite for `scripts/eco_doctor.py`, and `otel-collector.yaml`,
+  the collector config that counts the A1 §4 log events into the §4.5
+  `nthlayer_*` series, tested by `test_otel_collector.py` (opensrm-s4ui),
+  which also drives `fake-service.py`'s ai-gate events through it and
+  evaluates the demo's `nthlayer_*` queries in Prometheus.
 - `scripts/` — tooling that operates ON the workspace, the category
   hard rule 1 was amended to permit:
   - `eco_doctor.py` + `eco-doctor.sh` — the dependency-range and
@@ -264,6 +268,10 @@ examples, generator-specific scripts.
     the published nthlayer-generate and nthlayer-workers, nightly and
     on PRs (opensrm-h0at); per request-ratio kind, with a witness per kind
     and generate's deliberate skips pinned by bead (opensrm-zo0o).
+  - `otel-collector.yml` — `test/test_otel_collector.py` against the
+    pinned otelcol-contrib image, with `fake-service.py --type ai-gate` (published
+    nthlayer-common[otel]) and the pinned Prometheus evaluating the demo's
+    `nthlayer_*` SLI query and alert rules, on PRs (opensrm-s4ui).
   - `demo-paths.yml` — `cmd_start` path-resolution regression test
     (opensrm-oey5).
   - `demo-start-lock.yml` — `cmd_start` concurrent-invocation lock

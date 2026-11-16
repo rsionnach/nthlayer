@@ -16,8 +16,8 @@ spec:
         non-reversal-rate so the SLI reads "higher is better" like availability.
       indicator:
         query: >-
-          1 - (sum(rate(gen_ai_overrides_total{service="fraud-detect"}[2m]))
-          / clamp_min(sum(rate(gen_ai_decisions_total{service="fraud-detect"}[2m])), 1))
+          1 - (sum(rate(nthlayer_reversals_total{service="fraud-detect"}[2m]))
+          / clamp_min(sum(rate(nthlayer_decisions_total{service="fraud-detect"}[2m])), 1))
     availability:
       target: 99.9
       window: 30d

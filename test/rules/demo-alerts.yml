@@ -2,10 +2,11 @@ groups:
   - name: nthlayer-demo
     rules:
       - alert: AIReversalRateHigh
+        # A1 §4.5 series, counted by the OTel Collector (test/otel-collector.yaml).
         expr: |
-          sum by(service) (rate(gen_ai_overrides_total[2m]))
+          sum by(service) (rate(nthlayer_reversals_total[2m]))
           /
-          sum by(service) (rate(gen_ai_decisions_total[2m]))
+          sum by(service) (rate(nthlayer_decisions_total[2m]))
           > 0.03
         for: 10s
         labels:

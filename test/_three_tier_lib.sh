@@ -104,7 +104,9 @@ preflight_port_conflicts() {
 #                       [INSTANCE_ID]
 #
 # Brings up the full stack:
-#   1. docker compose up -d prometheus → poll /-/ready (60s deadline).
+#   1. docker compose up -d prometheus otel-collector → poll /-/ready
+#      (60s deadline). The collector counts fake-service's OTLP events
+#      into the nthlayer_* series the fraud-detect manifest reads.
 #   2. fake-service.py for fraud-detect → poll /health (15s deadline).
 #   3. nthlayer-core serve on CORE_PORT → poll /health (30s deadline)
 #      and sanity-check /manifests returns ≥1.
@@ -134,8 +136,8 @@ boot_three_tier_stack() {
     local state_db="${work_dir}/state.db"
     local deadline
 
-    tt_log "Bring up Docker (Prometheus only)"
-    (cd "${test_dir}" && docker compose up -d prometheus >/dev/null)
+    tt_log "Bring up Docker (Prometheus + OTel Collector)"
+    (cd "${test_dir}" && docker compose up -d prometheus otel-collector >/dev/null)
     DOCKER_UP="true"
 
     deadline=$(( $(date +%s) + 60 ))
@@ -146,7 +148,17 @@ boot_three_tier_stack() {
     tt_pass "Prometheus ready"
 
     tt_log "Start fake-service (fraud-detect on ${fake_port})"
-    python3 "${test_dir}/fake-service.py" --name fraud-detect --type ai-gate --port "${fake_port}" \
+    # ai-gate events go through nthlayer_common.telemetry (otel extra), a
+    # sibling of the front door, as nthlayer-core etc. are (opensrm-s4ui).
+    local workspace_root
+    workspace_root="$(cd "${test_dir}/../.." && pwd)"
+    # Resolve the environment first, so the health deadline below times
+    # the service, not a cold uv install.
+    uv run --directory "${workspace_root}/nthlayer-common" --extra otel --with prometheus-client \
+        python -c "import nthlayer_common.telemetry, prometheus_client" \
+        || tt_fail "fake-service environment (nthlayer-common[otel] + prometheus-client) did not resolve"
+    uv run --directory "${workspace_root}/nthlayer-common" --extra otel --with prometheus-client \
+        python "${test_dir}/fake-service.py" --name fraud-detect --type ai-gate --port "${fake_port}" \
         >"${work_dir}/fake.log" 2>&1 &
     FAKE_PID=$!
     deadline=$(( $(date +%s) + 15 ))

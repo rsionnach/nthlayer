@@ -17,6 +17,21 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  otel-collector:
+    # A1 §4.5 counters from NthLayer's OTLP log events [opensrm-s4ui]:
+    # gRPC 4317 (nthlayer_common.telemetry), HTTP 4318, Prometheus 8889.
+    # The pin is read by test/test_otel_collector.py too: change it here only.
+    image: otel/opentelemetry-collector-contrib:0.163.2
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.0.0
     ports:
