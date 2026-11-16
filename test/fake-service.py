@@ -10,7 +10,10 @@ The OTel Collector in test/docker-compose.yml counts them into the §4.5
 nthlayer_* series [opensrm-s4ui]:
 
     uv run --directory ../nthlayer-common --extra otel --with prometheus-client \
-        python test/fake-service.py --name fraud-detect --type ai-gate --port 8001
+        python "$PWD/test/fake-service.py" --name fraud-detect --type ai-gate --port 8001
+
+(run from the front door's root: --directory changes the child's working
+directory, so the script path has to be absolute, as demo/demo.sh passes it).
 
 Usage:
     python test/fake-service.py --name fraud-detect --type ai-gate --port 8001
@@ -86,6 +89,20 @@ INDETERMINATE_SHARE = 0.02
 if SERVICE_TYPE == "ai-gate":
     from nthlayer_common.telemetry import emit_event, init_telemetry
 
+    # BRIDGE [opensrm-s4ui ruling R1a; remove under opensrm-vgub]:
+    # nthlayer-workers' measure worker builds its reversal_rate and
+    # high_confidence_failure queries from these gen_ai_* counters, not from
+    # the manifest's query, so until it reads the A1 §4.5 nthlayer_* series
+    # the demo's quality_breach chain needs them. They count the same
+    # decisions and reversals the events below carry.
+    gen_ai_decisions_total = Counter(
+        "gen_ai_decisions_total", "Total AI gate decisions (bridge)", ["service", "action"])
+    gen_ai_overrides_total = Counter(
+        "gen_ai_overrides_total", "Total AI gate overrides (bridge)", ["service"])
+    gen_ai_overrides_hcf_total = Counter(
+        "gen_ai_overrides_hcf_total",
+        "Total AI gate high-confidence failure overrides (bridge)", ["service"])
+
     _status = init_telemetry(SERVICE_NAME, endpoint=args.otlp_endpoint)
     if not _status.exporting:
         raise SystemExit(
@@ -117,13 +134,15 @@ def _emit_decision(reversal_rate: float) -> None:
     # §6.4: escalate routes the decision to a human, so it does not take
     # effect autonomously.
     autonomous = value != "escalate"
+    confidence = round(random.uniform(0.5, 0.99), 3)
+    gen_ai_decisions_total.labels(service=SERVICE_NAME, action=value).inc()  # bridge (R1a)
     emit_event(
         "nthlayer.decision",
         {
             "nthlayer.decision.id": decision_id,
             "nthlayer.decision.type": DECISION_TYPE,
             "nthlayer.decision.value": value,
-            "nthlayer.decision.confidence": round(random.uniform(0.5, 0.99), 3),
+            "nthlayer.decision.confidence": confidence,
             "nthlayer.decision.autonomous": autonomous,
             "nthlayer.decision.reversible": True,
         },
@@ -136,6 +155,11 @@ def _emit_decision(reversal_rate: float) -> None:
     # the gate's own (non-escalate) decisions.
     reversed_ = autonomous and random.random() < reversal_rate
     if reversed_:
+        # Bridge (R1a), as the counters counted before the events: an
+        # override, and ~20% of overrides as high-confidence failures.
+        gen_ai_overrides_total.labels(service=SERVICE_NAME).inc()
+        if random.random() < 0.20:
+            gen_ai_overrides_hcf_total.labels(service=SERVICE_NAME).inc()
         emit_event(
             "nthlayer.reversal",
             {
