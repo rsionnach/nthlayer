@@ -10,8 +10,10 @@ it rule for rule, and where the two disagree, cúramóir's code is right
 r5_corpus imports it rather than keeping its own.
 
 A reviewer's LAST non-empty output line is ``R5-FINDINGS:`` followed by a JSON
-array of findings. r5-supervise calls this on every report; it never trusts
-counts typed by the supervisor.
+array of findings. A report's lines end at LF only, a CR before it tolerated;
+U+2028, U+2029 and the other Unicode separators are content (spec v1.10).
+r5-supervise calls this on every report; it never trusts counts typed by the
+supervisor.
 
     r5_findings.py parse <lens> <report-file> [--floor <level>] [--prior <file>]
     r5_findings.py compare <recorded.json> <replay-state.json>
@@ -44,15 +46,14 @@ closure's own fingerprint is never compared to ``resolves``. A re-raised
 finding is the prior record copied verbatim (path and claim, so the same
 fingerprint) with no ``resolves``; a report that re-raises a finding and
 also closes it has that closure rejected and the re-raise kept (spec v1.10).
-The open set is the previous open set
-minus valid closures, plus new and re-raised findings; a prior open finding
-with neither a closure nor a re-raise is carried forward unchanged, tagged
-``unaccounted``: silence never closes. A re-raise keeps the more severe of
+The open set is the previous open set minus valid closures, plus new and
+re-raised findings; a prior open finding with neither a closure nor a
+re-raise is carried forward unchanged, tagged ``unaccounted``: silence never
+closes. A re-raise keeps the more severe of
 its own and the prior finding's severity (``downgrades_refused`` lists those
 it held up): severity goes down only through a valid closure. A report that
 closes every prior finding with empty evidence and re-raises none of them is
-a contract failure (R5-R25). A report's lines end at LF only, a CR before it
-tolerated; U+2028, U+2029 and the other Unicode separators are content.
+a contract failure (R5-R25).
 
 ``parse`` exits 0; 2 if the report does not meet the contract (the reason on
 stderr: the caller records the reviewer UNAVAILABLE, R5-R9); 1 on a usage
@@ -86,9 +87,9 @@ ADVISORY_LENSES = ("clarity", "excellence")
 
 # Removed from a claim before it is fingerprinted, so a finding keeps its key
 # when the code it points at moves: line references (line 42, line ~42,
-# lines 4-9, :42, :4-9, L42; spec v1.10) and SHA-like tokens (7 to 40 hex characters with at least
-# one digit, so a word like "defaced" stays). Other numbers stay: "exits 2"
-# and "exits 4" are different claims.
+# lines 4-9, :42, :4-9, L42; the "~" from spec v1.10) and SHA-like tokens
+# (7 to 40 hex characters with at least one digit, so a word like "defaced"
+# stays). Other numbers stay: "exits 2" and "exits 4" are different claims.
 _LINE_REF = re.compile(r"\blines?\s+~?\d+(?:\s*[-\u2013]\s*~?\d+)?\b|:\d+(?:-\d+)?\b|\bl\d+\b")
 _SHA = re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b")
 _SPACE = re.compile(r"\s+")
@@ -334,7 +335,7 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
             by_fp[record["fingerprint"]] = record
     seen = set(by_fp)
 
-    claimed, rejected = [], []
+    valid_closures, rejected = [], []
     for record in (r for r in records if r["resolves"] is not None):
         target = record["resolves"]
         if target not in prior:
@@ -344,17 +345,17 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
         elif target in seen:
             # Section 6: the re-raise is kept and the closure rejected.
             reason = "the same report re-raises the finding it closes"
-        elif target in claimed:
+        elif target in valid_closures:
             reason = "a second closure of the same fingerprint is dropped"
         else:
-            claimed.append(target)
+            valid_closures.append(target)
             continue
         rejected.append({"resolves": target, "fingerprint": record["fingerprint"],
                          "reason": reason})
     # R5-R25: closing every prior finding without citing the resolving lines,
     # and re-raising none of them. A re-raise beside an empty closure is a
     # finding kept, not a report to discard (spec v1.10).
-    if prior and not claimed and not seen.intersection(prior) and all(
+    if prior and not valid_closures and not seen.intersection(prior) and all(
             any(r["resolves"] == fp and not r["evidence"].strip() for r in records)
             for fp in prior):
         raise ReportError("every prior finding is closed with empty evidence")
@@ -368,7 +369,6 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
             record = {**record, "severity": before["severity"]}
             downgrades_refused.append(fp)
         current.append(record)
-    valid_closures = claimed  # a closure beside a re-raise is rejected above
     carried = [{**f, "unaccounted": True} for fp, f in prior.items()
                if fp not in seen and fp not in valid_closures]
     open_set = current + carried
