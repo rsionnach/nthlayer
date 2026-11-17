@@ -170,6 +170,24 @@ def test_a_reference_is_replaced_by_a_space_not_deleted():
         "they contradict concepts/deployment-gates.md , which states it"
 
 
+# --- spec v1.10: "the line-reference pattern takes '~'" (line ~42 normalises
+#     as line 42). No real report, corpus claim or run record holds one, so
+#     these inputs are spec-traced (R5-R35).
+
+@pytest.mark.parametrize("claim", ["off by one at line ~42", "off by one at lines ~4-~9",
+                                   "off by one at line ~4 \u2013 ~9", "off by one at line 42"])
+def test_a_line_reference_with_a_tilde_normalises_as_one_without(claim):
+    assert r5_findings.normalise_claim(claim) == "off by one at"
+
+
+def test_a_tilde_claim_keeps_its_fingerprint_when_the_line_moves():
+    assert fp("off by one at line ~42") == fp("off by one at line ~57") == fp("off by one at line 42")
+
+
+def test_a_tilde_elsewhere_stays():
+    assert r5_findings.normalise_claim("expands ~ to the home directory") == "expands ~ to the home directory"
+
+
 def test_the_corpus_uses_the_one_normaliser():
     """"NthLayer's scripts import it rather than reimplement it"."""
     claim = "they contradict concepts/deployment-gates.md:41-45, which states it"
@@ -267,15 +285,38 @@ def test_a_re_raise_keeps_the_more_severe_severity():
 
 
 def test_a_closure_and_a_re_raise_of_one_fingerprint_keep_it_open():
-    """A re-raise is "the prior record copied verbatim"; the open set is the
-    previous one "minus valid closures, plus new and re-raised findings".
-    The reference (cm-70j) reads both in one report as a re-raise: the
-    finding stays open and the closure is neither applied nor rejected."""
+    """"a report that re-raises a finding and also closes it has that closure
+    rejected and the re-raise kept" (section 6, spec v1.10)."""
     target = fp("the v2 branch never fires")
     out = parse([closure(target), finding()], prior_open=prior(finding()))
-    assert out["closures"] == [] and out["closure_rejected"] == []
+    assert out["closures"] == [] and out["unaccounted"] == []
+    assert out["closure_rejected"] == [{"resolves": target, "fingerprint": fp("the mapping shape is now tested"),
+                                        "reason": "the same report re-raises the finding it closes"}]
     assert [f["fingerprint"] for f in out["open_set"]] == [target]
     assert out["counts"]["important"] == 1
+
+
+def test_a_re_raise_beside_an_empty_closure_keeps_the_re_raise_and_is_not_unavailable():
+    """"a report that closes every prior finding with empty evidence and
+    re-raises none of them is UNAVAILABLE" (R5-R25): one that re-raises the
+    finding it closes with empty evidence keeps the re-raise (spec v1.10)."""
+    target = fp("the v2 branch never fires")
+    out = parse([closure(target, evidence=""), finding()], prior_open=prior(finding()))
+    assert [f["fingerprint"] for f in out["open_set"]] == [target]
+    assert out["closures"] == [] and out["unaccounted"] == []
+    assert [r["reason"] for r in out["closure_rejected"]] == ["a closure needs evidence (the resolving lines)"]
+
+
+def test_an_empty_closure_of_every_prior_beside_one_re_raise_is_not_unavailable():
+    """The re-raise exempts the report from R5-R25 even when it closes every
+    prior finding with empty evidence; the one not re-raised stays open too,
+    since an invalid closure is ignored."""
+    before = prior(finding(), finding(claim="second"))
+    out = parse([closure(fp("the v2 branch never fires"), evidence=""),
+                 closure(fp("second"), evidence=""), finding()], prior_open=before)
+    assert sorted(f["fingerprint"] for f in out["open_set"]) == sorted([fp("the v2 branch never fires"),
+                                                                        fp("second")])
+    assert out["unaccounted"] == [fp("second")] and len(out["closure_rejected"]) == 2
 
 
 def test_one_fingerprint_twice_is_one_finding_at_the_more_severe():
@@ -300,6 +341,60 @@ def test_closing_everything_with_empty_evidence_is_unavailable():
     with pytest.raises(ReportError):
         parse([closure(fp("the v2 branch never fires"), evidence=""),
                closure(fp("second"), evidence="")], prior_open=before)
+
+
+# --- "Lines end at LF, with a CR before it tolerated; U+2028, U+2029 and
+#     every other Unicode separator are content, so one inside a claim does
+#     not split the line." (section 6, spec v1.10)
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\x85"])
+def test_a_unicode_separator_in_a_claim_is_content(separator):
+    claim = f"the hook splits{separator}on this"
+    text = f"Review.\nR5-FINDINGS: {json.dumps([finding(claim=claim)], ensure_ascii=False)}\n"
+    assert [f["claim"] for f in r5_findings.parse_report(text, "correctness")["findings"]] == [claim]
+
+
+def test_a_cr_before_lf_is_tolerated():
+    text = report([finding()]).replace("\n", "\r\n")
+    assert len(r5_findings.parse_report(text, "correctness")["findings"]) == 1
+
+
+def test_a_crlf_report_ending_in_a_blank_line_finds_its_contract_line():
+    # json.loads forgives a CR after the array, so this is the case that
+    # tells whether the CR was dropped: a lone "\r" must be a blank line.
+    text = "Review.\r\nR5-FINDINGS: []\r\n\r\n"
+    assert r5_findings.parse_report(text, "correctness")["findings"] == []
+
+
+def test_a_separator_after_the_contract_line_is_not_a_line_end():
+    with pytest.raises(ReportError, match="not JSON"):
+        r5_findings.parse_report("R5-FINDINGS: []\u2028\n", "correctness")
+
+
+def test_a_crlf_report_s_prose_is_read_like_an_lf_one():
+    lf = r5_findings.parse_report(report([finding(severity="MINOR")], prose=PROSE), "correctness")
+    crlf = r5_findings.parse_report(report([finding(severity="MINOR")], prose=PROSE).replace("\n", "\r\n"),
+                                    "correctness")
+    assert crlf["prose_unfiled"] == lf["prose_unfiled"] != []
+
+
+def test_the_command_line_reads_a_lone_cr_as_content(tmp_path):
+    # Universal newlines would end the line at the CR and leave "]" last.
+    path = tmp_path / "r.md"
+    path.write_bytes(b"Review.\nR5-FINDINGS: [\r]\n")
+    run = cli("parse", "correctness", str(path))
+    assert run.returncode == 0, run.stderr
+    assert json.loads(run.stdout)["findings"] == []
+
+
+def test_the_command_line_keeps_a_separator_in_a_claim(tmp_path):
+    claim = "line ~3 is off by one\u2028here"
+    path = tmp_path / "r.md"
+    path.write_text(f"Review.\nR5-FINDINGS: {json.dumps([finding(claim=claim)], ensure_ascii=False)}\n",
+                    encoding="utf-8")
+    run = cli("parse", "correctness", str(path))
+    assert run.returncode == 0, run.stderr
+    assert json.loads(run.stdout)["findings"][0]["fingerprint"] == fp(claim)
 
 
 # --- the CLI: exit 0, 2 for UNAVAILABLE, 1 for the caller's mistake
