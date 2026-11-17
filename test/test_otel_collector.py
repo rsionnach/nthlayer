@@ -772,6 +772,35 @@ def test_confidence_gauge_keeps_the_last_value(collector):
     assert _of_service(gauge, svc) == {tuple(sorted(labels.items())): 0.2}, text
 
 
+def test_confidence_gauge_last_value_spans_instances_of_one_service(collector):
+    # Two replicas of one service (OTel resource semconv: one service.name,
+    # each its own service.instance.id) land in one batch, since the batch
+    # processor merges exports. `service` is the service.name alone (N3), so
+    # they share a series, and its value is the last decision in record
+    # order: instance A, then B, then A again gives A's second value, not
+    # whichever resource appeared first.
+    svc = "replicated-confidence-gate"
+    labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
+
+    def resource_logs(instance, i, conf):
+        return {
+            "resource": {"attributes": _attrs({"service.name": svc,
+                                               "service.instance.id": instance})},
+            "scopeLogs": [{"scope": {"name": "nthlayer"}, "logRecords": [
+                decision(f"bafy-fixture-replica-{i}", "triage", "page", True,
+                         NOW_NS + i, **_conf(conf)),
+            ]}],
+        }
+
+    send(collector, {"resourceLogs": [resource_logs("replica-a", 1, 0.4),
+                                      resource_logs("replica-b", 2, 0.7),
+                                      resource_logs("replica-a", 3, 0.9)]})
+    fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 3)
+    assert _of_service(fam, svc) == {tuple(sorted(labels.items())): 3}, text
+    gauge, text = wait_for_series(collector, CONFIDENCE, labels, 0.9)
+    assert _of_service(gauge, svc) == {tuple(sorted(labels.items())): 0.9}, text
+
+
 def test_pinned_image_is_exact():
     assert pinned_image().startswith("otel/opentelemetry-collector-contrib:")
 

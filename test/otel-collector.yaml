@@ -138,6 +138,15 @@ connectors:
             and IsDouble(log.attributes["nthlayer.decision.confidence"])
             and log.attributes["nthlayer.decision.confidence"] >= 0.0
             and log.attributes["nthlayer.decision.confidence"] <= 1.0
+        # The connector keys its points by resource, then the transform
+        # strips the resource to `service`. Keyed by the whole resource, two
+        # resources of one service.name (two instances, merged into one
+        # batch) would be two points for one series, and the exporter would
+        # keep the first resource's, not the last in record order. Keep only
+        # service.name, the one resource attribute the transform reads; a
+        # resource without it keeps none, as before (service="unknown").
+        include_resource_attributes:
+          - key: service.name
         attributes:
           - key: nthlayer.decision.type
             default_value: unknown
