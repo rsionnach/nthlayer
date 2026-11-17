@@ -359,9 +359,14 @@ def test_a_cr_before_lf_is_tolerated():
     assert len(r5_findings.parse_report(text, "correctness")["findings"]) == 1
 
 
+def test_output_lines_splits_at_lf_only_and_drops_the_cr_before_it():
+    # Pinned directly: both parse_report callers strip a trailing CR again,
+    # so through them a lost CR drop would go unseen.
+    assert r5_findings.output_lines("a\r\nb\u2028c\r\nx\ry\n") == ["a", "b\u2028c", "x\ry", ""]
+
+
 def test_a_crlf_report_ending_in_a_blank_line_finds_its_contract_line():
-    # json.loads forgives a CR after the array, so this is the case that
-    # tells whether the CR was dropped: a lone "\r" must be a blank line.
+    # The trailing "\r\n\r\n" leaves a blank last line, which is skipped.
     text = "Review.\r\nR5-FINDINGS: []\r\n\r\n"
     assert r5_findings.parse_report(text, "correctness")["findings"] == []
 
