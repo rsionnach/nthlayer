@@ -10,8 +10,10 @@ it rule for rule, and where the two disagree, cúramóir's code is right
 r5_corpus imports it rather than keeping its own.
 
 A reviewer's LAST non-empty output line is ``R5-FINDINGS:`` followed by a JSON
-array of findings. r5-supervise calls this on every report; it never trusts
-counts typed by the supervisor.
+array of findings. A report's lines end at LF only, a CR before it tolerated;
+U+2028, U+2029 and the other Unicode separators are content (spec v1.10).
+r5-supervise calls this on every report; it never trusts counts typed by the
+supervisor.
 
     r5_findings.py parse <lens> <report-file> [--floor <level>] [--prior <file>]
     r5_findings.py compare <recorded.json> <replay-state.json>
@@ -42,14 +44,16 @@ evidence is non-empty; an invalid closure is ignored and rejected with the
 reason, and a second closure of the same fingerprint is dropped. The
 closure's own fingerprint is never compared to ``resolves``. A re-raised
 finding is the prior record copied verbatim (path and claim, so the same
-fingerprint) with no ``resolves``. The open set is the previous open set
-minus valid closures, plus new and re-raised findings; a prior open finding
-with neither a closure nor a re-raise is carried forward unchanged, tagged
-``unaccounted``: silence never closes. A re-raise keeps the more severe of
+fingerprint) with no ``resolves``; a report that re-raises a finding and
+also closes it has that closure rejected and the re-raise kept (spec v1.10).
+The open set is the previous open set minus valid closures, plus new and
+re-raised findings; a prior open finding with neither a closure nor a
+re-raise is carried forward unchanged, tagged ``unaccounted``: silence never
+closes. A re-raise keeps the more severe of
 its own and the prior finding's severity (``downgrades_refused`` lists those
 it held up): severity goes down only through a valid closure. A report that
-closes every prior finding with empty evidence is a contract failure
-(R5-R25).
+closes every prior finding with empty evidence and re-raises none of them is
+a contract failure (R5-R25).
 
 ``parse`` exits 0; 2 if the report does not meet the contract (the reason on
 stderr: the caller records the reviewer UNAVAILABLE, R5-R9); 1 on a usage
@@ -82,14 +86,17 @@ BLOCKING = ("CRITICAL", "IMPORTANT")
 ADVISORY_LENSES = ("clarity", "excellence")
 
 # Removed from a claim before it is fingerprinted, so a finding keeps its key
-# when the code it points at moves: line references (line 42, lines 4-9,
-# :42, :4-9, L42) and SHA-like tokens (7 to 40 hex characters with at least
-# one digit, so a word like "defaced" stays). Other numbers stay: "exits 2"
-# and "exits 4" are different claims.
-_LINE_REF = re.compile(r"\blines?\s+\d+(?:\s*[-\u2013]\s*\d+)?\b|:\d+(?:-\d+)?\b|\bl\d+\b")
+# when the code it points at moves: line references (line 42, line ~42,
+# lines 4-9, :42, :4-9, L42; the "~" from spec v1.10) and SHA-like tokens
+# (7 to 40 hex characters with at least one digit, so a word like "defaced"
+# stays). Other numbers stay: "exits 2" and "exits 4" are different claims.
+_LINE_REF = re.compile(r"\blines?\s+~?\d+(?:\s*[-\u2013]\s*~?\d+)?\b|:\d+(?:-\d+)?\b|\bl\d+\b")
 _SHA = re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b")
 _SPACE = re.compile(r"\s+")
 _FINGERPRINT = re.compile(r"[0-9a-f]{16}")
+# What counts as blank at the ends of an output line: ASCII whitespace only,
+# since every Unicode separator is content (section 6, spec v1.10).
+_BLANK = " \t\r\f\v"
 
 
 class ReportError(Exception):
@@ -114,10 +121,17 @@ def fingerprint(lens: str, path: str, claim: str) -> str:
     return hashlib.sha256(data).hexdigest()[:16]
 
 
+def output_lines(text: str) -> list:
+    """The report's lines: split at LF only, one CR before it dropped
+    (section 6, spec v1.10). str.splitlines would also split at U+2028,
+    U+2029 and the other separators, which are content."""
+    return [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
+
+
 def _last_line(text: str) -> str:
-    for line in reversed(text.splitlines()):
-        if line.strip():
-            return line.strip()
+    for line in reversed(output_lines(text)):
+        if line.strip(_BLANK):
+            return line.strip(_BLANK)
     raise ReportError("the report is empty")
 
 
@@ -226,7 +240,7 @@ def _prose_items(text: str) -> dict:
     workspace, since the shape is fixed by the templates."""
     items = {s: [] for s in (*SEVERITIES, NOT_FILED)}
     current, fenced = None, False
-    for raw in text.splitlines():
+    for raw in output_lines(text):
         line = raw.strip()
         if line.startswith("```"):
             fenced = not fenced
@@ -311,25 +325,6 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
     records = [_finding(item, lens, n) for n, item in enumerate(raw, 1)]
 
     prior = {f["fingerprint"]: f for f in prior_open}
-    claimed, rejected = [], []
-    for record in (r for r in records if r["resolves"] is not None):
-        target = record["resolves"]
-        if target not in prior:
-            reason = "resolves names no fingerprint in the previous round's open set"
-        elif not record["evidence"].strip():
-            reason = "a closure needs evidence (the resolving lines)"
-        elif target in claimed:
-            reason = "a second closure of the same fingerprint is dropped"
-        else:
-            claimed.append(target)
-            continue
-        rejected.append({"resolves": target, "fingerprint": record["fingerprint"],
-                         "reason": reason})
-    # R5-R25: closing everything without citing the resolving lines.
-    if prior and not claimed and all(
-            any(r["resolves"] == fp and not r["evidence"].strip() for r in records)
-            for fp in prior):
-        raise ReportError("every prior finding is closed with empty evidence")
 
     # One entry per fingerprint: the same claim at two sites (or two claims
     # differing only in a line reference) share one; the most severe wins.
@@ -339,6 +334,32 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
         if kept is None or SEVERITIES.index(record["severity"]) < SEVERITIES.index(kept["severity"]):
             by_fp[record["fingerprint"]] = record
     seen = set(by_fp)
+
+    valid_closures, rejected = [], []
+    for record in (r for r in records if r["resolves"] is not None):
+        target = record["resolves"]
+        if target not in prior:
+            reason = "resolves names no fingerprint in the previous round's open set"
+        elif not record["evidence"].strip():
+            reason = "a closure needs evidence (the resolving lines)"
+        elif target in seen:
+            # Section 6: the re-raise is kept and the closure rejected.
+            reason = "the same report re-raises the finding it closes"
+        elif target in valid_closures:
+            reason = "a second closure of the same fingerprint is dropped"
+        else:
+            valid_closures.append(target)
+            continue
+        rejected.append({"resolves": target, "fingerprint": record["fingerprint"],
+                         "reason": reason})
+    # R5-R25: closing every prior finding without citing the resolving lines,
+    # and re-raising none of them. A re-raise beside an empty closure is a
+    # finding kept, not a report to discard (spec v1.10).
+    if prior and not valid_closures and not seen.intersection(prior) and all(
+            any(r["resolves"] == fp and not r["evidence"].strip() for r in records)
+            for fp in prior):
+        raise ReportError("every prior finding is closed with empty evidence")
+
     current, downgrades_refused = [], []
     for fp, record in by_fp.items():
         before = prior.get(fp)
@@ -348,9 +369,6 @@ def parse_report(text: str, lens: str, floor: str = DEFAULT_FLOOR,
             record = {**record, "severity": before["severity"]}
             downgrades_refused.append(fp)
         current.append(record)
-    # A closure is valid unless the same report also re-raises the finding,
-    # which keeps it open (it is then neither a closure nor a rejection).
-    valid_closures = [fp for fp in claimed if fp not in seen]
     carried = [{**f, "unaccounted": True} for fp, f in prior.items()
                if fp not in seen and fp not in valid_closures]
     open_set = current + carried
@@ -590,7 +608,9 @@ def main(argv: list) -> int:
             return 1
     _, lens, path = args
     try:
-        with open(path, encoding="utf-8") as handle:
+        # newline="": no universal-newline translation, so only LF splits
+        # the report (output_lines), as section 6 says.
+        with open(path, encoding="utf-8", newline="") as handle:
             text = handle.read()
     except UnicodeDecodeError:  # the report itself fails the contract
         print(f"r5_findings: the report {path} is not valid UTF-8", file=sys.stderr)
