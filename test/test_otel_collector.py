@@ -624,8 +624,8 @@ def _raw_conf(rec, otlp_value):
 def test_confidence_gauge_series_labels_and_value(collector):
     # One series per (service, decision_type, decision_value), the labels of
     # nthlayer_decisions_total (N3), valued at the decision's confidence. A
-    # decision lacking the Required nthlayer.decision.type is `unknown`, as
-    # in the counter.
+    # decision lacking the Required nthlayer.decision.type or
+    # nthlayer.decision.value is `unknown` there, as in the counter.
     svc = "confidence-gate"
     send(collector, payload({svc: [
         decision("bafy-fixture-conf-1", "refund_approval", "approve", True, NOW_NS,
@@ -639,6 +639,11 @@ def test_confidence_gauge_series_labels_and_value(collector):
                 "nthlayer.decision.value": "page", "nthlayer.decision.autonomous": True,
                 **_conf(0.8)},
                NOW_NS + 3),
+        record("nthlayer.decision",
+               {"nthlayer.decision.id": "bafy-fixture-conf-7",
+                "nthlayer.decision.type": "triage", "nthlayer.decision.autonomous": True,
+                **_conf(0.77)},
+               NOW_NS + 6),
         # Not a decision: the same attributes on other event names give no point.
         record("gen_ai.decision",
                {"nthlayer.decision.id": "bafy-fixture-conf-5",
@@ -656,6 +661,7 @@ def test_confidence_gauge_series_labels_and_value(collector):
         (("decision_type", "refund_approval"), ("decision_value", "deny")): 0.25,
         (("decision_type", "triage"), ("decision_value", "escalate")): 0.5,
         (("decision_type", "unknown"), ("decision_value", "page")): 0.8,
+        (("decision_type", "triage"), ("decision_value", "unknown")): 0.77,
     }
     expected = {tuple(sorted({"service": svc, **dict(k)}.items())): v
                 for k, v in expected.items()}
