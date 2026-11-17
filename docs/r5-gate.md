@@ -229,7 +229,12 @@ file does not restate; NthLayer's scripts implement them.
   blocking pass is clean against. A blocking finding below the verification
   floor (default `script`) is UNPROVEN and still blocks. A report whose last
   line is not the contract makes the reviewer UNAVAILABLE: re-dispatched
-  once, then escalated.
+  once, then, for a blocking lens, escalated; an advisory lens UNAVAILABLE
+  twice is recorded, named in the close reason, and does not block (spec
+  v1.15, R5-R9). Spec v1.14 reads a shortened `resolves` as a unique prefix
+  of four or more hex characters, or rejects it as a closure, never
+  UNAVAILABLE; `scripts/r5_findings.py` still exits 2 on one until
+  opensrm-6kqs.19 copies the rule from cúramóir's parser.
 - **Round record** (`scripts/r5_record.py`, opensrm-6kqs.4). `rounds[]` is
   derived from the state file's audit trail at archive time, never written
   by hand: round 0 (`preflight`), then one `review` or `verify` round per
