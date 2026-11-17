@@ -1,10 +1,10 @@
-"""The OTel Collector config turns A1 §4 log events into the §4.5 counters.
+"""The OTel Collector config turns A1 §4 log events into §4.5 series.
 
 Runs the collector image pinned in test/docker-compose.yml with the committed
 test/otel-collector.yaml, sends a fixed set of OTLP log records over
 OTLP/HTTP JSON, scrapes the Prometheus exporter and checks every sample of
 nthlayer_decisions_total, nthlayer_reversals_total and nthlayer_outcomes_total
-[opensrm-s4ui].
+[opensrm-s4ui], and of the nthlayer_decision_confidence gauge [opensrm-taz2].
 
 Fixture provenance: every event below is built from the attribute tables of
 opensrm/OPENSRM-TELEMETRY-ADDENDUM-v2.md §4.1-§4.3 (Required attributes,
@@ -43,7 +43,12 @@ TEST_DIR = Path(__file__).resolve().parent
 CONFIG = TEST_DIR / "otel-collector.yaml"
 COMPOSE = TEST_DIR / "docker-compose.yml"
 
-FAMILIES = ("nthlayer_decisions_total", "nthlayer_reversals_total", "nthlayer_outcomes_total")
+COUNTERS = ("nthlayer_decisions_total", "nthlayer_reversals_total", "nthlayer_outcomes_total")
+# §4.5's name for the gauge of nthlayer.decision.confidence: N1 prefix, N2 no
+# unit suffix for a ratio, no `_total` for a gauge.
+CONFIDENCE = "nthlayer_decision_confidence"
+FAMILIES = (*COUNTERS, CONFIDENCE)
+KINDS = {**{f: "counter" for f in COUNTERS}, CONFIDENCE: "gauge"}
 NOW_NS = time.time_ns()
 HOUR_NS = 3600 * 10**9
 
@@ -248,6 +253,12 @@ EXPECTED_AFTER_1 = {
         _key({"service": "refund-gate", "outcome_value": "correct",
               "outcome_source": "human_audit"}): 1,
     },
+    # Only D1 carries nthlayer.decision.confidence (Recommended, §4.1); the
+    # gauge has the decision counter's labels.
+    CONFIDENCE: {
+        _key({"service": "refund-gate", "decision_type": "refund_approval",
+              "decision_value": "approve"}): 0.93,
+    },
 }
 
 EXPECTED_AFTER_2 = {
@@ -264,6 +275,8 @@ EXPECTED_AFTER_2 = {
         _key({"service": "triage-gate", "outcome_value": "indeterminate",
               "outcome_source": "incident_resolution"}): 1,
     },
+    # D5 has no confidence: it is counted above, and leaves D1's gauge value.
+    CONFIDENCE: EXPECTED_AFTER_1[CONFIDENCE],
 }
 
 
@@ -404,7 +417,7 @@ def send(collector, body):
 
 
 def wait_for(collector, expected, timeout=30):
-    """Poll the exporter until the three families match; return the last scrape."""
+    """Poll the exporter until the four families match; return the last scrape."""
     deadline = time.monotonic() + timeout
     while True:
         text = _get(collector["metrics"])
@@ -425,7 +438,7 @@ def check_scrape(collector, expected):
         assert _show(got[family]) == _show(expected[family]), (
             f"{family}: got {_show(got[family])}\nexporter output:\n{text}"
         )
-        assert types.get(family) == "counter", (family, types.get(family))
+        assert types.get(family) == KINDS[family], (family, types.get(family))
     # No other nthlayer_ series, and no label anywhere carries an id, the
     # free-text reason, or an actor ref (none of them is low cardinality).
     extra = sorted(n for n in samples if n.startswith("nthlayer_") and n not in FAMILIES)
@@ -556,7 +569,8 @@ def test_resource_without_service_name_is_counted_as_unknown(collector):
     body = {"resourceLogs": [{
         "resource": {"attributes": []},
         "scopeLogs": [{"scope": {"name": "nthlayer"}, "logRecords": [
-            decision("bafy-fixture-anonymous-1", "triage", "page", True, NOW_NS),
+            decision("bafy-fixture-anonymous-1", "triage", "page", True, NOW_NS,
+                     **{"nthlayer.decision.confidence": 0.61}),
         ]}],
     }]}
     send(collector, body)
@@ -565,6 +579,10 @@ def test_resource_without_service_name_is_counted_as_unknown(collector):
     assert _of_service(fam, "unknown") == {tuple(sorted(labels.items())): 1}, text
     # Nothing counted without a service label.
     assert all(any(k == "service" for k, _ in key) for key in fam), text
+    # The gauge takes `service` the same way.
+    gauge, text = wait_for_series(collector, CONFIDENCE, labels, 0.61)
+    assert _of_service(gauge, "unknown") == {tuple(sorted(labels.items())): 0.61}, text
+    assert all(any(k == "service" for k, _ in key) for key in gauge), text
 
 
 def test_service_label_comes_from_the_resource(collector):
@@ -574,12 +592,184 @@ def test_service_label_comes_from_the_resource(collector):
     svc = "resource-gate"
     send(collector, payload({svc: [
         decision("bafy-fixture-spoof-1", "triage", "page", True, NOW_NS,
-                 **{"service.name": "spoofed-gate"}),
+                 **{"service.name": "spoofed-gate",
+                    "nthlayer.decision.confidence": 0.42}),
     ]}))
     labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
     fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 1)
     assert _of_service(fam, svc) == {tuple(sorted(_key(labels))): 1}, text
     assert not _of_service(fam, "spoofed-gate"), text
+    gauge, text = wait_for_series(collector, CONFIDENCE, labels, 0.42)
+    assert _of_service(gauge, svc) == {tuple(sorted(_key(labels))): 0.42}, text
+    assert not _of_service(gauge, "spoofed-gate"), text
+
+
+# ---------------------------------------------------------------------------
+# nthlayer_decision_confidence (A1 §4.5 gauge of §4.1's
+# nthlayer.decision.confidence: double, Recommended, a ratio 0.0-1.0)
+# [opensrm-taz2]
+# ---------------------------------------------------------------------------
+
+
+def _conf(value):
+    return {"nthlayer.decision.confidence": value}
+
+
+def _raw_conf(rec, otlp_value):
+    """Add a confidence with an explicit OTLP AnyValue (a JSON-only form)."""
+    rec["attributes"].append({"key": "nthlayer.decision.confidence", "value": otlp_value})
+    return rec
+
+
+def test_confidence_gauge_series_labels_and_value(collector):
+    # One series per (service, decision_type, decision_value), the labels of
+    # nthlayer_decisions_total (N3), valued at the decision's confidence. A
+    # decision lacking the Required nthlayer.decision.type is `unknown`, as
+    # in the counter.
+    svc = "confidence-gate"
+    send(collector, payload({svc: [
+        decision("bafy-fixture-conf-1", "refund_approval", "approve", True, NOW_NS,
+                 **_conf(0.93)),
+        decision("bafy-fixture-conf-2", "refund_approval", "deny", True, NOW_NS + 1,
+                 **_conf(0.25)),
+        decision("bafy-fixture-conf-3", "triage", "escalate", False, NOW_NS + 2,
+                 **_conf(0.5)),
+        record("nthlayer.decision",
+               {"nthlayer.decision.id": "bafy-fixture-conf-4",
+                "nthlayer.decision.value": "page", "nthlayer.decision.autonomous": True,
+                **_conf(0.8)},
+               NOW_NS + 3),
+        # Not a decision: the same attributes on other event names give no point.
+        record("gen_ai.decision",
+               {"nthlayer.decision.id": "bafy-fixture-conf-5",
+                "nthlayer.decision.type": "refund_approval",
+                "nthlayer.decision.value": "approve", **_conf(0.11)},
+               NOW_NS + 4),
+        record(None,
+               {"nthlayer.decision.id": "bafy-fixture-conf-6",
+                "nthlayer.decision.type": "refund_approval",
+                "nthlayer.decision.value": "approve", **_conf(0.12)},
+               NOW_NS + 5),
+    ]}))
+    expected = {
+        (("decision_type", "refund_approval"), ("decision_value", "approve")): 0.93,
+        (("decision_type", "refund_approval"), ("decision_value", "deny")): 0.25,
+        (("decision_type", "triage"), ("decision_value", "escalate")): 0.5,
+        (("decision_type", "unknown"), ("decision_value", "page")): 0.8,
+    }
+    expected = {tuple(sorted({"service": svc, **dict(k)}.items())): v
+                for k, v in expected.items()}
+    for key, value in expected.items():
+        fam, text = wait_for_series(collector, CONFIDENCE, dict(key), value)
+    assert _of_service(fam, svc) == expected, f"got {_of_service(fam, svc)}\n{text}"
+
+
+def test_confidence_gauge_exported_name_and_type(collector):
+    # §4.5: exactly nthlayer_decision_confidence, a gauge. N2: a ratio has no
+    # unit suffix (no _ratio), and a gauge has no _total.
+    svc = "confidence-name-gate"
+    send(collector, payload({svc: [
+        decision("bafy-fixture-conf-name-1", "triage", "page", True, NOW_NS, **_conf(0.3)),
+    ]}))
+    labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
+    _, text = wait_for_series(collector, CONFIDENCE, labels, 0.3)
+    for accept in (None, "text/plain;version=1.0.0;escaping=allow-utf-8"):
+        text = _get(collector["metrics"], headers={"Accept": accept} if accept else None)
+        samples, types = parse_exposition(text)
+        assert types.get(CONFIDENCE) == "gauge", (types, text)
+        assert _key(labels) in samples.get(CONFIDENCE, {}), text
+        assert not [n for n in {*samples, *types}
+                    if "confidence" in n and n != CONFIDENCE], text
+
+
+def test_decision_without_confidence_gives_no_point_but_is_counted(collector):
+    # nthlayer.decision.confidence is Recommended: its absence is a valid
+    # decision, counted, with no gauge point.
+    svc = "no-confidence-gate"
+    send(collector, payload({svc: [
+        decision("bafy-fixture-noconf-1", "triage", "page", True, NOW_NS),
+        decision("bafy-fixture-noconf-2", "triage", "page", True, NOW_NS + 1),
+        # A control in the same export, so the gauge's absence below is not
+        # just a gauge that has not arrived yet.
+        decision("bafy-fixture-noconf-3", "triage", "ack", True, NOW_NS + 2, **_conf(0.6)),
+    ]}))
+    labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
+    control = {**labels, "decision_value": "ack"}
+    fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 2)
+    assert fam.get(_key(labels)) == 2, text
+    gauge, text = wait_for_series(collector, CONFIDENCE, control, 0.6)
+    assert _of_service(gauge, svc) == {tuple(sorted(control.items())): 0.6}, text
+
+
+# §4.1: a double, a ratio 0.0-1.0. Values that are not (each under its own
+# decision_type, so each would be its own series) and the two bounds, which are.
+NONCONFORMING_CONFIDENCE = [
+    # (decision_type, OTLP AnyValue)
+    ("string", {"stringValue": "0.9"}),  # a string, even a numeric one
+    ("int", {"intValue": "1"}),          # an int, not a double
+    ("bool", {"boolValue": True}),
+    ("above", {"doubleValue": 1.5}),
+    ("below", {"doubleValue": -0.1}),
+    ("nan", {"doubleValue": "NaN"}),
+    ("inf", {"doubleValue": "Infinity"}),
+]
+BOUNDARY_CONFIDENCE = [("zero", 0.0), ("one", 1.0)]
+
+
+def test_nonconforming_confidence_gives_no_point_but_is_counted(collector):
+    svc = "bad-confidence-gate"
+    recs = [_raw_conf(decision(f"bafy-fixture-badconf-{dtype}", dtype, "approve", True,
+                               NOW_NS + i), value)
+            for i, (dtype, value) in enumerate(NONCONFORMING_CONFIDENCE)]
+    recs += [decision(f"bafy-fixture-edgeconf-{dtype}", dtype, "approve", True,
+                      NOW_NS + 100 + i, **_conf(value))
+             for i, (dtype, value) in enumerate(BOUNDARY_CONFIDENCE)]
+    send(collector, payload({svc: recs}))
+    # Every decision is counted, whatever its confidence.
+    for dtype, _ in [*NONCONFORMING_CONFIDENCE, *BOUNDARY_CONFIDENCE]:
+        labels = {"service": svc, "decision_type": dtype, "decision_value": "approve"}
+        fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 1)
+        assert fam.get(_key(labels)) == 1, (dtype, text)
+    # Only the bounds give points, at their own value: never a clamp or a
+    # conversion of the others.
+    expected = {}
+    for dtype, value in BOUNDARY_CONFIDENCE:
+        labels = {"service": svc, "decision_type": dtype, "decision_value": "approve"}
+        gauge, text = wait_for_series(collector, CONFIDENCE, labels, value)
+        expected[tuple(sorted(labels.items()))] = value
+    assert _of_service(gauge, svc) == expected, f"got {_of_service(gauge, svc)}\n{text}"
+
+
+def test_confidence_gauge_keeps_the_last_value(collector):
+    # A gauge is a last value. Within one export, the last decision of a
+    # series in record order, even if its Timestamp is earlier (an event's own
+    # time, T1, is not its arrival); across exports, the later export.
+    svc = "last-confidence-gate"
+    labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
+
+    def dec(i, ts_ns, **conf):
+        return decision(f"bafy-fixture-lastconf-{i}", "triage", "page", True, ts_ns, **conf)
+
+    send(collector, payload({svc: [dec(1, NOW_NS, **_conf(0.4)),
+                                   dec(2, NOW_NS - HOUR_NS, **_conf(0.7))]}))
+    gauge, text = wait_for_series(collector, CONFIDENCE, labels, 0.7)
+    assert _of_service(gauge, svc) == {tuple(sorted(labels.items())): 0.7}, text
+
+    send(collector, payload({svc: [dec(3, NOW_NS + 1, **_conf(0.2))]}))
+    gauge, text = wait_for_series(collector, CONFIDENCE, labels, 0.2)
+    assert _of_service(gauge, svc) == {tuple(sorted(labels.items())): 0.2}, text
+
+    # A later decision without a conforming confidence leaves the value.
+    send(collector, payload({svc: [dec(4, NOW_NS + 2),
+                                   _raw_conf(dec(5, NOW_NS + 3), {"doubleValue": 1.5})]}))
+    fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 5)
+    assert fam.get(_key(labels)) == 5, text
+    # The counter and the gauge leave the connectors one after the other;
+    # give a (wrong) gauge update time to land before reading it.
+    time.sleep(2)
+    text = _get(collector["metrics"])
+    gauge = parse_exposition(text)[0].get(CONFIDENCE, {})
+    assert _of_service(gauge, svc) == {tuple(sorted(labels.items())): 0.2}, text
 
 
 def test_pinned_image_is_exact():
@@ -592,7 +782,8 @@ def test_exporter_escapes_names_for_a_utf8_scraper(collector):
     # pinned Prometheus v2.51 does not offer that, so it cannot pin this).
     svc = "escaping-gate"
     send(collector, payload({svc: [
-        decision("bafy-fixture-escaping-1", "triage", "page", True, NOW_NS),
+        decision("bafy-fixture-escaping-1", "triage", "page", True, NOW_NS,
+                 **{"nthlayer.decision.confidence": 0.5}),
         reversal("bafy-fixture-escaping-1", "human_override", "human", NOW_NS + 1),
         outcome("bafy-fixture-escaping-1", "correct", "human_audit", NOW_NS + 2),
     ]}))
@@ -603,7 +794,7 @@ def test_exporter_escapes_names_for_a_utf8_scraper(collector):
         "Accept": "text/plain;version=1.0.0;escaping=allow-utf-8"})
     _, types = parse_exposition(text)
     for family in FAMILIES:
-        assert types.get(family) == "counter", (family, text)
+        assert types.get(family) == KINDS[family], (family, text)
     samples = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
     assert not [ln for ln in samples if ln.startswith("{") or "nthlayer." in ln], text
 
@@ -717,6 +908,7 @@ def test_fake_service_events_are_counted_with_n3_labels(collector, fake_gate):
         ("nthlayer_decisions_total", {"service", "decision_type", "decision_value"}),
         ("nthlayer_reversals_total", {"service", "reversal_type", "reversal_actor_type"}),
         ("nthlayer_outcomes_total", {"service", "outcome_value", "outcome_source"}),
+        (CONFIDENCE, {"service", "decision_type", "decision_value"}),
     ):
         assert got[family], f"no {family} for {FAKE_NAME}:\n{text}"
         for key in got[family]:
@@ -726,6 +918,17 @@ def test_fake_service_events_are_counted_with_n3_labels(collector, fake_gate):
         assert labels["decision_type"] == decision_type, labels
         assert labels["decision_value"] != "unknown", labels
     assert any(dict(k)["decision_value"] == "escalate" for k in got["nthlayer_decisions_total"])
+    # fake-service sets nthlayer.decision.confidence on every decision, so
+    # through the published emitter (OTLP/gRPC) each decision series has a
+    # gauge, a ratio 0.0-1.0 (§4.1). Scraped once, both come from the same
+    # batches; wait until every decision series has shown its gauge.
+    while (set(got[CONFIDENCE]) != set(got["nthlayer_decisions_total"])
+           and time.monotonic() <= deadline):
+        time.sleep(0.5)
+        got, text = _service_samples(collector, FAKE_NAME)
+    assert set(got[CONFIDENCE]) == set(got["nthlayer_decisions_total"]), text
+    for key, value in got[CONFIDENCE].items():
+        assert 0.0 <= value <= 1.0, (dict(key), value)
     for key in got["nthlayer_reversals_total"]:
         labels = dict(key)
         assert labels["reversal_type"] in REVERSAL_TYPES, labels
