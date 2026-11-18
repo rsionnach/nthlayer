@@ -52,6 +52,7 @@ Skip when:
 | [eager-case-creation.md](eager-case-creation.md) | Active for v1.5 | Cases created at incident-open, before triage runs |
 | [hot-path-vs-cli-side-effect-ownership.md](hot-path-vs-cli-side-effect-ownership.md) | Active for v1.5 | Worker modules own production side-effects; CLI is ad-hoc only |
 | [opensrm-v1-support.md](opensrm-v1-support.md) | Active | opensrm/v1 is migrate-only; srm/v1 is NthLayer's v1 dialect |
+| [decision-source-of-truth.md](decision-source-of-truth.md) | Decided 2026-11-18 | Core's store is the record for decisions and their rates; one reversal rate |
 
 ## Linking from code
 
