@@ -42,8 +42,9 @@
 # Usage:
 #   ./test/integration-thresholds.sh
 #
-# Env overrides (defaults chosen not to collide with the demo or
-# integration-three-tier.sh, so both can run on one host):
+# Env overrides (defaults chosen not to collide with
+# integration-three-tier.sh, so the two can run on one host; not beside the
+# demo, which holds 8001-8008, the only ports prometheus.yml scrapes):
 #   CORE_PORT (default 8100)
 #   FAKE_PORT (default 8006; must be one prometheus.yml scrapes, 8001-8008)
 #   EXPOSITION_PORT (default 8007; same constraint)
@@ -176,7 +177,7 @@ boot_three_tier_stack \
 served=$(curl -fsS "${CORE_URL}/manifests/${BREACH_SERVICE}" \
     | jq -cS '[.judgment_thresholds[] | select(.type == "calibration") | .bounds]')
 [[ "${served}" == "[{\"maximum_brier_score\":0.05,\"${ECE_BOUND}\":0.03}]" ]] \
-    || fail "core serves ${BREACH_SERVICE} calibration bounds ${served}"
+    || fail "core serves ${BREACH_SERVICE} calibration bounds ${served}, expected [{\"maximum_brier_score\":0.05,\"${ECE_BOUND}\":0.03}]"
 pass "core serves ${BREACH_SERVICE}'s calibration threshold: ${served}"
 
 # ---------------------------------------------------------------------------
@@ -213,8 +214,10 @@ run_assertion "within evaluation" wait-threshold-evaluation \
 [[ "${THRESHOLD_OVERALL_STATUS}" == "within" ]] \
     || fail "${WITHIN_SERVICE} outcome is ${THRESHOLD_OVERALL_STATUS}, expected within (Brier too)"
 pass "judgment_threshold_evaluation ${THRESHOLD_ASSESSMENT_ID}: ${ECE_BOUND} measured ${THRESHOLD_MEASURED} (outcome ${THRESHOLD_OVERALL_STATUS})"
-# The threshold phase evaluates both services in one run, so by now any
-# breach of the control would already be on core.
+# Workers post a key's assessment before its quality_breach, so seeing the
+# control's evaluation does not prove a breach of it is not still in flight:
+# wait one more threshold interval before asserting there is none.
+sleep $((MEASURE_THRESHOLD_INTERVAL + 1))
 run_assertion "no breach for the control" assert-no-verdict quality_breach \
     --service "${WITHIN_SERVICE}" --core-url "${CORE_URL}"
 pass "no quality_breach for ${WITHIN_SERVICE}"

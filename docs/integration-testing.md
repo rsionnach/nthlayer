@@ -59,7 +59,8 @@ cross-reference.
   `calibration-within-gate`. Defaults to its own ports (core 8100,
   fake-service 8006, exposition 8007, Prometheus 9190, collector
   4417/4418/8989) and compose project `nthlayer-thresholds`, so it does not
-  collide with the demo or the three-tier test. Runs in ~15s once
+  collide with the three-tier test; it cannot run beside the demo, which
+  holds 8001-8008, the only ports `test/prometheus.yml` scrapes. Runs in ~15s once
   environments are resolved. CI: the `thresholds` job of
   `.github/workflows/integration-three-tier.yml` (same triggers; checks out
   common, core and workers at `main`, no bench).

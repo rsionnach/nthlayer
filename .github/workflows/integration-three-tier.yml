@@ -179,6 +179,8 @@ jobs:
             tail -100 "$d/core.log" 2>/dev/null || true
             echo "=== $d/workers.log (last 200 lines) ==="
             tail -200 "$d/workers.log" 2>/dev/null || true
+            echo "=== $d/exposition.log (last 50 lines) ==="
+            tail -50 "$d/exposition.log" 2>/dev/null || true
           done
 
       - name: Upload preserved logs
