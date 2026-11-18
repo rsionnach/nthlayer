@@ -31,6 +31,13 @@ cross-reference.
   events, asserts names, labels, counts, gauge values and exclusions. Needs Docker and
   fails (never skips) without it. CI: `.github/workflows/otel-collector.yml`
   (push/PR to main).
+- `test/test_jmy18_smoke.py` — the override-binding seam (opensrm-jmy.18):
+  the real override-adapter sidecar against the real core app in one
+  process over an ASGI transport. Asserts the binding counter increments,
+  core's verdict reads `outcome.status=overridden`, and the sidecar reports
+  the core binding `ok`. No Docker. CI:
+  `.github/workflows/override-binding-smoke.yml`, siblings at `main`
+  (nightly, and PRs touching it; opensrm-qgmy).
 - `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
   ship-readiness test (real core API + workers + bench-via-API). Boots
   Docker stack, drives reversal_rate breach via fake-service, asserts
@@ -98,19 +105,14 @@ cross-reference.
 
 ## Lint
 
-The front-door's 5 Python helpers (`test/three_tier_assertions.py`,
-`test/fake-service.py`, `test/webhook-receiver.py`,
-`demo/render_explanation.py`, `demo/scenario-runner.py`) are linted by
+Every Python file under `test/`, `demo/` and `scripts/` is linted by
 the `python-lint` job in `.github/workflows/ci.yml` using the ecosystem
 ruff floor (`py311`, `line-length=100`, the same `select` set as
 `nthlayer-common`). Local invocation:
 
 ```bash
-uvx ruff@0.15.15 check test/ demo/
+uvx ruff@0.15.15 check test/ demo/ scripts/
 ```
-
-`test/test_jmy18_smoke.py` is excluded — it's a standalone JMY18 smoke
-test, not an integration helper.
 
 ## `demo/demo.sh` — `cmd_start` guard sequence
 

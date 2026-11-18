@@ -283,6 +283,9 @@ examples, generator-specific scripts.
     test, and in its `thresholds` job `test/integration-thresholds.sh`
     (judgment thresholds via core and workers, opensrm-x0r9)
     (`workflow_dispatch` + nightly cron).
+  - `override-binding-smoke.yml` — `test/test_jmy18_smoke.py`, the real
+    override-adapter against the real core app in one process, siblings at
+    `main`; nightly, and on PRs/pushes touching the test (opensrm-qgmy).
   - `publish-docker.yml` — Docker image publish.
 - `meta-package/` — source for `pip install nthlayer`. Dependency-
   only; pins core / workers / bench / generate at matching versions.
@@ -335,6 +338,20 @@ hub with implementation drift.
    deliberately depends on nothing in the ecosystem — a checker that
    imported the packages it checks would fail exactly when they are
    broken.
+
+   **Reviewed 2026-11-18 (opensrm-qgmy):** the six Python files in
+   `test/` and `demo/` that predate the amendment all stay. Five are
+   load-bearing helpers for `demo.sh` and the integration scripts.
+   Four of the six import ecosystem packages. The integration and demo
+   scripts resolve them from the sibling checkouts (`uv run
+   --directory`), at `main` in CI; that coupling is deliberate, a
+   harness for the seam on `main`. `otel-collector.yml` runs
+   `fake-service.py` against published `nthlayer-common[otel]`, and the
+   error-budget seam test covers published packages too.
+   `test_jmy18_smoke.py` was the real drift (ruff-excluded, run by no
+   CI). It needs core and the override-adapter in one environment, which
+   no component repo has, so it stays and now runs in
+   `.github/workflows/override-binding-smoke.yml`.
 
 2. **`action.yml` consumers are external production CI.** Pin the
    action's delegated invocation to a specific `nthlayer-generate`
