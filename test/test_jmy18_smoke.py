@@ -7,22 +7,20 @@ to-end claims from the design doc:
 (b) GET /verdicts/{id} on core shows outcome.status=overridden,
 (c) sidecar response carries bindings.{id}.core == "ok".
 
-Run by hand (no CI runs it), from the ecosystem root, which has core, the
-override-adapter (0.4.0 or later) and common in one environment:
+CI runs it in .github/workflows/override-binding-smoke.yml against the
+common, core and override-adapter main branches (opensrm-qgmy). To run it by
+hand, from the ecosystem root, which has all three in one environment:
 
     uv run --with pytest --with pytest-asyncio python -m pytest \
         -o asyncio_mode=auto nthlayer/test/test_jmy18_smoke.py
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from httpx import ASGITransport
-from starlette.testclient import TestClient
-
-from nthlayer_common.api_client import CoreAPIClient
 from nthlayer_common.overrides import OverridePrivacyConfig
 from nthlayer_common.telemetry import TelemetryStatus
 from nthlayer_common.verdicts.models import (
@@ -37,7 +35,7 @@ from nthlayer_core.store import Store
 from nthlayer_override_adapter.app import build_app
 from nthlayer_override_adapter.config import AdapterConfig, CoreConfig
 from nthlayer_override_adapter.metrics import binding_total
-
+from starlette.testclient import TestClient
 
 # Adapter 0.4.0 requires the telemetry status init_telemetry returned
 # (opensrm-a829 ruling Q7): it decides each binding's otel field. These tests
@@ -72,7 +70,7 @@ def _make_verdict(vid: str, *, outcome_status: str = "pending") -> Verdict:
     return Verdict(
         id=vid,
         version=1,
-        timestamp=datetime(2026, 5, 25, 10, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 5, 25, 10, 0, tzinfo=UTC),
         producer=Producer(system="fraud-detect"),
         subject=Subject(
             type="agent_output",

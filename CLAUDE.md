@@ -336,6 +336,18 @@ hub with implementation drift.
    imported the packages it checks would fail exactly when they are
    broken.
 
+   **Reviewed 2026-11-18 (opensrm-qgmy):** the six Python files in
+   `test/` and `demo/` that predate the amendment all stay. Five are
+   load-bearing helpers for `demo.sh` and the integration scripts.
+   Three of the six import ecosystem packages; they resolve them from
+   the sibling checkouts (`uv run --directory`), at `main` in CI. That
+   coupling is deliberate: a harness for the seam on `main`, while the
+   nightly error-budget seam test covers published packages.
+   `test_jmy18_smoke.py` was the real drift (ruff-excluded, run by no
+   CI). It needs core and the override-adapter in one environment, which
+   no component repo has, so it stays and now runs in
+   `.github/workflows/override-binding-smoke.yml`.
+
 2. **`action.yml` consumers are external production CI.** Pin the
    action's delegated invocation to a specific `nthlayer-generate`
    tag, **never `main`** — drift in the delegated version is a

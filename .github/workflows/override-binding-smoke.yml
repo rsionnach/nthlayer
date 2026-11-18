@@ -1,0 +1,94 @@
+# Override-binding seam smoke (opensrm-jmy.18, wired into CI by opensrm-qgmy).
+#
+# test/test_jmy18_smoke.py runs the real override-adapter sidecar against the
+# real nthlayer-core app in one process (ASGI transport, no network, no
+# Docker) and asserts the binding chain end to end: the sidecar's
+# nthlayer_override_binding_total{result=success} increments, core's verdict
+# reads outcome.status=overridden, and the sidecar reports
+# bindings.<id>.core == "ok".
+#
+# It lives here rather than in a component repo because it needs core AND the
+# override-adapter in one environment, and neither depends on the other.
+#
+# Workspace layout (matches the local sibling layout, as in
+# integration-three-tier.yml):
+#   <workspace>/nthlayer/                   — this repo (the test)
+#   <workspace>/nthlayer-common/            — core's path source
+#   <workspace>/nthlayer-core/              — the environment the test runs in
+#   <workspace>/nthlayer-override-adapter/  — added editable on top
+#
+# Siblings are checked out at `main`, the same trade-off integration-three-tier
+# documents: an early warning on the seam as it stands, not a published
+# combination (the nightly error-budget seam test covers published packages).
+#
+# Triggers: nightly and manual for the moving siblings, plus PRs and pushes
+# that touch the test or this workflow. It takes seconds, so a front-door PR
+# that changes the test gets its signal before merge.
+#
+# Security note: no untrusted event input reaches a shell command.
+
+name: override-binding-smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 4 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - test/test_jmy18_smoke.py
+      - .github/workflows/override-binding-smoke.yml
+  push:
+    branches: [main]
+    paths:
+      - test/test_jmy18_smoke.py
+      - .github/workflows/override-binding-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  jmy18-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout front-door (the test lives here)
+        uses: actions/checkout@v4
+        with:
+          path: nthlayer
+
+      - name: Checkout nthlayer-common
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-common
+          path: nthlayer-common
+          ref: main
+
+      - name: Checkout nthlayer-core
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-core
+          path: nthlayer-core
+          ref: main
+
+      - name: Checkout nthlayer-override-adapter
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-override-adapter
+          path: nthlayer-override-adapter
+          ref: main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # Core's own environment (its uv.lock, common from ../nthlayer-common),
+      # with the adapter installed editable on top so both run the sibling
+      # common. --strict-markers and -rs keep a renamed marker or a skip
+      # visible; the test has neither today.
+      - name: Run the override-binding smoke test
+        run: >
+          uv run --directory nthlayer-core
+          --with-editable ../nthlayer-override-adapter
+          --with pytest --with pytest-asyncio
+          python -m pytest -rs --strict-markers -o asyncio_mode=auto
+          ../nthlayer/test/test_jmy18_smoke.py

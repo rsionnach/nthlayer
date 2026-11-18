@@ -11,7 +11,7 @@ name: CI
 #
 # What CI does for the front-door now:
 #   - shell-syntax (this workflow): bash -n on every demo/ and test/ shell script.
-#   - python-lint  (this workflow): ruff check on the 5 root helpers (opensrm-u5dw.1).
+#   - python-lint  (this workflow): ruff check on test/, demo/ and scripts/ (opensrm-u5dw.1).
 #   - .github/workflows/error-budget-seam.yml: generate's error-budget rules vs
 #     measure's queries over real manifests (opensrm-h0at); nightly + PR.
 #   - .github/workflows/meta-resolve.yml: every meta-package tier at its newest
@@ -19,6 +19,8 @@ name: CI
 #   - .github/workflows/docs.yml: mkdocs build --strict on docs-site/.
 #   - .github/workflows/demo-paths.yml: cmd_start path-resolution test (opensrm-oey5).
 #   - .github/workflows/integration-three-tier.yml: nightly cross-repo smoke.
+#   - .github/workflows/override-binding-smoke.yml: core + override-adapter
+#     binding seam (test/test_jmy18_smoke.py, opensrm-qgmy); nightly + PR.
 #   - .github/workflows/release.yml: meta-v* tag publish to PyPI.
 #
 # Per-component Python testing remains the responsibility of each sibling repo.

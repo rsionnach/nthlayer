@@ -109,8 +109,9 @@ ruff floor (`py311`, `line-length=100`, the same `select` set as
 uvx ruff@0.15.15 check test/ demo/
 ```
 
-`test/test_jmy18_smoke.py` is excluded — it's a standalone JMY18 smoke
-test, not an integration helper.
+`test/test_jmy18_smoke.py` is linted with the rest. CI runs it in
+`.github/workflows/override-binding-smoke.yml`: the real override-adapter
+against the real core app in one process, siblings at `main` (opensrm-qgmy).
 
 ## `demo/demo.sh` — `cmd_start` guard sequence
 
