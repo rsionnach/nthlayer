@@ -123,6 +123,10 @@ def decision(did, dtype, value, autonomous, ts_ns, **recommended):
     )
 
 
+def _conf(value):
+    return {"nthlayer.decision.confidence": value}
+
+
 def reversal(did, rtype, actor_type, ts_ns, **recommended):
     # §4.2: type in {human_override, self_reconsideration, automated, appeal};
     # actor_type in {human, service, policy}.
@@ -157,7 +161,7 @@ BATCH_1 = payload(
     {
         "refund-gate": [
             decision(D1, "refund_approval", "approve", True, NOW_NS,
-                     **{"nthlayer.decision.confidence": 0.93,
+                     **{**_conf(0.93),
                         "nthlayer.decision.reversible": True,
                         "gen_ai.provider.name": "anthropic"}),
             decision(D2, "refund_approval", "approve", True, NOW_NS + 1),
@@ -570,7 +574,7 @@ def test_resource_without_service_name_is_counted_as_unknown(collector):
         "resource": {"attributes": []},
         "scopeLogs": [{"scope": {"name": "nthlayer"}, "logRecords": [
             decision("bafy-fixture-anonymous-1", "triage", "page", True, NOW_NS,
-                     **{"nthlayer.decision.confidence": 0.61}),
+                     **_conf(0.61)),
         ]}],
     }]}
     send(collector, body)
@@ -592,8 +596,7 @@ def test_service_label_comes_from_the_resource(collector):
     svc = "resource-gate"
     send(collector, payload({svc: [
         decision("bafy-fixture-spoof-1", "triage", "page", True, NOW_NS,
-                 **{"service.name": "spoofed-gate",
-                    "nthlayer.decision.confidence": 0.42}),
+                 **{"service.name": "spoofed-gate", **_conf(0.42)}),
     ]}))
     labels = {"service": svc, "decision_type": "triage", "decision_value": "page"}
     fam, text = wait_for_series(collector, "nthlayer_decisions_total", labels, 1)
@@ -609,10 +612,6 @@ def test_service_label_comes_from_the_resource(collector):
 # nthlayer.decision.confidence: double, Recommended, a ratio 0.0-1.0)
 # [opensrm-taz2]
 # ---------------------------------------------------------------------------
-
-
-def _conf(value):
-    return {"nthlayer.decision.confidence": value}
 
 
 def _raw_conf(rec, otlp_value):
@@ -818,7 +817,7 @@ def test_exporter_escapes_names_for_a_utf8_scraper(collector):
     svc = "escaping-gate"
     send(collector, payload({svc: [
         decision("bafy-fixture-escaping-1", "triage", "page", True, NOW_NS,
-                 **{"nthlayer.decision.confidence": 0.5}),
+                 **_conf(0.5)),
         reversal("bafy-fixture-escaping-1", "human_override", "human", NOW_NS + 1),
         outcome("bafy-fixture-escaping-1", "correct", "human_audit", NOW_NS + 2),
     ]}))

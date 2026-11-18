@@ -175,7 +175,7 @@ processors:
       - statements:
           # §4.5 N3 label names.
           # From the resource only (see the count connector above); both
-          # connectors copy each ResourceLogs' resource to its metrics.
+          # connectors carry the resource's service.name to their metrics.
           - set(datapoint.attributes["service"], resource.attributes["service.name"]) where resource.attributes["service.name"] != nil
           - set(datapoint.attributes["service"], "unknown") where resource.attributes["service.name"] == nil
           - set(datapoint.attributes["decision_type"], datapoint.attributes["nthlayer.decision.type"]) where datapoint.attributes["nthlayer.decision.type"] != nil
@@ -229,7 +229,7 @@ service:
       receivers: [otlp]
       processors: [batch/serialise]
       exporters: [count, signal_to_metrics]
-    metrics/nthlayer_counts:
+    metrics/nthlayer_series:
       receivers: [count, signal_to_metrics]
       processors: [transform/nthlayer_labels, delta_to_cumulative]
       exporters: [prometheus]
