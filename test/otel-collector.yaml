@@ -2,37 +2,42 @@
 #
 # Turns NthLayer's log-based events (OpenSRM Addendum A1 §4.0; carried by
 # nthlayer_common.telemetry: LogRecord.event_name is the event name, every
-# field an attribute, no body) into the A1 §4.5 counters, exposed for
-# Prometheus on :8889:
+# field an attribute, no body) into the A1 §4.5 counters and the decision
+# confidence gauge, exposed for Prometheus on :8889:
 #
 #   nthlayer_decisions_total{service, decision_type, decision_value}
 #   nthlayer_reversals_total{service, reversal_type, reversal_actor_type}
 #   nthlayer_outcomes_total{service, outcome_value, outcome_source}
+#   nthlayer_decision_confidence{service, decision_type, decision_value}
+#     (gauge, opensrm-taz2; see the signal_to_metrics connector below)
 #
 # Labels follow §4.5 N3: `service` is the emitter's resource service.name,
 # which an NthLayer emitter sets to the manifest's metadata.name; a label
 # from a §4 attribute is the attribute without the `nthlayer.` prefix, dots
 # as underscores. Only low-cardinality attributes are counted by: ids
 # (nthlayer.decision.id, *.decision_id), free text (nthlayer.reversal.reason)
-# and actor refs never become labels, because the count connector keeps
-# only the attributes listed under each metric and drops the rest.
+# and actor refs never become labels, because each connector keeps only the
+# attributes listed under each metric and drops the rest.
 #
-# Deliberately absent §4.5 rows (follow-up opensrm-taz2). Each needs a join
-# of an nthlayer.outcome to its nthlayer.decision on the decision id (or a
-# value per decision, not a count of events), which a stateless count
-# connector cannot do:
-#   - nthlayer_high_confidence_failures_total: decision confidence joined to
-#     outcome value.
-#   - nthlayer_outcomes_total's decision_value and confidence-threshold
-#     labels: both are properties of the decision, not of the outcome event.
-#   - nthlayer_decision_confidence (gauge) and the calibration gauges
-#     (computed, A5).
-#   - nthlayer_feedback_latency_seconds: decision Timestamp to outcome
-#     Timestamp (T1), a per-decision interval.
+# Deliberately absent §4.5 rows:
+#   - Joined series, follow-up opensrm-r860 (nthlayer-workers). Each needs a
+#     join of an nthlayer.outcome to its nthlayer.decision on the decision
+#     id, which a stateless connector cannot do:
+#     - nthlayer_high_confidence_failures_total: decision confidence joined
+#       to outcome value.
+#     - nthlayer_outcomes_total's decision_value and confidence-threshold
+#       labels: both are properties of the decision, not of the outcome
+#       event.
+#     - nthlayer_feedback_latency_seconds: decision Timestamp to outcome
+#       Timestamp (T1), a per-decision interval.
+#   - The calibration gauges nthlayer_calibration_ece and
+#     nthlayer_calibration_brier: computed by an implementation (§3, A5),
+#     not derived from single events.
 #
-# Pipeline: otlp receiver -> logs pipeline (batch) -> count connector -> metrics
-# pipeline -> transform (labels, timestamps) -> delta_to_cumulative ->
-# prometheus exporter. Image pinned in test/docker-compose.yml.
+# Pipeline: otlp receiver -> logs pipeline (batch) -> count and
+# signal_to_metrics connectors -> metrics pipeline -> transform (labels,
+# timestamps) -> delta_to_cumulative -> prometheus exporter. Image pinned in
+# test/docker-compose.yml.
 
 receivers:
   otlp:
@@ -89,6 +94,67 @@ connectors:
           - key: nthlayer.outcome.source
             default_value: unknown
 
+  # nthlayer_decision_confidence (A1 §4.5, gauge, opensrm-taz2): the
+  # nthlayer.decision.confidence of nthlayer.decision events (§4.1).
+  #
+  # Name: the metric is nthlayer.decision.confidence with no unit, which the
+  # exporter's translation makes nthlayer_decision_confidence: a gauge gets
+  # no `_total`, and a ratio has no unit suffix (N2), so no `unit: "1"`
+  # (that would add `_ratio`).
+  #
+  # Labels: those of nthlayer_decisions_total, with the same `unknown`
+  # defaults, so a gauge series lines up with its decision counter. `service`
+  # is set by the transform from the resource, as for the counters.
+  #
+  # Which decisions give a point. §4.1 types the attribute a double and
+  # bounds it to the ratio 0.0-1.0, so only a double in [0.0, 1.0] is a
+  # confidence. Anything else gives no point, and is never clamped or
+  # converted (a clamped 1.5 would be a confidence nobody reported):
+  #   - no nthlayer.decision.confidence (it is only Recommended);
+  #   - a string ("0.9"), an int (1) or a bool: not a double;
+  #   - a double outside [0.0, 1.0] (1.5, -0.1), and NaN, which compares
+  #     false both ways.
+  # 0.0 and 1.0 themselves are confidences. Such a decision is still counted
+  # in nthlayer_decisions_total: the count connector does not look at
+  # confidence.
+  #
+  # Semantics: the connector is stateless and aggregates per call. A gauge
+  # keeps the LAST value: per series, the last conforming decision in record
+  # order within one batch (batch/serialise below hands it a batch at a
+  # time), and across batches the exporter keeps the latest-stamped value
+  # (the transform stamps Now(), so the latest batch) until a later one
+  # replaces it or metric_expiration passes. A decision without a
+  # conforming confidence leaves the series as it was.
+  signal_to_metrics:
+    # An expression error skips that record (logged); the conditions below
+    # leave none to raise.
+    error_mode: ignore
+    logs:
+      - name: nthlayer.decision.confidence
+        description: nthlayer.decision.confidence (A1 §4.1), per §4.5.
+        conditions:
+          - >-
+            log.event_name == "nthlayer.decision"
+            and IsDouble(log.attributes["nthlayer.decision.confidence"])
+            and log.attributes["nthlayer.decision.confidence"] >= 0.0
+            and log.attributes["nthlayer.decision.confidence"] <= 1.0
+        # The connector keys its points by resource, then the transform
+        # strips the resource to `service`. Keyed by the whole resource, two
+        # resources of one service.name (two instances, merged into one
+        # batch) would be two points for one series, and the exporter would
+        # keep the first resource's, not the last in record order. Keep only
+        # service.name, the one resource attribute the transform reads; a
+        # resource without it keeps none, as before (service="unknown").
+        include_resource_attributes:
+          - key: service.name
+        attributes:
+          - key: nthlayer.decision.type
+            default_value: unknown
+          - key: nthlayer.decision.value
+            default_value: unknown
+        gauge:
+          value: log.attributes["nthlayer.decision.confidence"]
+
 processors:
   # Serialises the logs pipeline. The OTLP receiver runs each export on its
   # own goroutine; without this, two concurrent exports to one series can be
@@ -108,8 +174,8 @@ processors:
     metric_statements:
       - statements:
           # §4.5 N3 label names.
-          # From the resource only (see the count connector above); the
-          # connector copies each ResourceLogs' resource to its metrics.
+          # From the resource only (see the count connector above); both
+          # connectors carry the resource's service.name to their metrics.
           - set(datapoint.attributes["service"], resource.attributes["service.name"]) where resource.attributes["service.name"] != nil
           - set(datapoint.attributes["service"], "unknown") where resource.attributes["service.name"] == nil
           - set(datapoint.attributes["decision_type"], datapoint.attributes["nthlayer.decision.type"]) where datapoint.attributes["nthlayer.decision.type"] != nil
@@ -133,15 +199,20 @@ processors:
           # events themselves are not modified. Now() order is only arrival
           # order at delta_to_cumulative because the batch processor in the
           # logs pipeline serialises everything downstream of it (above).
+          # The gauge is stamped the same way, so the exporter, which keeps a
+          # gauge's latest-stamped value, keeps the latest batch's.
           - set(datapoint.time, Now())
           - set(datapoint.start_time, datapoint.time)
       - statements:
           # The emitter's resource would otherwise add job/instance labels
           # (from service.name) beside `service`; `service` already carries it.
+          # This also drops signal_to_metrics.service.instance.id, which the
+          # signal_to_metrics connector adds to every resource.
           - keep_keys(resource.attributes, [])
 
   delta_to_cumulative:
-    # Long enough that a demo left idle keeps its counters.
+    # Long enough that a demo left idle keeps its counters. It converts delta
+    # sums and histograms only; the gauge passes through unchanged.
     max_stale: 60m
 
 exporters:
@@ -157,8 +228,8 @@ service:
     logs/nthlayer_events:
       receivers: [otlp]
       processors: [batch/serialise]
-      exporters: [count]
-    metrics/nthlayer_counts:
-      receivers: [count]
+      exporters: [count, signal_to_metrics]
+    metrics/nthlayer_series:
+      receivers: [count, signal_to_metrics]
       processors: [transform/nthlayer_labels, delta_to_cumulative]
       exporters: [prometheus]

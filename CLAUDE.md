@@ -126,8 +126,9 @@ examples, generator-specific scripts.
 - `test/` — cross-repo integration test infrastructure (see
   `docs/integration-testing.md`). Also `test_eco_doctor.sh`, the
   regression suite for `scripts/eco_doctor.py`, and `otel-collector.yaml`,
-  the collector config that counts the A1 §4 log events into the §4.5
-  `nthlayer_*` series, tested by `test_otel_collector.py` (opensrm-s4ui),
+  the collector config that turns the A1 §4 log events into the §4.5
+  `nthlayer_*` counters and the `nthlayer_decision_confidence` gauge
+  (opensrm-taz2), tested by `test_otel_collector.py` (opensrm-s4ui),
   which also drives `fake-service.py`'s ai-gate events through it and
   evaluates the demo's `nthlayer_*` queries in Prometheus.
 - `scripts/` — tooling that operates ON the workspace, the category

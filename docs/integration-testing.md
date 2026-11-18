@@ -25,9 +25,10 @@ cross-reference.
 - `test/test_otel_collector.py` — the OTel Collector config
   (`test/otel-collector.yaml`, opensrm-s4ui) turns A1 §4.1-§4.3 log
   events into `nthlayer_decisions_total`, `nthlayer_reversals_total` and
-  `nthlayer_outcomes_total` with the §4.5 labels. Runs the otelcol-contrib
+  `nthlayer_outcomes_total` with the §4.5 labels, and the
+  `nthlayer_decision_confidence` gauge (opensrm-taz2). Runs the otelcol-contrib
   image pinned in `test/docker-compose.yml`, sends fixed OTLP/HTTP JSON
-  events, asserts names, labels, counts and exclusions. Needs Docker and
+  events, asserts names, labels, counts, gauge values and exclusions. Needs Docker and
   fails (never skips) without it. CI: `.github/workflows/otel-collector.yml`
   (push/PR to main).
 - `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
