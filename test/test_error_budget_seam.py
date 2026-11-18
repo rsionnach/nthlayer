@@ -54,13 +54,16 @@ CORPUS_DIRS = (
     ROOT / "nthlayer-generate" / "examples" / "opensrm",
 )
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-EXPECTED_WITH_BUDGET = 24  # 2026-11-07, common 5.12.0 / generate 4.1.0 / workers 4.2.0
+EXPECTED_WITH_BUDGET = 24  # 2026-11-18, common 5.12.1 / generate 4.1.0 / workers 4.2.2
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
-# file count. 27 availability + 15 latency + 1 error_rate on 2026-11-07,
+# file count. 27 availability + 21 latency + 1 error_rate on 2026-11-18,
 # counted per kind from generate's written rules, separately from this test.
-EXPECTED_AGREED_BUDGETS = 43
+# Latency was 15 until common 5.12.1 read legacy indicators[].threshold_ms
+# (opensrm-s7b1, wo62.4.24), which gave six legacy latency SLOs a budget
+# (opensrm-x7y2).
+EXPECTED_AGREED_BUDGETS = 49
 
 # Budgets measure asks for and generate's guard deliberately does not write
 # (generate recording_rules `_budget_skip_reason`: no budget is better than a
@@ -68,7 +71,6 @@ EXPECTED_AGREED_BUDGETS = 43
 # name), valued by the bead whose fix should give it a budget. Exact, as the
 # other pins: fixing a bead turns this red, and the entry goes.
 _T13C = "opensrm-t13c: srm/v1 keeps a latency bound or an error_rate maximum in target"
-_S7B1 = "opensrm-s7b1: legacy indicators[].threshold_ms is not read"
 EXPECTED_READ_NOT_WRITTEN = {
     ("nthlayer-generate/examples/opensrm/ai-gate.reliability.yaml", "latency"): _T13C,
     ("nthlayer-generate/examples/opensrm/api-basic.reliability.yaml", "latency"): _T13C,
@@ -77,12 +79,6 @@ EXPECTED_READ_NOT_WRITTEN = {
     ("nthlayer-generate/examples/opensrm/batch.reliability.yaml", "error_rate"): _T13C,
     ("nthlayer-generate/examples/opensrm/stream.reliability.yaml", "error_rate"): _T13C,
     ("nthlayer-generate/examples/opensrm/worker.reliability.yaml", "error_rate"): _T13C,
-    ("nthlayer-generate/examples/services/analytics-stream.yaml", "event-latency-p99"): _S7B1,
-    ("nthlayer-generate/examples/services/checkout-service.yaml", "latency-p95"): _S7B1,
-    ("nthlayer-generate/examples/services/checkout-service.yaml", "latency-p99"): _S7B1,
-    ("nthlayer-generate/examples/services/identity-service.yaml", "latency-p95"): _S7B1,
-    ("nthlayer-generate/examples/services/identity-service.yaml", "latency-p99"): _S7B1,
-    ("nthlayer-generate/examples/services/notification-worker.yaml", "processing-latency-p95"): _S7B1,
     ("opensrm/spec/v2/examples/migration/api-full-v2.yaml", "payment-api-latency"): (
         "opensrm-8jpp: a v2 latency bound is read from the objective"
     ),

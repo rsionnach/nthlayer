@@ -59,8 +59,9 @@ reader treats a missing series as no data and a wrong one as an answer:
 - the objective is not a success percentage in `[50, 100)` (srm/v1 keeps a
   latency bound or an error_rate maximum in `target`, opensrm-t13c);
 - a latency SLO declares no `threshold_ms` and has no queries of its own
-  (v2 reads the bound from the objective, opensrm-8jpp; the legacy
-  `indicators[].threshold_ms` is not read, opensrm-s7b1).
+  (v2 reads the bound from the objective, opensrm-8jpp). The legacy
+  `indicators[].threshold_ms` is read since nthlayer-common 5.12.1
+  (opensrm-s7b1), so those SLOs now get a budget.
 
 Readers (nthlayer-workers 4.2.0):
 
