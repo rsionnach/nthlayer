@@ -22,7 +22,8 @@
 # combination (the nightly error-budget seam test covers published packages).
 #
 # Triggers: nightly and manual for the moving siblings, plus PRs and pushes
-# that touch the test or this workflow. It takes seconds, so a front-door PR
+# that touch the test, this workflow, or pyproject.toml (pytest's rootdir is
+# the front door, so that file is the run's config file). It takes seconds, so a front-door PR
 # that changes the test gets its signal before merge.
 #
 # Security note: no untrusted event input reaches a shell command.
@@ -37,11 +38,13 @@ on:
     branches: [main]
     paths:
       - test/test_jmy18_smoke.py
+      - pyproject.toml
       - .github/workflows/override-binding-smoke.yml
   push:
     branches: [main]
     paths:
       - test/test_jmy18_smoke.py
+      - pyproject.toml
       - .github/workflows/override-binding-smoke.yml
 
 permissions:
@@ -82,13 +85,13 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       # Core's own environment (its uv.lock, common from ../nthlayer-common),
-      # with the adapter installed editable on top so both run the sibling
-      # common. --strict-markers and -rs keep a renamed marker or a skip
-      # visible; the test has neither today.
+      # with its dev extra for the locked pytest and pytest-asyncio, and the
+      # adapter installed editable on top so both run the sibling common.
+      # The test has no custom markers and no skips today; --strict-markers
+      # and -rs keep either visible if one appears.
       - name: Run the override-binding smoke test
         run: >
-          uv run --directory nthlayer-core
+          uv run --directory nthlayer-core --extra dev
           --with-editable ../nthlayer-override-adapter
-          --with pytest --with pytest-asyncio
           python -m pytest -rs --strict-markers -o asyncio_mode=auto
           ../nthlayer/test/test_jmy18_smoke.py
