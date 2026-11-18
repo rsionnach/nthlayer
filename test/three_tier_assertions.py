@@ -1,6 +1,8 @@
 """Three-tier integration test assertion helpers.
 
-Used by ``test/integration-three-tier.sh``. Each subcommand performs one
+Used by ``test/integration-three-tier.sh``, ``test/e2e-test.sh`` and
+``test/integration-thresholds.sh`` (the ``*-threshold-*`` and
+``assert-no-verdict`` subcommands, opensrm-x0r9). Each subcommand performs one
 poll, fetch, or assertion against a running nthlayer-core HTTP API. Output
 is shell-parseable (``KEY=value`` lines on stdout) so the bash harness can
 ``eval`` it; errors exit non-zero with a message on stderr.
@@ -177,6 +179,147 @@ async def cmd_wait_case(args: argparse.Namespace) -> None:
         CASE_CREATED_AT=case.get("created_at", ""),
         CASE_UNDERLYING_VERDICT=case.get("underlying_verdict", ""),
     )
+
+
+def _close(a: Any, b: float) -> bool:
+    """A JSON number equal to *b* (to 1e-9); bools are not numbers here."""
+    return isinstance(a, (int, float)) and not isinstance(a, bool) and abs(a - b) <= 1e-9
+
+
+def _threshold_row(assessment: dict, args: argparse.Namespace) -> dict | None:
+    """The outcome row for args.bound in a judgment_threshold_evaluation of
+    args.threshold_type, when its status (and measured value, if given)
+    match; else None. Shape: workers' measure/thresholds/phase.py, data =
+    {"threshold_key", "outcome": ThresholdOutcome.to_dict()}."""
+    data = assessment.get("data") or {}
+    outcome = data.get("outcome") if isinstance(data, dict) else None
+    if not isinstance(outcome, dict) or outcome.get("type") != args.threshold_type:
+        return None
+    for row in outcome.get("bounds") or []:
+        if not isinstance(row, dict) or row.get("bound") != args.bound:
+            continue
+        if row.get("status") != args.status:
+            continue
+        if args.measured is not None and not _close(row.get("measured"), args.measured):
+            continue
+        return row
+    return None
+
+
+async def cmd_wait_threshold_evaluation(args: argparse.Namespace) -> None:
+    """Poll until a judgment_threshold_evaluation for --service reports
+    --bound with --status (and --measured, if given)."""
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        async def fetch(c):
+            return await c.get_assessments(
+                kind="judgment_threshold_evaluation", service=args.service, limit=100,
+            )
+
+        def predicate(result: APIResult):
+            for a in result.data or []:
+                row = _threshold_row(a, args)
+                if row is not None:
+                    return a, row
+            return None
+
+        assessment, row = await _poll(
+            client,
+            description=(f"judgment_threshold_evaluation service={args.service} "
+                         f"bound={args.bound} status={args.status} measured={args.measured}"),
+            fetch=fetch,
+            predicate=predicate,
+            timeout_seconds=args.timeout,
+            interval_seconds=args.interval,
+        )
+    _print_kv(
+        THRESHOLD_ASSESSMENT_ID=assessment.get("id", ""),
+        THRESHOLD_KEY=(assessment.get("data") or {}).get("threshold_key", ""),
+        THRESHOLD_OVERALL_STATUS=(assessment.get("data") or {}).get("outcome", {}).get("status", ""),
+        THRESHOLD_MEASURED=row.get("measured"),
+        THRESHOLD_LIMIT=row.get("limit"),
+    )
+
+
+async def cmd_wait_threshold_breach(args: argparse.Namespace) -> None:
+    """Poll until a threshold quality_breach for --service names --bound with
+    --measured, at --severity; then check its parent is a breaching
+    judgment_threshold_evaluation of the same threshold_key.
+
+    Only a threshold breach matches (data.threshold_type is set): an SLO
+    quality_breach of the same service carries slo_name instead."""
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        async def fetch(c):
+            return await c.get_verdicts(
+                verdict_type="quality_breach", service=args.service, limit=100,
+            )
+
+        def predicate(result: APIResult):
+            for v in result.data or []:
+                data = v.get("data") or {}
+                if not isinstance(data, dict) or data.get("threshold_type") != args.threshold_type:
+                    continue
+                for row in data.get("breaching_bounds") or []:
+                    if (isinstance(row, dict) and row.get("bound") == args.bound
+                            and _close(row.get("measured"), args.measured)):
+                        return v, row
+            return None
+
+        verdict, row = await _poll(
+            client,
+            description=(f"threshold quality_breach service={args.service} "
+                         f"bound={args.bound} measured={args.measured}"),
+            fetch=fetch,
+            predicate=predicate,
+            timeout_seconds=args.timeout,
+            interval_seconds=args.interval,
+        )
+        data = verdict["data"]
+        if data.get("severity") != args.severity:
+            _fail(f"threshold quality_breach {verdict.get('id')!r}: severity "
+                  f"{data.get('severity')!r}, expected {args.severity!r}")
+        names = sorted(r.get("bound") for r in data.get("breaching_bounds") or []
+                       if isinstance(r, dict))
+        if names != sorted(args.expect_breaching):
+            _fail(f"threshold quality_breach {verdict.get('id')!r}: breaching_bounds "
+                  f"{names!r}, expected {sorted(args.expect_breaching)!r}")
+        if args.bound not in str(data.get("summary", "")):
+            _fail(f"threshold quality_breach {verdict.get('id')!r}: summary "
+                  f"{data.get('summary')!r} does not name {args.bound!r}")
+        parents = verdict.get("parent_ids") or []
+        assessments = await client.get_assessments(
+            kind="judgment_threshold_evaluation", service=args.service, limit=100,
+        )
+        if not assessments.ok:
+            _fail(f"GET /assessments failed: status={assessments.status_code}")
+        status_args = argparse.Namespace(**{**vars(args), "status": "breach"})
+        parent = next((a for a in assessments.data or []
+                       if a.get("id") in parents and _threshold_row(a, status_args)), None)
+        if parent is None:
+            _fail(f"threshold quality_breach {verdict.get('id')!r}: parent_ids {parents!r} "
+                  f"name no breaching judgment_threshold_evaluation of {args.service!r}")
+        if (parent.get("data") or {}).get("threshold_key") != data.get("threshold_key"):
+            _fail(f"threshold quality_breach {verdict.get('id')!r}: threshold_key "
+                  f"{data.get('threshold_key')!r} differs from its parent's")
+    _print_kv(
+        THRESHOLD_BREACH_ID=verdict.get("id", ""),
+        THRESHOLD_BREACH_SEVERITY=data.get("severity"),
+        THRESHOLD_BREACH_PARENT=parent.get("id", ""),
+        THRESHOLD_BREACH_LIMIT=row.get("limit"),
+    )
+
+
+async def cmd_assert_no_verdict(args: argparse.Namespace) -> None:
+    """Fail if core holds any verdict of --type for --service (one fetch)."""
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        result = await client.get_verdicts(
+            verdict_type=args.verdict_type, service=args.service, limit=100,
+        )
+    if not result.ok:
+        _fail(f"GET /verdicts failed: status={result.status_code} error={result.error!r}")
+    if result.data:
+        _fail(f"expected no {args.verdict_type} verdict for {args.service!r}, got "
+              f"{[v.get('id') for v in result.data]!r}")
+    _print_kv(NO_VERDICT_OK="true")
 
 
 async def cmd_assert_lineage(args: argparse.Namespace) -> None:
@@ -386,6 +529,29 @@ def main(argv: list[str] | None = None) -> int:
     _add_common(p)
     p.add_argument("--service", default=None)
 
+    p = sub.add_parser("wait-threshold-evaluation")
+    _add_common(p)
+    p.add_argument("--service", required=True)
+    p.add_argument("--threshold-type", default="calibration")
+    p.add_argument("--bound", required=True)
+    p.add_argument("--status", required=True, choices=["within", "breach", "not_evaluable"])
+    p.add_argument("--measured", type=float, default=None)
+
+    p = sub.add_parser("wait-threshold-breach")
+    _add_common(p)
+    p.add_argument("--service", required=True)
+    p.add_argument("--threshold-type", default="calibration")
+    p.add_argument("--bound", required=True)
+    p.add_argument("--measured", type=float, required=True)
+    p.add_argument("--severity", default="high")
+    p.add_argument("--expect-breaching", nargs="+", required=True,
+                   help="every bound the breach's breaching_bounds must name, no more")
+
+    p = sub.add_parser("assert-no-verdict")
+    _add_common(p, with_poll=False)
+    p.add_argument("verdict_type")
+    p.add_argument("--service", required=True)
+
     p = sub.add_parser("assert-lineage")
     _add_common(p, with_poll=False)
     p.add_argument("child_id")
@@ -414,6 +580,9 @@ def main(argv: list[str] | None = None) -> int:
         "wait-verdict-type": cmd_wait_verdict_type,
         "wait-assessment-kind": cmd_wait_assessment_kind,
         "wait-case": cmd_wait_case,
+        "wait-threshold-evaluation": cmd_wait_threshold_evaluation,
+        "wait-threshold-breach": cmd_wait_threshold_breach,
+        "assert-no-verdict": cmd_assert_no_verdict,
         "assert-lineage": cmd_assert_lineage,
         "fetch-case-via-bench": cmd_fetch_case_via_bench,
         "render-portfolio": cmd_render_portfolio,

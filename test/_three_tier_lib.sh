@@ -4,6 +4,7 @@
 # Sourced by:
 #   - test/integration-three-tier.sh  (P5.1 acceptance test)
 #   - test/e2e-test.sh                (P5.2 9-step walk-through)
+#   - test/integration-thresholds.sh  (judgment thresholds, opensrm-x0r9)
 #
 # Goal: keep the boot/teardown boilerplate that both scripts share in one
 # place. When a fix lands (new pre-flight check, changed Prometheus
@@ -157,8 +158,12 @@ boot_three_tier_stack() {
     uv run --directory "${workspace_root}/nthlayer-common" --extra otel --with prometheus-client \
         python -c "import nthlayer_common.telemetry, prometheus_client" \
         || tt_fail "fake-service environment (nthlayer-common[otel] + prometheus-client) did not resolve"
+    # The collector's gRPC host port follows docker-compose.yml's
+    # NTHLAYER_TEST_OTLP_GRPC_PORT, so a caller that remaps it still gets
+    # fake-service's events (and does not send them to another stack's).
     uv run --directory "${workspace_root}/nthlayer-common" --extra otel --with prometheus-client \
         python "${test_dir}/fake-service.py" --name fraud-detect --type ai-gate --port "${fake_port}" \
+        --otlp-endpoint "http://localhost:${NTHLAYER_TEST_OTLP_GRPC_PORT:-4317}" \
         >"${work_dir}/fake.log" 2>&1 &
     FAKE_PID=$!
     deadline=$(( $(date +%s) + 15 ))

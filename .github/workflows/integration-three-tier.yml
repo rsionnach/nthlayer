@@ -1,4 +1,5 @@
-# Three-tier integration test (opensrm-saun.1, P5.1).
+# Three-tier integration test (opensrm-saun.1, P5.1), and the judgment-
+# threshold integration test (opensrm-x0r9, job `thresholds`).
 #
 # Boots the full nthlayer-core + nthlayer-workers + fake-service + Prometheus
 # stack and asserts the verdict chain (observe -> measure -> correlate ->
@@ -120,5 +121,73 @@ jobs:
         with:
           name: three-tier-debug-logs
           path: /tmp/three-tier-debug-*
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Judgment thresholds end to end (opensrm-x0r9): core serves a calibration
+  # judgment_threshold, workers' measure evaluates it against a gauge
+  # Prometheus scraped, and the evaluations and the quality_breach land on
+  # core. Own job: it does not wait on, or fail with, the verdict chain above.
+  # Needs no nthlayer-bench (its assertion helpers import nthlayer_common only).
+  thresholds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout front-door (test harness lives here)
+        uses: actions/checkout@v4
+        with:
+          path: nthlayer
+
+      - name: Checkout nthlayer-common
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-common
+          path: nthlayer-common
+          ref: main
+
+      - name: Checkout nthlayer-core
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-core
+          path: nthlayer-core
+          ref: main
+
+      - name: Checkout nthlayer-workers
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-workers
+          path: nthlayer-workers
+          ref: main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install jq (assertion helper uses it)
+        run: sudo apt-get update -qq && sudo apt-get install -y jq
+
+      - name: Run judgment-threshold integration test
+        working-directory: nthlayer
+        run: ./test/integration-thresholds.sh
+
+      - name: Preserve work dir on failure
+        if: failure()
+        run: |
+          echo "Threshold integration test failed — collecting preserved logs"
+          for d in /tmp/thresholds-debug-*; do
+            [ -d "$d" ] || continue
+            echo "=== $d/core.log (last 100 lines) ==="
+            tail -100 "$d/core.log" 2>/dev/null || true
+            echo "=== $d/workers.log (last 200 lines) ==="
+            tail -200 "$d/workers.log" 2>/dev/null || true
+            echo "=== $d/exposition.log (last 50 lines) ==="
+            tail -50 "$d/exposition.log" 2>/dev/null || true
+          done
+
+      - name: Upload preserved logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: thresholds-debug-logs
+          path: /tmp/thresholds-debug-*
           retention-days: 7
           if-no-files-found: ignore

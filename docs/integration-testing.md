@@ -1,6 +1,6 @@
 # NthLayer integration testing
 
-Six test surfaces in `test/`, two of which share a boot/teardown
+Seven test surfaces in `test/`, three of which share a boot/teardown
 library. See script headers for invocation details; this file is the
 cross-reference.
 
@@ -39,19 +39,49 @@ cross-reference.
   `.github/workflows/integration-three-tier.yml` (workflow_dispatch +
   nightly cron 04:00 UTC, timeout 15 min). Supersedes
   `test/integration-chain.sh` (retired opensrm-u5dw).
+- `test/integration-thresholds.sh` — judgment thresholds end to end
+  (opensrm-x0r9). Sources `_three_tier_lib.sh` and boots the same stack,
+  with core reading `test/fixtures/thresholds/specs/` (two ai-gate
+  manifests with a calibration `judgment_threshold`, shape from opensrm's
+  `spec/v2/examples/judgment-thresholds/calibration-both-bounds.yaml`) and a
+  static exposition (`test/fixtures/thresholds/exposition/metrics`) served
+  on a port `prometheus.yml`'s fake-services job scrapes. The exposition
+  carries `gen_ai_calibration_ece` / `gen_ai_calibration_brier` (what
+  `THRESHOLD_SERIES` reads today; A1 §4.5's `nthlayer_calibration_*` rename
+  is future work in common and workers). Workers run with
+  `MEASURE_THRESHOLD_INTERVAL=5`, `MEASURE_THRESHOLD_AUTONOMY` unset
+  (default off). Asserts via core's API: a `judgment_threshold_evaluation`
+  for `calibration-breach-gate` with `maximum_expected_calibration_error`
+  breach at the scraped 0.12; a `quality_breach` with `threshold_type`
+  calibration, severity `high`, `breaching_bounds` naming exactly that
+  bound, and a parent that is that breaching evaluation; and, as the
+  negative control, a within evaluation and no `quality_breach` for
+  `calibration-within-gate`. Defaults to its own ports (core 8100,
+  fake-service 8006, exposition 8007, Prometheus 9190, collector
+  4417/4418/8989) and compose project `nthlayer-thresholds`, so it does not
+  collide with the three-tier test; it cannot run beside the demo, which
+  holds 8001-8008, the only ports `test/prometheus.yml` scrapes. Runs in ~15s once
+  environments are resolved. CI: the `thresholds` job of
+  `.github/workflows/integration-three-tier.yml` (same triggers; checks out
+  common, core and workers at `main`, no bench).
 - `test/e2e-test.sh` — 9-step CLI-driven E2E test (opensrm-saun.2).
   Sources `_three_tier_lib.sh` for preflight/boot/teardown
   (391 lines, down from 458). See script header.
 - `test/_three_tier_lib.sh` — shared boot/teardown library
-  (opensrm-saun.2.1). Sourced by `integration-three-tier.sh` and
-  `e2e-test.sh`. Four helpers:
+  (opensrm-saun.2.1). Sourced by `integration-three-tier.sh`,
+  `e2e-test.sh` and `integration-thresholds.sh`. Four helpers:
   - `preflight_required_commands [extra...]` (checks
     docker/uv/curl/python3/jq/lsof + optional extras).
   - `preflight_port_conflicts CORE_PORT FAKE_PORT` (EADDRINUSE
     catcher; skips Prometheus 9090 since that's inside Docker).
   - `boot_three_tier_stack ...` (Docker compose + Prometheus poll +
     fake-service + core + workers + heartbeat wait; sets globals
-    CORE_PID / WORKERS_PID / FAKE_PID / DOCKER_UP).
+    CORE_PID / WORKERS_PID / FAKE_PID / DOCKER_UP). Host ports of the
+    compose stack follow `NTHLAYER_TEST_PROMETHEUS_PORT`,
+    `NTHLAYER_TEST_OTLP_GRPC_PORT`, `NTHLAYER_TEST_OTLP_HTTP_PORT` and
+    `NTHLAYER_TEST_OTEL_METRICS_PORT` (defaults 9090 / 4317 / 4318 /
+    8889), and fake-service sends its OTLP events to the gRPC one;
+    `COMPOSE_PROJECT_NAME` separates concurrent stacks.
   - `teardown_three_tier_stack ...` (disarms INT/TERM trap to
     prevent recursive teardown, ordered SIGTERM
     workers → core → fake-service, `docker compose down
@@ -145,7 +175,9 @@ the assertions helper (not just bench commands) because
 `test/three_tier_assertions.py` surface — integration-test
 subcommands `wait-heartbeat`, `wait-verdict-type`,
 `wait-assessment-kind`, `wait-case`, `assert-lineage`,
-`fetch-case-via-bench`, `assert-latency` (all KEY=value-on-stdout
+`fetch-case-via-bench`, `assert-latency`, and for
+`integration-thresholds.sh` `wait-threshold-evaluation`,
+`wait-threshold-breach`, `assert-no-verdict` (all KEY=value-on-stdout
 for `eval`-capture by `cmd_scenario`); plus the demo-only
 `render-portfolio` (opensrm-42y.3) which prints the canonical Step 1
 portfolio table by joining latest `portfolio_status` + per-service

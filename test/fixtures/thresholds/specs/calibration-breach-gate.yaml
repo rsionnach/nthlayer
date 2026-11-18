@@ -1,0 +1,27 @@
+# opensrm-x0r9 fixture: an ai-gate whose calibration threshold BREACHES.
+#
+# Shape copied from opensrm spec/v2/examples/judgment-thresholds/
+# calibration-both-bounds.yaml (OPENSRM-CORE-v2 §5.5.3): both bounds, same
+# measurement and limits, only the names changed. The scraped gauges for it
+# (../exposition/metrics) put ECE above its bound and Brier within its bound,
+# so exactly one bound breaches.
+apiVersion: opensrm.nthlayer.io/v2
+kind: ServiceManifest
+metadata:
+  name: calibration-breach-gate
+  labels:
+    tier: critical   # optional in the schema; nthlayer-common still requires it (opensrm-9bil)
+spec:
+  owner:
+    group: group:default/risk
+  service:
+    name: calibration-breach-gate
+    type: ai-gate
+  judgment_threshold:
+    - type: calibration
+      measurement:
+        bins: 10
+        window: 30d
+      bounds:
+        maximum_brier_score: 0.05
+        maximum_expected_calibration_error: 0.03

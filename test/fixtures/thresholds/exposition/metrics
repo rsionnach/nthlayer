@@ -1,0 +1,20 @@
+# opensrm-x0r9: static Prometheus exposition for test/integration-thresholds.sh,
+# served at /metrics and scraped by test/prometheus.yml's fake-services job.
+#
+# Series names and labels: nthlayer-common's THRESHOLD_SERIES
+# (nthlayer_common/manifest/threshold_series.py), documented in the front
+# door's docs/metrics-contract.md. gen_ai_calibration_* is what workers reads
+# today; Addendum A1 section 4.5 renames it to nthlayer_calibration_*, which is
+# future work in common and workers, not this fixture.
+# bins/window are the manifests' measurement values as literal strings.
+#
+# calibration-breach-gate: ECE 0.12 > bound 0.03 (breach), Brier 0.02 <= 0.05.
+# calibration-within-gate: both within: the negative control.
+# HELP gen_ai_calibration_ece Expected calibration error of the gate's confidence.
+# TYPE gen_ai_calibration_ece gauge
+gen_ai_calibration_ece{service="calibration-breach-gate",bins="10",window="30d"} 0.12
+gen_ai_calibration_ece{service="calibration-within-gate",bins="10",window="30d"} 0.01
+# HELP gen_ai_calibration_brier Brier score of the gate's confidence.
+# TYPE gen_ai_calibration_brier gauge
+gen_ai_calibration_brier{service="calibration-breach-gate",bins="10",window="30d"} 0.02
+gen_ai_calibration_brier{service="calibration-within-gate",bins="10",window="30d"} 0.02

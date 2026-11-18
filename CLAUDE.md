@@ -116,7 +116,7 @@ examples, generator-specific scripts.
     it.
   - `docs/testing.md`, `docs/COSTOPTIMISATION.md`,
     `docs/metrics-contract.md` — cross-cutting operational docs.
-  - `docs/integration-testing.md` — six-test-surface harness
+  - `docs/integration-testing.md` — seven-test-surface harness
     cross-reference (new under the auto-memory retirement).
   - `docs/release-runbook.md` — operator runbook for the full
     ecosystem-wide release pipeline (Phase 5).
@@ -280,7 +280,9 @@ examples, generator-specific scripts.
   - `release.yml` — meta-package release to PyPI (triggered on
     `meta-v*` tags).
   - `integration-three-tier.yml` — cross-repo three-tier integration
-    test (`workflow_dispatch` + nightly cron).
+    test, and in its `thresholds` job `test/integration-thresholds.sh`
+    (judgment thresholds via core and workers, opensrm-x0r9)
+    (`workflow_dispatch` + nightly cron).
   - `publish-docker.yml` — Docker image publish.
 - `meta-package/` — source for `pip install nthlayer`. Dependency-
   only; pins core / workers / bench / generate at matching versions.
