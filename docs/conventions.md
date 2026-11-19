@@ -43,6 +43,46 @@ Field naming conventions:
 
 See Golden Principle #3 for enforcement details.
 
+## Comments and Facts About Other Files
+
+A comment or docstring may describe its own file. A fact about another file
+is either cited by a stable name and pinned by a test, or left out.
+
+- **A stable name** is a title: a rule's title, a section heading, a
+  function or constant name. Never a rule number and never a line number;
+  both move when something is inserted above them.
+- **Pinned by a test** means a test fails when the cited thing is renamed,
+  moved or removed. A citation nothing checks is the same defect with better
+  spelling.
+- **Left out** is a real option, and often the right one. If the fact is not
+  worth a test, it is not worth asserting in prose that will outlive it.
+
+This applies across repositories as well as within one: a pointer into a
+sibling repo's file is the least checkable kind.
+
+**Why:** claims about the same file get corrected when the file changes,
+because the author is looking at them. Claims about another file do not. One
+gate found six stale ones (a floor, a file, a constant and a count, each
+somewhere else), four of them written during the gate itself (opensrm-ir5m).
+A later change made to fix one such pointer introduced three more before it
+merged (opensrm-v929). In neither case had a claim about the comment's own
+file gone stale.
+
+**Cost:** this forbids some useful prose. A sentence saying where the other
+half of a mechanism lives is helpful right up to the day it is wrong.
+
+**Enforcement:** DOCUMENTATION, the first step of the promotion ladder,
+since 2026-11-18 (opensrm-p29v). It is not a gate review check.
+
+**Promotion:** violations are counted from that date. On the third, file
+`[PROMOTE] cross-file claims to <next level>` and promote the mechanical part
+only: a citation by rule number, and a path that does not exist. Those two
+can be caught by a lint or a structural test. Whether a sentence asserts a
+fact about another file at all needs judgement, and stays here.
+
+**Violations seen since 2026-11-18:** none recorded. Add each one here, with
+its bead, when it is found.
+
 ## Task Tracking with Beads (bd)
 
 This project uses [Beads](https://github.com/steveyegge/beads) for issue tracking. **Always use the `bd` CLI** — never create individual JSON files in `.beads/`.
