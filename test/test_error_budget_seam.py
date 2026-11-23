@@ -22,20 +22,24 @@ that write an error budget is pinned. A manifest that stops loading, or a
 fixed one that starts, turns this red.
 
 Run from the ecosystem root with CI's command (.github/workflows/error-budget-seam.yml).
---isolated --no-project matter: without them uv uses the workspace's
-editable sibling checkouts, not the published packages.
+NTHLAYER_ECOSYSTEM_ROOT names the directory holding the opensrm and
+nthlayer-generate checkouts; the test fails, naming it, when it is unset or
+missing (opensrm-x7y2). --isolated --no-project matter: without them uv uses
+the workspace's editable sibling checkouts, not the published packages.
 
-    uv run --isolated --no-project --python 3.11 \\
+    NTHLAYER_ECOSYSTEM_ROOT=$PWD uv run --isolated --no-project --python 3.11 \\
         --with nthlayer-generate --with nthlayer-workers --with pytest \\
         pytest -q nthlayer/test/test_error_budget_seam.py
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import warnings
 from pathlib import Path
 
+import pytest
 from nthlayer_common.manifest import (
     ERROR_BUDGET_REMAINING,
     ManifestLoadError,
@@ -45,14 +49,29 @@ from nthlayer_common.manifest import (
 from nthlayer_generate.recording_rules import build_recording_rules_from_manifest
 from nthlayer_workers.measure.adapters.prometheus import load_specs
 
-# nthlayer/test/ -> ecosystem root, where opensrm and nthlayer-generate are
-# siblings (locally, and as laid out by the front door's CI job).
-ROOT = Path(__file__).resolve().parents[2]
-CORPUS_DIRS = (
-    ROOT / "opensrm" / "spec" / "v2" / "examples",
-    ROOT / "nthlayer-generate" / "examples" / "services",
-    ROOT / "nthlayer-generate" / "examples" / "opensrm",
-)
+# The ecosystem root, where opensrm and nthlayer-generate are siblings
+# (locally, and as laid out by the front door's CI job). Named by
+# configuration, never derived from this file's location (opensrm-x7y2).
+_ROOT_VAR = "NTHLAYER_ECOSYSTEM_ROOT"
+
+
+def _root() -> Path:
+    value = os.environ.get(_ROOT_VAR)
+    if not value:
+        pytest.fail(f"{_ROOT_VAR} is not set: point it at the directory holding opensrm and nthlayer-generate")
+    root = Path(value)
+    if not root.is_dir():
+        pytest.fail(f"{_ROOT_VAR}={value} is not a directory")
+    return root
+
+
+def _corpus_dirs(root: Path) -> tuple[Path, ...]:
+    return (
+        root / "opensrm" / "spec" / "v2" / "examples",
+        root / "nthlayer-generate" / "examples" / "services",
+        root / "nthlayer-generate" / "examples" / "opensrm",
+    )
+
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
 EXPECTED_WITH_BUDGET = 24  # 2026-11-18, common 5.12.1 / generate 4.1.0 / workers 4.2.2
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
@@ -124,10 +143,11 @@ EXPECTED_REJECTED = {
 }
 
 
-def _corpus() -> list[Path]:
-    missing = [d for d in CORPUS_DIRS if not d.is_dir()]
+def _corpus(root: Path) -> list[Path]:
+    dirs = _corpus_dirs(root)
+    missing = [d for d in dirs if not d.is_dir()]
     assert not missing, f"corpus checkout missing: {missing}"
-    return sorted(p for d in CORPUS_DIRS for p in d.rglob("*") if p.suffix in (".yaml", ".yml"))
+    return sorted(p for d in dirs for p in d.rglob("*") if p.suffix in (".yaml", ".yml"))
 
 
 def _load(path: Path) -> ReliabilityManifest | None:
@@ -176,8 +196,9 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     agreed_kinds: set[str] = set()
     agreed_budgets = 0
     problems: dict[str, object] = {}
-    for i, path in enumerate(_corpus()):
-        rel = str(path.relative_to(ROOT))
+    root = _root()
+    for i, path in enumerate(_corpus(root)):
+        rel = str(path.relative_to(root))
         try:
             manifest = _load(path)
             if manifest is None:
@@ -186,8 +207,9 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
             # A directory per file: load_specs reads every manifest in its directory.
             written, read = _written(manifest), _read(path, tmp_path / str(i))
         except Exception as exc:  # name the file; a bare traceback does not
-            problems[rel] = f"raised {exc!r}"
-            continue
+            # pytest.fail.Exception is what pytest.fail raises; raising it
+            # directly lets the original exception chain as its cause.
+            raise pytest.fail.Exception(f"{rel} raised {exc!r}") from exc
         names = [s.name for s in manifest.slos]
         if len(names) != len(set(names)):
             # Selectors are keyed by name: two SLOs sharing one would merge.

@@ -46,6 +46,9 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: error-budget seam (published nthlayer-generate + nthlayer-workers)
+        env:
+          # The checkouts above sit side by side here (opensrm-x7y2).
+          NTHLAYER_ECOSYSTEM_ROOT: ${{ github.workspace }}
         run: >
           uv run --isolated --no-project --python 3.11
           --with nthlayer-generate --with nthlayer-workers --with pytest
