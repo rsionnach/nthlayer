@@ -53,6 +53,7 @@ Skip when:
 | [hot-path-vs-cli-side-effect-ownership.md](hot-path-vs-cli-side-effect-ownership.md) | Active for v1.5 | Worker modules own production side-effects; CLI is ad-hoc only |
 | [opensrm-v1-support.md](opensrm-v1-support.md) | Active | opensrm/v1 is migrate-only; srm/v1 is NthLayer's v1 dialect |
 | [decision-source-of-truth.md](decision-source-of-truth.md) | Decided 2026-11-18 | Core's store is the record for decisions and their rates; one reversal rate |
+| [verdict-wire-shape.md](verdict-wire-shape.md) | Decided 2026-11-23 | `Verdict.to_dict` is the one wire shape; outcomes are children; typed relations; legacy stores retire |
 
 ## Linking from code
 
