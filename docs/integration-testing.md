@@ -28,8 +28,8 @@ cross-reference.
   `nthlayer_outcomes_total` with the §4.5 labels, and the
   `nthlayer_decision_confidence` gauge (opensrm-taz2), and that the
   verdict-accuracy dashboard's reversal-rate panel reads the A1 series
-  rather than the retired `nthlayer_verdict_reversal_rate` (opensrm-sz3a). Runs the otelcol-contrib
-  image pinned in `test/docker-compose.yml`, sends fixed OTLP/HTTP JSON
+  rather than the retired `nthlayer_verdict_reversal_rate` (opensrm-sz3a).
+  Runs the otelcol-contrib image pinned in `test/docker-compose.yml`, sends fixed OTLP/HTTP JSON
   events, asserts names, labels, counts, gauge values and exclusions. Needs Docker and
   fails (never skips) without it. CI: `.github/workflows/otel-collector.yml`
   (push/PR to main).

@@ -1111,6 +1111,13 @@ def _dashboard_exprs(path):
             for t in p.get("targets", []) if "expr" in t]
 
 
+def _fake_series(prometheus, expr):
+    """The fake gate's series of an instant query, once Prometheus returns one."""
+    result = promql(prometheus, expr, lambda r: any(
+        s["metric"].get("service") == FAKE_NAME for s in r))
+    return [s for s in result if s["metric"].get("service") == FAKE_NAME]
+
+
 def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheus):
     """The reversal-rate panel reads A1's nthlayer_reversals_total over
     nthlayer_decisions_total, the only quantity named reversal rate (opensrm-5lxs);
@@ -1127,20 +1134,16 @@ def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheu
     names = re.findall(r"\bnthlayer_[a-z_]+", expr)
     assert set(names) == {"nthlayer_reversals_total", "nthlayer_decisions_total"}, names
     assert set(re.findall(r"\[([^\]]+)\]", expr)) == {"7d"}, expr
-    result = promql(prometheus, expr, lambda r: any(
-        s["metric"].get("service") == FAKE_NAME for s in r))
-    mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
-    assert len(mine) == 1, result
+    mine = _fake_series(prometheus, expr)
+    assert len(mine) == 1, mine
     # The fake gate reverses decisions once the ramp settles: a real rate, not 0.
     assert 0.0 < float(mine[0]["value"][1]) <= 1.0, mine
     # Pin the value, not just its range: the panel minus A1's ratio, written here
     # from the §4.5 names and evaluated in the same query (one instant), is 0.
     reference = ("sum by (service) (increase(nthlayer_reversals_total[7d]))"
                  " / sum by (service) (increase(nthlayer_decisions_total[7d]))")
-    diff = promql(prometheus, f"abs(({expr}) - ({reference}))", lambda r: any(
-        s["metric"].get("service") == FAKE_NAME for s in r))
-    mine = [s for s in diff if s["metric"].get("service") == FAKE_NAME]
-    assert len(mine) == 1 and float(mine[0]["value"][1]) < 1e-9, diff
+    mine = _fake_series(prometheus, f"abs(({expr}) - ({reference}))")
+    assert len(mine) == 1 and float(mine[0]["value"][1]) < 1e-9, mine
 
 
 def test_verdict_accuracy_reversal_panel_shows_zero_before_any_reversal(prometheus):
@@ -1153,8 +1156,6 @@ def test_verdict_accuracy_reversal_panel_shows_zero_before_any_reversal(promethe
     assert expr.count("nthlayer_reversals_total[") == 1, expr
     no_reversals = expr.replace(
         "nthlayer_reversals_total[", 'nthlayer_reversals_total{reversal_type="none-emitted"}[')
-    result = promql(prometheus, no_reversals, lambda r: any(
-        s["metric"].get("service") == FAKE_NAME for s in r))
-    mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
-    assert len(mine) == 1, result
+    mine = _fake_series(prometheus, no_reversals)
+    assert len(mine) == 1, mine
     assert float(mine[0]["value"][1]) == 0.0, mine
