@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -1015,6 +1016,7 @@ def test_fake_service_exports_the_bridge_counters(fake_gate):
 
 FRAUD_SPEC = TEST_DIR.parent / "demo" / "specs" / "fraud-detect.yaml"
 DEMO_RULES = TEST_DIR / "rules" / "demo-alerts.yml"
+ACCURACY_DASHBOARD = TEST_DIR / "grafana" / "dashboards" / "nthlayer-verdict-accuracy.json"
 
 
 def pinned_prometheus():
@@ -1097,3 +1099,63 @@ def test_demo_nthlayer_alert_expressions_read_the_collector(prometheus):
         mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
         assert len(mine) == 1, (rule.get("alert"), result)
         assert 0.0 < float(mine[0]["value"][1]) <= 1.0, (rule.get("alert"), mine)
+
+
+def _dashboard_exprs(path):
+    """Every target expression in a Grafana dashboard, collapsed rows included."""
+    def panels(items):
+        for p in items:
+            yield p
+            yield from panels(p.get("panels", []))
+    return [t["expr"] for p in panels(json.loads(path.read_text())["panels"])
+            for t in p.get("targets", []) if "expr" in t]
+
+
+def _fake_series(prometheus, expr):
+    """The fake gate's series of an instant query, once Prometheus returns one."""
+    result = promql(prometheus, expr, lambda r: any(
+        s["metric"].get("service") == FAKE_NAME for s in r))
+    return [s for s in result if s["metric"].get("service") == FAKE_NAME]
+
+
+def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheus):
+    """The reversal-rate panel reads A1's nthlayer_reversals_total over
+    nthlayer_decisions_total, the only quantity named reversal rate (opensrm-5lxs);
+    respond's nthlayer_verdict_reversal_rate gauge is retired (opensrm-l0ki), and a
+    panel on a removed series is an empty panel, not an error (opensrm-sz3a)."""
+    exprs = _dashboard_exprs(ACCURACY_DASHBOARD)
+    assert not [e for e in exprs if "nthlayer_verdict_reversal_rate" in e], exprs
+    reversal = [e for e in exprs if "nthlayer_reversals_total" in e]
+    assert len(reversal) == 1, exprs
+    expr = reversal[0]
+    # Pin the structure: the value check below cannot tell decisions from
+    # outcomes, which the fake gate's 1s outcome delay makes increase alike.
+    # A1 §4.5 names the two series; the panel's window is 7d.
+    names = re.findall(r"\bnthlayer_[a-z_]+", expr)
+    assert set(names) == {"nthlayer_reversals_total", "nthlayer_decisions_total"}, names
+    assert set(re.findall(r"\[([^\]]+)\]", expr)) == {"7d"}, expr
+    mine = _fake_series(prometheus, expr)
+    assert len(mine) == 1, mine
+    # The fake gate reverses decisions once the ramp settles: a real rate, not 0.
+    assert 0.0 < float(mine[0]["value"][1]) <= 1.0, mine
+    # Pin the value, not just its range: the panel minus A1's ratio, written here
+    # from the §4.5 names and evaluated in the same query (one instant), is 0.
+    reference = ("sum by (service) (increase(nthlayer_reversals_total[7d]))"
+                 " / sum by (service) (increase(nthlayer_decisions_total[7d]))")
+    mine = _fake_series(prometheus, f"abs(({expr}) - ({reference}))")
+    assert len(mine) == 1 and float(mine[0]["value"][1]) < 1e-9, mine
+
+
+def test_verdict_accuracy_reversal_panel_shows_zero_before_any_reversal(prometheus):
+    """The count connector creates nthlayer_reversals_total only when a reversal
+    arrives, so a service with decisions and no reversals has no numerator. The
+    panel must show it at 0, not drop it: a missing line is the silent empty
+    panel opensrm-sz3a exists to prevent. Selecting a reversal_type no event
+    carries stands in for that service, against the same real decisions."""
+    (expr,) = [e for e in _dashboard_exprs(ACCURACY_DASHBOARD) if "nthlayer_reversals_total" in e]
+    assert expr.count("nthlayer_reversals_total[") == 1, expr
+    no_reversals = expr.replace(
+        "nthlayer_reversals_total[", 'nthlayer_reversals_total{reversal_type="none-emitted"}[')
+    mine = _fake_series(prometheus, no_reversals)
+    assert len(mine) == 1, mine
+    assert float(mine[0]["value"][1]) == 0.0, mine

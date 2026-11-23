@@ -15,6 +15,7 @@
     {
       "id": 1,
       "title": "Verdict Accuracy (7d window)",
+      "description": "respond's nthlayer_verdict_accuracy gauge: 1 - overridden / resolved verdicts, per component and verdict type. Resolved verdicts only, so not comparable with the reversal rate below (opensrm-5lxs).",
       "type": "timeseries",
       "gridPos": {
         "h": 10,
@@ -76,7 +77,8 @@
       "panels": [
         {
           "id": 2,
-          "title": "Verdict Reversal Rate (7d window)",
+          "title": "Reversal Rate (7d window)",
+          "description": "OpenSRM A1 reversals over all decisions per service (nthlayer_reversals_total / nthlayer_decisions_total, from the collector): the one quantity named reversal rate (opensrm-5lxs). The 'or 0 *' term shows a service with decisions and no reversals yet at 0: the reversals counter exists only once a reversal arrives (opensrm-sz3a).",
           "type": "timeseries",
           "gridPos": {
             "h": 10,
@@ -90,8 +92,8 @@
           },
           "targets": [
             {
-              "expr": "nthlayer_verdict_reversal_rate{window=\"7d\"}",
-              "legendFormat": "{{component}} — {{verdict_type}}"
+              "expr": "(sum by (service) (increase(nthlayer_reversals_total[7d])) or 0 * sum by (service) (increase(nthlayer_decisions_total[7d]))) / sum by (service) (increase(nthlayer_decisions_total[7d]))",
+              "legendFormat": "{{service}}"
             }
           ],
           "fieldConfig": {
