@@ -90,7 +90,7 @@
           },
           "targets": [
             {
-              "expr": "sum by (service) (increase(nthlayer_reversals_total[7d])) / sum by (service) (increase(nthlayer_decisions_total[7d]))",
+              "expr": "(sum by (service) (increase(nthlayer_reversals_total[7d])) or 0 * sum by (service) (increase(nthlayer_decisions_total[7d]))) / sum by (service) (increase(nthlayer_decisions_total[7d]))",
               "legendFormat": "{{service}}"
             }
           ],

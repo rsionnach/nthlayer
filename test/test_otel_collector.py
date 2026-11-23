@@ -1127,3 +1127,20 @@ def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheu
     assert len(mine) == 1, result
     # The fake gate reverses decisions once the ramp settles: a real rate, not 0.
     assert 0.0 < float(mine[0]["value"][1]) <= 1.0, mine
+
+
+def test_verdict_accuracy_reversal_panel_shows_zero_before_any_reversal(prometheus):
+    """The count connector creates nthlayer_reversals_total only when a reversal
+    arrives, so a service with decisions and no reversals has no numerator. The
+    panel must show it at 0, not drop it: a missing line is the silent empty
+    panel opensrm-sz3a exists to prevent. Selecting a reversal_type no event
+    carries stands in for that service, against the same real decisions."""
+    (expr,) = [e for e in _dashboard_exprs(ACCURACY_DASHBOARD) if "nthlayer_reversals_total" in e]
+    assert expr.count("nthlayer_reversals_total[") == 1, expr
+    no_reversals = expr.replace(
+        "nthlayer_reversals_total[", 'nthlayer_reversals_total{reversal_type="none-emitted"}[')
+    result = promql(prometheus, no_reversals, lambda r: any(
+        s["metric"].get("service") == FAKE_NAME for s in r))
+    mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
+    assert len(mine) == 1, result
+    assert float(mine[0]["value"][1]) == 0.0, mine
