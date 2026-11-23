@@ -1127,6 +1127,14 @@ def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheu
     assert len(mine) == 1, result
     # The fake gate reverses decisions once the ramp settles: a real rate, not 0.
     assert 0.0 < float(mine[0]["value"][1]) <= 1.0, mine
+    # Pin the value, not just its range: the panel minus A1's ratio, written here
+    # from the §4.5 names and evaluated in the same query (one instant), is 0.
+    reference = ("sum by (service) (increase(nthlayer_reversals_total[7d]))"
+                 " / sum by (service) (increase(nthlayer_decisions_total[7d]))")
+    diff = promql(prometheus, f"abs(({expr}) - ({reference}))", lambda r: any(
+        s["metric"].get("service") == FAKE_NAME for s in r))
+    mine = [s for s in diff if s["metric"].get("service") == FAKE_NAME]
+    assert len(mine) == 1 and float(mine[0]["value"][1]) < 1e-9, diff
 
 
 def test_verdict_accuracy_reversal_panel_shows_zero_before_any_reversal(prometheus):
