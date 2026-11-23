@@ -1015,6 +1015,7 @@ def test_fake_service_exports_the_bridge_counters(fake_gate):
 
 FRAUD_SPEC = TEST_DIR.parent / "demo" / "specs" / "fraud-detect.yaml"
 DEMO_RULES = TEST_DIR / "rules" / "demo-alerts.yml"
+ACCURACY_DASHBOARD = TEST_DIR / "grafana" / "dashboards" / "nthlayer-verdict-accuracy.json"
 
 
 def pinned_prometheus():
@@ -1097,3 +1098,32 @@ def test_demo_nthlayer_alert_expressions_read_the_collector(prometheus):
         mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
         assert len(mine) == 1, (rule.get("alert"), result)
         assert 0.0 < float(mine[0]["value"][1]) <= 1.0, (rule.get("alert"), mine)
+
+
+def _dashboard_exprs(path):
+    """Every target expression in a Grafana dashboard, collapsed rows included."""
+    def panels(items):
+        for p in items:
+            yield p
+            yield from panels(p.get("panels", []))
+    return [t["expr"] for p in panels(json.loads(path.read_text())["panels"])
+            for t in p.get("targets", []) if "expr" in t]
+
+
+def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheus):
+    """The reversal-rate panel reads A1's nthlayer_reversals_total over
+    nthlayer_decisions_total, the only quantity named reversal rate (opensrm-5lxs);
+    respond's nthlayer_verdict_reversal_rate gauge is retired (opensrm-l0ki), and a
+    panel on a removed series is an empty panel, not an error (opensrm-sz3a)."""
+    exprs = _dashboard_exprs(ACCURACY_DASHBOARD)
+    assert not [e for e in exprs if "nthlayer_verdict_reversal_rate" in e], exprs
+    reversal = [e for e in exprs if "nthlayer_reversals_total" in e]
+    assert len(reversal) == 1, exprs
+    expr = reversal[0]
+    assert "nthlayer_decisions_total" in expr, expr
+    result = promql(prometheus, expr, lambda r: any(
+        s["metric"].get("service") == FAKE_NAME for s in r))
+    mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
+    assert len(mine) == 1, result
+    # The fake gate reverses decisions once the ramp settles: a real rate, not 0.
+    assert 0.0 < float(mine[0]["value"][1]) <= 1.0, mine

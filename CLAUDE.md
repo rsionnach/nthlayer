@@ -130,7 +130,8 @@ examples, generator-specific scripts.
   `nthlayer_*` counters and the `nthlayer_decision_confidence` gauge
   (opensrm-taz2), tested by `test_otel_collector.py` (opensrm-s4ui),
   which also drives `fake-service.py`'s ai-gate events through it and
-  evaluates the demo's `nthlayer_*` queries in Prometheus.
+  evaluates the demo's `nthlayer_*` queries in Prometheus, the
+  verdict-accuracy dashboard's reversal-rate panel included (opensrm-sz3a).
 - `scripts/` — tooling that operates ON the workspace, the category
   hard rule 1 was amended to permit:
   - `eco_doctor.py` + `eco-doctor.sh` — the dependency-range and
