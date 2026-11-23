@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -1120,7 +1121,12 @@ def test_verdict_accuracy_dashboard_reversal_panel_reads_the_collector(prometheu
     reversal = [e for e in exprs if "nthlayer_reversals_total" in e]
     assert len(reversal) == 1, exprs
     expr = reversal[0]
-    assert "nthlayer_decisions_total" in expr, expr
+    # Pin the structure: the value check below cannot tell decisions from
+    # outcomes, which the fake gate's 1s outcome delay makes increase alike.
+    # A1 §4.5 names the two series; the panel's window is 7d.
+    names = re.findall(r"\bnthlayer_[a-z_]+", expr)
+    assert set(names) == {"nthlayer_reversals_total", "nthlayer_decisions_total"}, names
+    assert set(re.findall(r"\[([^\]]+)\]", expr)) == {"7d"}, expr
     result = promql(prometheus, expr, lambda r: any(
         s["metric"].get("service") == FAKE_NAME for s in r))
     mine = [s for s in result if s["metric"].get("service") == FAKE_NAME]
