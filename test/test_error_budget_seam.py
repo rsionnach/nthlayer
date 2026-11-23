@@ -22,20 +22,24 @@ that write an error budget is pinned. A manifest that stops loading, or a
 fixed one that starts, turns this red.
 
 Run from the ecosystem root with CI's command (.github/workflows/error-budget-seam.yml).
---isolated --no-project matter: without them uv uses the workspace's
-editable sibling checkouts, not the published packages.
+NTHLAYER_ECOSYSTEM_ROOT names the directory holding the opensrm and
+nthlayer-generate checkouts; the test fails, naming it, when it is unset or
+missing (opensrm-x7y2). --isolated --no-project matter: without them uv uses
+the workspace's editable sibling checkouts, not the published packages.
 
-    uv run --isolated --no-project --python 3.11 \\
+    NTHLAYER_ECOSYSTEM_ROOT=$PWD uv run --isolated --no-project --python 3.11 \\
         --with nthlayer-generate --with nthlayer-workers --with pytest \\
         pytest -q nthlayer/test/test_error_budget_seam.py
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import warnings
 from pathlib import Path
 
+import pytest
 from nthlayer_common.manifest import (
     ERROR_BUDGET_REMAINING,
     ManifestLoadError,
@@ -45,22 +49,40 @@ from nthlayer_common.manifest import (
 from nthlayer_generate.recording_rules import build_recording_rules_from_manifest
 from nthlayer_workers.measure.adapters.prometheus import load_specs
 
-# nthlayer/test/ -> ecosystem root, where opensrm and nthlayer-generate are
-# siblings (locally, and as laid out by the front door's CI job).
-ROOT = Path(__file__).resolve().parents[2]
-CORPUS_DIRS = (
-    ROOT / "opensrm" / "spec" / "v2" / "examples",
-    ROOT / "nthlayer-generate" / "examples" / "services",
-    ROOT / "nthlayer-generate" / "examples" / "opensrm",
-)
+# The ecosystem root, where opensrm and nthlayer-generate are siblings
+# (locally, and as laid out by the front door's CI job). Named by
+# configuration, never derived from this file's location (opensrm-x7y2).
+_ROOT_VAR = "NTHLAYER_ECOSYSTEM_ROOT"
+
+
+def _root() -> Path:
+    value = os.environ.get(_ROOT_VAR)
+    if not value:
+        pytest.fail(f"{_ROOT_VAR} is not set: point it at the directory holding opensrm and nthlayer-generate")
+    root = Path(value)
+    if not root.is_dir():
+        pytest.fail(f"{_ROOT_VAR}={value} is not a directory")
+    return root
+
+
+def _corpus_dirs(root: Path) -> tuple[Path, ...]:
+    return (
+        root / "opensrm" / "spec" / "v2" / "examples",
+        root / "nthlayer-generate" / "examples" / "services",
+        root / "nthlayer-generate" / "examples" / "opensrm",
+    )
+
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-EXPECTED_WITH_BUDGET = 24  # 2026-11-07, common 5.12.0 / generate 4.1.0 / workers 4.2.0
+EXPECTED_WITH_BUDGET = 24  # 2026-11-18, common 5.12.1 / generate 4.1.0 / workers 4.2.2
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
-# file count. 27 availability + 15 latency + 1 error_rate on 2026-11-07,
+# file count. 27 availability + 21 latency + 1 error_rate on 2026-11-18,
 # counted per kind from generate's written rules, separately from this test.
-EXPECTED_AGREED_BUDGETS = 43
+# Latency was 15 until common 5.12.1 read legacy indicators[].threshold_ms
+# (opensrm-s7b1, wo62.4.24), which gave six legacy latency SLOs a budget
+# (opensrm-x7y2).
+EXPECTED_AGREED_BUDGETS = 49
 
 # Budgets measure asks for and generate's guard deliberately does not write
 # (generate recording_rules `_budget_skip_reason`: no budget is better than a
@@ -68,7 +90,6 @@ EXPECTED_AGREED_BUDGETS = 43
 # name), valued by the bead whose fix should give it a budget. Exact, as the
 # other pins: fixing a bead turns this red, and the entry goes.
 _T13C = "opensrm-t13c: srm/v1 keeps a latency bound or an error_rate maximum in target"
-_S7B1 = "opensrm-s7b1: legacy indicators[].threshold_ms is not read"
 EXPECTED_READ_NOT_WRITTEN = {
     ("nthlayer-generate/examples/opensrm/ai-gate.reliability.yaml", "latency"): _T13C,
     ("nthlayer-generate/examples/opensrm/api-basic.reliability.yaml", "latency"): _T13C,
@@ -77,12 +98,6 @@ EXPECTED_READ_NOT_WRITTEN = {
     ("nthlayer-generate/examples/opensrm/batch.reliability.yaml", "error_rate"): _T13C,
     ("nthlayer-generate/examples/opensrm/stream.reliability.yaml", "error_rate"): _T13C,
     ("nthlayer-generate/examples/opensrm/worker.reliability.yaml", "error_rate"): _T13C,
-    ("nthlayer-generate/examples/services/analytics-stream.yaml", "event-latency-p99"): _S7B1,
-    ("nthlayer-generate/examples/services/checkout-service.yaml", "latency-p95"): _S7B1,
-    ("nthlayer-generate/examples/services/checkout-service.yaml", "latency-p99"): _S7B1,
-    ("nthlayer-generate/examples/services/identity-service.yaml", "latency-p95"): _S7B1,
-    ("nthlayer-generate/examples/services/identity-service.yaml", "latency-p99"): _S7B1,
-    ("nthlayer-generate/examples/services/notification-worker.yaml", "processing-latency-p95"): _S7B1,
     ("opensrm/spec/v2/examples/migration/api-full-v2.yaml", "payment-api-latency"): (
         "opensrm-8jpp: a v2 latency bound is read from the objective"
     ),
@@ -128,10 +143,12 @@ EXPECTED_REJECTED = {
 }
 
 
-def _corpus() -> list[Path]:
-    missing = [d for d in CORPUS_DIRS if not d.is_dir()]
-    assert not missing, f"corpus checkout missing: {missing}"
-    return sorted(p for d in CORPUS_DIRS for p in d.rglob("*") if p.suffix in (".yaml", ".yml"))
+def _corpus(root: Path) -> list[Path]:
+    dirs = _corpus_dirs(root)
+    missing = [d for d in dirs if not d.is_dir()]
+    if missing:
+        pytest.fail(f"corpus checkout missing under {_ROOT_VAR}={root}: {missing}")
+    return sorted(p for d in dirs for p in d.rglob("*") if p.suffix in (".yaml", ".yml"))
 
 
 def _load(path: Path) -> ReliabilityManifest | None:
@@ -180,8 +197,9 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     agreed_kinds: set[str] = set()
     agreed_budgets = 0
     problems: dict[str, object] = {}
-    for i, path in enumerate(_corpus()):
-        rel = str(path.relative_to(ROOT))
+    root = _root()
+    for i, path in enumerate(_corpus(root)):
+        rel = str(path.relative_to(root))
         try:
             manifest = _load(path)
             if manifest is None:
@@ -190,8 +208,9 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
             # A directory per file: load_specs reads every manifest in its directory.
             written, read = _written(manifest), _read(path, tmp_path / str(i))
         except Exception as exc:  # name the file; a bare traceback does not
-            problems[rel] = f"raised {exc!r}"
-            continue
+            # pytest.fail.Exception is what pytest.fail raises; raising it
+            # directly lets the original exception chain as its cause.
+            raise pytest.fail.Exception(f"{rel} raised {exc!r}") from exc
         names = [s.name for s in manifest.slos]
         if len(names) != len(set(names)):
             # Selectors are keyed by name: two SLOs sharing one would merge.
@@ -227,7 +246,8 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         if written:
             with_budget.append(rel)
 
-    # Collected, then asserted once, so one failure does not hide another.
+    # Collected, then asserted once, so one failure does not hide another. A
+    # file that raises fails the test at once, above (opensrm-x7y2).
     if rejected != set(EXPECTED_REJECTED):
         problems["EXPECTED_REJECTED (add each new file with a reason or bead)"] = {
             "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
