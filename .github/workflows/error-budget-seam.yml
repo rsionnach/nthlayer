@@ -10,9 +10,10 @@ name: error-budget-seam
 # red. The corpus checkouts float on main, as nthlayer-common's spec checkout
 # does.
 #
-# Siblings are checked out side by side, as in the workspace, so the test's
-# path resolution is the same locally and here; a missing checkout fails the
-# test rather than skipping it.
+# Siblings are checked out side by side, as in the workspace; the step's
+# NTHLAYER_ECOSYSTEM_ROOT points the test at them, as a local run sets it to
+# the workspace root (opensrm-x7y2). An unset variable or a missing checkout
+# fails the test rather than skipping it.
 
 on:
   push:

@@ -146,7 +146,8 @@ EXPECTED_REJECTED = {
 def _corpus(root: Path) -> list[Path]:
     dirs = _corpus_dirs(root)
     missing = [d for d in dirs if not d.is_dir()]
-    assert not missing, f"corpus checkout missing: {missing}"
+    if missing:
+        pytest.fail(f"corpus checkout missing under {_ROOT_VAR}={root}: {missing}")
     return sorted(p for d in dirs for p in d.rglob("*") if p.suffix in (".yaml", ".yml"))
 
 
@@ -245,7 +246,8 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         if written:
             with_budget.append(rel)
 
-    # Collected, then asserted once, so one failure does not hide another.
+    # Collected, then asserted once, so one failure does not hide another. A
+    # file that raises fails the test at once, above (opensrm-x7y2).
     if rejected != set(EXPECTED_REJECTED):
         problems["EXPECTED_REJECTED (add each new file with a reason or bead)"] = {
             "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
