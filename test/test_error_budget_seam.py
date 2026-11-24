@@ -73,16 +73,18 @@ def _corpus_dirs(root: Path) -> tuple[Path, ...]:
     )
 
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-EXPECTED_WITH_BUDGET = 24  # 2026-11-18, common 5.12.1 / generate 4.1.0 / workers 4.2.2
+EXPECTED_WITH_BUDGET = 25  # 2026-11-24, common 5.12.1 / generate 4.1.0 / workers 4.3.0
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
-# file count. 27 availability + 21 latency + 1 error_rate on 2026-11-18,
+# file count. 28 availability + 22 latency + 1 error_rate on 2026-11-24,
 # counted per kind from generate's written rules, separately from this test.
 # Latency was 15 until common 5.12.1 read legacy indicators[].threshold_ms
 # (opensrm-s7b1, wo62.4.24), which gave six legacy latency SLOs a budget
-# (opensrm-x7y2).
-EXPECTED_AGREED_BUDGETS = 49
+# (opensrm-x7y2). The spec's services/worker.yaml joined the corpus with one
+# availability and one latency budget when its SLOs gained indicators
+# (opensrm-n5rq, opensrm-r8cs).
+EXPECTED_AGREED_BUDGETS = 51
 
 # Budgets measure asks for and generate's guard deliberately does not write
 # (generate recording_rules `_budget_skip_reason`: no budget is better than a
@@ -132,13 +134,9 @@ EXPECTED_REJECTED = {
     "opensrm/spec/v2/examples/template-extension.yaml": "opensrm-moq0",
     "opensrm/spec/v2/examples/minimal.yaml": "opensrm-ta0m",
     "opensrm/spec/v2/examples/x-service-type.yaml": "opensrm-ta0m",
-    "opensrm/spec/v2/examples/services/ai-gate-without-judgment-slos.yaml": "opensrm-ta0m",
-    "opensrm/spec/v2/examples/services/batch.yaml": "opensrm-ta0m",
-    "opensrm/spec/v2/examples/services/database.yaml": "opensrm-ta0m",
     "opensrm/spec/v2/examples/services/api.yaml": "opensrm-1qy1",
     "opensrm/spec/v2/examples/service-manifest-full.yaml": "opensrm-1qy1",
-    "opensrm/spec/v2/examples/services/stream.yaml": "opensrm-moq0",
-    "opensrm/spec/v2/examples/services/worker.yaml": "opensrm-moq0",
+    "opensrm/spec/v2/examples/services/stream.yaml": "opensrm-47tt (re-pin: opensrm-xfxx)",
     "opensrm/spec/v2/examples/services/ai-gate.yaml": "opensrm-moq0",
 }
 
