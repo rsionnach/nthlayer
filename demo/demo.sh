@@ -266,7 +266,9 @@ cmd_start() {
         # rm-and-acquire, the pid file now holds a fresh holder's PID,
         # not the stale one we decided about — skip the rm and let
         # the retry-acquire below decide whether the new lock is ours
-        # or theirs.
+        # or theirs. With an empty $_LOCK_PID (the lock dir was gone
+        # when we looked) there is nothing stale to remove and the
+        # helper removes nothing (opensrm-1c0f).
         _compare_and_rm_stale_lock "$lock_dir" "$_LOCK_PID"
         # Retry. If we lose this race too, a third concurrent invocation
         # won — exit with a clear message rather than aborting silently
