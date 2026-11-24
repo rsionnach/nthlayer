@@ -440,6 +440,23 @@ echo "99999" > "$LOCK/pid"   # held by someone else, as in Test 4
 assert_dir_exists "$LOCK" "lock with another holder's pid preserved while establishing"
 rm -rf "$LOCK"
 
+# And: a pid file that exists but is empty is a holder too (opensrm-1c0f).
+# The winner's noclobber create makes the file and then writes it; a racer
+# whose EXIT trap fires between the two sees exactly this state, and the
+# lock is the winner's.
+LOCK="$SCRATCH/t10d/.start.lock"
+mkdir -p "$SCRATCH/t10d"
+mkdir "$LOCK"
+: > "$LOCK/pid"   # created, not yet written
+(
+    source "$LOCK_LIB"
+    _DEMO_START_LOCK_DIR="$LOCK"
+    _DEMO_START_LOCK_ESTABLISHING=1
+    _demo_register_cleanup _demo_cleanup_start_lock
+)
+assert_dir_exists "$LOCK" "lock with a created, unwritten pid file preserved while establishing"
+rm -rf "$LOCK"
+
 # --------------------------------------------------------------------------
 echo
 echo "=== Test 11: compare-and-rm guard against concurrent stale-reclaim ==="
@@ -484,6 +501,31 @@ mkdir -p "$SCRATCH/t11c"   # lock dir intentionally NOT created
     _compare_and_rm_stale_lock "$LOCK" "99999"
 )
 assert_dir_missing "$LOCK" "compare-and-rm no-op when lock dir already gone"
+
+# 11d, 11e: an empty snapshot names no stale holder (opensrm-1c0f).
+# cmd_start gets one when the lock dir was gone at its check; if a fresh
+# holder has made the dir since, its pid file is missing (11d) or created
+# and unwritten (11e), and an empty-equals-empty compare would remove it.
+LOCK="$SCRATCH/t11d/.start.lock"
+mkdir -p "$SCRATCH/t11d"
+mkdir "$LOCK"   # fresh holder between its mkdir and its pid create
+(
+    source "$LOCK_LIB"
+    _compare_and_rm_stale_lock "$LOCK" ""
+)
+assert_dir_exists "$LOCK" "compare-and-rm with an empty snapshot preserves a lock with no pid file"
+rm -rf "$LOCK"
+
+LOCK="$SCRATCH/t11e/.start.lock"
+mkdir -p "$SCRATCH/t11e"
+mkdir "$LOCK"
+: > "$LOCK/pid"   # fresh holder between its pid create and its write
+(
+    source "$LOCK_LIB"
+    _compare_and_rm_stale_lock "$LOCK" ""
+)
+assert_dir_exists "$LOCK" "compare-and-rm with an empty snapshot preserves a lock with an unwritten pid file"
+rm -rf "$LOCK"
 
 # --------------------------------------------------------------------------
 echo

@@ -145,8 +145,13 @@ opensrm-36es):
   code can append rather than clobber. A
   `_DEMO_START_LOCK_ESTABLISHING` sentinel lets the cleanup hook
   also rm a half-built lock when SIGINT lands between `mkdir` and
-  the metadata `echo`s, but only while no pid is recorded: a
-  recorded pid that is not ours means another racer holds it.
+  the metadata `echo`s, but only while there is no pid file: a pid
+  file that is not ours means another racer holds the lock, even
+  while it is still empty (created, not yet written; opensrm-1c0f).
+  For the same reason compare-and-rm removes nothing when the pid it
+  was asked to match is empty. The cost: a holder interrupted between
+  its own pid create and write leaves a lock that the next start
+  refuses with the manual-cleanup hint.
   Refuses to run if `$OUTPUT_DIR` is a symlink.
 - **0b — live-process refusal.** Walks the canonical PID files
   (`fake-*.pid`, `workers.pid`, `core.pid`, `http-server.pid`); if
