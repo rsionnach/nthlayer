@@ -149,7 +149,9 @@ opensrm-36es):
   file that is not ours means another racer holds the lock, even
   while it is still empty (created, not yet written; opensrm-1c0f).
   For the same reason compare-and-rm removes nothing when the pid it
-  was asked to match is empty.
+  was asked to match is empty. The cost: a holder interrupted between
+  its own pid create and write leaves a lock that the next start
+  refuses with the manual-cleanup hint.
   Refuses to run if `$OUTPUT_DIR` is a symlink.
 - **0b — live-process refusal.** Walks the canonical PID files
   (`fake-*.pid`, `workers.pid`, `core.pid`, `http-server.pid`); if

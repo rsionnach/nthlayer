@@ -61,9 +61,12 @@ trap _demo_cleanup EXIT
 # the lock is theirs (opensrm-s41c). That holds for an EMPTY pid file
 # too: the winner's noclobber create makes the file and then writes it,
 # so empty means "created, not yet written", not "no holder"
-# (opensrm-1c0f). The cost: if we are the winner and die between our own
-# create and write, the lock is left with an empty pid, and the next
-# start refuses it with the manual-cleanup hint rather than reclaiming.
+# (opensrm-1c0f).
+#
+# The cost: if we are the winner and die between our own create and
+# write, the lock is left with an empty pid, and the next start refuses
+# it with the manual-cleanup hint rather than reclaiming.
+#
 # Prefers $BASHPID (bash 4+, unique per subshell) with $$ fallback
 # (bash 3.2 default on macOS doesn't define BASHPID). In a top-level
 # demo.sh process the two are equal; the BASHPID preference matters
