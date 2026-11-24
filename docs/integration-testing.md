@@ -146,8 +146,8 @@ opensrm-36es):
   `_DEMO_START_LOCK_ESTABLISHING` sentinel lets the cleanup hook
   also rm a half-built lock when SIGINT lands between `mkdir` and
   the metadata `echo`s, but only while no pid is recorded: a
-  recorded pid that is not ours means another racer holds it. Refuses to run if `$OUTPUT_DIR` is a
-  symlink.
+  recorded pid that is not ours means another racer holds it.
+  Refuses to run if `$OUTPUT_DIR` is a symlink.
 - **0b — live-process refusal.** Walks the canonical PID files
   (`fake-*.pid`, `workers.pid`, `core.pid`, `http-server.pid`); if
   any process is alive, refuse with the recovery hint to run

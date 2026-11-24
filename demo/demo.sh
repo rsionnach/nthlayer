@@ -186,10 +186,9 @@ cmd_start() {
     #     test-and-set on every host (uutils on Ubuntu 26.04), and a
     #     shell `mv` into an existing directory moves *into* it rather
     #     than failing — see _start_lock.sh. The holder then writes
-    #     the owner tag;
-    #     a concurrent reader uses _read_lock_state to poll up to
-    #     ~200ms for the metadata to appear. If the poll completes
-    #     with empty metadata AND the lock dir is still present, the
+    #     the owner tag; a concurrent reader uses _read_lock_state to
+    #     poll up to ~200ms for the metadata to appear. If the poll
+    #     completes with empty metadata AND the lock dir is present, the
     #     reader refuses with a manual-cleanup hint rather than
     #     auto-reclaiming (a slow alive holder is indistinguishable
     #     from a dead mid-establisher from the outside, so the safer
