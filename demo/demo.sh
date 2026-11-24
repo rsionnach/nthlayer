@@ -180,11 +180,13 @@ cmd_start() {
     #     docker-compose state. The lock is a directory rather than a
     #     flock(1) handle (flock isn't installed on macOS by default).
     #
-    #     Atomicity (m7su R5 findings #1, #2): the primitive is plain
-    #     mkdir (shell `mv` into an existing directory moves *into* it
-    #     rather than failing, so an mv-rename dance does not give
-    #     atomicity for directory names — see _start_lock.sh). After
-    #     mkdir succeeds the holder writes pid + owner sequentially;
+    #     Atomicity (m7su R5 findings #1, #2; opensrm-s41c): mkdir,
+    #     then an exclusive (noclobber) create of the pid file, which
+    #     is what decides the winner: mkdir's exit status is not a
+    #     test-and-set on every host (uutils on Ubuntu 26.04), and a
+    #     shell `mv` into an existing directory moves *into* it rather
+    #     than failing — see _start_lock.sh. The holder then writes
+    #     the owner tag;
     #     a concurrent reader uses _read_lock_state to poll up to
     #     ~200ms for the metadata to appear. If the poll completes
     #     with empty metadata AND the lock dir is still present, the

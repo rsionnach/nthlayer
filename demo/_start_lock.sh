@@ -12,7 +12,8 @@
 #     to _cleanup.sh if more hooks emerge.
 #   - _DEMO_START_LOCK_DIR : script-global the cleanup hook reads from.
 #   - _demo_cleanup_start_lock : the EXIT hook itself.
-#   - _acquire_start_lock <lock_dir> : the atomic mkdir-based mutex.
+#   - _acquire_start_lock <lock_dir> : the mutex (mkdir, then an
+#     exclusive create of the pid file, which decides the winner).
 #   - _read_lock_state <lock_dir> : sets _LOCK_PID / _LOCK_OWNER from
 #     the lock metadata, tolerating the brief establish window.
 #
@@ -54,7 +55,10 @@ trap _demo_cleanup EXIT
 # Start-lock cleanup hook
 # ---------------------------------------------------------------------------
 #
-# Removes the lock dir only if WE own it (the recorded PID matches).
+# Removes the lock dir only if WE own it: the recorded PID matches, or
+# we were mid-establish and no pid is recorded yet. Mid-establish with
+# someone else's pid recorded means we lost the pid create (or are
+# about to), and the lock is theirs (opensrm-s41c).
 # Prefers $BASHPID (bash 4+, unique per subshell) with $$ fallback
 # (bash 3.2 default on macOS doesn't define BASHPID). In a top-level
 # demo.sh process the two are equal; the BASHPID preference matters
@@ -62,11 +66,11 @@ trap _demo_cleanup EXIT
 # from the test harness.
 
 _DEMO_START_LOCK_DIR=""
-# Flipped to 1 by _acquire_start_lock between the mkdir and the
-# pid/owner echos, then back to 0 once both are written. If the
-# EXIT trap fires while this is 1, the cleanup hook knows it
-# (rather than some other process) owns the half-built lock dir
-# and rms it — fixes the SIGINT-mid-setup orphan (m7su R5 #5).
+# Flipped to 1 by _acquire_start_lock before the mkdir, then back
+# to 0 once pid and owner are written (or the acquire is lost). If
+# the EXIT trap fires while this is 1 and the lock dir records no
+# pid, the cleanup hook treats the half-built lock dir as ours and
+# rms it — fixes the SIGINT-mid-setup orphan (m7su R5 #5).
 _DEMO_START_LOCK_ESTABLISHING=0
 
 _demo_cleanup_start_lock() {
@@ -75,7 +79,8 @@ _demo_cleanup_start_lock() {
     local recorded_pid
     recorded_pid="$(cat "$_DEMO_START_LOCK_DIR/pid" 2>/dev/null || true)"
     if [[ "$recorded_pid" == "${BASHPID:-$$}" ]] \
-       || [[ "$_DEMO_START_LOCK_ESTABLISHING" == "1" ]]; then
+       || { [[ "$_DEMO_START_LOCK_ESTABLISHING" == "1" ]] \
+            && [[ -z "$recorded_pid" ]]; }; then
         rm -rf "$_DEMO_START_LOCK_DIR" 2>/dev/null || true
     fi
 }
@@ -84,22 +89,40 @@ _demo_cleanup_start_lock() {
 # Atomic acquire primitive
 # ---------------------------------------------------------------------------
 #
-# mkdir is atomic on POSIX, so it serves as the mutex. The metadata
-# files (pid, owner) are written immediately after — a concurrent
-# reader that arrives in the small window between mkdir and the
-# echos uses _read_lock_state below to poll for the metadata before
-# making a stale-lock decision.
+# Two steps, and the second one is the mutex (opensrm-s41c):
+#
+#   1. mkdir the lock dir. A failure means contended. A success does
+#      NOT mean we hold the lock: uutils mkdir (Ubuntu 26.04) checks
+#      for the path first and then reports a failed create as success
+#      when the path is a directory, so several racers can all be told
+#      their mkdir succeeded. CI saw 3 winners of 20 that way.
+#   2. Create the pid file under noclobber. bash opens a missing file
+#      with O_CREAT|O_EXCL itself, no external binary involved, so
+#      exactly one racer gets past this line.
+#
+# The owner file is written immediately after — a concurrent reader
+# that arrives in the small window between the pid create and the
+# owner echo uses _read_lock_state below to poll for the metadata
+# before making a stale-lock decision.
+#
+# The noclobber create runs in a subshell so the option does not leak
+# into the caller, which is why the pid is read before it: BASHPID
+# inside the subshell would be the subshell's.
 #
 # Returns: 0 on acquire, 1 on contended.
 
 _acquire_start_lock() {
     local lock_dir="$1"
+    local holder_pid="${BASHPID:-$$}"
     _DEMO_START_LOCK_ESTABLISHING=1
     if ! mkdir "$lock_dir" 2>/dev/null; then
         _DEMO_START_LOCK_ESTABLISHING=0
         return 1
     fi
-    echo "${BASHPID:-$$}" > "$lock_dir/pid"
+    if ! ( set -o noclobber; echo "$holder_pid" > "$lock_dir/pid" ) 2>/dev/null; then
+        _DEMO_START_LOCK_ESTABLISHING=0
+        return 1
+    fi
     echo "demo.sh-start-lock" > "$lock_dir/owner"
     _DEMO_START_LOCK_ESTABLISHING=0
     return 0
