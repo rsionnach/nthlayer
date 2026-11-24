@@ -428,7 +428,9 @@ rm -rf "$LOCK"
 LOCK="$SCRATCH/t10c/.start.lock"
 mkdir -p "$SCRATCH/t10c"
 mkdir "$LOCK"
-echo "$$" > "$LOCK/pid"   # held by someone else (the test's own shell)
+# Not $$: bash 3.2 has no BASHPID, so the subshell's hook would compare
+# against $$ and take the lock for its own.
+echo "99999" > "$LOCK/pid"   # held by someone else, as in Test 4
 (
     source "$LOCK_LIB"
     _DEMO_START_LOCK_DIR="$LOCK"
