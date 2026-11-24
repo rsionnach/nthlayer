@@ -124,10 +124,13 @@ opensrm-36es):
 - **0a — `.start.lock` concurrent-invocation mutex.** Lock dir at
   `$OUTPUT_DIR/.start.lock` holding `pid` (owning shell
   `${BASHPID:-$$}`) + `owner` (literal `demo.sh-start-lock`).
-  `mkdir` is the atomic primitive (shell `mv` into an existing
-  directory moves *into* it rather than failing, so an `mv`-rename
-  dance does not give atomicity for directory names). After `mkdir`
-  succeeds, pid + owner are written in two `echo`s; a concurrent
+  The winner is whoever creates the `pid` file exclusively (bash
+  noclobber, `O_EXCL`), after a `mkdir` of the lock dir. `mkdir`'s
+  exit status alone is not a test-and-set on every host: uutils
+  `mkdir` on Ubuntu 26.04 let 3 of 20 racers through (opensrm-s41c).
+  (A shell `mv` into an existing directory moves *into* it rather
+  than failing, so an `mv`-rename dance does not help either.) The
+  owner tag is written right after the pid; a concurrent
   reader uses `_read_lock_state` to poll up to ~200ms for the
   metadata to appear before making a decision (tolerates the
   establish window). Stale-lock reclaim requires the recorded PID to
@@ -142,8 +145,9 @@ opensrm-36es):
   code can append rather than clobber. A
   `_DEMO_START_LOCK_ESTABLISHING` sentinel lets the cleanup hook
   also rm a half-built lock when SIGINT lands between `mkdir` and
-  the metadata `echo`s. Refuses to run if `$OUTPUT_DIR` is a
-  symlink.
+  the metadata `echo`s, but only while no pid is recorded: a
+  recorded pid that is not ours means another racer holds it.
+  Refuses to run if `$OUTPUT_DIR` is a symlink.
 - **0b — live-process refusal.** Walks the canonical PID files
   (`fake-*.pid`, `workers.pid`, `core.pid`, `http-server.pid`); if
   any process is alive, refuse with the recovery hint to run

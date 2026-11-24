@@ -14,6 +14,8 @@
 #   3. _demo_cleanup_start_lock removes the lock when WE own it.
 #   4. _demo_cleanup_start_lock leaves the lock alone if pid mismatches.
 #   5. Concurrent acquire under contention: N racers, exactly one wins.
+#   5b. The same behind a mkdir that is not a test-and-set (uutils on
+#      Ubuntu 26.04, opensrm-s41c): still exactly one winner.
 #   6. Stale-lock reclaim path: dead PID inside lock → reclaim succeeds.
 #   7. Owner-tag mismatch on live PID: treated as stale (PID-recycle
 #      defense — protects against a recycled PID pointing at the user's
@@ -158,6 +160,65 @@ if [[ "$winner_pid" =~ ^[0-9]+$ ]]; then
 else
     fail "winner's pid file does not hold an integer (got '$winner_pid')"
 fi
+rm -rf "$LOCK"
+
+# --------------------------------------------------------------------------
+echo
+echo "=== Test 5b: concurrent acquire behind a check-then-create mkdir ==="
+# opensrm-s41c. Ubuntu 26.04's mkdir is uutils (rust-coreutils 0.8.0 and
+# 0.10.0), whose src/uu/mkdir/src/mkdir.rs checks path.exists() first
+# (0.10.0 create_dir, L198-202) and then reports a failed create as
+# success when the path is a directory (0.10.0 create_single_dir, L342).
+# Racers that all pass the check all exit 0, so mkdir's status is not a
+# test-and-set there: CI run 45257554100 saw 3 winners of 20 in Test 5.
+# The stand-in below has that logic with the window held open, and the
+# racers start together, so a primitive that trusts mkdir's status has
+# several winners here on every run, on any host.
+REAL_MKDIR="$(command -v mkdir)"
+SHIM_BIN="$SCRATCH/t5b-bin"
+SHIM_OK_LOG="$SCRATCH/t5b-mkdir-ok"
+RESULTS="$SCRATCH/t5b-results"
+LOCK="$SCRATCH/t5b/.start.lock"
+"$REAL_MKDIR" -p "$SHIM_BIN" "$SCRATCH/t5b" "$RESULTS"
+cat > "$SHIM_BIN/mkdir" <<EOF
+#!/usr/bin/env bash
+if [[ -e "\$1" ]]; then exit 1; fi
+sleep 0.3
+if "$REAL_MKDIR" "\$1" 2>/dev/null || [[ -d "\$1" ]]; then
+    echo ok >> "$SHIM_OK_LOG"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$SHIM_BIN/mkdir"
+for i in $(seq 1 "$N_RACERS"); do
+    (
+        source "$LOCK_LIB"
+        PATH="$SHIM_BIN:$PATH"
+        until [[ -e "$SCRATCH/t5b-go" ]]; do sleep 0.01; done
+        if _acquire_start_lock "$LOCK"; then
+            echo "${BASHPID:-$$}" > "$RESULTS/winner.$i"
+        else
+            echo "${BASHPID:-$$}" > "$RESULTS/loser.$i"
+        fi
+    ) &
+done
+: > "$SCRATCH/t5b-go"
+wait
+# The fixture has to bite: unless the stand-in told several racers their
+# mkdir succeeded, the assertions below prove nothing about the race.
+shim_oks="$(wc -l < "$SHIM_OK_LOG" 2>/dev/null | tr -d ' ')"
+if [[ "${shim_oks:-0}" -gt 1 ]]; then
+    pass "stand-in mkdir reported success to several racers ($shim_oks)"
+else
+    fail "stand-in mkdir reported success to '${shim_oks:-0}' racers — the race was not exercised"
+fi
+winners="$(find "$RESULTS" -name 'winner.*' | wc -l | tr -d ' ')"
+losers="$(find "$RESULTS" -name 'loser.*' | wc -l | tr -d ' ')"
+assert_eq "$winners" "1" "exactly one winner when mkdir is not a test-and-set"
+assert_eq "$losers" "$((N_RACERS - 1))" "the rest are losers"
+assert_eq "$(cat "$LOCK/pid" 2>/dev/null || true)" "$(cat "$RESULTS"/winner.* 2>/dev/null | head -n 1)" "the lock's pid is the winner's"
+assert_eq "$(cat "$LOCK/owner" 2>/dev/null || true)" "demo.sh-start-lock" "winner's owner tag is intact"
 rm -rf "$LOCK"
 
 # --------------------------------------------------------------------------
@@ -358,6 +419,25 @@ mkdir "$LOCK"   # half-built foreign lock — no pid, no establishing flag
     _demo_register_cleanup _demo_cleanup_start_lock
 )
 assert_dir_exists "$LOCK" "foreign half-built lock preserved (no false-positive)"
+rm -rf "$LOCK"
+
+# And: the establishing flag alone is not ownership (opensrm-s41c). A
+# racer whose mkdir "succeeded" behind a check-then-create mkdir has the
+# flag set while another racer already holds the pid file. If the EXIT
+# trap fires then, the lock is the other racer's and must survive.
+LOCK="$SCRATCH/t10c/.start.lock"
+mkdir -p "$SCRATCH/t10c"
+mkdir "$LOCK"
+# Not $$: bash 3.2 has no BASHPID, so the subshell's hook would compare
+# against $$ and take the lock for its own.
+echo "99999" > "$LOCK/pid"   # held by someone else, as in Test 4
+(
+    source "$LOCK_LIB"
+    _DEMO_START_LOCK_DIR="$LOCK"
+    _DEMO_START_LOCK_ESTABLISHING=1
+    _demo_register_cleanup _demo_cleanup_start_lock
+)
+assert_dir_exists "$LOCK" "lock with another holder's pid preserved while establishing"
 rm -rf "$LOCK"
 
 # --------------------------------------------------------------------------
