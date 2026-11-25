@@ -99,7 +99,6 @@ A complete `execution` verdict:
   "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b9c7c989f97918e1-01",
 
   "data": {
-    "gen_ai.system": "nthlayer-executor",
     "gen_ai.evaluation.name": "payments.rollback-deployment",
     "gen_ai.evaluation.score.value": 1.0,
     "gen_ai.evaluation.score.label": "success",
@@ -132,14 +131,17 @@ The following attributes and events are consumed and emitted as specified upstre
 
 **Base attributes (on traces and events):**
 
-- `gen_ai.system` — the component or agent emitting the event
+- `gen_ai.provider.name` — the provider that served the model request, when there was one
+- `gen_ai.agent.name` — the agent emitting the event, when the emitter is an agent
 - `gen_ai.request.model` — LLM model identifier, when applicable
 - `gen_ai.response.model` — actual model served
 - `gen_ai.response.id` — model provider's response identifier
 - `gen_ai.usage.input_tokens`
 - `gen_ai.usage.output_tokens`
-- `gen_ai.usage.cached_tokens` (Anthropic prompt caching)
-- `gen_ai.usage.reasoning_tokens` (reasoning models)
+- `gen_ai.usage.cache_read.input_tokens` (cache reads, not writes)
+- `gen_ai.usage.reasoning.output_tokens` (reasoning models)
+
+`gen_ai.system` is not emitted: it has left the upstream registry (OpenSRM Telemetry Addendum A1 §5, P4). Earlier drafts of this spec used it for the component emitting the event. That is the envelope's `source` (§3); an agent is named by `gen_ai.agent.name`, and the model provider by `gen_ai.provider.name`.
 
 **`gen_ai.evaluation.result` event (shipped in v1.39.0, August 2025):**
 
@@ -546,7 +548,7 @@ data:
   nthlayer.decision.autonomous: false
   nthlayer.decision.blast_radius: production
   nthlayer.decision.confidence: 0.87
-  gen_ai.system: triage-agent
+  gen_ai.agent.name: triage-agent
 ```
 
 **2. `authorisation_decision` log.** authorise evaluates policy.
