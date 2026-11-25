@@ -30,8 +30,13 @@ jobs:
       - name: install uv
         uses: astral-sh/setup-uv@v6
 
+      # The version is printed because the install is unpinned: if
+      # nthlayer-common ever drops Python 3.11, uv would quietly resolve an
+      # older release that still supports it, and the log is where that shows.
       - name: demo/specs load through published nthlayer-common
-        run: >
-          uv run --isolated --no-project --python 3.11
-          --with nthlayer-common --with pytest --with pyyaml
-          pytest -q test/test_demo_specs_load.py
+        run: |
+          uv run --isolated --no-project --python 3.11 --with nthlayer-common \
+            python -c "from importlib.metadata import version; print('nthlayer-common', version('nthlayer-common'))"
+          uv run --isolated --no-project --python 3.11 \
+            --with nthlayer-common --with pytest --with pyyaml \
+            pytest -q test/test_demo_specs_load.py
