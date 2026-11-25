@@ -99,11 +99,6 @@ A complete `execution` verdict:
   "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b9c7c989f97918e1-01",
 
   "data": {
-    "gen_ai.evaluation.name": "payments.rollback-deployment",
-    "gen_ai.evaluation.score.value": 1.0,
-    "gen_ai.evaluation.score.label": "success",
-    "gen_ai.response.id": "bafyreiabc123...",
-
     "nthlayer.verdict.type": "execution",
     "nthlayer.verdict.parent_cids": ["bafyrei...cap", "bafyrei...approval"],
     "nthlayer.verdict.pipeline_latency_ms": 2347,
@@ -125,7 +120,9 @@ A complete `execution` verdict:
 
 NthLayer adopts OTel GenAI semantic conventions wherever they fit. The `gen_ai.*` namespace on the payload is authoritative — nthlayer-specific attributes never shadow or rename `gen_ai.*` attributes that exist upstream.
 
-### 4.2 Adopted from OTel semconv v1.39.0+
+### 4.2 Adopted from the OTel GenAI semantic conventions
+
+The version is not pinned here. OpenSRM Telemetry Addendum A1 §12 pins the GenAI conventions repository by commit, and this spec follows that pin.
 
 The following attributes and events are consumed and emitted as specified upstream:
 
@@ -143,15 +140,16 @@ The following attributes and events are consumed and emitted as specified upstre
 
 `gen_ai.system` is not emitted: it has left the upstream registry (OpenSRM Telemetry Addendum A1 §5, P4). Earlier drafts of this spec used it for the component emitting the event. That is the envelope's `source` (§3); an agent is named by `gen_ai.agent.name`, and the model provider by `gen_ai.provider.name`.
 
-**`gen_ai.evaluation.result` event (shipped in v1.39.0, August 2025):**
+**`gen_ai.evaluation.result` event** (a grader evaluation, OpenSRM Telemetry Addendum A1 §4.4):
 
-- `gen_ai.evaluation.name` — what was evaluated (typically the action or decision name)
-- `gen_ai.evaluation.score.value` — numeric score (0.0-1.0 conventional)
-- `gen_ai.evaluation.score.label` — categorical label ("success", "failure", "partial", etc.)
+- `gen_ai.evaluation.name` — the evaluation metric
+- `gen_ai.evaluation.score.value` — the evaluator's score, never the decision's own confidence (that is `nthlayer.decision.confidence`)
+- `gen_ai.evaluation.score.label` — the evaluator's categorical label
 - `gen_ai.evaluation.explanation` — human-readable reasoning
-- `gen_ai.response.id` — identifier of the response being evaluated
+- `gen_ai.response.id` — the provider's id for the completion evaluated, never a decision or verdict id
+- `nthlayer.decision.id` — the decision the evaluation is about, so it joins to lineage
 
-This event is used by nthlayer-measure for judgment-SLO outcome reporting. Its shape covers roughly 70% of what NthLayer needs for decision telemetry; the remaining 30% is the decision-specific namespace below.
+nthlayer-measure emits this event for its evaluator's scores. It is an evaluator's opinion, not ground truth, and it does not report an execution's result: an execution verdict carries that as `nthlayer.execution.outcome`, and its content id is the envelope's `id`. Earlier drafts of this spec put a verdict's CID in `gen_ai.response.id` and an execution's result in `gen_ai.evaluation.score.*`; both collided with the upstream meanings (A1, summary item 3).
 
 ### 4.3 Proposed `gen_ai.decision.*` (for upstream contribution)
 
@@ -593,8 +591,6 @@ data:
   nthlayer.verdict.parent_cids: [bafyrei...cap]
   nthlayer.execution.binding: kubernetes-rollout
   nthlayer.execution.outcome: success
-  gen_ai.evaluation.score.value: 1.0
-  gen_ai.evaluation.score.label: success
 ```
 
 **7. Retrospective `outcome` update.** learn resolves the outcome.
@@ -663,7 +659,8 @@ All seven events share `traceparent` so the whole flow is reconstructable from t
 
 - CloudEvents v1.0: https://github.com/cloudevents/spec
 - OpenTelemetry GenAI semconv: https://opentelemetry.io/docs/specs/semconv/gen-ai/
-- OpenTelemetry semconv v1.39.0 release notes: https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.39.0
+- OpenSRM Telemetry Addendum A1 (`OPENSRM-TELEMETRY-ADDENDUM-v2.md` in the opensrm repository): the decision telemetry vocabulary, and in §12 the pinned commit of the OTel GenAI conventions this spec follows
+- OpenTelemetry semconv v1.39.0 release notes (the release that first shipped `gen_ai.evaluation.result`): https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.39.0
 - PD-CEF: https://support.pagerduty.com/docs/pd-cef
 - OPA decision log schema: https://www.openpolicyagent.org/docs/management-decision-logs
 - OTel GenAI SIG: https://github.com/open-telemetry/community/tree/main/projects/gen-ai
