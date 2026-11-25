@@ -239,6 +239,21 @@ async def test_two_incidents_on_one_breach_have_both_cases_resolved(core, capsys
     assert (await core.get_cases(state="pending", service="fraud-detect")).data == []
 
 
+async def test_a_case_an_operator_has_leased_is_resolved_too(core, capsys):
+    """Core's other open state. learn holds the retrospective for it as it
+    does for a pending case."""
+    ids = await _seed_incident(core)
+    await _post(core.acquire_lease(f"case-{SNAPSHOT}", "operator-1", "2099-01-01T00:00:00+00:00"))
+    assert (await core.get_cases(state="pending", service="fraud-detect")).data == []
+
+    await tta.cmd_resolve_cases_for_snapshot(
+        _args(snapshot_id=SNAPSHOT, resolution_id=ids[-1])
+    )
+
+    assert _kv(capsys)["RESOLVED_CASE_IDS"] == f"case-{SNAPSHOT}"
+    assert (await core.get_case(f"case-{SNAPSHOT}")).data["state"] == "resolved"
+
+
 @pytest.mark.parametrize("already", [False, True])
 async def test_resolving_fails_when_there_is_no_open_case_for_the_incident(core, capsys, already):
     ids = await _seed_incident(core, case=already)

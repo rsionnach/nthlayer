@@ -67,7 +67,10 @@ cross-reference.
   leans on: the descendants of a snapshot id are respond's chain, and
   resolving a case takes it out of the open states. No Docker. CI:
   `.github/workflows/retrospective-seam.yml`, siblings at `main` (nightly,
-  and PRs touching the test or the helper).
+  and PRs touching the test or the helper). The same workflow runs
+  `test/test_three_tier_lib.sh`, which checks `_three_tier_lib.sh`'s
+  `tt_valid_quiet_minutes`: the quiet period given to workers must be a
+  plain number of at least 0.5 minutes.
 - `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
   ship-readiness test (real core API + workers + bench-via-API). Boots
   Docker stack, drives reversal_rate breach via fake-service, asserts

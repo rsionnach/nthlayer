@@ -120,6 +120,15 @@ preflight_port_conflicts() {
 # Argument names mirror the variables both consumer scripts already
 # define; positional rather than keyword so this works on bash 3.2
 # (macOS default) without associative arrays.
+# tt_valid_quiet_minutes <value>: 0 when <value> is a plain decimal number of
+# at least 0.5. The floor is the harness's 30 s latency budget: with a
+# shorter quiet period learn could close an incident's retrospective before
+# respond's case exists (opensrm-mtxr). awk does the arithmetic; the pattern
+# keeps out what awk would read as 0 ("abc") or accept in other notations.
+tt_valid_quiet_minutes() {
+    awk -v m="$1" 'BEGIN { exit !(m ~ /^[0-9]+(\.[0-9]+)?$/ && m + 0 >= 0.5) }'
+}
+
 boot_three_tier_stack() {
     local work_dir="$1"
     local test_dir="$2"
@@ -196,6 +205,8 @@ boot_three_tier_stack() {
     # 0.5 minutes, not less: the pipeline's latency budget is 30 s, and a
     # shorter quiet period could close before respond's case exists.
     RETROSPECTIVE_QUIET_MINUTES="${RETROSPECTIVE_QUIET_MINUTES:-0.5}"
+    tt_valid_quiet_minutes "${RETROSPECTIVE_QUIET_MINUTES}" \
+        || tt_fail "RETROSPECTIVE_QUIET_MINUTES must be a number of at least 0.5, got '${RETROSPECTIVE_QUIET_MINUTES}'"
     tt_log "Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, all intervals 5s, retrospective quiet ${RETROSPECTIVE_QUIET_MINUTES} min)"
     NTHLAYER_LLM_STUB=canned \
     ${run_workers} nthlayer-workers serve \

@@ -33,6 +33,8 @@ on:
     paths:
       - test/test_three_tier_retrospective.py
       - test/three_tier_assertions.py
+      - test/_three_tier_lib.sh
+      - test/test_three_tier_lib.sh
       - pyproject.toml
       - .github/workflows/retrospective-seam.yml
   push:
@@ -40,6 +42,8 @@ on:
     paths:
       - test/test_three_tier_retrospective.py
       - test/three_tier_assertions.py
+      - test/_three_tier_lib.sh
+      - test/test_three_tier_lib.sh
       - pyproject.toml
       - .github/workflows/retrospective-seam.yml
 
@@ -72,6 +76,9 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+
+      - name: Check the harness library's quiet-period floor
+        run: bash nthlayer/test/test_three_tier_lib.sh
 
       # Core's own environment (its uv.lock, common from ../nthlayer-common),
       # with its dev extra for the locked pytest and pytest-asyncio. -rs and

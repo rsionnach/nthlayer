@@ -331,6 +331,7 @@ step9() {
     # operator. learn then writes the retrospective, closed by "quiet", once
     # the chain has been quiet for RETROSPECTIVE_QUIET_MINUTES (opensrm-mtxr).
     local output quiet_seconds
+    [[ -n "${TRIAGE_ID}" ]] || { fail "no triage id from step 7"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-verdict-type remediation \
         --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1) \
         || { fail "no remediation verdict from respond"; return; }

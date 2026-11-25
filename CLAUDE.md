@@ -298,8 +298,10 @@ examples, generator-specific scripts.
     verdicts in its timeline (opensrm-mtxr).
   - `retrospective-seam.yml` — `test/test_three_tier_retrospective.py`, the
     retrospective commands of `test/three_tier_assertions.py` against the
-    real core app in one process, siblings at `main`; nightly, and on
-    PRs/pushes touching the test or the helper (opensrm-mtxr).
+    real core app in one process, siblings at `main`; and
+    `test/test_three_tier_lib.sh`, the harness library's quiet-period
+    floor. Nightly, and on PRs/pushes touching either test, the helper or
+    the library (opensrm-mtxr).
   - `override-binding-smoke.yml` — `test/test_jmy18_smoke.py`, the real
     override-adapter against the real core app in one process, siblings at
     `main`; nightly, and on PRs/pushes touching the test (opensrm-qgmy).
