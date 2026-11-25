@@ -46,14 +46,23 @@ DEMO_SPECS = [
 
 def _declared_queries(spec_path: Path) -> dict[str, str]:
     """SLO name -> the ``indicator.query`` the file declares, read from the
-    YAML without the parser. srm/v1 writes ``spec.slos`` as a mapping."""
+    YAML without the parser. srm/v1 writes ``spec.slos`` as a mapping.
+
+    Every demo SLO must declare one. The worker collects an SLO by its
+    query, so a demo SLO without ``indicator.query`` (a top-level ``query``,
+    say, which is the opensrm-saun.1 shape) would read NO_DATA. Failing here
+    keeps such an SLO from simply dropping out of the comparison."""
     slos = yaml.safe_load(spec_path.read_text())["spec"]["slos"]
     assert isinstance(slos, dict), f"{spec_path.name}: spec.slos is not a mapping"
+    assert slos, f"{spec_path.name}: spec.slos is empty"
     declared = {}
     for name, slo in slos.items():
         indicator = slo.get("indicator") if isinstance(slo, dict) else None
-        if isinstance(indicator, dict) and "query" in indicator:
-            declared[name] = indicator["query"]
+        query = indicator.get("query") if isinstance(indicator, dict) else None
+        assert isinstance(query, str) and query.strip(), (
+            f"{spec_path.name}: SLO {name!r} declares no indicator.query"
+        )
+        declared[name] = query
     return declared
 
 
@@ -66,22 +75,16 @@ def test_every_demo_spec_is_listed():
 
 @pytest.mark.parametrize("spec_name", DEMO_SPECS)
 def test_demo_spec_loads_with_its_indicator_queries(spec_name: str):
-    """Each SLO that declares ``indicator.query`` carries that query,
-    unchanged, as ``indicator_query`` after loading."""
+    """Every SLO in the file loads, carrying its declared
+    ``indicator.query`` unchanged as ``indicator_query``."""
     spec_path = DEMO_SPECS_DIR / spec_name
     declared = _declared_queries(spec_path)
-    # Every demo spec declares at least one; without this the equality
-    # below would pass on two empty dicts.
-    assert declared, f"{spec_name}: no SLO declares indicator.query"
-    assert all(
-        isinstance(q, str) and q.strip() for q in declared.values()
-    ), f"{spec_name}: an empty declared query"
 
     manifest = load_manifest(spec_path)
     assert manifest.name == spec_path.stem
     parsed = {slo.name: slo.indicator_query for slo in manifest.slos}
 
-    assert {name: parsed.get(name) for name in declared} == declared
+    assert parsed == declared
 
 
 def test_fraud_detect_reversal_rate_is_a_judgment_slo():
