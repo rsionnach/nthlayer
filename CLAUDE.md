@@ -272,6 +272,9 @@ examples, generator-specific scripts.
     and generate's deliberate skips pinned by bead (opensrm-zo0o). The
     test takes the ecosystem root from `NTHLAYER_ECOSYSTEM_ROOT`, which the
     workflow sets; a local run must set it too (opensrm-x7y2).
+  - `demo-specs.yml` — `test/test_demo_specs_load.py`: every manifest in
+    `demo/specs` loads through the published nthlayer-common with each
+    declared `indicator.query` intact, nightly and on PRs (opensrm-gx3e).
   - `otel-collector.yml` — `test/test_otel_collector.py` against the
     pinned otelcol-contrib image, with `fake-service.py --type ai-gate` (published
     nthlayer-common[otel]) and the pinned Prometheus evaluating the demo's

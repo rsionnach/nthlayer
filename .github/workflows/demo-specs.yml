@@ -1,0 +1,37 @@
+name: demo-specs
+
+# opensrm-gx3e: every manifest in demo/specs loads through the PUBLISHED
+# nthlayer-common, with each declared indicator.query intact. common's own
+# copy of this check reads a snapshot since opensrm-t93o, so this is the only
+# place a demo spec the parser mishandles is caught before the integration run.
+#
+# Nightly as well as on PRs: a nthlayer-common release can break it with no
+# front-door change, and without a schedule the first sign would be an
+# unrelated PR going red.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "45 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo-specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: demo/specs load through published nthlayer-common
+        run: >
+          uv run --isolated --no-project --python 3.11
+          --with nthlayer-common --with pytest --with pyyaml
+          pytest -q test/test_demo_specs_load.py
