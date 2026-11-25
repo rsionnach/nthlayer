@@ -1,0 +1,83 @@
+# Retrospective seam (opensrm-mtxr).
+#
+# test/test_three_tier_retrospective.py runs the retrospective commands of
+# test/three_tier_assertions.py against the real nthlayer-core app in one
+# process (ASGI transport, no network, no Docker). integration-three-tier.sh
+# uses those commands to play the operator and to assert learn's
+# retrospective; that run is nightly and needs the whole stack, so this gives
+# a pull request that touches them its signal before merge.
+#
+# It also pins core's half of the seam: the verdicts that name a correlation
+# snapshot in parent_ids, and the ones chained after them, come back from
+# GET /verdicts/{snapshot id}/descendants, and PUT /cases/{id}/resolve takes
+# a case out of the open states. nthlayer-workers' learn leans on both.
+#
+# Workspace layout (the local sibling layout, as in override-binding-smoke.yml):
+#   <workspace>/nthlayer/          — this repo (the test)
+#   <workspace>/nthlayer-common/   — core's path source
+#   <workspace>/nthlayer-core/     — the environment the test runs in
+#
+# Siblings are checked out at `main`: an early warning on the seam as it
+# stands, not a published combination.
+#
+# Security note: no untrusted event input reaches a shell command.
+
+name: retrospective-seam
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 4 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - test/test_three_tier_retrospective.py
+      - test/three_tier_assertions.py
+      - pyproject.toml
+      - .github/workflows/retrospective-seam.yml
+  push:
+    branches: [main]
+    paths:
+      - test/test_three_tier_retrospective.py
+      - test/three_tier_assertions.py
+      - pyproject.toml
+      - .github/workflows/retrospective-seam.yml
+
+permissions:
+  contents: read
+
+jobs:
+  retrospective-seam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout front-door (the test lives here)
+        uses: actions/checkout@v4
+        with:
+          path: nthlayer
+
+      - name: Checkout nthlayer-common
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-common
+          path: nthlayer-common
+          ref: main
+
+      - name: Checkout nthlayer-core
+        uses: actions/checkout@v4
+        with:
+          repository: rsionnach/nthlayer-core
+          path: nthlayer-core
+          ref: main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # Core's own environment (its uv.lock, common from ../nthlayer-common),
+      # with its dev extra for the locked pytest and pytest-asyncio. -rs and
+      # --strict-markers keep a skip or a stray marker visible.
+      - name: Run the retrospective seam test
+        run: >
+          uv run --directory nthlayer-core --extra dev
+          python -m pytest -rs --strict-markers -o asyncio_mode=auto
+          ../nthlayer/test/test_three_tier_retrospective.py

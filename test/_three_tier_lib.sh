@@ -191,7 +191,12 @@ boot_three_tier_stack() {
     [[ "${manifest_count}" -ge 1 ]] || tt_fail "core /manifests returned ${manifest_count} manifests (expected ≥1)"
     tt_pass "core has loaded ${manifest_count} manifests from ${specs_dir}"
 
-    tt_log "Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, all intervals 5s)"
+    # learn writes an incident's retrospective once its verdict chain has been
+    # quiet this long and no unresolved case anchors on it (opensrm-91pa).
+    # 0.5 minutes, not less: the pipeline's latency budget is 30 s, and a
+    # shorter quiet period could close before respond's case exists.
+    RETROSPECTIVE_QUIET_MINUTES="${RETROSPECTIVE_QUIET_MINUTES:-0.5}"
+    tt_log "Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, all intervals 5s, retrospective quiet ${RETROSPECTIVE_QUIET_MINUTES} min)"
     NTHLAYER_LLM_STUB=canned \
     ${run_workers} nthlayer-workers serve \
         --core-url "${core_url}" \
@@ -202,6 +207,7 @@ boot_three_tier_stack() {
         --correlate-interval 5 \
         --respond-interval 5 \
         --retrospective-interval 5 \
+        --retrospective-quiet-minutes "${RETROSPECTIVE_QUIET_MINUTES}" \
         --outcome-interval 10 \
         >"${work_dir}/workers.log" 2>&1 &
     WORKERS_PID=$!
