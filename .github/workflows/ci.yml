@@ -15,7 +15,8 @@ name: CI
 #   - .github/workflows/error-budget-seam.yml: generate's error-budget rules vs
 #     measure's queries over real manifests (opensrm-h0at); nightly + PR.
 #   - .github/workflows/demo-specs.yml: demo/specs load through the published
-#     nthlayer-common (opensrm-gx3e); nightly + PR.
+#     nthlayer-common (opensrm-gx3e) and migrate with the published
+#     nthlayer-generate (opensrm-jg1e); nightly + PR.
 #   - .github/workflows/meta-resolve.yml: every meta-package tier at its newest
 #     release, and that release in range (opensrm-z1kq); nightly + PR.
 #   - .github/workflows/docs.yml: mkdocs build --strict on docs-site/.

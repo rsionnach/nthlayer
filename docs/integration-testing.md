@@ -18,6 +18,19 @@ cross-reference.
   each with that query unchanged as `indicator_query` (opensrm-gx3e). The live counterpart of nthlayer-common's snapshot
   test (opensrm-t93o). Runs in <1s, no Docker.
   CI: `.github/workflows/demo-specs.yml` (push/PR to main, nightly).
+- `test/test_demo_specs_migrate.py` — every manifest in `demo/specs`
+  migrates with the published nthlayer-generate (`nthlayer
+  migrate-manifest`) to a v2 manifest that loads, with the same SLOs:
+  judgment SLOs keep their type, the others keep their query
+  (opensrm-jg1e). Runs in a few seconds, no Docker.
+  CI: `.github/workflows/demo-specs.yml` (push/PR to main, nightly).
+
+  Two sibling repos keep **copies** of `demo/specs` for their own tests:
+  nthlayer-generate (`tests/fixtures/demo_specs/`) and nthlayer-common
+  (`tests/fixtures/demo-specs/`). The two tests above check the live
+  files, so a change here is caught here; the copies do not follow it.
+  After changing a demo spec, refresh both copies and the source commit
+  each one's README names.
 - `test/test_demo_start_lock.sh` — concurrent-invocation start-lock
   regression guard (opensrm-36es). Exercises `cmd_start`'s 0a guard
   with a stub that skips the full boot, asserting: two concurrent

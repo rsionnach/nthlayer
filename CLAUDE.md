@@ -275,7 +275,10 @@ examples, generator-specific scripts.
   - `demo-specs.yml` — `test/test_demo_specs_load.py`: every manifest in
     `demo/specs` loads through the published nthlayer-common; every demo
     SLO must declare `indicator.query`, and the loaded SLOs must be exactly
-    the file's, each with that query. Nightly and on PRs (opensrm-gx3e).
+    the file's, each with that query (opensrm-gx3e). Also
+    `test/test_demo_specs_migrate.py`: the same files migrate with the
+    published nthlayer-generate, keeping their SLOs (opensrm-jg1e).
+    Nightly and on PRs.
   - `otel-collector.yml` — `test/test_otel_collector.py` against the
     pinned otelcol-contrib image, with `fake-service.py --type ai-gate` (published
     nthlayer-common[otel]) and the pinned Prometheus evaluating the demo's
