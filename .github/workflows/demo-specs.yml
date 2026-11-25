@@ -47,8 +47,10 @@ jobs:
             sh -c 'python -c "from importlib.metadata import version as v; print(\"nthlayer-common\", v(\"nthlayer-common\"))" && pytest -q test/test_demo_specs_load.py'
 
       # nthlayer-generate brings the nthlayer-common it resolves with, so this
-      # is the pair a user installing generate today would get.
+      # is the pair a user installing generate today would get. It runs even
+      # when the load step failed, so one break does not hide the other.
       - name: demo/specs migrate with published nthlayer-generate
+        if: ${{ !cancelled() }}
         run: |
           uv run --isolated --no-project --python 3.11 \
             --with nthlayer-generate --with pytest --with pyyaml \
