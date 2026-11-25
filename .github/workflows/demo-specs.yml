@@ -12,8 +12,8 @@ name: demo-specs
 # change made here.
 #
 # Nightly as well as on PRs: a nthlayer-common or nthlayer-generate release
-# can break either check with no front-door change, and without a schedule the first sign would be an
-# unrelated PR going red.
+# can break either check with no front-door change, and without a schedule
+# the first sign would be an unrelated PR going red.
 
 on:
   push:
