@@ -64,7 +64,7 @@ reader treats a missing series as no data and a wrong one as an answer:
 A legacy `indicators[].threshold_ms` counts as a declared bound since
 nthlayer-common 5.12.1 (opensrm-s7b1), so those latency SLOs get a budget.
 
-Readers (nthlayer-workers 4.2.0):
+Readers (nthlayer-workers 4.4.0; measure, correlate and drift since 4.2.0):
 
 - **measure** evaluates every availability, latency and error_rate SLO from
   its budget, `{service, slo}`, breaching below zero. A missing series is a
@@ -75,12 +75,18 @@ Readers (nthlayer-workers 4.2.0):
   its `error_budget_exhausted` event names the `slo`.
 - **drift** analyses only SLOs Prometheus holds a budget for, found with
   `group by (slo)` over the service's budgets.
+- **observe** (`observe.collect`, `nthlayer-observe collect`) reads the same
+  series for every availability, latency and error_rate SLO, `{service, slo}`
+  with no `objective` matcher. It reads the `objective` label back and uses
+  it, not the manifest's target, for the reading's objective, budget minutes
+  and SLI. A missing series, or a value that is not a finite number, is
+  `NO_DATA`. There is no fallback to the manifest's query.
 
 `test/test_error_budget_seam.py` checks, against the published packages, that
 for every real manifest generate writes exactly the budgets measure reads. It
 pins one witness per kind, and lists each budget measure asks for that
-generate's guard skips, with its bead. Correlate and drift build their
-selectors from the same constant, so the test covers them too.
+generate's guard skips, with its bead. Correlate, drift and observe build
+their selectors from the same constant, so the test covers them too.
 
 ### Alert Inputs
 
