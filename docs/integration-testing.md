@@ -13,9 +13,9 @@ cross-reference.
   `nthlayer-{core,workers,bench,common}`. Runs in <1s, no Docker.
   CI: `.github/workflows/demo-paths.yml` (push/PR to main).
 - `test/test_demo_specs_load.py` — every manifest in `demo/specs` loads
-  through the published nthlayer-common, and each SLO's declared
-  `indicator.query` comes back unchanged as `indicator_query`
-  (opensrm-gx3e). The live counterpart of nthlayer-common's snapshot
+  through the published nthlayer-common. Every demo SLO must declare
+  `indicator.query`, and the loaded SLOs must be exactly the file's,
+  each with that query unchanged as `indicator_query` (opensrm-gx3e). The live counterpart of nthlayer-common's snapshot
   test (opensrm-t93o). Runs in <1s, no Docker.
   CI: `.github/workflows/demo-specs.yml` (push/PR to main, nightly).
 - `test/test_demo_start_lock.sh` — concurrent-invocation start-lock

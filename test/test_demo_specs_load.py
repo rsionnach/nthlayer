@@ -11,6 +11,9 @@ Why it matters (opensrm-saun.1): the v1 parser once read a top-level
 loaded with no query, the worker collected NO_DATA for all of them, and
 nothing failed until the three-tier integration run.
 
+What it holds each demo spec to: every SLO declares ``indicator.query``, and
+the loaded SLOs are exactly the file's, each with that query unchanged.
+
 The manifests are the demo's own files, not fixtures written for this test,
 and the expected values are read from the YAML without the parser. Nothing
 drops out unseen: the files are listed (a glob that matched nothing would

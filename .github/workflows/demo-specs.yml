@@ -1,7 +1,8 @@
 name: demo-specs
 
 # opensrm-gx3e: every manifest in demo/specs loads through the PUBLISHED
-# nthlayer-common, with each declared indicator.query intact. common's own
+# nthlayer-common. Every demo SLO must declare indicator.query, and the loaded
+# SLOs must be exactly the file's, each with that query. common's own
 # copy of this check reads a snapshot since opensrm-t93o, so this is the only
 # place a demo spec the parser mishandles is caught before the integration run.
 #
@@ -33,10 +34,9 @@ jobs:
       # The version is printed because the install is unpinned: if
       # nthlayer-common ever drops Python 3.11, uv would quietly resolve an
       # older release that still supports it, and the log is where that shows.
+      # One uv run for both commands, so the version printed is the one tested.
       - name: demo/specs load through published nthlayer-common
         run: |
-          uv run --isolated --no-project --python 3.11 --with nthlayer-common \
-            python -c "from importlib.metadata import version; print('nthlayer-common', version('nthlayer-common'))"
           uv run --isolated --no-project --python 3.11 \
             --with nthlayer-common --with pytest --with pyyaml \
-            pytest -q test/test_demo_specs_load.py
+            sh -c 'python -c "from importlib.metadata import version as v; print(\"nthlayer-common\", v(\"nthlayer-common\"))" && pytest -q test/test_demo_specs_load.py'
