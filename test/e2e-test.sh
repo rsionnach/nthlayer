@@ -339,6 +339,10 @@ step9() {
     output=$(${RUN_BENCH} python "${ASSERTIONS}" snapshot-of-verdict "${remediation_id}" \
         --core-url "${CORE_URL}") || { fail "no snapshot claims ${remediation_id}"; return; }
     eval "${output}"
+    # The quiet clock runs from the incident's last verdict: the hold below
+    # is only long enough if that is the remediation.
+    [[ "${RESPOND_LAST_VERDICT_ID}" == "${remediation_id}" ]] \
+        || { fail "the incident's last verdict is ${RESPOND_LAST_VERDICT_ID}, not the remediation"; return; }
 
     quiet_seconds=$(awk -v m="${RETROSPECTIVE_QUIET_MINUTES}" 'BEGIN { printf "%d", m * 60 }')
     info "Holding $(( quiet_seconds + 15 ))s with the case open ..."
