@@ -447,7 +447,6 @@ All verdicts and assessments are emitted as CloudEvents v1.0 with OTel semantic 
   "traceparent": "00-...",
 
   "data": {
-    "gen_ai.system": "nthlayer-executor",
     "gen_ai.evaluation.name": "rollback-deployment",
     "gen_ai.evaluation.score.value": 1.0,
     "gen_ai.evaluation.score.label": "success",
