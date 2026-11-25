@@ -6,9 +6,14 @@ name: demo-specs
 # copy of this check reads a snapshot since opensrm-t93o, so this is the only
 # place a demo spec the parser mishandles is caught before the integration run.
 #
-# Nightly as well as on PRs: a nthlayer-common release can break it with no
-# front-door change, and without a schedule the first sign would be an
-# unrelated PR going red.
+# opensrm-jg1e: the same files also migrate with the PUBLISHED
+# nthlayer-generate (`nthlayer migrate-manifest`), keeping their SLOs.
+# generate's own test of this runs on vendored copies, which do not follow a
+# change made here.
+#
+# Nightly as well as on PRs: a nthlayer-common or nthlayer-generate release
+# can break either check with no front-door change, and without a schedule
+# the first sign would be an unrelated PR going red.
 
 on:
   push:
@@ -40,3 +45,13 @@ jobs:
           uv run --isolated --no-project --python 3.11 \
             --with nthlayer-common --with pytest --with pyyaml \
             sh -c 'python -c "from importlib.metadata import version as v; print(\"nthlayer-common\", v(\"nthlayer-common\"))" && pytest -q test/test_demo_specs_load.py'
+
+      # nthlayer-generate brings the nthlayer-common it resolves with, so this
+      # is the pair a user installing generate today would get. It runs even
+      # when the load step failed, so one break does not hide the other.
+      - name: demo/specs migrate with published nthlayer-generate
+        if: ${{ !cancelled() }}
+        run: |
+          uv run --isolated --no-project --python 3.11 \
+            --with nthlayer-generate --with pytest --with pyyaml \
+            sh -c 'python -c "from importlib.metadata import version as v; print(\"nthlayer-generate\", v(\"nthlayer-generate\"), \"nthlayer-common\", v(\"nthlayer-common\"))" && pytest -q test/test_demo_specs_migrate.py'
