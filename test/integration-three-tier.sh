@@ -189,45 +189,49 @@ run_assertion() {
 }
 
 log "Wait for measure → quality_breach (up to 180s for Prometheus 2m window to fill)"
+# Content, not only presence (opensrm-yze8): the breach is the reversal_rate
+# SLO's, against the manifest's 98.5 target, and its severity is the one the
+# documented budget thresholds give for the target and value it reports
+# (opensrm-pa2w: every breach was once "critical" and this step passed).
 run_assertion "quality_breach" wait-verdict-type quality_breach \
-    --service fraud-detect --core-url "${CORE_URL}" --timeout 180 --interval 2
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 180 --interval 2 \
+    --where data.slo_name=reversal_rate --where data.judgment_type=reversal_rate \
+    --where data.target=98.5 --severity-by-budget
 QUALITY_BREACH_ID="${VERDICT_ID}"
 QUALITY_BREACH_AT="${VERDICT_CREATED_AT}"
-pass "quality_breach: ${QUALITY_BREACH_ID} at ${QUALITY_BREACH_AT}"
+pass "quality_breach: ${QUALITY_BREACH_ID} at ${QUALITY_BREACH_AT} severity=${VERDICT_SEVERITY}"
 
 # Latency budget starts here per design: from quality_breach.created_at to
 # the moment fetch_case_bench can return the case.
 log "Wait for correlate → correlation_snapshot (assessment)"
+# The snapshot must be fraud-detect's and name this run's breach as a
+# trigger: respond anchors the case on data.parent_ids.
 run_assertion "correlation_snapshot" wait-assessment-kind correlation_snapshot \
-    --core-url "${CORE_URL}" --timeout 30 --interval 1
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 30 --interval 1 \
+    --where data.domain.service=fraud-detect \
+    --contains "data.parent_ids=${QUALITY_BREACH_ID}" --at-least data.event_count=1
 CORR_ID="${ASSESSMENT_ID}"
 pass "correlation_snapshot: ${CORR_ID} at ${ASSESSMENT_CREATED_AT}"
 
 log "Wait for respond → triage verdict"
 run_assertion "triage" wait-verdict-type triage \
-    --core-url "${CORE_URL}" --timeout 60 --interval 1
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1
 TRIAGE_ID="${VERDICT_ID}"
 pass "triage: ${TRIAGE_ID} at ${VERDICT_CREATED_AT}"
 
 log "Wait for respond → case"
+# The case must be anchored on this run's breach verdict (the bench briefing
+# walks lineage from it). Its priority is printed, not asserted: what an
+# AI-gate breach's priority should be is not settled (opensrm-hyxa review).
 run_assertion "case" wait-case \
-    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1 \
+    --where "underlying_verdict=${QUALITY_BREACH_ID}"
 CASE_ID_HIT="${CASE_ID}"
 CASE_AT="${CASE_CREATED_AT}"
 pass "case: ${CASE_ID_HIT} priority=${CASE_PRIORITY} at ${CASE_AT}"
 
-log "Wait for learn → calibration_signal or retrospective"
-# Learn module emits one of these; either path proves learn ran. The OR
-# fallback isn't run_assertion (because the first leg is allowed to fail).
-if output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-assessment-kind retrospective \
-    --core-url "${CORE_URL}" --timeout 60 --interval 2 2>/dev/null); then
-    eval "${output}"
-else
-    info "no retrospective yet; trying calibration_signal"
-    run_assertion "learn calibration_signal" wait-assessment-kind calibration_signal \
-        --core-url "${CORE_URL}" --timeout 60 --interval 2
-fi
-pass "learn assessment: ${ASSESSMENT_ID}"
+# learn's retrospective is asserted last (below): it is written only once an
+# operator has resolved the case, and the bench step needs the case pending.
 
 # ---------------------------------------------------------------------------
 # Strong lineage assertions (Rob's design addition #1)
@@ -252,8 +256,8 @@ pass "triage verdict's ancestors reach quality_breach"
 
 log "Bench reads case via core API (sre.case_bench.fetch_case_bench)"
 ${RUN_BENCH} python "${ASSERTIONS}" fetch-case-via-bench \
-    --state pending --core-url "${CORE_URL}"
-pass "bench logic layer fetched ≥1 case via core API"
+    --state pending --core-url "${CORE_URL}" --expect-case-id "${CASE_ID_HIT}"
+pass "bench logic layer fetched case ${CASE_ID_HIT} via core API"
 
 # ---------------------------------------------------------------------------
 # Pipeline latency assertion (Rob's design addition #2)
@@ -268,3 +272,52 @@ log "Pipeline latency: quality_breach.created_at → case.created_at"
 ${RUN_BENCH} python "${ASSERTIONS}" assert-latency \
     "${QUALITY_BREACH_AT}" "${CASE_AT}" "${LATENCY_BUDGET_SECONDS}"
 pass "pipeline latency under ${LATENCY_BUDGET_SECONDS}s"
+
+# ---------------------------------------------------------------------------
+# learn's retrospective, end to end (opensrm-mtxr)
+# ---------------------------------------------------------------------------
+#
+# The only test of this seam against a real core: learn finds the incident's
+# verdicts as the descendants of the snapshot id, and writes the
+# retrospective once the chain is quiet AND no unresolved case anchors on it.
+#
+# With the canned LLM the remediation asks for approval, so the incident
+# stops at AWAITING_APPROVAL and respond leaves its case open: that needs a
+# person. So the harness plays the operator. The retrospective must close as
+# "quiet", never by reaching its maximum age.
+
+log "Wait for respond → remediation verdict (the incident's last)"
+run_assertion "remediation" wait-verdict-type remediation \
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1
+REMEDIATION_ID="${VERDICT_ID}"
+pass "remediation: ${REMEDIATION_ID} at ${VERDICT_CREATED_AT}"
+
+run_assertion "incident's snapshot" snapshot-of-verdict "${REMEDIATION_ID}" \
+    --core-url "${CORE_URL}"
+INCIDENT_SNAPSHOT_ID="${SNAPSHOT_ID}"
+[ "${RESPOND_LAST_VERDICT_ID}" = "${REMEDIATION_ID}" ] \
+    || fail "the incident's last verdict is ${RESPOND_LAST_VERDICT_ID} (${RESPOND_LAST_VERDICT_TYPE}), not the remediation ${REMEDIATION_ID}"
+pass "incident of ${INCIDENT_SNAPSHOT_ID}: ${RESPOND_VERDICT_COUNT} respond verdicts, last is the remediation"
+
+# Past the quiet period, plus two learn cycles (5 s each) and a margin: were
+# the open case not holding it back, the retrospective would exist by now.
+QUIET_SECONDS=$(awk -v m="${RETROSPECTIVE_QUIET_MINUTES}" 'BEGIN { printf "%d", m * 60 }')
+HOLD_SECONDS=$(( QUIET_SECONDS + 15 ))
+log "Hold ${HOLD_SECONDS}s (quiet period ${QUIET_SECONDS}s + margin) with the case open"
+sleep "${HOLD_SECONDS}"
+run_assertion "no retrospective while the case is open" assert-no-retrospective \
+    --snapshot-id "${INCIDENT_SNAPSHOT_ID}" --core-url "${CORE_URL}"
+pass "no retrospective for ${INCIDENT_SNAPSHOT_ID} while its case is open"
+
+log "Operator resolves the case via the API"
+run_assertion "operator resolves the case" resolve-cases-for-snapshot \
+    --snapshot-id "${INCIDENT_SNAPSHOT_ID}" --resolution-id "${REMEDIATION_ID}" \
+    --core-url "${CORE_URL}"
+pass "resolved ${CASES_RESOLVED} case(s): ${RESOLVED_CASE_IDS} (resolution ${REMEDIATION_ID})"
+
+log "Wait for learn → retrospective, closed by quiet, with respond's verdicts"
+run_assertion "retrospective" wait-retrospective \
+    --snapshot-id "${INCIDENT_SNAPSHOT_ID}" --closed-by quiet \
+    --must-include "${TRIAGE_ID}" "${REMEDIATION_ID}" \
+    --core-url "${CORE_URL}" --timeout 60 --interval 2
+pass "retrospective ${RETRO_ID}: closed_by=${RETRO_CLOSED_BY}, ${RETRO_VERDICT_COUNT} verdicts, all ${RETRO_RESPOND_VERDICTS} of respond's in its timeline"

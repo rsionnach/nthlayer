@@ -18,6 +18,8 @@ import argparse
 import asyncio
 import datetime as dt
 import inspect
+import json
+import math
 import sys
 from typing import Any, NoReturn
 
@@ -78,29 +80,203 @@ def _fail(message: str) -> NoReturn:
     sys.exit(1)
 
 
+# --- content matching (opensrm-yze8) -----------------------------------------
+#
+# A ``wait-*`` command that only checks a row exists catches a wiring break,
+# not a wrong value on a wire that works (opensrm-pa2w: every judgment breach
+# was ``critical`` and the three-tier test passed). These options make a
+# command wait for a row with the right content, and on timeout say what the
+# rows it did see carried instead.
+
+_MISSING = object()
+
+
+def _lookup(row: Any, path: str) -> Any:
+    """The value at a dotted *path* into nested dicts, or _MISSING."""
+    value = row
+    for key in path.split("."):
+        if not isinstance(value, dict) or key not in value:
+            return _MISSING
+        value = value[key]
+    return value
+
+
+def _split(spec: str) -> tuple[str, Any]:
+    """``path=value`` -> (path, value). The value is a number when it reads
+    as a finite one (``98.5``, ``1``), and otherwise the string it is: ``true``,
+    ``null`` and ``NaN`` stay strings, so an id or a label is never turned
+    into something else. A string field made only of digits cannot be matched;
+    no caller needs one."""
+    path, sep, raw = spec.partition("=")
+    if not sep or not path:
+        _fail(f"expected PATH=VALUE, got {spec!r}")
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return path, raw
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return path, value
+    return path, raw
+
+
+def _same(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        return _close(actual, expected)
+    return type(actual) is type(expected) and actual == expected
+
+
+def _show(value: Any) -> str:
+    return "<absent>" if value is _MISSING else repr(value)
+
+
+def _content_mismatch(row: dict, args: argparse.Namespace) -> str | None:
+    """Why *row* does not satisfy the command's content options, or None
+    when it does (or none were given)."""
+    for spec in getattr(args, "where", None) or []:
+        path, expected = _split(spec)
+        actual = _lookup(row, path)
+        if actual is _MISSING or not _same(actual, expected):
+            return f"{path} is {_show(actual)}, expected {expected!r}"
+    for spec in getattr(args, "contains", None) or []:
+        path, expected = _split(spec)
+        actual = _lookup(row, path)
+        if not isinstance(actual, list) or not any(_same(item, expected) for item in actual):
+            return f"{path} is {_show(actual)}, expected a list holding {expected!r}"
+    for spec in getattr(args, "at_least", None) or []:
+        path, expected = _split(spec)
+        actual = _lookup(row, path)
+        if (not isinstance(expected, (int, float)) or isinstance(expected, bool)
+                or not isinstance(actual, (int, float)) or isinstance(actual, bool)
+                or actual < expected):
+            return f"{path} is {_show(actual)}, expected a number >= {expected!r}"
+    if getattr(args, "severity_by_budget", False):
+        return _budget_severity_mismatch(row.get("data"))
+    return None
+
+
+# Lowest SLI, in percent, a judgment breach of this harness can plausibly
+# report. A value under it is a ratio (0.92) in a field that is a percentage.
+_PERCENT_FLOOR = 50.0
+
+
+def budget_severity(target: float, current_value: float) -> str:
+    """The severity a budget-consumption judgment breach must carry, from
+    nthlayer-workers' documented thresholds (docs/architecture.md, "measure":
+    under 200% of the error budget consumed is low, 200% to under 500% high,
+    500% and over critical; exactly 500% is critical by Rob's ruling of
+    2026-11-27, opensrm-yze8). Both inputs are percentages (target 98.5, not
+    0.985)."""
+    budget = 100.0 - target
+    if budget <= 0:
+        return "critical"
+    consumed = (target - current_value) / budget * 100.0
+    if consumed < 200.0:
+        return "low"
+    if consumed < 500.0:
+        return "high"
+    return "critical"
+
+
+def _budget_severity_mismatch(data: Any) -> str | None:
+    """Why a quality_breach's data is not a self-consistent budget breach.
+
+    A consistency check, not a fixed expectation: the first breach may fire
+    anywhere between "just under target" and the scenario's settled SLI, so
+    the severity is checked against the target and value the SAME verdict
+    reports."""
+    if not isinstance(data, dict):
+        return f"data is {data!r}, expected an object"
+    target, current = data.get("target"), data.get("current_value")
+    for name, value in (("target", target), ("current_value", current)):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return f"data.{name} is {value!r}, expected a number"
+    if not _PERCENT_FLOOR < target <= 100.0:
+        return f"data.target is {target!r}, expected a percentage (e.g. 98.5, not 0.985)"
+    if not _PERCENT_FLOOR < current < target:
+        return (f"data.current_value is {current!r}, expected a percentage below the "
+                f"target {target!r} and above {_PERCENT_FLOOR}")
+    expected = budget_severity(target, current)
+    if data.get("severity") != expected:
+        return (f"data.severity is {data.get('severity')!r}, expected {expected!r} for "
+                f"target {target!r} and current_value {current!r}")
+    return None
+
+
+def _add_content_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--where", action="append", metavar="PATH=VALUE",
+                        help="the row must carry VALUE at dotted PATH (repeatable). "
+                             "VALUE is a number when it reads as one, else a string")
+    parser.add_argument("--contains", action="append", metavar="PATH=VALUE",
+                        help="the list at PATH must hold VALUE (repeatable)")
+    parser.add_argument("--at-least", action="append", metavar="PATH=NUMBER",
+                        help="the number at PATH must be >= NUMBER (repeatable)")
+
+
+async def _poll_rows(client: CoreAPIClient, *, description: str, fetch,
+                     args: argparse.Namespace) -> dict:
+    """Poll until a fetched row satisfies the command's content options, and
+    return it. Rows are tried in the order core returns them, so with no
+    options this is the first row, as before. A timeout names what the rows
+    seen last carried instead."""
+    seen: list[str] = []
+
+    def predicate(result: APIResult):
+        seen.clear()
+        for row in result.data or []:
+            why = _content_mismatch(row, args)
+            if why is None:
+                return row
+            seen.append(f"{row.get('id', '?')}: {why}")
+        return None
+
+    try:
+        return await _poll(
+            client, description=description, fetch=fetch, predicate=predicate,
+            timeout_seconds=args.timeout, interval_seconds=args.interval,
+        )
+    except TimeoutError as exc:
+        if seen:
+            raise TimeoutError(f"{exc}; rows seen did not match: " + "; ".join(seen[:5])) from None
+        raise
+
+
 # --- commands ---------------------------------------------------------------
 
 async def cmd_wait_heartbeat(args: argparse.Namespace) -> None:
-    """Poll /heartbeats until at least one entry exists for the named component."""
+    """Poll /heartbeats until an entry exists for the named component (with
+    the health --expect-health names, when given)."""
     async with CoreAPIClient(base_url=args.core_url) as client:
+        unhealthy: list[str] = []
+
         async def fetch(c):
             return await c.get_heartbeats()
 
         def predicate(result: APIResult):
             rows = result.data or []
             for row in rows:
-                if args.component is None or row.get("component") == args.component:
-                    return row
+                if args.component is not None and row.get("component") != args.component:
+                    continue
+                if args.expect_health is not None and row.get("health") != args.expect_health:
+                    unhealthy.append(f"{row.get('component')}: health {row.get('health')!r}")
+                    continue
+                return row
             return None
 
-        row = await _poll(
-            client,
-            description=f"heartbeat for component={args.component or '*'}",
-            fetch=fetch,
-            predicate=predicate,
-            timeout_seconds=args.timeout,
-            interval_seconds=args.interval,
-        )
+        try:
+            row = await _poll(
+                client,
+                description=f"heartbeat for component={args.component or '*'}",
+                fetch=fetch,
+                predicate=predicate,
+                timeout_seconds=args.timeout,
+                interval_seconds=args.interval,
+            )
+        except TimeoutError as exc:
+            if unhealthy:
+                raise TimeoutError(
+                    f"{exc}; expected health {args.expect_health!r}, last saw {unhealthy[-1]}"
+                ) from None
+            raise
     _print_kv(
         HEARTBEAT_COMPONENT=row.get("component", ""),
         HEARTBEAT_HEALTH=row.get("health", ""),
@@ -113,22 +289,17 @@ async def cmd_wait_verdict_type(args: argparse.Namespace) -> None:
         async def fetch(c):
             return await c.get_verdicts(verdict_type=args.verdict_type, service=args.service, limit=50)
 
-        def predicate(result: APIResult):
-            rows = result.data or []
-            return rows[0] if rows else None
-
-        verdict = await _poll(
+        verdict = await _poll_rows(
             client,
             description=f"verdict type={args.verdict_type} service={args.service or '*'}",
             fetch=fetch,
-            predicate=predicate,
-            timeout_seconds=args.timeout,
-            interval_seconds=args.interval,
+            args=args,
         )
     _print_kv(
         VERDICT_ID=verdict.get("id", ""),
         VERDICT_CREATED_AT=verdict.get("created_at", ""),
         VERDICT_SERVICE=verdict.get("service", "") or "",
+        VERDICT_SEVERITY=(verdict.get("data") or {}).get("severity", "") or "",
     )
 
 
@@ -137,17 +308,11 @@ async def cmd_wait_assessment_kind(args: argparse.Namespace) -> None:
         async def fetch(c):
             return await c.get_assessments(kind=args.kind, service=args.service, limit=50)
 
-        def predicate(result: APIResult):
-            rows = result.data or []
-            return rows[0] if rows else None
-
-        assessment = await _poll(
+        assessment = await _poll_rows(
             client,
             description=f"assessment kind={args.kind} service={args.service or '*'}",
             fetch=fetch,
-            predicate=predicate,
-            timeout_seconds=args.timeout,
-            interval_seconds=args.interval,
+            args=args,
         )
     _print_kv(
         ASSESSMENT_ID=assessment.get("id", ""),
@@ -161,17 +326,11 @@ async def cmd_wait_case(args: argparse.Namespace) -> None:
         async def fetch(c):
             return await c.get_cases(service=args.service, limit=50)
 
-        def predicate(result: APIResult):
-            rows = result.data or []
-            return rows[0] if rows else None
-
-        case = await _poll(
+        case = await _poll_rows(
             client,
             description=f"case service={args.service or '*'}",
             fetch=fetch,
-            predicate=predicate,
-            timeout_seconds=args.timeout,
-            interval_seconds=args.interval,
+            args=args,
         )
     _print_kv(
         CASE_ID=case.get("id", ""),
@@ -322,6 +481,185 @@ async def cmd_assert_no_verdict(args: argparse.Namespace) -> None:
     _print_kv(NO_VERDICT_OK="true")
 
 
+# --- the retrospective seam (opensrm-mtxr) ----------------------------------
+#
+# learn (nthlayer-workers, ``fetch_incident_chain``) builds an incident's
+# retrospective from the snapshot's trigger verdicts plus every descendant of
+# the snapshot id, and writes it once the chain is quiet and no unresolved
+# case anchors on it. These commands are the only test of that seam against a
+# real core: workers tests it against an in-memory copy of core's lineage
+# rule, and core pins its half in
+# ``test_descendants_of_an_assessment_id_returns_the_chain_that_names_it``
+# (opensrm-brms). When opensrm-7t3q's typed relations land, all three change
+# together.
+
+_OUTCOME_RESOLUTION = "outcome_resolution"
+_OPEN_CASE_STATES = ("pending", "leased")
+
+
+async def _snapshots(client: CoreAPIClient) -> list[dict]:
+    result = await client.get_assessments(kind="correlation_snapshot", limit=100)
+    if not result.ok:
+        _fail(f"GET /assessments failed: status={result.status_code} error={result.error!r}")
+    return result.data or []
+
+
+async def _snapshot(client: CoreAPIClient, snapshot_id: str) -> dict:
+    for snapshot in await _snapshots(client):
+        if snapshot.get("id") == snapshot_id:
+            return snapshot
+    _fail(f"no correlation_snapshot {snapshot_id!r} on core")
+
+
+async def _respond_chain(client: CoreAPIClient, snapshot_id: str) -> list[dict]:
+    """The verdicts that descend from the snapshot, oldest first, without
+    outcome resolutions: what respond did about it."""
+    result = await client.get_descendants(snapshot_id)
+    if not result.ok:
+        _fail(
+            f"GET /verdicts/{snapshot_id}/descendants failed: "
+            f"status={result.status_code} error={result.error!r}"
+        )
+    chain = [v for v in (result.data or []) if v.get("type") != _OUTCOME_RESOLUTION]
+    return sorted(chain, key=lambda v: v.get("created_at", ""))
+
+
+async def _retrospectives_for(client: CoreAPIClient, snapshot_id: str) -> list[dict]:
+    result = await client.get_assessments(kind="retrospective", limit=100)
+    if not result.ok:
+        _fail(f"GET /assessments failed: status={result.status_code} error={result.error!r}")
+    return [
+        a for a in (result.data or [])
+        if (a.get("data") or {}).get("correlation_snapshot_id") == snapshot_id
+    ]
+
+
+async def cmd_snapshot_of_verdict(args: argparse.Namespace) -> None:
+    """The correlation snapshot whose incident a respond verdict belongs to,
+    and that incident's last verdict.
+
+    Found the way learn finds it, from the other end: the snapshot among
+    whose descendants the verdict is. Fails unless exactly one snapshot
+    claims it.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        owners = []
+        for snapshot in await _snapshots(client):
+            chain = await _respond_chain(client, snapshot["id"])
+            if args.verdict_id in {v.get("id") for v in chain}:
+                owners.append((snapshot, chain))
+    if len(owners) != 1:
+        _fail(
+            f"expected exactly one correlation_snapshot with {args.verdict_id!r} among its "
+            f"descendants, got {[s.get('id') for s, _ in owners]!r}"
+        )
+    snapshot, chain = owners[0]
+    _print_kv(
+        SNAPSHOT_ID=snapshot["id"],
+        SNAPSHOT_SERVICE=snapshot.get("service", "") or "",
+        RESPOND_VERDICT_COUNT=str(len(chain)),
+        RESPOND_LAST_VERDICT_ID=chain[-1].get("id", ""),
+        RESPOND_LAST_VERDICT_TYPE=chain[-1].get("type", ""),
+    )
+
+
+async def cmd_assert_no_retrospective(args: argparse.Namespace) -> None:
+    """Fail if core holds a retrospective for --snapshot-id (one fetch)."""
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        found = await _retrospectives_for(client, args.snapshot_id)
+    if found:
+        _fail(
+            f"expected no retrospective for {args.snapshot_id!r}, got "
+            f"{[(a.get('id'), (a.get('data') or {}).get('closed_by')) for a in found]!r}"
+        )
+    _print_kv(NO_RETROSPECTIVE_OK="true")
+
+
+async def cmd_resolve_cases_for_snapshot(args: argparse.Namespace) -> None:
+    """The operator's part: resolve, through PUT /cases/{id}/resolve, every
+    open case anchored on one of the snapshot's trigger verdicts.
+
+    Those are the cases that hold the snapshot's retrospective back. Respond
+    opens one per incident, anchored on the first breach verdict, and leaves
+    it open when the incident stops at AWAITING_APPROVAL. Fails if there is
+    none to resolve.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        snapshot = await _snapshot(client, args.snapshot_id)
+        triggers = set((snapshot.get("data") or {}).get("parent_ids") or [])
+        service = snapshot.get("service")
+        resolved: list[str] = []
+        for state in _OPEN_CASE_STATES:
+            result = await client.get_cases(state=state, service=service, limit=100)
+            if not result.ok:
+                _fail(f"GET /cases failed: status={result.status_code} error={result.error!r}")
+            for case in result.data or []:
+                if case.get("underlying_verdict") not in triggers:
+                    continue
+                done = await client.resolve_case(case["id"], args.resolution_id)
+                if not done.ok:
+                    _fail(
+                        f"PUT /cases/{case['id']}/resolve failed: "
+                        f"status={done.status_code} error={done.error!r}"
+                    )
+                resolved.append(case["id"])
+    if not resolved:
+        _fail(
+            f"no open case for service {service!r} is anchored on a trigger of "
+            f"{args.snapshot_id!r} ({sorted(triggers)!r})"
+        )
+    _print_kv(CASES_RESOLVED=str(len(resolved)), RESOLVED_CASE_IDS=",".join(resolved))
+
+
+async def cmd_wait_retrospective(args: argparse.Namespace) -> None:
+    """Poll for the snapshot's retrospective, then assert how it closed and
+    that its timeline holds everything respond did.
+
+    ``--closed-by`` is the expected ``data.closed_by``. The timeline must
+    name every verdict that descends from the snapshot (and so at least
+    one), and each ``--must-include`` id.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        deadline = _now_utc() + dt.timedelta(seconds=args.timeout)
+        found: list[dict] = []
+        while not found and _now_utc() < deadline:
+            found = await _retrospectives_for(client, args.snapshot_id)
+            if not found:
+                await asyncio.sleep(args.interval)
+        if not found:
+            _fail(f"no retrospective for {args.snapshot_id!r} after {args.timeout:.0f}s")
+        if len(found) > 1:
+            _fail(
+                f"expected one retrospective for {args.snapshot_id!r}, got "
+                f"{[a.get('id') for a in found]!r}"
+            )
+        retro = found[0]
+        chain = await _respond_chain(client, args.snapshot_id)
+
+    data = retro.get("data") or {}
+    if data.get("closed_by") != args.closed_by:
+        _fail(
+            f"retrospective {retro.get('id')!r} closed_by={data.get('closed_by')!r}, "
+            f"expected {args.closed_by!r}"
+        )
+    timeline_ids = {entry.get("id") for entry in data.get("timeline") or []}
+    respond_ids = {v.get("id") for v in chain}
+    if not respond_ids:
+        _fail(f"no verdict descends from {args.snapshot_id!r}: respond did nothing to include")
+    missing = sorted((respond_ids | set(args.must_include)) - timeline_ids)
+    if missing:
+        _fail(
+            f"retrospective {retro.get('id')!r} timeline lacks "
+            f"{missing!r} (respond's verdicts and the required ids); it has {sorted(str(i) for i in timeline_ids)!r}"
+        )
+    _print_kv(
+        RETRO_ID=retro.get("id", ""),
+        RETRO_CLOSED_BY=data.get("closed_by", ""),
+        RETRO_VERDICT_COUNT=str(data.get("verdict_count", "")),
+        RETRO_RESPOND_VERDICTS=str(len(respond_ids)),
+    )
+
+
 async def cmd_assert_lineage(args: argparse.Namespace) -> None:
     """Assert that ``parent_id`` appears in ``child_id``'s ancestry chain.
 
@@ -363,6 +701,13 @@ async def cmd_fetch_case_via_bench(args: argparse.Namespace) -> None:
             f"This proves bench's read path is connecting to core but the case "
             f"queue is empty — likely a respond/case-creation regression."
         )
+    if args.expect_case_id is not None:
+        returned = [c.case_id for c in view.flat]
+        if args.expect_case_id not in returned:
+            _fail(
+                f"bench fetch_case_bench (state={args.state!r}) did not return case "
+                f"{args.expect_case_id!r}; it returned {returned!r}"
+            )
     first = view.flat[0]
     _print_kv(
         BENCH_CASE_COUNT=str(len(view.flat)),
@@ -514,20 +859,31 @@ def main(argv: list[str] | None = None) -> int:
     _add_common(p)
     p.add_argument("--component", default=None,
                    help="filter by component name (e.g. observe.collect, measure)")
+    p.add_argument("--expect-health", default=None,
+                   help="wait for a heartbeat whose health core reports as this "
+                        "(healthy, degraded)")
 
     p = sub.add_parser("wait-verdict-type")
     _add_common(p)
     p.add_argument("verdict_type")
     p.add_argument("--service", default=None)
+    _add_content_options(p)
+    p.add_argument("--severity-by-budget", action="store_true",
+                   help="the verdict's data must be a self-consistent judgment "
+                        "breach: target and current_value are percentages, "
+                        "current_value is below target, and severity is what "
+                        "the documented budget thresholds give for the two")
 
     p = sub.add_parser("wait-assessment-kind")
     _add_common(p)
     p.add_argument("kind")
     p.add_argument("--service", default=None)
+    _add_content_options(p)
 
     p = sub.add_parser("wait-case")
     _add_common(p)
     p.add_argument("--service", default=None)
+    _add_content_options(p)
 
     p = sub.add_parser("wait-threshold-evaluation")
     _add_common(p)
@@ -552,6 +908,26 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("verdict_type")
     p.add_argument("--service", required=True)
 
+    p = sub.add_parser("snapshot-of-verdict")
+    _add_common(p, with_poll=False)
+    p.add_argument("verdict_id")
+
+    p = sub.add_parser("assert-no-retrospective")
+    _add_common(p, with_poll=False)
+    p.add_argument("--snapshot-id", required=True)
+
+    p = sub.add_parser("resolve-cases-for-snapshot")
+    _add_common(p, with_poll=False)
+    p.add_argument("--snapshot-id", required=True)
+    p.add_argument("--resolution-id", required=True)
+
+    p = sub.add_parser("wait-retrospective")
+    _add_common(p)
+    p.add_argument("--snapshot-id", required=True)
+    p.add_argument("--closed-by", required=True, choices=["quiet", "max_age"])
+    p.add_argument("--must-include", nargs="*", default=[],
+                   help="verdict ids the timeline must name")
+
     p = sub.add_parser("assert-lineage")
     _add_common(p, with_poll=False)
     p.add_argument("child_id")
@@ -564,6 +940,8 @@ def main(argv: list[str] | None = None) -> int:
     # cases land in "pending" before any operator picks them up.
     p.add_argument("--state", default="pending")
     p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--expect-case-id", default=None,
+                   help="fail unless the returned cases include this id")
 
     p = sub.add_parser("render-portfolio")
     _add_common(p, with_poll=False)
@@ -583,6 +961,10 @@ def main(argv: list[str] | None = None) -> int:
         "wait-threshold-evaluation": cmd_wait_threshold_evaluation,
         "wait-threshold-breach": cmd_wait_threshold_breach,
         "assert-no-verdict": cmd_assert_no_verdict,
+        "snapshot-of-verdict": cmd_snapshot_of_verdict,
+        "assert-no-retrospective": cmd_assert_no_retrospective,
+        "resolve-cases-for-snapshot": cmd_resolve_cases_for_snapshot,
+        "wait-retrospective": cmd_wait_retrospective,
         "assert-lineage": cmd_assert_lineage,
         "fetch-case-via-bench": cmd_fetch_case_via_bench,
         "render-portfolio": cmd_render_portfolio,

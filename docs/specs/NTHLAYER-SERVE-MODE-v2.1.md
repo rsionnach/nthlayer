@@ -447,12 +447,6 @@ All verdicts and assessments are emitted as CloudEvents v1.0 with OTel semantic 
   "traceparent": "00-...",
 
   "data": {
-    "gen_ai.system": "nthlayer-executor",
-    "gen_ai.evaluation.name": "rollback-deployment",
-    "gen_ai.evaluation.score.value": 1.0,
-    "gen_ai.evaluation.score.label": "success",
-    "gen_ai.response.id": "bafyrei...fhq3",
-
     "nthlayer.verdict.type": "execution",
     "nthlayer.verdict.parent_cids": ["bafyrei...parent1", "bafyrei...parent2"],
     "nthlayer.verdict.pipeline_latency_ms": 2347,
@@ -467,7 +461,7 @@ All verdicts and assessments are emitted as CloudEvents v1.0 with OTel semantic 
 }
 ```
 
-The `gen_ai.*` attributes follow OTel semantic conventions (v1.39.0+). The `nthlayer.*` attributes are our extensions; we propose `nthlayer.verdict.*` and the decision-specific subset upstream to the OTel GenAI SIG as `gen_ai.decision.*`.
+An execution verdict carries no `gen_ai.*` attributes: it is not a grader evaluation, its result is `nthlayer.execution.outcome`, and its content id is the envelope's `id`. Where NthLayer does emit `gen_ai.*` attributes they follow the OTel GenAI semantic conventions at the commit OpenSRM Telemetry Addendum A1 §12 pins. The `nthlayer.*` attributes are our extensions; we propose `nthlayer.verdict.*` and the decision-specific subset upstream to the OTel GenAI SIG as `gen_ai.decision.*`.
 
 ## 11. Alert Schema: PD-CEF Superset
 

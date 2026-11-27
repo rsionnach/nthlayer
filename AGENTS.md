@@ -1,691 +1,160 @@
-# NthLayer
+# NthLayer front door — agent guide
 
-**Reliability at build time, not incident time.**
+This repository is the **front door and ecosystem hub** for NthLayer. It
+holds no component implementation. What lives here is documentation, the
+GitHub Action, the PyPI meta-package, the demo, the cross-repo integration
+harness, and tooling that operates on the workspace.
 
-NthLayer is the Reliability Shift Left platform - bringing production readiness validation into your CI/CD pipeline. Instead of discovering reliability issues in production, catch them before deployment.
+`CLAUDE.md` is the fuller description of the repository: what it hosts,
+the hard rules, the release pipeline and the spec references. This file is
+the short working guide: commands, layout and workflow. Where the two
+disagree, `CLAUDE.md` is right and this file needs fixing.
 
-## Product Vision & Scope
+Until 2026-04-26 this repository was the single-repo generator, and this
+file described it (`make test`, `src/nthlayer/`, a `develop` branch, a
+per-repo beads file). None of that applies any more. The generator is
+[`nthlayer-generate`](https://github.com/rsionnach/nthlayer-generate), and
+its conventions are in its own `AGENTS.md`.
 
-**Core Value Proposition:** "Validate reliability requirements before deploy, not after incidents"
+## Where code lives
 
-### Reliability Shift Left
+| Looking for | Repository |
+|---|---|
+| Generator (alerts, dashboards, SLOs, recording rules) | `nthlayer-generate` |
+| Manifest parser, verdict model, LLM wrapper, API client | `nthlayer-common` |
+| HTTP API, verdict store, case management | `nthlayer-core` |
+| observe, measure, correlate, respond, learn | `nthlayer-workers` |
+| Operator TUI | `nthlayer-bench` |
+| Override ingestion sidecar | `nthlayer-override-adapter` |
+| The OpenSRM specification | `opensrm` |
 
-| Stage | What NthLayer Does |
-|-------|-------------------|
-| **Generate** | Create dashboards, alerts, SLOs from service.yaml |
-| **Lint** | Validate PromQL syntax before Prometheus rejects it |
-| **Verify** | Confirm declared metrics exist in Prometheus |
-| **Gate** | Block deploys when error budget exhausted |
+If a change needs a module that a component imports, or anything that
+ships in a wheel, it belongs in one of those, not here (`CLAUDE.md`, hard
+rule 1).
 
-**The key insight:** Generation is just the mechanism. The value is **prevention**.
+## Layout
 
-### Competitive Positioning
+```
+action.yml          GitHub Action; delegates to a pinned nthlayer-generate tag
+meta-package/       source of `pip install nthlayer` (dependency-only)
+demo/               demo.sh orchestrator, demo specs, helper scripts
+test/               cross-repo integration harness and the tests of scripts/
+scripts/            workspace tooling: eco_doctor, the R5 gate scripts,
+                    meta-resolve-check.sh
+docs/               specs, design docs, decisions, operational docs
+docs-site/          mkdocs source for the published site (mkdocs.yml)
+.github/workflows/  CI; CLAUDE.md lists what each workflow runs
+```
 
-| Competitor | Their Focus | NthLayer Difference |
-|------------|-------------|---------------------|
-| **PagerDuty** | Incident response | "They respond to incidents, we prevent them" |
-| **Datadog** | Post-deploy monitoring | "They monitor after, we validate before" |
-| **Nobl9** | SLO tracking | "They track SLOs, we enforce them as gates" |
-| **Backstage** | Service catalog | "They document, we generate and enforce" |
+## Commands
 
-**Strategic focus:** Compete where they won't go - build-time reliability validation.
-
-### Core Actions
-
-| Action | What NthLayer Does |
-|--------|-------------------|
-| **Generate** | Dashboards, alerts, SLOs, recording rules from service.yaml |
-| **Validate** | Lint PromQL, verify metrics exist, check policies |
-| **Gate** | Block deploys when error budget exhausted |
-
-> **See also:** [Full Architecture Documentation](docs-site/architecture.md) for detailed diagrams.
-
-### Usage Modes
-
-| Mode | Description | Catalog Required? |
-|------|-------------|-------------------|
-| **Standalone** | Git + YAML, no catalog | ❌ No - Start here |
-| **With Catalog** | Sync metadata from Backstage/Cortex | Optional |
-| **Hybrid** | Catalog + local overrides | Optional |
-
-**Key differentiator:** Catalogs make you adopt their platform first. NthLayer works Day 1.
-
-### What We Generate
-
-| Domain | Output | Status |
-|--------|--------|--------|
-| **Dashboards** | Grafana dashboards | ✅ Complete |
-| **Alerts** | Prometheus rules | ✅ Complete |
-| **Recording Rules** | Pre-aggregated metrics | ✅ Complete |
-| **PagerDuty** | Teams, schedules, escalation policies | ✅ Complete |
-| **SLOs** | OpenSLO definitions, error budgets | ✅ Complete |
-| **Deployment Gates** | CI/CD exit codes, error budget validation | ✅ Complete |
-| **Runbooks** | Auto-generated troubleshooting guides | 🔬 Exploring |
-
-## Roadmap
-
-### Current Focus: CI/CD Integration & Adoption
-
-**Phase 3: SLO Portfolio** ✅ COMPLETE
-- `nthlayer portfolio` command with CI/CD exit codes (0/1/2)
-- Cross-service SLO aggregation with tier weighting
-- Health scoring (0-100%) and insights
-- Output formats: table, json, csv, markdown
-
-**Phase 4: Deployment Gates** ✅ COMPLETE
-- `nthlayer check-deploy` blocks deploys when error budget exhausted
-- Tier-based thresholds (critical: 10% blocking, standard: advisory)
-- Prometheus integration for live SLO data
-- Exit codes: 0=approved, 1=warning, 2=blocked
-
-**Next: CI/CD Integration Examples**
-- GitHub Actions workflow templates
-- ArgoCD PreSync hook examples
-- GitLab CI integration
-
-### Scope Discipline
-
-Before adding features, ask:
-1. Does it strengthen Generate → Validate → Gate?
-2. Is there a dedicated tool that does this better?
-3. Will this help Phase 3 & 4 adoption?
-
-If unsure, defer to Future Considerations.
-
-### Strategic Differentiation
-**Primary narrative: Reliability Shift Left**
-- Prevention over response - catch issues before production
-- CI/CD integration - verification and gates as pipeline steps
-- Cross-vendor SLO Portfolio (they want lock-in)
-
-**Core differentiators:**
-- `nthlayer verify` - Contract verification (metrics exist)
-- `nthlayer check-deploy` - Deployment gates (error budget)
-- `nthlayer apply --lint` - PromQL validation
-- Generation is the mechanism, prevention is the value
-
-**Complementary tool integrations:**
-- promruval - Enhanced rule validation (40+ validators)
-
-### Phase 1: Foundation (✅ DONE)
-- service.yaml spec and parser
-- Grafana dashboard generation
-- Prometheus alert generation
-- PagerDuty integration
-- pint PromQL linting
-
-### Phase 2: Error Budgets (✅ DONE)
-- `nthlayer slo show/list` - View SLOs from service.yaml
-- `nthlayer slo collect` - Real-time Prometheus queries (stateless)
-- Blame deferred until CI/CD integration
-
-### Phase 2.5: Loki Integration (✅ DONE)
-**Goal:** Complete observability with logs (same Grafana ecosystem)
-- `nthlayer generate-loki-alerts` - Generate LogQL alert rules from service.yaml
-- Technology-specific log patterns (PostgreSQL, Redis, Kafka)
-- Full test coverage in `tests/test_loki.py`
-
-### Phase 3: SLO Portfolio (✅ DONE)
-**Goal:** Stateless, cross-service SLO aggregation for CI/CD pipelines
-
-**Completed:**
-- `nthlayer portfolio` - Aggregate SLO status across all services
-- Exit codes: 0=healthy, 1=warning, 2=critical
-- Output formats: table, json, csv, markdown
-- Health scoring by tier with org-wide score (0-100)
-- Prometheus integration for live data
-- Actionable insights generation
-
-### Phase 3.5: Enhanced Validation (✅ DONE)
-**Goal:** Beyond pint - comprehensive rule validation with promruval
-
-**Completed:**
-- `nthlayer validate-metadata` - Label/annotation validation
-- `--use-promruval` flag for 40+ validators
-- `--check-urls` to verify runbook URLs are accessible
-- Thanos/Mimir/Loki rule support
-
-### Phase 3.6: Exporter Guidance (✅ DONE - Simplified)
-**Goal:** Help users fix missing exporter metrics
-
-**Original plan:** Generate exporter deployment manifests
-**Decision:** Deferred - infrastructure provisioning is out of scope. Dedicated tools (Helm, kube-prometheus-stack) do this better.
-
-**Implemented instead:** Enhanced `nthlayer verify` output with:
-- Detection of missing exporter metrics (pg_*, redis_*, etc.)
-- Helpful guidance with Helm commands and documentation links
-- Links to official exporter repos
-
-### Phase 4: Deployment Gates (✅ DONE)
-**Goal:** Deploy blocked when error budget < 10%
-
-**Completed:**
-- `nthlayer check-deploy` - Error budget validation with exit codes
-- Tier-based thresholds (critical: 10% blocking, standard: advisory)
-- Prometheus integration for live SLO metrics
-- Blast radius analysis (downstream service impact)
-- Demo mode for VHS recordings
-
-**CI/CD Integration (Examples to Add):**
-- GitHub Actions workflow template
-- ArgoCD PreSync hook
-- GitLab CI gate job
-
-### Phase 5: AI-Assisted Generation (📋 OPTIONAL)
-**Goal:** Conversational service.yaml creation
-- `trellis-mcp-server`: NthLayer as MCP tool for Claude/Cursor
-- `trellis-ai-spec-gen`: "Create a tier-1 API with Redis" → YAML
-- `trellis-ai-slo`: SLO target recommendations
-
-*Only pursue if it accelerates Phase 3 & 4 adoption.*
-
----
-
-### Future Considerations (Deferred)
-
-These are parked until Phases 3 & 4 are complete and adopted.
-
-**NthLayer Cloud**
-- Hosted portfolio dashboard
-- Multi-user / team views
-- Enterprise features
-- *Decision: Business model, separate from core product*
-
-**Intelligent Reliability**
-- Adaptive alert tuning (ML-based)
-- Deployment risk scoring
-- Closed-loop policy updates
-- *Decision: Review after Phase 4 - different product category*
-
-**Reliability Testing**
-- Litmus chaos experiment generation
-- Cloudprober synthetic monitoring
-- *Decision: Dedicated tools exist (Gremlin, Litmus) - integrate don't build*
-
----
-
-### Technology Templates
-
-**Completed (16 templates):**
-- PostgreSQL, MySQL, Redis, MongoDB, Elasticsearch
-- Kafka, RabbitMQ, NATS, Pulsar
-- Kubernetes, Nginx, HAProxy, Traefik
-- etcd, Consul
-
-**Planned:**
-- `trellis-ai-services`: AI/ML service type (GPU utilization, model latency, inference queue)
-
-## Core Commands
+There is no `Makefile`, no `src/` and no root test suite. The root
+`pyproject.toml` only configures ruff. Each check is one command, run from
+the repository root; these are the commands CI runs.
 
 ```bash
-# Install dependencies
-pip install -e ".[dev]"
+# Lint and shell syntax (ci.yml)
+uvx ruff@0.15.15 check test/ demo/ scripts/
+find demo test scripts -maxdepth 2 -name '*.sh' -type f | xargs -n1 bash -n
 
-# Run tests
-make test                    # All tests
-pytest tests/test_X.py -v    # Single test file
-pytest -k "test_name" -v     # Single test by name
+# Tests of the workspace tooling in scripts/ (ci.yml); no network
+uv run --no-project --with pytest --with pyyaml pytest -q test/test_r5_*.py
+bash test/test_eco_doctor.sh
 
-# Linting and type checking
-make lint                    # Run ruff linter
-make lint-fix                # Auto-fix lint issues
-make typecheck               # Run mypy
-make format                  # Format code with ruff
+# Demo regression tests; no Docker
+bash test/test_demo_paths.sh
+bash test/test_demo_start_lock.sh
 
-# Development environment
-make dev-up                  # Start Postgres + Redis in Docker
-make dev-down                # Stop Docker services
-make migrate                 # Run database migrations
+# Demo specs against the PUBLISHED packages (demo-specs.yml)
+uv run --isolated --no-project --python 3.11 \
+    --with nthlayer-common --with pytest --with pyyaml \
+    pytest -q test/test_demo_specs_load.py
+uv run --isolated --no-project --python 3.11 \
+    --with nthlayer-generate --with pytest --with pyyaml \
+    pytest -q test/test_demo_specs_migrate.py
 
-# Demo commands
-python -m nthlayer.demo --help           # CLI help
-python scripts/regenerate_hybrid_dashboards.py   # Regenerate all dashboards
-python scripts/validate_dashboard_metrics.py  # Validate metric coverage
+# Docs site (docs.yml)
+pip install mkdocs-material mkdocs-minify-plugin && mkdocs build --strict
 ```
 
-## Project Layout
+`--isolated --no-project` matter on the published-package tests: without
+them uv resolves the workspace's editable sibling checkouts instead.
 
-```
-src/nthlayer/
-├── cli/           → CLI commands (plan, apply, status)
-├── dashboards/    → Dashboard generation (hybrid model, intent templates)
-│   ├── builder_sdk.py      → Main SDK-based dashboard builder
-│   ├── resolver.py         → Metric resolution (intent → discovered metrics)
-│   ├── intents.py          → Intent definitions with candidate metrics
-│   └── templates/          → Technology-specific templates
-│       ├── base_intent.py          → Base class for intent templates
-│       ├── http_intent.py          → API service health panels
-│       ├── worker_intent.py        → Worker service panels
-│       ├── stream_intent.py        → Stream processing panels
-│       ├── postgresql_intent.py    → PostgreSQL dependency panels
-│       ├── redis_intent.py         → Redis dependency panels
-│       └── elasticsearch_intent.py → Elasticsearch dependency panels
-├── discovery/     → Live Prometheus metric discovery
-├── slos/          → SLO definitions and error budget tracking
-├── alerts/        → Alert rule generation
-├── specs/         → Service specification models (ServiceContext, Resource)
-├── recording_rules/ → Prometheus recording rule generation
-├── orchestrator.py  → Unified plan/apply workflow
-└── demo.py        → CLI entrypoint (60KB, comprehensive demo)
+The heavier checks need sibling checkouts, Docker, or both. Their exact
+commands are in the workflow that runs each and in
+`docs/integration-testing.md`:
 
-tests/             → pytest test suite (28+ test files)
-demo/fly-app/      → Live demo app deployed to Fly.io
-generated/         → Output directory for generated dashboards
-docs/              → GitHub Pages demo site
-scripts/           → Utility scripts (validation, migration)
-.beads/            → Issue tracking (beads format)
-```
+- `test/test_error_budget_seam.py` (`error-budget-seam.yml`): needs
+  `NTHLAYER_ECOSYSTEM_ROOT` pointing at the directory that holds the
+  `opensrm` and `nthlayer-generate` checkouts.
+- `test/test_otel_collector.py` (`otel-collector.yml`): needs Docker.
+- `test/test_jmy18_smoke.py` (`override-binding-smoke.yml`): needs the
+  `nthlayer-core` and `nthlayer-override-adapter` checkouts.
+- `test/integration-three-tier.sh`, `test/integration-thresholds.sh`,
+  `test/e2e-test.sh` (`integration-three-tier.yml`): boot the three tiers
+  from sibling checkouts.
+- `scripts/meta-resolve-check.sh` (`meta-resolve.yml`): reads PyPI.
 
-## Development Patterns & Constraints
+Python that belongs to a component is run from that component's checkout,
+for example `uv run --directory ../nthlayer-core pytest -q`.
 
-### Dashboard Generation (Hybrid Model)
-- **Intent-based templates**: Define what metrics SHOULD exist, resolve to what DOES exist
-- **Service types**: `api`, `worker`, `stream` - each has different health metrics
-- **Row organization**: Dashboards organized into "SLO Metrics" → "Service Health" → "Dependencies"
-- **Guidance panels**: Show "No Data - Check metric instrumentation" for missing metrics
+## Conventions
 
-### Status Label Conventions (CRITICAL)
-| Service Type | Success Pattern | Error Pattern |
-|--------------|-----------------|---------------|
-| API          | `status!~"5.."` | `status=~"5.."` |
-| Worker       | `status!="failed"` | `status="failed"` |
-| Stream       | `status!="error"` | `status="error"` |
+- **Tests.** `docs/testing.md` has the ecosystem's testing conventions and
+  `docs/integration-testing.md` the harness cross-reference. Derive
+  fixtures from what a spec or a real file says, not from the code under
+  test. A test that can skip silently is treated as a bug: list files
+  instead of globbing, and fail on a missing checkout.
+- **Assertions** go on structured data (exit codes, parsed fields), not on
+  raw captured text.
+- **Shell.** Scripts in `demo/`, `test/` and `scripts/` must pass
+  `bash -n`; `demo/` scripts also run on macOS's bash 3.2.
+- **The Python in `scripts/` is standard library (and git) only.**
+  `eco_doctor.py` in particular imports nothing from the ecosystem: a
+  checker that imported the packages it checks would fail exactly when
+  they are broken.
+- **`action.yml`** pins its delegated `nthlayer-generate` to a tag, never
+  `main`.
+- **Design docs** under `docs/superpowers/specs/` and `plans/` are added
+  to, not rewritten; a decision goes in `docs/superpowers/decisions/`.
 
-### PromQL Query Patterns
-- Always use `service="$service"` label selector (NOT `cluster` or other labels)
-- histogram_quantile MUST include `sum by (le)`:
-  ```promql
-  histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="$service"}[5m])))
-  ```
-- Rate queries should aggregate: `sum(rate(metric{service="$service"}[5m]))`
+## Git workflow
 
-### Coding Style
-- Python 3.11+ with type hints (all functions must have type annotations)
-- Pydantic models for data validation
-- Use `structlog` for logging
-- Prefer composition over inheritance
-- Tests first when fixing bugs
+- Branch from `main`, open a PR to `main`. There is no `develop` branch.
+- PRs are merged with a merge commit, and PR titles are plain sentences,
+  not conventional-commit subjects, so release-please lists each change
+  once.
+- Commit subjects are `<type>: <description>` under 72 characters, with
+  the bead id in parentheses at the end. `feat`, `fix`, `perf`, `deps` and
+  `docs` appear in the meta-package changelog; `chore`, `test`, `ci`,
+  `build`, `style` and `refactor` are hidden. Changes under `scripts/` and
+  `test/` take `chore`, `test` or `ci`.
+- A change that is not doc-only passes the R5 review gate before it
+  merges (`docs/r5-gate.md`). Doc-only PRs merge on green CI.
+- Run the lint and the tests that cover what you touched before pushing.
 
-### Code Quality & Architecture (CRITICAL)
+## Issue tracking
 
-**Complexity Limits:**
-- Functions should have cyclomatic complexity ≤ 10 (target: A/B rating)
-- If complexity exceeds 15, refactor immediately
-- Use `radon cc src/nthlayer -a` to check complexity scores
-
-**Refactoring Triggers:**
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| Function complexity | > 10 | Extract helper methods or use dispatch pattern |
-| Function length | > 50 lines | Split into smaller functions |
-| Nested conditionals | > 3 levels | Use early returns or extract methods |
-| Duplicate code | > 10 lines | Extract to shared utility |
-
-**Architecture Patterns:**
-
-1. **Dispatch Pattern** - Replace long if/elif chains:
-   ```python
-   # BAD: Long conditional chain
-   if resource_type == "slos":
-       generate_slos()
-   elif resource_type == "alerts":
-       generate_alerts()
-   # ... 10 more conditions
-
-   # GOOD: Dispatch table
-   GENERATORS = {
-       "slos": generate_slos,
-       "alerts": generate_alerts,
-   }
-   GENERATORS[resource_type]()
-   ```
-
-2. **Extract Business Logic** - Keep CLI commands thin:
-   ```python
-   # BAD: Business logic in CLI
-   def validate_command(file):
-       # 100 lines of validation logic
-
-   # GOOD: Thin CLI, extracted logic
-   def validate_command(file):
-       validator = DashboardValidator(file)
-       result = validator.validate()
-       return result.exit_code
-   ```
-
-3. **Single Responsibility** - Each module/class does ONE thing:
-   - `orchestrator.py` - Coordinates workflow
-   - `dashboards/builder_sdk.py` - Builds dashboards
-   - `slos/collector.py` - Collects SLO data
-   - Don't mix concerns (e.g., no API calls in validators)
-
-4. **DRY (Don't Repeat Yourself)**:
-   - Extract shared query patterns to `slos/queries.py`
-   - Extract shared CLI output formatting to helpers
-   - Use base classes for common template behavior
-
-**Before Adding New Code:**
-1. Check if similar functionality exists - search codebase first
-2. Identify the right module (see Project Layout)
-3. Follow existing patterns in that module
-4. Add tests before or alongside implementation
-
-**Code Review Checklist:**
-- [ ] Complexity score acceptable (`radon cc <file>`)
-- [ ] No duplicate code (check with `radon hal` or manual review)
-- [ ] Type hints on all functions
-- [ ] Tests added/updated
-- [ ] Follows existing patterns in the module
-
-### External Service SDKs (CRITICAL)
-Always use official SDKs/clients for external service integrations. Do not create bespoke HTTP clients when official libraries exist.
-
-| Service | Official SDK | Package |
-|---------|--------------|---------|
-| **PagerDuty** | `pagerduty` | `pagerduty>=6.0.0` |
-| **Grafana** | `grafana-foundation-sdk` | `grafana-foundation-sdk>=0.0.11` |
-| **AWS** | `boto3` / `aioboto3` | `boto3>=1.34.0` |
-| **Slack** | `slack_sdk` | (add when needed) |
-
-When integrating a new external service:
-1. Research if an official SDK exists
-2. If yes, add to `pyproject.toml` and use it
-3. If no official SDK, check for well-maintained community libraries
-4. Only create custom HTTP clients as a last resort
-
-### Technology Templates
-When adding a new database/cache template:
-1. Create `src/nthlayer/dashboards/templates/{tech}_intent.py`
-2. Extend `BaseIntentTemplate`
-3. Add intent definitions to `src/nthlayer/dashboards/intents.py`
-4. Register in `src/nthlayer/dashboards/templates/__init__.py`
-5. Add test cases to `tests/test_hybrid_dashboard_builder.py`
-
-## Git Workflow
-
-1. **Never commit directly to `main`** - All work goes to `develop` first
-2. Commit to `develop` branch for all changes
-3. Create PR from `develop` → `main` for review before merging
-4. Run `make lint && make typecheck && make test` before committing
-5. Commit messages: `<type>: <description>` (e.g., `fix: Add sum by (le) to histogram queries`)
-6. Update `.beads/issues.jsonl` when completing tasks
+Work is tracked with [beads](https://github.com/steveyegge/beads) (`bd`).
+All beads for the ecosystem live in **one** database, in the `opensrm`
+repository. There is no beads database in this repository.
 
 ```bash
-# Correct workflow
-git checkout develop
-# ... make changes ...
-git add . && git commit -m "feat: Add new feature"
-git push origin develop
-gh pr create --base main --head develop --title "feat: Add new feature"
-
-# WRONG - never do this
-git checkout main
-git commit -m "..."  # Do not commit to main directly
+cd ../opensrm
+bd ready --label repo:nthlayer      # unblocked front-door work
+bd show <id>
+bd update <id> --claim
+bd close <id> --reason "..."
 ```
 
-## Beads Issue Tracking
-
-**Always update `.beads/issues.jsonl` when:**
-1. **Starting work** on a feature/improvement not already tracked - create a new issue
-2. **Completing work** - close the issue with `status: "closed"` and `close_reason`
-3. **Discovering new work** during implementation - add new issues for follow-ups
-
-**Issue format (JSONL - one JSON object per line):**
-```json
-{"id":"trellis-xxx","title":"Feature title","description":"What was done","status":"closed","priority":0,"issue_type":"feature","created_at":"2025-12-05T12:00:00Z","updated_at":"2025-12-05T12:00:00Z","closed_at":"2025-12-05T12:00:00Z","close_reason":"Complete: brief summary"}
-```
-
-**Priority levels:** 0 (highest) → 3 (lowest)
-**Issue types:** `epic`, `feature`, `task`
-**Status:** `open`, `in_progress`, `closed`
-
-**Key principle:** If you're doing significant work, it should be tracked in beads. This ensures roadmap visibility and historical record of changes.
-
-## PyPI Releases
-
-**Cadence:** Monthly releases + hotfixes as needed
-
-**Versioning:** `0.X.Y` (pre-1.0 alpha)
-- X = Feature releases (monthly)
-- Y = Patches/hotfixes (as needed)
-
-**Release Process (uses Trusted Publishing - no tokens needed):**
-
-**Required before releasing:**
-1. Update version in `pyproject.toml` (e.g., `"0.1.0a1"` → `"0.1.0a2"`)
-2. **Update `CHANGELOG.md`** - This is mandatory. Include all features, fixes, and breaking changes since last release.
-
-```bash
-# Commit, tag, and push
-git add pyproject.toml CHANGELOG.md
-git commit -m "release: vX.Y.Z"
-git tag -a vX.Y.Z -m "Release vX.Y.Z - description"
-git push origin develop
-git push origin vX.Y.Z
-
-# Create GitHub Release (triggers PyPI publish)
-gh release create vX.Y.Z --title "vX.Y.Z - Title" --notes "Release notes here"
-```
-
-**What happens automatically:**
-- `.github/workflows/release.yml` triggers on release publish
-- Builds package with `python -m build`
-- Publishes to PyPI via trusted publishing (no API token needed)
-- Trusted publisher configured at: https://pypi.org/manage/project/nthlayer/settings/publishing/
-
-**Verify release:**
-```bash
-pip install nthlayer==X.Y.Z
-```
-
-## Testing Requirements
-
-Before completing any task:
-1. Run `make test` - all tests must pass
-2. Run `make lint` - no linting errors
-3. Run `make typecheck` - no type errors
-4. For dashboard changes: run `python scripts/validate_dashboard_metrics.py`
-
-### CLI Command Testing (CRITICAL)
-
-**When adding or modifying CLI commands, you MUST:**
-
-1. **Manual CLI verification** - Run the command to ensure no errors:
-   ```bash
-   # Test help output
-   nthlayer <command> --help
-
-   # Test actual execution (use --dry-run where available)
-   nthlayer <command> [args]
-   ```
-
-2. **Add unit tests** - Create/update tests in `tests/test_cli_*.py`:
-   ```python
-   def test_my_command_runs_without_error():
-       result = runner.invoke(cli, ['my-command', '--help'])
-       assert result.exit_code == 0
-
-   def test_my_command_produces_expected_output():
-       result = runner.invoke(cli, ['my-command', 'arg'])
-       assert 'expected output' in result.output
-   ```
-
-3. **Test error handling** - Verify graceful failures:
-   - Missing required arguments
-   - Invalid input files
-   - Missing dependencies (e.g., pint not installed)
-   - Connection failures to external services
-
-4. **Update command documentation** - If adding new commands:
-   - Add to `docs-site/commands/` if significant
-   - Update `docs-site/reference/cli.md`
-
-**Common CLI bugs to avoid:**
-- Calling methods that don't exist (always verify the interface)
-- Missing imports in CLI modules
-- Incorrect argument parsing
-- Exit codes (0 for success, non-zero for errors)
-
-### Test Patterns
-```python
-# Use pytest fixtures for common setup
-# Mock external services (Grafana, Prometheus) with respx
-# Test intent resolution with known metric sets
-# Validate PromQL query syntax in tests
-```
-
-## External Services
-
-| Service | Purpose | Config |
-|---------|---------|--------|
-| Grafana Cloud | Dashboard hosting | `NTHLAYER_GRAFANA_URL`, `NTHLAYER_GRAFANA_API_KEY` |
-| Fly.io | Demo app hosting | `https://nthlayer-demo.fly.dev` |
-| Prometheus | Metric discovery | Via Grafana Cloud or direct |
-
-## Current Focus Areas
-
-Check `.beads/issues.jsonl` for the latest priorities.
-
-**Completed (Phases 3, 3.5, 4):**
-- ✅ SLO Portfolio: `nthlayer portfolio` with all output formats
-- ✅ Deployment Gates: `nthlayer check-deploy` with Prometheus integration
-- ✅ Enhanced Validation: `nthlayer validate-metadata --use-promruval`
-- ✅ CI/CD Integration: Examples for GitHub Actions, ArgoCD, GitLab CI, Tekton, Jenkins
-- ✅ Technology Templates: 16 templates (Kafka, MongoDB, Elasticsearch, etc.)
-
-**Next Priority:**
-- Phase 3.6: Exporter Generation (K8s/Docker manifests for Prometheus exporters)
-- Phase 5: AI-Assisted Generation (optional - MCP server for Claude/Cursor)
-
-## Gotchas
-
-1. **Row panels in Grafana**: For expanded rows, panels must be at root level (not nested in row). Use `dash.with_row(row)` then `dash.with_panel(panel)`.
-
-2. **Metric resolution cache**: Clear `resolver._resolution_cache` between services when regenerating multiple dashboards.
-
-3. **Intent candidates**: When metrics aren't resolving, check `intents.py` for missing candidate metric names.
-
-4. **Grafana SDK quirk**: `Row().with_panel()` sets `collapsed=True` automatically. Don't nest panels if you want expanded rows.
-
-5. **Demo app metrics**: Intentionally missing metrics (`redis_db_keys` from notification-worker, `elasticsearch_jvm_memory_*` from search-api) to demonstrate guidance panels.
-
-## Evidence Required for PRs
-
-- All tests pass (`make test`)
-- Lint clean (`make lint`)
-- Type check passes (`make typecheck`)
-- For dashboard changes: validation script shows 100% coverage or explains gaps
-- Beads issue updated if applicable
-
-<!-- BEGIN BEADS INTEGRATION -->
-## Issue Tracking with bd (beads)
-
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
-
-### Why bd?
-
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Dolt-powered version control with native sync
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
-
-### Quick Start
-
-**Check for ready work:**
-
-```bash
-bd ready --json
-```
-
-**Create new issues:**
-
-```bash
-bd create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:bd-123 --json
-```
-
-**Claim and update:**
-
-```bash
-bd update <id> --claim --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task atomically**: `bd update <id> --claim`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-
-### Auto-Sync
-
-bd automatically syncs via Dolt:
-
-- Each write auto-commits to Dolt history
-- Use `bd dolt push`/`bd dolt pull` for remote sync
-- No manual export/import needed!
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-
-For more details, see README.md and docs/QUICKSTART.md.
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-<!-- END BEADS INTEGRATION -->
+Front-door beads carry the label `repo:nthlayer`. File a follow-up bead
+for anything deliberately left out of a change.
+
+## Releases
+
+Only the meta-package is released from here. release-please opens the
+release PR; merging it tags `meta-v<version>`, and `release.yml` publishes
+to PyPI by trusted publishing. Nothing is tagged or published by hand.
+`CLAUDE.md` ("PyPI meta-package", "CI / Release pipeline") and
+`docs/release-runbook.md` have the detail, including the tag namespaces
+that must not be mixed.

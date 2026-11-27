@@ -230,9 +230,12 @@ step4() {
     # stdout (e.g. `VERDICT_ID=...`, `VERDICT_CREATED_AT=...`); eval'ing
     # them here surfaces them as bash globals for subsequent steps.
     local output
+    # Content as in integration-three-tier.sh (opensrm-yze8).
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-verdict-type quality_breach \
         --service fraud-detect --core-url "${CORE_URL}" \
-        --timeout 180 --interval 2) \
+        --timeout 180 --interval 2 \
+        --where data.slo_name=reversal_rate --where data.judgment_type=reversal_rate \
+        --where data.target=98.5 --severity-by-budget) \
         || { fail "no quality_breach in 180s"; return; }
     eval "${output}"
     QUALITY_BREACH_ID="${VERDICT_ID}"
@@ -266,8 +269,13 @@ CORRELATION_SNAPSHOT_ID=""
 
 step6() {
     local output
+    # Without step 4's breach id the content checks below cannot match:
+    # say so now, not after a timeout with a misleading reason.
+    [[ -n "${QUALITY_BREACH_ID}" ]] || { fail "skipped: no quality_breach id from step 4"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-assessment-kind correlation_snapshot \
-        --core-url "${CORE_URL}" --timeout 60 --interval 1) \
+        --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1 \
+        --where data.domain.service=fraud-detect \
+        --contains "data.parent_ids=${QUALITY_BREACH_ID}" --at-least data.event_count=1) \
         || { fail "no correlation_snapshot in 60s"; return; }
     eval "${output}"
     CORRELATION_SNAPSHOT_ID="${ASSESSMENT_ID}"
@@ -286,15 +294,19 @@ CASE_ID=""
 step7() {
     local output
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-verdict-type triage \
-        --core-url "${CORE_URL}" --timeout 60 --interval 1) \
+        --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1) \
         || { fail "no triage verdict in 60s"; return; }
     eval "${output}"
     TRIAGE_ID="${VERDICT_ID}"
     info "triage verdict: ${TRIAGE_ID}"
 
+    # Without step 4's breach id the content check below cannot match:
+    # say so now, not after a timeout with a misleading reason.
+    [[ -n "${QUALITY_BREACH_ID}" ]] || { fail "skipped: no quality_breach id from step 4"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-case \
         --service fraud-detect --core-url "${CORE_URL}" \
-        --timeout 30 --interval 1) \
+        --timeout 30 --interval 1 \
+        --where "underlying_verdict=${QUALITY_BREACH_ID}") \
         || { fail "no case in 30s"; return; }
     eval "${output}"
     [[ -n "${CASE_ID}" ]] || { fail "empty case id"; return; }
@@ -326,22 +338,46 @@ step8() {
 RETRO_ID=""
 
 step9() {
-    local output
-    if output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-assessment-kind retrospective \
-        --core-url "${CORE_URL}" --timeout 60 --interval 2 2>/dev/null); then
-        eval "${output}"
-        RETRO_ID="${ASSESSMENT_ID}"
-        info "retrospective: ${RETRO_ID}"
-    else
-        # Some learn cycles emit calibration_signal first; that's also acceptable
-        # evidence learn ran. Fall back to that if no retrospective lands.
-        info "no retrospective in 60s; trying calibration_signal as evidence learn ran ..."
-        output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-assessment-kind calibration_signal \
-            --core-url "${CORE_URL}" --timeout 30 --interval 2) \
-            || { fail "no learn assessment in fallback window"; return; }
-        eval "${output}"
-        info "calibration_signal: ${ASSESSMENT_ID}"
-    fi
+    # As in integration-three-tier.sh: with the canned LLM the incident stops
+    # at AWAITING_APPROVAL and its case stays open, so the harness plays the
+    # operator. learn then writes the retrospective, closed by "quiet", once
+    # the chain has been quiet for RETROSPECTIVE_QUIET_MINUTES (opensrm-mtxr).
+    local output quiet_seconds
+    [[ -n "${TRIAGE_ID}" ]] || { fail "no triage id from step 7"; return; }
+    output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-verdict-type remediation \
+        --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1) \
+        || { fail "no remediation verdict from respond"; return; }
+    eval "${output}"
+    local remediation_id="${VERDICT_ID}"
+    output=$(${RUN_BENCH} python "${ASSERTIONS}" snapshot-of-verdict "${remediation_id}" \
+        --core-url "${CORE_URL}") || { fail "no snapshot claims ${remediation_id}"; return; }
+    eval "${output}"
+    # The quiet clock runs from the incident's last verdict: the hold below
+    # is only long enough if that is the remediation.
+    [[ "${RESPOND_LAST_VERDICT_ID}" == "${remediation_id}" ]] \
+        || { fail "the incident's last verdict is ${RESPOND_LAST_VERDICT_ID}, not the remediation"; return; }
+
+    quiet_seconds=$(awk -v m="${RETROSPECTIVE_QUIET_MINUTES}" 'BEGIN { printf "%d", m * 60 }')
+    info "Holding $(( quiet_seconds + 15 ))s with the case open ..."
+    sleep $(( quiet_seconds + 15 ))
+    ${RUN_BENCH} python "${ASSERTIONS}" assert-no-retrospective \
+        --snapshot-id "${SNAPSHOT_ID}" --core-url "${CORE_URL}" >/dev/null \
+        || { fail "a retrospective was written while the case was open"; return; }
+
+    info "Operator resolves the case via the API ..."
+    output=$(${RUN_BENCH} python "${ASSERTIONS}" resolve-cases-for-snapshot \
+        --snapshot-id "${SNAPSHOT_ID}" --resolution-id "${remediation_id}" \
+        --core-url "${CORE_URL}") || { fail "could not resolve the case"; return; }
+    eval "${output}"
+    info "resolved: ${RESOLVED_CASE_IDS}"
+
+    output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-retrospective \
+        --snapshot-id "${SNAPSHOT_ID}" --closed-by quiet \
+        --must-include "${TRIAGE_ID}" "${remediation_id}" \
+        --core-url "${CORE_URL}" --timeout 60 --interval 2) \
+        || { fail "no retrospective closed by quiet with respond's verdicts"; return; }
+    eval "${output}"
+    info "retrospective: ${RETRO_ID} (closed_by=${RETRO_CLOSED_BY}, ${RETRO_RESPOND_VERDICTS} respond verdicts)"
 
     info "Walking lineage from triage upward via core API ..."
     local ancestors

@@ -12,6 +12,25 @@ cross-reference.
   `WORKSPACE_ROOT` to the parent dir containing
   `nthlayer-{core,workers,bench,common}`. Runs in <1s, no Docker.
   CI: `.github/workflows/demo-paths.yml` (push/PR to main).
+- `test/test_demo_specs_load.py` — every manifest in `demo/specs` loads
+  through the published nthlayer-common. Every demo SLO must declare
+  `indicator.query`, and the loaded SLOs must be exactly the file's,
+  each with that query unchanged as `indicator_query` (opensrm-gx3e). The live counterpart of nthlayer-common's snapshot
+  test (opensrm-t93o). Runs in <1s, no Docker.
+  CI: `.github/workflows/demo-specs.yml` (push/PR to main, nightly).
+- `test/test_demo_specs_migrate.py` — every manifest in `demo/specs`
+  migrates with the published nthlayer-generate (`nthlayer
+  migrate-manifest`) to a v2 manifest that loads, with the same SLOs:
+  judgment SLOs keep their type, the others keep their query
+  (opensrm-jg1e). Runs in a few seconds, no Docker.
+  CI: `.github/workflows/demo-specs.yml` (push/PR to main, nightly).
+
+  Two sibling repos keep **copies** of `demo/specs` for their own tests:
+  nthlayer-generate (`tests/fixtures/demo_specs/`) and nthlayer-common
+  (`tests/fixtures/demo-specs/`). The two tests above check the live
+  files, so a change here is caught here; the copies do not follow it.
+  After changing a demo spec, refresh both copies and the source commit
+  each one's README names.
 - `test/test_demo_start_lock.sh` — concurrent-invocation start-lock
   regression guard (opensrm-36es). Exercises `cmd_start`'s 0a guard
   with a stub that skips the full boot, asserting: two concurrent
@@ -40,6 +59,25 @@ cross-reference.
   the core binding `ok`. No Docker. CI:
   `.github/workflows/override-binding-smoke.yml`, siblings at `main`
   (nightly, and PRs touching it; opensrm-qgmy).
+- `test/test_three_tier_content.py` — the content options of
+  `three_tier_assertions.py`'s `wait-*` commands, heartbeat health and the
+  bench case check, against the real core app in one process
+  (opensrm-yze8). Each check is shown to accept the row workers writes and
+  to refuse one with wrong content, the always-`critical` breach of
+  opensrm-pa2w included. No Docker. CI: `retrospective-seam.yml`, with the
+  test below.
+- `test/test_three_tier_retrospective.py` — the retrospective commands of
+  `three_tier_assertions.py` (`snapshot-of-verdict`,
+  `assert-no-retrospective`, `resolve-cases-for-snapshot`,
+  `wait-retrospective`) against the real core app in one process over an
+  ASGI transport (opensrm-mtxr). Also pins core's half of the seam learn
+  leans on: the descendants of a snapshot id are respond's chain, and
+  resolving a case takes it out of the open states. No Docker. CI:
+  `.github/workflows/retrospective-seam.yml`, siblings at `main` (nightly,
+  and PRs touching the test or the helper). The same workflow runs
+  `test/test_three_tier_lib.sh`, which checks `_three_tier_lib.sh`'s
+  `tt_valid_quiet_minutes`: the quiet period given to workers must be a
+  plain number of at least 0.5 minutes.
 - `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
   ship-readiness test (real core API + workers + bench-via-API). Boots
   Docker stack, drives reversal_rate breach via fake-service, asserts
@@ -145,8 +183,13 @@ opensrm-36es):
   code can append rather than clobber. A
   `_DEMO_START_LOCK_ESTABLISHING` sentinel lets the cleanup hook
   also rm a half-built lock when SIGINT lands between `mkdir` and
-  the metadata `echo`s, but only while no pid is recorded: a
-  recorded pid that is not ours means another racer holds it.
+  the metadata `echo`s, but only while there is no pid file: a pid
+  file that is not ours means another racer holds the lock, even
+  while it is still empty (created, not yet written; opensrm-1c0f).
+  For the same reason compare-and-rm removes nothing when the pid it
+  was asked to match is empty. The cost: a holder interrupted between
+  its own pid create and write leaves a lock that the next start
+  refuses with the manual-cleanup hint.
   Refuses to run if `$OUTPUT_DIR` is a symlink.
 - **0b — live-process refusal.** Walks the canonical PID files
   (`fake-*.pid`, `workers.pid`, `core.pid`, `http-server.pid`); if
@@ -235,11 +278,65 @@ Trigger:
 Timeouts chosen for the Prometheus 2m window:
 
 1. `wait-verdict-type quality_breach --service fraud-detect` (180s).
-2. `wait-assessment-kind correlation_snapshot` (30s).
-3. `wait-verdict-type triage` (60s).
+2. `wait-assessment-kind correlation_snapshot --service fraud-detect` (30s).
+3. `wait-verdict-type triage --service fraud-detect` (60s).
 4. `wait-case --service fraud-detect` (60s).
-5. `wait-assessment-kind retrospective` (60s) — falls back to
-   `calibration_signal` (60s) if no retrospective yet.
+
+Steps 1, 2 and 4 wait for a row with the right content, not for any row
+(opensrm-yze8, from the opensrm-hyxa review). opensrm-pa2w was a breach
+severity that was always `critical` while this test passed, because it
+only asked whether a breach existed.
+
+- The breach (1) is the `reversal_rate` SLO's, against the manifest's
+  target of 98.5, and `--severity-by-budget` checks that its severity is
+  the one nthlayer-workers' documented thresholds give for the target and
+  value the same verdict reports (under 200% of the error budget low,
+  200% to under 500% high, 500% and over critical). No one severity is expected: the
+  first breach fires wherever the SLI is when it crosses the target, and a
+  run on 2026-11-27 saw `low`. Both numbers must be percentages, so a
+  ratio in either field fails.
+- The snapshot (2) names this run's breach in `data.parent_ids`, is
+  fraud-detect's, and counts at least one event.
+- The case (4) is anchored on this run's breach (`underlying_verdict`).
+  Its priority is printed and not asserted: what priority an AI-gate
+  breach should get is not settled.
+- The bench step asserts bench returns that case, not any case, and the
+  boot waits for a heartbeat core reports `healthy`.
+
+The options are `--where PATH=VALUE`, `--contains PATH=VALUE` and
+`--at-least PATH=NUMBER` on the three `wait-*` commands. Rows that do not
+match are skipped, so a newer unrelated row cannot be taken by mistake,
+and a timeout names what the rows it saw carried. `demo/demo.sh` uses the
+commands without them: it paces a demo and asserts nothing.
+
+learn's retrospective is asserted last, after the bench and latency steps
+(opensrm-mtxr), because it needs the case resolved and the bench step needs
+it pending. learn writes an incident's retrospective once its verdict chain
+has been quiet for `--retrospective-quiet-minutes` AND no unresolved case
+anchors on it. With the canned LLM the remediation asks for approval, so
+the incident stops at `AWAITING_APPROVAL` and respond leaves its case open:
+the harness plays the operator. `_three_tier_lib.sh` starts workers with a
+quiet period of `RETROSPECTIVE_QUIET_MINUTES` (default 0.5; not less, since
+the latency budget is 30 s and a shorter one could close before respond's
+case exists).
+
+5. `wait-verdict-type remediation --service fraud-detect` (60s), then
+   `snapshot-of-verdict`: the snapshot among whose descendants that verdict
+   is, and a check that the remediation is the incident's last verdict.
+6. Hold for the quiet period plus 15 s, then `assert-no-retrospective`:
+   none exists while the case is open.
+7. **Operator resolves the case via the API**: `resolve-cases-for-snapshot`
+   calls `PUT /cases/{id}/resolve` for every open case anchored on one of
+   the snapshot's trigger verdicts, with the remediation verdict as the
+   resolution.
+8. `wait-retrospective --closed-by quiet` (60s): one retrospective for the
+   snapshot, closed by `quiet` (never `max_age`), whose timeline names every
+   verdict that descends from the snapshot, the triage and the remediation
+   among them.
+
+This is the only test of that seam against the running tiers. The commands
+themselves are tested on pull requests against a real core in one process
+(`test/test_three_tier_retrospective.py`).
 
 Strong lineage:
 `assert-lineage TRIAGE_ID QUALITY_BREACH_ID` walks

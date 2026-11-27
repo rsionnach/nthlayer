@@ -302,11 +302,15 @@ own, such as `nthlayer.llm.call` (§3.4). The carriage is ruling Q2 (Rob,
   without it the API is a no-op.
 - The returned status says what happened: `INSTALLED`, `NO_ENDPOINT`
   (telemetry off, by design), `SDK_MISSING` (an endpoint but no extra:
-  events drop, with a warning) or `EXTERNAL_PROVIDER` (another provider,
-  e.g. one set by `opentelemetry-instrument`, owns the global slot).
+  events drop, with a warning), `EXTERNAL_PROVIDER` (another provider,
+  e.g. one set by `opentelemetry-instrument`, owns the global slot) or
+  `DISABLED` (`OTEL_SDK_DISABLED=true`).
   `status.exporting` is true for `INSTALLED` and `EXTERNAL_PROVIDER`.
-  Under `OTEL_SDK_DISABLED=true` it currently still reports `INSTALLED`
-  (opensrm-q3np).
+- Under `OTEL_SDK_DISABLED=true` nothing is installed and the status is
+  `DISABLED`, with `exporting` false, whatever the endpoint and whoever
+  owns the global slot (nthlayer-common 5.12.2, opensrm-q3np; earlier
+  releases reported `INSTALLED`). A provider this function installed
+  before the variable was set keeps exporting and stays `INSTALLED`.
 - It is idempotent. Events emitted before it is called are dropped. The
   provider flushes at exit, which with an unreachable collector waits up
   to `OTEL_EXPORTER_OTLP_TIMEOUT`. In a forking server, call it in each

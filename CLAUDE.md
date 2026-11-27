@@ -15,8 +15,9 @@ in the per-tier component repos.
 
 ## Build / test / lint / run commands
 
-→ See `AGENTS.md` (existing canonical Core Commands section + project
-roadmap + conventions).
+→ See `AGENTS.md`: the commands CI runs, the layout, conventions, the
+git workflow and where beads live (rewritten for the front door under
+opensrm-n3u9; the generator-era content went with the generator).
 
 ## NthLayer at a glance
 
@@ -272,6 +273,13 @@ examples, generator-specific scripts.
     and generate's deliberate skips pinned by bead (opensrm-zo0o). The
     test takes the ecosystem root from `NTHLAYER_ECOSYSTEM_ROOT`, which the
     workflow sets; a local run must set it too (opensrm-x7y2).
+  - `demo-specs.yml` — `test/test_demo_specs_load.py`: every manifest in
+    `demo/specs` loads through the published nthlayer-common; every demo
+    SLO must declare `indicator.query`, and the loaded SLOs must be exactly
+    the file's, each with that query (opensrm-gx3e). Also
+    `test/test_demo_specs_migrate.py`: the same files migrate with the
+    published nthlayer-generate, keeping their SLOs (opensrm-jg1e).
+    Nightly and on PRs.
   - `otel-collector.yml` — `test/test_otel_collector.py` against the
     pinned otelcol-contrib image, with `fake-service.py --type ai-gate` (published
     nthlayer-common[otel]) and the pinned Prometheus evaluating the demo's
@@ -285,7 +293,19 @@ examples, generator-specific scripts.
   - `integration-three-tier.yml` — cross-repo three-tier integration
     test, and in its `thresholds` job `test/integration-thresholds.sh`
     (judgment thresholds via core and workers, opensrm-x0r9)
-    (`workflow_dispatch` + nightly cron).
+    (`workflow_dispatch` + nightly cron). The three-tier run ends by
+    playing the operator (it resolves the incident's case through the API)
+    and asserting learn's retrospective closes by `quiet` with respond's
+    verdicts in its timeline (opensrm-mtxr).
+  - `retrospective-seam.yml` — `test/test_three_tier_retrospective.py`, the
+    retrospective commands of `test/three_tier_assertions.py` against the
+    real core app in one process, siblings at `main`; and
+    `test/test_three_tier_lib.sh`, the harness library's quiet-period
+    floor. Nightly, and on PRs/pushes touching either test, the helper or
+    the library (opensrm-mtxr). Also `test/test_three_tier_content.py`:
+    the content checks the three-tier run makes on the breach, snapshot,
+    case, heartbeat and bench result, each shown to refuse a wrong row
+    (opensrm-yze8).
   - `override-binding-smoke.yml` — `test/test_jmy18_smoke.py`, the real
     override-adapter against the real core app in one process, siblings at
     `main`; nightly, and on PRs/pushes touching the test (opensrm-qgmy).
@@ -538,8 +558,8 @@ Per-spec reconciliation in
 
 - Integration testing harness, demo.sh guards, three-tier boot
   sequence: `docs/integration-testing.md`.
-- AGENTS.md (long form): project vision, roadmap, project layout,
-  development patterns, git workflow, beads integration.
+- AGENTS.md (short working guide): commands, layout, conventions, git
+  workflow, beads.
 - Per-component CLAUDE.md files describe each component's conventions.
 - Project memory / Rob's preferences across sessions:
   `~/.claude/projects/-Users-robfox-Documents-GitHub-nthlayer-ecosystem/memory/MEMORY.md`.
