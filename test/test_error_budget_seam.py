@@ -17,9 +17,10 @@ written but not read is never expected.
 The manifests are the spec's v2 examples and generate's shipped examples, not
 fixtures written for this test. Nothing drops out unseen: a missing checkout
 fails rather than skipping (the opensrm-oh27 lesson), every file the loader
-rejects must be listed in EXPECTED_REJECTED with its reason, and the number
-that write an error budget is pinned. A manifest that stops loading, or a
-fixed one that starts, turns this red.
+rejects must be listed in EXPECTED_REJECTED with its reason, every file that
+loads and writes no budget must be listed in EXPECTED_NO_BUDGET, and the
+number that write an error budget is pinned. A manifest that stops loading,
+or a fixed one that starts, turns this red.
 
 Run from the ecosystem root with CI's command (.github/workflows/error-budget-seam.yml).
 NTHLAYER_ECOSYSTEM_ROOT names the directory holding the opensrm and
@@ -77,7 +78,7 @@ EXPECTED_WITH_BUDGET = 25  # 2026-11-27, common 5.12.3 / generate 4.1.0 / worker
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
-# file count. 28 availability + 22 latency + 1 error_rate on 2026-11-24,
+# file count. 28 availability + 22 latency + 1 error_rate on 2026-11-27,
 # counted per kind from generate's written rules, separately from this test.
 # Latency was 15 until common 5.12.1 read legacy indicators[].threshold_ms
 # (opensrm-s7b1, wo62.4.24), which gave six legacy latency SLOs a budget
@@ -118,8 +119,8 @@ KIND_WITNESSES = {
 
 # Every corpus file that loads and writes no budget, with why. Named, not
 # counted: with EXPECTED_REJECTED this accounts for every file outside
-# EXPECTED_WITH_BUDGET, so a file that leaves the corpus, or stops declaring
-# what it declared, cannot pass unseen (opensrm-r8cs).
+# EXPECTED_WITH_BUDGET, so a file that leaves the corpus cannot pass unseen
+# (opensrm-r8cs). Only the file names are asserted; the reasons are notes.
 _NO_SLOS = "declares no SLOs"
 _THRESHOLDS_ONLY = "declares judgment thresholds only, no SLOs"
 EXPECTED_NO_BUDGET = {
