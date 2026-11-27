@@ -322,6 +322,185 @@ async def cmd_assert_no_verdict(args: argparse.Namespace) -> None:
     _print_kv(NO_VERDICT_OK="true")
 
 
+# --- the retrospective seam (opensrm-mtxr) ----------------------------------
+#
+# learn (nthlayer-workers, ``fetch_incident_chain``) builds an incident's
+# retrospective from the snapshot's trigger verdicts plus every descendant of
+# the snapshot id, and writes it once the chain is quiet and no unresolved
+# case anchors on it. These commands are the only test of that seam against a
+# real core: workers tests it against an in-memory copy of core's lineage
+# rule, and core pins its half in
+# ``test_descendants_of_an_assessment_id_returns_the_chain_that_names_it``
+# (opensrm-brms). When opensrm-7t3q's typed relations land, all three change
+# together.
+
+_OUTCOME_RESOLUTION = "outcome_resolution"
+_OPEN_CASE_STATES = ("pending", "leased")
+
+
+async def _snapshots(client: CoreAPIClient) -> list[dict]:
+    result = await client.get_assessments(kind="correlation_snapshot", limit=100)
+    if not result.ok:
+        _fail(f"GET /assessments failed: status={result.status_code} error={result.error!r}")
+    return result.data or []
+
+
+async def _snapshot(client: CoreAPIClient, snapshot_id: str) -> dict:
+    for snapshot in await _snapshots(client):
+        if snapshot.get("id") == snapshot_id:
+            return snapshot
+    _fail(f"no correlation_snapshot {snapshot_id!r} on core")
+
+
+async def _respond_chain(client: CoreAPIClient, snapshot_id: str) -> list[dict]:
+    """The verdicts that descend from the snapshot, oldest first, without
+    outcome resolutions: what respond did about it."""
+    result = await client.get_descendants(snapshot_id)
+    if not result.ok:
+        _fail(
+            f"GET /verdicts/{snapshot_id}/descendants failed: "
+            f"status={result.status_code} error={result.error!r}"
+        )
+    chain = [v for v in (result.data or []) if v.get("type") != _OUTCOME_RESOLUTION]
+    return sorted(chain, key=lambda v: v.get("created_at", ""))
+
+
+async def _retrospectives_for(client: CoreAPIClient, snapshot_id: str) -> list[dict]:
+    result = await client.get_assessments(kind="retrospective", limit=100)
+    if not result.ok:
+        _fail(f"GET /assessments failed: status={result.status_code} error={result.error!r}")
+    return [
+        a for a in (result.data or [])
+        if (a.get("data") or {}).get("correlation_snapshot_id") == snapshot_id
+    ]
+
+
+async def cmd_snapshot_of_verdict(args: argparse.Namespace) -> None:
+    """The correlation snapshot whose incident a respond verdict belongs to,
+    and that incident's last verdict.
+
+    Found the way learn finds it, from the other end: the snapshot among
+    whose descendants the verdict is. Fails unless exactly one snapshot
+    claims it.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        owners = []
+        for snapshot in await _snapshots(client):
+            chain = await _respond_chain(client, snapshot["id"])
+            if args.verdict_id in {v.get("id") for v in chain}:
+                owners.append((snapshot, chain))
+    if len(owners) != 1:
+        _fail(
+            f"expected exactly one correlation_snapshot with {args.verdict_id!r} among its "
+            f"descendants, got {[s.get('id') for s, _ in owners]!r}"
+        )
+    snapshot, chain = owners[0]
+    _print_kv(
+        SNAPSHOT_ID=snapshot["id"],
+        SNAPSHOT_SERVICE=snapshot.get("service", "") or "",
+        RESPOND_VERDICT_COUNT=str(len(chain)),
+        RESPOND_LAST_VERDICT_ID=chain[-1].get("id", ""),
+        RESPOND_LAST_VERDICT_TYPE=chain[-1].get("type", ""),
+    )
+
+
+async def cmd_assert_no_retrospective(args: argparse.Namespace) -> None:
+    """Fail if core holds a retrospective for --snapshot-id (one fetch)."""
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        found = await _retrospectives_for(client, args.snapshot_id)
+    if found:
+        _fail(
+            f"expected no retrospective for {args.snapshot_id!r}, got "
+            f"{[(a.get('id'), (a.get('data') or {}).get('closed_by')) for a in found]!r}"
+        )
+    _print_kv(NO_RETROSPECTIVE_OK="true")
+
+
+async def cmd_resolve_cases_for_snapshot(args: argparse.Namespace) -> None:
+    """The operator's part: resolve, through PUT /cases/{id}/resolve, every
+    open case anchored on one of the snapshot's trigger verdicts.
+
+    Those are the cases that hold the snapshot's retrospective back. Respond
+    opens one per incident, anchored on the first breach verdict, and leaves
+    it open when the incident stops at AWAITING_APPROVAL. Fails if there is
+    none to resolve.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        snapshot = await _snapshot(client, args.snapshot_id)
+        triggers = set((snapshot.get("data") or {}).get("parent_ids") or [])
+        service = snapshot.get("service")
+        resolved: list[str] = []
+        for state in _OPEN_CASE_STATES:
+            result = await client.get_cases(state=state, service=service, limit=100)
+            if not result.ok:
+                _fail(f"GET /cases failed: status={result.status_code} error={result.error!r}")
+            for case in result.data or []:
+                if case.get("underlying_verdict") not in triggers:
+                    continue
+                done = await client.resolve_case(case["id"], args.resolution_id)
+                if not done.ok:
+                    _fail(
+                        f"PUT /cases/{case['id']}/resolve failed: "
+                        f"status={done.status_code} error={done.error!r}"
+                    )
+                resolved.append(case["id"])
+    if not resolved:
+        _fail(
+            f"no open case for service {service!r} is anchored on a trigger of "
+            f"{args.snapshot_id!r} ({sorted(triggers)!r})"
+        )
+    _print_kv(CASES_RESOLVED=str(len(resolved)), RESOLVED_CASE_IDS=",".join(resolved))
+
+
+async def cmd_wait_retrospective(args: argparse.Namespace) -> None:
+    """Poll for the snapshot's retrospective, then assert how it closed and
+    that its timeline holds everything respond did.
+
+    ``--closed-by`` is the expected ``data.closed_by``. The timeline must
+    name every verdict that descends from the snapshot (and so at least
+    one), and each ``--must-include`` id.
+    """
+    async with CoreAPIClient(base_url=args.core_url) as client:
+        deadline = _now_utc() + dt.timedelta(seconds=args.timeout)
+        found: list[dict] = []
+        while not found and _now_utc() < deadline:
+            found = await _retrospectives_for(client, args.snapshot_id)
+            if not found:
+                await asyncio.sleep(args.interval)
+        if not found:
+            _fail(f"no retrospective for {args.snapshot_id!r} after {args.timeout:.0f}s")
+        if len(found) > 1:
+            _fail(
+                f"expected one retrospective for {args.snapshot_id!r}, got "
+                f"{[a.get('id') for a in found]!r}"
+            )
+        retro = found[0]
+        chain = await _respond_chain(client, args.snapshot_id)
+
+    data = retro.get("data") or {}
+    if data.get("closed_by") != args.closed_by:
+        _fail(
+            f"retrospective {retro.get('id')!r} closed_by={data.get('closed_by')!r}, "
+            f"expected {args.closed_by!r}"
+        )
+    timeline_ids = {entry.get("id") for entry in data.get("timeline") or []}
+    respond_ids = {v.get("id") for v in chain}
+    if not respond_ids:
+        _fail(f"no verdict descends from {args.snapshot_id!r}: respond did nothing to include")
+    missing = sorted((respond_ids | set(args.must_include)) - timeline_ids)
+    if missing:
+        _fail(
+            f"retrospective {retro.get('id')!r} timeline lacks "
+            f"{missing!r} (respond's verdicts and the required ids); it has {sorted(str(i) for i in timeline_ids)!r}"
+        )
+    _print_kv(
+        RETRO_ID=retro.get("id", ""),
+        RETRO_CLOSED_BY=data.get("closed_by", ""),
+        RETRO_VERDICT_COUNT=str(data.get("verdict_count", "")),
+        RETRO_RESPOND_VERDICTS=str(len(respond_ids)),
+    )
+
+
 async def cmd_assert_lineage(args: argparse.Namespace) -> None:
     """Assert that ``parent_id`` appears in ``child_id``'s ancestry chain.
 
@@ -552,6 +731,26 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("verdict_type")
     p.add_argument("--service", required=True)
 
+    p = sub.add_parser("snapshot-of-verdict")
+    _add_common(p, with_poll=False)
+    p.add_argument("verdict_id")
+
+    p = sub.add_parser("assert-no-retrospective")
+    _add_common(p, with_poll=False)
+    p.add_argument("--snapshot-id", required=True)
+
+    p = sub.add_parser("resolve-cases-for-snapshot")
+    _add_common(p, with_poll=False)
+    p.add_argument("--snapshot-id", required=True)
+    p.add_argument("--resolution-id", required=True)
+
+    p = sub.add_parser("wait-retrospective")
+    _add_common(p)
+    p.add_argument("--snapshot-id", required=True)
+    p.add_argument("--closed-by", required=True, choices=["quiet", "max_age"])
+    p.add_argument("--must-include", nargs="*", default=[],
+                   help="verdict ids the timeline must name")
+
     p = sub.add_parser("assert-lineage")
     _add_common(p, with_poll=False)
     p.add_argument("child_id")
@@ -583,6 +782,10 @@ def main(argv: list[str] | None = None) -> int:
         "wait-threshold-evaluation": cmd_wait_threshold_evaluation,
         "wait-threshold-breach": cmd_wait_threshold_breach,
         "assert-no-verdict": cmd_assert_no_verdict,
+        "snapshot-of-verdict": cmd_snapshot_of_verdict,
+        "assert-no-retrospective": cmd_assert_no_retrospective,
+        "resolve-cases-for-snapshot": cmd_resolve_cases_for_snapshot,
+        "wait-retrospective": cmd_wait_retrospective,
         "assert-lineage": cmd_assert_lineage,
         "fetch-case-via-bench": cmd_fetch_case_via_bench,
         "render-portfolio": cmd_render_portfolio,

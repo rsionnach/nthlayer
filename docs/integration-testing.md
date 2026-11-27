@@ -59,6 +59,18 @@ cross-reference.
   the core binding `ok`. No Docker. CI:
   `.github/workflows/override-binding-smoke.yml`, siblings at `main`
   (nightly, and PRs touching it; opensrm-qgmy).
+- `test/test_three_tier_retrospective.py` — the retrospective commands of
+  `three_tier_assertions.py` (`snapshot-of-verdict`,
+  `assert-no-retrospective`, `resolve-cases-for-snapshot`,
+  `wait-retrospective`) against the real core app in one process over an
+  ASGI transport (opensrm-mtxr). Also pins core's half of the seam learn
+  leans on: the descendants of a snapshot id are respond's chain, and
+  resolving a case takes it out of the open states. No Docker. CI:
+  `.github/workflows/retrospective-seam.yml`, siblings at `main` (nightly,
+  and PRs touching the test or the helper). The same workflow runs
+  `test/test_three_tier_lib.sh`, which checks `_three_tier_lib.sh`'s
+  `tt_valid_quiet_minutes`: the quiet period given to workers must be a
+  plain number of at least 0.5 minutes.
 - `test/integration-three-tier.sh` — **canonical E2E** P5.1 three-tier
   ship-readiness test (real core API + workers + bench-via-API). Boots
   Docker stack, drives reversal_rate breach via fake-service, asserts
@@ -262,8 +274,35 @@ Timeouts chosen for the Prometheus 2m window:
 2. `wait-assessment-kind correlation_snapshot` (30s).
 3. `wait-verdict-type triage` (60s).
 4. `wait-case --service fraud-detect` (60s).
-5. `wait-assessment-kind retrospective` (60s) — falls back to
-   `calibration_signal` (60s) if no retrospective yet.
+
+learn's retrospective is asserted last, after the bench and latency steps
+(opensrm-mtxr), because it needs the case resolved and the bench step needs
+it pending. learn writes an incident's retrospective once its verdict chain
+has been quiet for `--retrospective-quiet-minutes` AND no unresolved case
+anchors on it. With the canned LLM the remediation asks for approval, so
+the incident stops at `AWAITING_APPROVAL` and respond leaves its case open:
+the harness plays the operator. `_three_tier_lib.sh` starts workers with a
+quiet period of `RETROSPECTIVE_QUIET_MINUTES` (default 0.5; not less, since
+the latency budget is 30 s and a shorter one could close before respond's
+case exists).
+
+5. `wait-verdict-type remediation --service fraud-detect` (60s), then
+   `snapshot-of-verdict`: the snapshot among whose descendants that verdict
+   is, and a check that the remediation is the incident's last verdict.
+6. Hold for the quiet period plus 15 s, then `assert-no-retrospective`:
+   none exists while the case is open.
+7. **Operator resolves the case via the API**: `resolve-cases-for-snapshot`
+   calls `PUT /cases/{id}/resolve` for every open case anchored on one of
+   the snapshot's trigger verdicts, with the remediation verdict as the
+   resolution.
+8. `wait-retrospective --closed-by quiet` (60s): one retrospective for the
+   snapshot, closed by `quiet` (never `max_age`), whose timeline names every
+   verdict that descends from the snapshot, the triage and the remediation
+   among them.
+
+This is the only test of that seam against the running tiers. The commands
+themselves are tested on pull requests against a real core in one process
+(`test/test_three_tier_retrospective.py`).
 
 Strong lineage:
 `assert-lineage TRIAGE_ID QUALITY_BREACH_ID` walks

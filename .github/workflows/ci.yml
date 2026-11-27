@@ -24,6 +24,9 @@ name: CI
 #   - .github/workflows/integration-three-tier.yml: nightly cross-repo smoke.
 #   - .github/workflows/override-binding-smoke.yml: core + override-adapter
 #     binding seam (test/test_jmy18_smoke.py, opensrm-qgmy); nightly + PR.
+#   - .github/workflows/retrospective-seam.yml: the three-tier harness's
+#     retrospective commands against the real core, and the harness library's
+#     quiet-period floor (opensrm-mtxr); nightly + PR.
 #   - .github/workflows/release.yml: meta-v* tag publish to PyPI.
 #
 # Per-component Python testing remains the responsibility of each sibling repo.

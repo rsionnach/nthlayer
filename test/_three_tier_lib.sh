@@ -99,6 +99,15 @@ preflight_port_conflicts() {
 # Boot
 # ---------------------------------------------------------------------------
 
+# tt_valid_quiet_minutes <value>: 0 when <value> is a plain decimal number of
+# at least 0.5. The floor is the harness's 30 s latency budget: with a
+# shorter quiet period learn could close an incident's retrospective before
+# respond's case exists (opensrm-mtxr). awk does the arithmetic; the pattern
+# keeps out what awk would read as 0 ("abc") or accept in other notations.
+tt_valid_quiet_minutes() {
+    awk -v m="$1" 'BEGIN { exit !(m ~ /^[0-9]+(\.[0-9]+)?$/ && m + 0 >= 0.5) }'
+}
+
 # boot_three_tier_stack WORK_DIR TEST_DIR SPECS_DIR \
 #                       CORE_PORT FAKE_PORT CORE_URL PROMETHEUS_URL \
 #                       RUN_CORE RUN_WORKERS RUN_BENCH ASSERTIONS \
@@ -191,7 +200,14 @@ boot_three_tier_stack() {
     [[ "${manifest_count}" -ge 1 ]] || tt_fail "core /manifests returned ${manifest_count} manifests (expected ≥1)"
     tt_pass "core has loaded ${manifest_count} manifests from ${specs_dir}"
 
-    tt_log "Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, all intervals 5s)"
+    # learn writes an incident's retrospective once its verdict chain has been
+    # quiet this long and no unresolved case anchors on it (opensrm-91pa).
+    # 0.5 minutes, not less: the pipeline's latency budget is 30 s, and a
+    # shorter quiet period could close before respond's case exists.
+    RETROSPECTIVE_QUIET_MINUTES="${RETROSPECTIVE_QUIET_MINUTES:-0.5}"
+    tt_valid_quiet_minutes "${RETROSPECTIVE_QUIET_MINUTES}" \
+        || tt_fail "RETROSPECTIVE_QUIET_MINUTES must be a number of at least 0.5, got '${RETROSPECTIVE_QUIET_MINUTES}'"
+    tt_log "Start nthlayer-workers (NTHLAYER_LLM_STUB=canned, all intervals 5s, retrospective quiet ${RETROSPECTIVE_QUIET_MINUTES} min)"
     NTHLAYER_LLM_STUB=canned \
     ${run_workers} nthlayer-workers serve \
         --core-url "${core_url}" \
@@ -202,6 +218,7 @@ boot_three_tier_stack() {
         --correlate-interval 5 \
         --respond-interval 5 \
         --retrospective-interval 5 \
+        --retrospective-quiet-minutes "${RETROSPECTIVE_QUIET_MINUTES}" \
         --outcome-interval 10 \
         >"${work_dir}/workers.log" 2>&1 &
     WORKERS_PID=$!
