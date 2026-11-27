@@ -302,7 +302,10 @@ examples, generator-specific scripts.
     real core app in one process, siblings at `main`; and
     `test/test_three_tier_lib.sh`, the harness library's quiet-period
     floor. Nightly, and on PRs/pushes touching either test, the helper or
-    the library (opensrm-mtxr).
+    the library (opensrm-mtxr). Also `test/test_three_tier_content.py`:
+    the content checks the three-tier run makes on the breach, snapshot,
+    case, heartbeat and bench result, each shown to refuse a wrong row
+    (opensrm-yze8).
   - `override-binding-smoke.yml` — `test/test_jmy18_smoke.py`, the real
     override-adapter against the real core app in one process, siblings at
     `main`; nightly, and on PRs/pushes touching the test (opensrm-qgmy).
