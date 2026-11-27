@@ -15,8 +15,9 @@ in the per-tier component repos.
 
 ## Build / test / lint / run commands
 
-→ See `AGENTS.md` (existing canonical Core Commands section + project
-roadmap + conventions).
+→ See `AGENTS.md`: the commands CI runs, the layout, conventions, the
+git workflow and where beads live (rewritten for the front door under
+opensrm-n3u9; the generator-era content went with the generator).
 
 ## NthLayer at a glance
 
@@ -545,8 +546,8 @@ Per-spec reconciliation in
 
 - Integration testing harness, demo.sh guards, three-tier boot
   sequence: `docs/integration-testing.md`.
-- AGENTS.md (long form): project vision, roadmap, project layout,
-  development patterns, git workflow, beads integration.
+- AGENTS.md (short working guide): commands, layout, conventions, git
+  workflow, beads.
 - Per-component CLAUDE.md files describe each component's conventions.
 - Project memory / Rob's preferences across sessions:
   `~/.claude/projects/-Users-robfox-Documents-GitHub-nthlayer-ecosystem/memory/MEMORY.md`.
