@@ -291,7 +291,7 @@ only asked whether a breach existed.
   target of 98.5, and `--severity-by-budget` checks that its severity is
   the one nthlayer-workers' documented thresholds give for the target and
   value the same verdict reports (under 200% of the error budget low,
-  200 to 500% high, over 500% critical). No one severity is expected: the
+  200% to under 500% high, 500% and over critical). No one severity is expected: the
   first breach fires wherever the SLI is when it crosses the target, and a
   run on 2026-11-27 saw `low`. Both numbers must be percentages, so a
   ratio in either field fails.

@@ -20,7 +20,7 @@ source at ``main`` on 2026-11-27, not from this helper:
 
 The severities expected of a breach are nthlayer-workers' documented
 thresholds (its ``docs/architecture.md``, measure: under 200% of the error
-budget consumed is low, 200 to 500% high, over 500% critical), worked by hand
+budget consumed is low, 200% to under 500% high, 500% and over critical), worked by hand
 in BUDGET_CASES below, not computed by the code under test.
 
 The bench check is exercised with a stand-in for ``fetch_case_bench``: this

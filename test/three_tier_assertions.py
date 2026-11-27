@@ -243,7 +243,8 @@ async def _poll_rows(client: CoreAPIClient, *, description: str, fetch,
 # --- commands ---------------------------------------------------------------
 
 async def cmd_wait_heartbeat(args: argparse.Namespace) -> None:
-    """Poll /heartbeats until at least one entry exists for the named component."""
+    """Poll /heartbeats until an entry exists for the named component (with
+    the health --expect-health names, when given)."""
     async with CoreAPIClient(base_url=args.core_url) as client:
         unhealthy: list[str] = []
 
