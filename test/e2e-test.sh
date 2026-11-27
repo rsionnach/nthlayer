@@ -230,9 +230,12 @@ step4() {
     # stdout (e.g. `VERDICT_ID=...`, `VERDICT_CREATED_AT=...`); eval'ing
     # them here surfaces them as bash globals for subsequent steps.
     local output
+    # Content as in integration-three-tier.sh (opensrm-yze8).
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-verdict-type quality_breach \
         --service fraud-detect --core-url "${CORE_URL}" \
-        --timeout 180 --interval 2) \
+        --timeout 180 --interval 2 \
+        --where data.slo_name=reversal_rate --where data.judgment_type=reversal_rate \
+        --where data.target=98.5 --severity-by-budget) \
         || { fail "no quality_breach in 180s"; return; }
     eval "${output}"
     QUALITY_BREACH_ID="${VERDICT_ID}"
@@ -266,8 +269,13 @@ CORRELATION_SNAPSHOT_ID=""
 
 step6() {
     local output
+    # Without step 4's breach id the content checks below cannot match:
+    # say so now, not after a timeout with a misleading reason.
+    [[ -n "${QUALITY_BREACH_ID}" ]] || { fail "skipped: no quality_breach id from step 4"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-assessment-kind correlation_snapshot \
-        --core-url "${CORE_URL}" --timeout 60 --interval 1) \
+        --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1 \
+        --where data.domain.service=fraud-detect \
+        --contains "data.parent_ids=${QUALITY_BREACH_ID}" --at-least data.event_count=1) \
         || { fail "no correlation_snapshot in 60s"; return; }
     eval "${output}"
     CORRELATION_SNAPSHOT_ID="${ASSESSMENT_ID}"
@@ -286,15 +294,19 @@ CASE_ID=""
 step7() {
     local output
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-verdict-type triage \
-        --core-url "${CORE_URL}" --timeout 60 --interval 1) \
+        --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1) \
         || { fail "no triage verdict in 60s"; return; }
     eval "${output}"
     TRIAGE_ID="${VERDICT_ID}"
     info "triage verdict: ${TRIAGE_ID}"
 
+    # Without step 4's breach id the content check below cannot match:
+    # say so now, not after a timeout with a misleading reason.
+    [[ -n "${QUALITY_BREACH_ID}" ]] || { fail "skipped: no quality_breach id from step 4"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-case \
         --service fraud-detect --core-url "${CORE_URL}" \
-        --timeout 30 --interval 1) \
+        --timeout 30 --interval 1 \
+        --where "underlying_verdict=${QUALITY_BREACH_ID}") \
         || { fail "no case in 30s"; return; }
     eval "${output}"
     [[ -n "${CASE_ID}" ]] || { fail "empty case id"; return; }

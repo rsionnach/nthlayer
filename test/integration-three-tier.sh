@@ -189,29 +189,43 @@ run_assertion() {
 }
 
 log "Wait for measure → quality_breach (up to 180s for Prometheus 2m window to fill)"
+# Content, not only presence (opensrm-yze8): the breach is the reversal_rate
+# SLO's, against the manifest's 98.5 target, and its severity is the one the
+# documented budget thresholds give for the target and value it reports
+# (opensrm-pa2w: every breach was once "critical" and this step passed).
 run_assertion "quality_breach" wait-verdict-type quality_breach \
-    --service fraud-detect --core-url "${CORE_URL}" --timeout 180 --interval 2
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 180 --interval 2 \
+    --where data.slo_name=reversal_rate --where data.judgment_type=reversal_rate \
+    --where data.target=98.5 --severity-by-budget
 QUALITY_BREACH_ID="${VERDICT_ID}"
 QUALITY_BREACH_AT="${VERDICT_CREATED_AT}"
-pass "quality_breach: ${QUALITY_BREACH_ID} at ${QUALITY_BREACH_AT}"
+pass "quality_breach: ${QUALITY_BREACH_ID} at ${QUALITY_BREACH_AT} severity=${VERDICT_SEVERITY}"
 
 # Latency budget starts here per design: from quality_breach.created_at to
 # the moment fetch_case_bench can return the case.
 log "Wait for correlate → correlation_snapshot (assessment)"
+# The snapshot must be fraud-detect's and name this run's breach as a
+# trigger: respond anchors the case on data.parent_ids.
 run_assertion "correlation_snapshot" wait-assessment-kind correlation_snapshot \
-    --core-url "${CORE_URL}" --timeout 30 --interval 1
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 30 --interval 1 \
+    --where data.domain.service=fraud-detect \
+    --contains "data.parent_ids=${QUALITY_BREACH_ID}" --at-least data.event_count=1
 CORR_ID="${ASSESSMENT_ID}"
 pass "correlation_snapshot: ${CORR_ID} at ${ASSESSMENT_CREATED_AT}"
 
 log "Wait for respond → triage verdict"
 run_assertion "triage" wait-verdict-type triage \
-    --core-url "${CORE_URL}" --timeout 60 --interval 1
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1
 TRIAGE_ID="${VERDICT_ID}"
 pass "triage: ${TRIAGE_ID} at ${VERDICT_CREATED_AT}"
 
 log "Wait for respond → case"
+# The case must be anchored on this run's breach verdict (the bench briefing
+# walks lineage from it). Its priority is printed, not asserted: what an
+# AI-gate breach's priority should be is not settled (opensrm-hyxa review).
 run_assertion "case" wait-case \
-    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1
+    --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1 \
+    --where "underlying_verdict=${QUALITY_BREACH_ID}"
 CASE_ID_HIT="${CASE_ID}"
 CASE_AT="${CASE_CREATED_AT}"
 pass "case: ${CASE_ID_HIT} priority=${CASE_PRIORITY} at ${CASE_AT}"
@@ -242,8 +256,8 @@ pass "triage verdict's ancestors reach quality_breach"
 
 log "Bench reads case via core API (sre.case_bench.fetch_case_bench)"
 ${RUN_BENCH} python "${ASSERTIONS}" fetch-case-via-bench \
-    --state pending --core-url "${CORE_URL}"
-pass "bench logic layer fetched ≥1 case via core API"
+    --state pending --core-url "${CORE_URL}" --expect-case-id "${CASE_ID_HIT}"
+pass "bench logic layer fetched case ${CASE_ID_HIT} via core API"
 
 # ---------------------------------------------------------------------------
 # Pipeline latency assertion (Rob's design addition #2)

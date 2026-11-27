@@ -224,9 +224,9 @@ boot_three_tier_stack() {
     WORKERS_PID=$!
 
     tt_log "Wait for first worker heartbeat"
-    ${run_bench} python "${assertions}" wait-heartbeat \
+    ${run_bench} python "${assertions}" wait-heartbeat --expect-health healthy \
         --core-url "${core_url}" --timeout 30 --interval 1 >/dev/null \
-        || tt_fail "no heartbeat in 30s; see ${work_dir}/workers.log"
+        || tt_fail "no healthy heartbeat in 30s; see ${work_dir}/workers.log"
     tt_pass "workers ready (pid ${WORKERS_PID})"
 }
 

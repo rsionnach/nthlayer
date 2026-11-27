@@ -59,6 +59,13 @@ cross-reference.
   the core binding `ok`. No Docker. CI:
   `.github/workflows/override-binding-smoke.yml`, siblings at `main`
   (nightly, and PRs touching it; opensrm-qgmy).
+- `test/test_three_tier_content.py` — the content options of
+  `three_tier_assertions.py`'s `wait-*` commands, heartbeat health and the
+  bench case check, against the real core app in one process
+  (opensrm-yze8). Each check is shown to accept the row workers writes and
+  to refuse one with wrong content, the always-`critical` breach of
+  opensrm-pa2w included. No Docker. CI: `retrospective-seam.yml`, with the
+  test below.
 - `test/test_three_tier_retrospective.py` — the retrospective commands of
   `three_tier_assertions.py` (`snapshot-of-verdict`,
   `assert-no-retrospective`, `resolve-cases-for-snapshot`,
@@ -271,9 +278,36 @@ Trigger:
 Timeouts chosen for the Prometheus 2m window:
 
 1. `wait-verdict-type quality_breach --service fraud-detect` (180s).
-2. `wait-assessment-kind correlation_snapshot` (30s).
-3. `wait-verdict-type triage` (60s).
+2. `wait-assessment-kind correlation_snapshot --service fraud-detect` (30s).
+3. `wait-verdict-type triage --service fraud-detect` (60s).
 4. `wait-case --service fraud-detect` (60s).
+
+Steps 1, 2 and 4 wait for a row with the right content, not for any row
+(opensrm-yze8, from the opensrm-hyxa review). opensrm-pa2w was a breach
+severity that was always `critical` while this test passed, because it
+only asked whether a breach existed.
+
+- The breach (1) is the `reversal_rate` SLO's, against the manifest's
+  target of 98.5, and `--severity-by-budget` checks that its severity is
+  the one nthlayer-workers' documented thresholds give for the target and
+  value the same verdict reports (under 200% of the error budget low,
+  200% to under 500% high, 500% and over critical). No one severity is expected: the
+  first breach fires wherever the SLI is when it crosses the target, and a
+  run on 2026-11-27 saw `low`. Both numbers must be percentages, so a
+  ratio in either field fails.
+- The snapshot (2) names this run's breach in `data.parent_ids`, is
+  fraud-detect's, and counts at least one event.
+- The case (4) is anchored on this run's breach (`underlying_verdict`).
+  Its priority is printed and not asserted: what priority an AI-gate
+  breach should get is not settled.
+- The bench step asserts bench returns that case, not any case, and the
+  boot waits for a heartbeat core reports `healthy`.
+
+The options are `--where PATH=VALUE`, `--contains PATH=VALUE` and
+`--at-least PATH=NUMBER` on the three `wait-*` commands. Rows that do not
+match are skipped, so a newer unrelated row cannot be taken by mistake,
+and a timeout names what the rows it saw carried. `demo/demo.sh` uses the
+commands without them: it paces a demo and asserts nothing.
 
 learn's retrospective is asserted last, after the bench and latency steps
 (opensrm-mtxr), because it needs the case resolved and the bench step needs

@@ -26,7 +26,8 @@ name: CI
 #     binding seam (test/test_jmy18_smoke.py, opensrm-qgmy); nightly + PR.
 #   - .github/workflows/retrospective-seam.yml: the three-tier harness's
 #     retrospective commands against the real core, and the harness library's
-#     quiet-period floor (opensrm-mtxr); nightly + PR.
+#     quiet-period floor (opensrm-mtxr); its content checks
+#     (opensrm-yze8); nightly + PR.
 #   - .github/workflows/release.yml: meta-v* tag publish to PyPI.
 #
 # Per-component Python testing remains the responsibility of each sibling repo.
