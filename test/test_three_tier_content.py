@@ -110,7 +110,7 @@ def _breach_data(**overrides) -> dict:
     """measure's breach data for the harness scenario: reversal_rate, target
     98.5, settled SLI 92.0, which is 433% of the budget: high."""
     data = {
-        "slo_name": "reversal_rate", "slo_key": "fraud-detect/reversal_rate",
+        "slo_name": "reversal_rate", "slo_key": "fraud-detect:reversal_rate",
         "severity": "high", "judgment_type": "reversal_rate",
         "target": 98.5, "current_value": 92.0,
     }
@@ -143,6 +143,7 @@ BUDGET_CASES = [
     (98.5, 95.6, "low"),        # 2.9 / 1.5 = 193%
     (98.5, 95.5, "high"),       # 3.0 / 1.5 = 200%, the boundary is high
     (98.5, 92.0, "high"),       # 6.5 / 1.5 = 433%, the harness's settled SLI
+    (98.5, 91.3, "high"),       # 7.2 / 1.5 = 480%
     (98.5, 91.0, "critical"),   # 7.5 / 1.5 = 500%, the boundary is critical
     (98.5, 60.0, "critical"),   # 38.5 / 1.5 = 2567%
     (99.0, 97.5, "low"),        # 1.5 / 1.0 = 150%
@@ -153,7 +154,7 @@ BUDGET_CASES = [
 
 @pytest.mark.parametrize(("target", "current", "severity"), BUDGET_CASES)
 def test_budget_severity_follows_the_documented_thresholds(target, current, severity):
-    assert len(BUDGET_CASES) == 9
+    assert len(BUDGET_CASES) == 10
     assert tta.budget_severity(target, current) == severity
 
 
@@ -193,6 +194,9 @@ WRONG_BREACHES = [
     {"severity": None},
     {"target": 0.985, "current_value": 0.92},               # ratios, not percentages
     {"current_value": 0.92},                                # a ratio beside a percentage
+    # The same ratio with the severity its arithmetic gives (6505%): what a
+    # pa2w-shaped bug writes. Only the percentage floor refuses it.
+    {"current_value": 0.92, "severity": "critical"},
     {"current_value": 99.0, "severity": "low"},             # not below target: no breach
     {"current_value": None},
     {"target": 99.0, "severity": "critical"},               # not the manifest's target
@@ -203,7 +207,7 @@ WRONG_BREACHES = [
 
 @pytest.mark.parametrize("wrong", WRONG_BREACHES)
 async def test_a_breach_with_wrong_content_is_refused(core, capsys, wrong):
-    assert len(WRONG_BREACHES) == 11
+    assert len(WRONG_BREACHES) == 12
     await _breach(core, **wrong)
     # The same row passes the presence check this replaces.
     await tta.cmd_wait_verdict_type(_args(verdict_type="quality_breach", service="fraud-detect"))
@@ -213,6 +217,51 @@ async def test_a_breach_with_wrong_content_is_refused(core, capsys, wrong):
         await tta.cmd_wait_verdict_type(_args(**BREACH_ARGS))
 
     assert capsys.readouterr().out == ""
+
+
+# Breaches whose severity agrees with their own arithmetic, so only the
+# percentage bounds refuse them. Checked with --severity-by-budget alone:
+# BREACH_ARGS' data.target=98.5 would refuse them first.
+NOT_PERCENTAGES = [
+    {"target": 100.5, "severity": "critical"},                    # over 100: no budget, "critical"
+    {"target": 0.985, "current_value": 0.92, "severity": "low"},  # ratios: 0.07% of the budget
+]
+
+
+@pytest.mark.parametrize("wrong", NOT_PERCENTAGES)
+async def test_a_self_consistent_breach_outside_the_percentage_range_is_refused(core, capsys, wrong):
+    assert len(NOT_PERCENTAGES) == 2
+    await _breach(core, **wrong)
+
+    with pytest.raises(TimeoutError):
+        await tta.cmd_wait_verdict_type(_args(
+            verdict_type="quality_breach", service="fraud-detect", severity_by_budget=True))
+
+    assert capsys.readouterr().out == ""
+
+
+async def test_a_value_of_another_type_does_not_match_its_spelling(core, capsys):
+    """--where compares a string with a string: JSON true is not "True"."""
+    await _breach(core, slo_name=True)
+
+    with pytest.raises(TimeoutError):
+        await tta.cmd_wait_verdict_type(_args(
+            verdict_type="quality_breach", service="fraud-detect", where=["data.slo_name=True"]))
+
+    assert capsys.readouterr().out == ""
+
+
+async def test_a_number_matches_to_within_rounding(core, capsys):
+    """98.5 computed (98.50000000001) is still the target 98.5; 98.6 is not."""
+    await _breach(core, target=98.5 + 1e-11)
+
+    await tta.cmd_wait_verdict_type(_args(
+        verdict_type="quality_breach", service="fraud-detect", where=["data.target=98.5"]))
+    assert _kv(capsys)["VERDICT_ID"] == BREACH
+
+    with pytest.raises(TimeoutError):
+        await tta.cmd_wait_verdict_type(_args(
+            verdict_type="quality_breach", service="fraud-detect", where=["data.target=98.6"]))
 
 
 async def test_the_matching_breach_is_found_behind_a_newer_one_that_does_not_match(core, capsys):
