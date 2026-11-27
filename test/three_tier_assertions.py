@@ -490,8 +490,8 @@ async def cmd_wait_retrospective(args: argparse.Namespace) -> None:
     missing = sorted((respond_ids | set(args.must_include)) - timeline_ids)
     if missing:
         _fail(
-            f"retrospective {retro.get('id')!r} timeline lacks respond's verdicts "
-            f"{missing!r}; it has {sorted(str(i) for i in timeline_ids)!r}"
+            f"retrospective {retro.get('id')!r} timeline lacks "
+            f"{missing!r} (respond's verdicts and the required ids); it has {sorted(str(i) for i in timeline_ids)!r}"
         )
     _print_kv(
         RETRO_ID=retro.get("id", ""),

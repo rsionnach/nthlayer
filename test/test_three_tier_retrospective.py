@@ -445,9 +445,7 @@ def test_the_new_commands_are_wired_into_main(core, capsys):
     ):
         assert tta.main([*argv, "--core-url", CORE_URL]) == 0
 
-    printed = dict(
-        line.split("=", 1) for line in capsys.readouterr().out.splitlines() if line
-    )
+    printed = _kv(capsys)
     assert printed["RETRO_CLOSED_BY"] == "quiet"
     assert printed["CASES_RESOLVED"] == "1"
     assert printed["NO_RETROSPECTIVE_OK"] == "true"

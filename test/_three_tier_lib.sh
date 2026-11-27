@@ -99,6 +99,15 @@ preflight_port_conflicts() {
 # Boot
 # ---------------------------------------------------------------------------
 
+# tt_valid_quiet_minutes <value>: 0 when <value> is a plain decimal number of
+# at least 0.5. The floor is the harness's 30 s latency budget: with a
+# shorter quiet period learn could close an incident's retrospective before
+# respond's case exists (opensrm-mtxr). awk does the arithmetic; the pattern
+# keeps out what awk would read as 0 ("abc") or accept in other notations.
+tt_valid_quiet_minutes() {
+    awk -v m="$1" 'BEGIN { exit !(m ~ /^[0-9]+(\.[0-9]+)?$/ && m + 0 >= 0.5) }'
+}
+
 # boot_three_tier_stack WORK_DIR TEST_DIR SPECS_DIR \
 #                       CORE_PORT FAKE_PORT CORE_URL PROMETHEUS_URL \
 #                       RUN_CORE RUN_WORKERS RUN_BENCH ASSERTIONS \
@@ -120,15 +129,6 @@ preflight_port_conflicts() {
 # Argument names mirror the variables both consumer scripts already
 # define; positional rather than keyword so this works on bash 3.2
 # (macOS default) without associative arrays.
-# tt_valid_quiet_minutes <value>: 0 when <value> is a plain decimal number of
-# at least 0.5. The floor is the harness's 30 s latency budget: with a
-# shorter quiet period learn could close an incident's retrospective before
-# respond's case exists (opensrm-mtxr). awk does the arithmetic; the pattern
-# keeps out what awk would read as 0 ("abc") or accept in other notations.
-tt_valid_quiet_minutes() {
-    awk -v m="$1" 'BEGIN { exit !(m ~ /^[0-9]+(\.[0-9]+)?$/ && m + 0 >= 0.5) }'
-}
-
 boot_three_tier_stack() {
     local work_dir="$1"
     local test_dir="$2"
