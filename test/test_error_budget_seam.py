@@ -17,9 +17,10 @@ written but not read is never expected.
 The manifests are the spec's v2 examples and generate's shipped examples, not
 fixtures written for this test. Nothing drops out unseen: a missing checkout
 fails rather than skipping (the opensrm-oh27 lesson), every file the loader
-rejects must be listed in EXPECTED_REJECTED with its reason, and the number
-that write an error budget is pinned. A manifest that stops loading, or a
-fixed one that starts, turns this red.
+rejects must be listed in EXPECTED_REJECTED with its reason, every file that
+loads and writes no budget must be listed in EXPECTED_NO_BUDGET, and the
+number that write an error budget is pinned. A manifest that stops loading,
+or a fixed one that starts, turns this red.
 
 Run from the ecosystem root with CI's command (.github/workflows/error-budget-seam.yml).
 NTHLAYER_ECOSYSTEM_ROOT names the directory holding the opensrm and
@@ -73,16 +74,18 @@ def _corpus_dirs(root: Path) -> tuple[Path, ...]:
     )
 
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-EXPECTED_WITH_BUDGET = 24  # 2026-11-18, common 5.12.1 / generate 4.1.0 / workers 4.2.2
+EXPECTED_WITH_BUDGET = 25  # 2026-11-27, common 5.12.3 / generate 4.1.0 / workers 4.4.0
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
-# file count. 27 availability + 21 latency + 1 error_rate on 2026-11-18,
+# file count. 28 availability + 22 latency + 1 error_rate on 2026-11-27,
 # counted per kind from generate's written rules, separately from this test.
 # Latency was 15 until common 5.12.1 read legacy indicators[].threshold_ms
 # (opensrm-s7b1, wo62.4.24), which gave six legacy latency SLOs a budget
-# (opensrm-x7y2).
-EXPECTED_AGREED_BUDGETS = 49
+# (opensrm-x7y2). The spec's services/worker.yaml joined the corpus with one
+# availability and one latency budget when its SLOs gained indicators
+# (opensrm-n5rq, opensrm-r8cs).
+EXPECTED_AGREED_BUDGETS = 51
 
 # Budgets measure asks for and generate's guard deliberately does not write
 # (generate recording_rules `_budget_skip_reason`: no budget is better than a
@@ -114,6 +117,23 @@ KIND_WITNESSES = {
     "error_rate": ("opensrm/spec/v2/examples/migration/api-full-v2.yaml", "payment-api-error-rate"),
 }
 
+# Every corpus file that loads and writes no budget, with why. Named, not
+# counted: with EXPECTED_REJECTED this accounts for every file outside
+# EXPECTED_WITH_BUDGET, so a file that leaves the corpus cannot pass unseen
+# (opensrm-r8cs). Only the file names are asserted; the reasons are notes.
+_NO_SLOS = "declares no SLOs"
+_THRESHOLDS_ONLY = "declares judgment thresholds only, no SLOs"
+EXPECTED_NO_BUDGET = {
+    "opensrm/spec/v2/examples/judgment-thresholds/all-five-types.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/calibration-both-bounds.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/feedback-latency-p50-only.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/segments-two-dimensions.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/single-bounds.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/services/ai-gate-without-judgment-slos.yaml": _NO_SLOS,
+    "opensrm/spec/v2/examples/services/batch.yaml": _NO_SLOS,
+    "opensrm/spec/v2/examples/services/database.yaml": _NO_SLOS,
+}
+
 _TEMPLATE = "template or fragment, not a service manifest"
 # Every corpus file the loader rejects, with why. Spec examples that should
 # load carry the bead tracking the divergence.
@@ -132,13 +152,9 @@ EXPECTED_REJECTED = {
     "opensrm/spec/v2/examples/template-extension.yaml": "opensrm-moq0",
     "opensrm/spec/v2/examples/minimal.yaml": "opensrm-ta0m",
     "opensrm/spec/v2/examples/x-service-type.yaml": "opensrm-ta0m",
-    "opensrm/spec/v2/examples/services/ai-gate-without-judgment-slos.yaml": "opensrm-ta0m",
-    "opensrm/spec/v2/examples/services/batch.yaml": "opensrm-ta0m",
-    "opensrm/spec/v2/examples/services/database.yaml": "opensrm-ta0m",
     "opensrm/spec/v2/examples/services/api.yaml": "opensrm-1qy1",
     "opensrm/spec/v2/examples/service-manifest-full.yaml": "opensrm-1qy1",
-    "opensrm/spec/v2/examples/services/stream.yaml": "opensrm-moq0",
-    "opensrm/spec/v2/examples/services/worker.yaml": "opensrm-moq0",
+    "opensrm/spec/v2/examples/services/stream.yaml": "opensrm-47tt (re-pin: opensrm-xfxx)",
     "opensrm/spec/v2/examples/services/ai-gate.yaml": "opensrm-moq0",
 }
 
@@ -192,6 +208,7 @@ def _read(path: Path, spec_dir: Path) -> set[str]:
 
 def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     with_budget = []
+    no_budget = set()
     rejected = set()
     read_not_written: set[tuple[str, str]] = set()
     agreed_kinds: set[str] = set()
@@ -245,6 +262,8 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         }
         if written:
             with_budget.append(rel)
+        else:
+            no_budget.add(rel)
 
     # Collected, then asserted once, so one failure does not hide another. A
     # file that raises fails the test at once, above (opensrm-x7y2).
@@ -252,6 +271,11 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         problems["EXPECTED_REJECTED (add each new file with a reason or bead)"] = {
             "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
             "now_loads": sorted(set(EXPECTED_REJECTED) - rejected),
+        }
+    if no_budget != set(EXPECTED_NO_BUDGET):
+        problems["EXPECTED_NO_BUDGET (files that load and write no budget)"] = {
+            "newly_without_budget": sorted(no_budget - set(EXPECTED_NO_BUDGET)),
+            "gone_or_now_with_budget_or_rejected": sorted(set(EXPECTED_NO_BUDGET) - no_budget),
         }
     # A pinned file that left the corpus or stopped loading must not pass.
     if read_not_written != set(EXPECTED_READ_NOT_WRITTEN):
