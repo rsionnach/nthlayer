@@ -116,6 +116,23 @@ KIND_WITNESSES = {
     "error_rate": ("opensrm/spec/v2/examples/migration/api-full-v2.yaml", "payment-api-error-rate"),
 }
 
+# Every corpus file that loads and writes no budget, with why. Named, not
+# counted: with EXPECTED_REJECTED this accounts for every file outside
+# EXPECTED_WITH_BUDGET, so a file that leaves the corpus, or stops declaring
+# what it declared, cannot pass unseen (opensrm-r8cs).
+_NO_SLOS = "declares no SLOs"
+_THRESHOLDS_ONLY = "declares judgment thresholds only, no SLOs"
+EXPECTED_NO_BUDGET = {
+    "opensrm/spec/v2/examples/judgment-thresholds/all-five-types.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/calibration-both-bounds.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/feedback-latency-p50-only.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/segments-two-dimensions.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/judgment-thresholds/single-bounds.yaml": _THRESHOLDS_ONLY,
+    "opensrm/spec/v2/examples/services/ai-gate-without-judgment-slos.yaml": _NO_SLOS,
+    "opensrm/spec/v2/examples/services/batch.yaml": _NO_SLOS,
+    "opensrm/spec/v2/examples/services/database.yaml": _NO_SLOS,
+}
+
 _TEMPLATE = "template or fragment, not a service manifest"
 # Every corpus file the loader rejects, with why. Spec examples that should
 # load carry the bead tracking the divergence.
@@ -190,6 +207,7 @@ def _read(path: Path, spec_dir: Path) -> set[str]:
 
 def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
     with_budget = []
+    no_budget = set()
     rejected = set()
     read_not_written: set[tuple[str, str]] = set()
     agreed_kinds: set[str] = set()
@@ -243,6 +261,8 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         }
         if written:
             with_budget.append(rel)
+        else:
+            no_budget.add(rel)
 
     # Collected, then asserted once, so one failure does not hide another. A
     # file that raises fails the test at once, above (opensrm-x7y2).
@@ -250,6 +270,11 @@ def test_measure_reads_exactly_the_error_budget_generate_writes(tmp_path):
         problems["EXPECTED_REJECTED (add each new file with a reason or bead)"] = {
             "newly_rejected": sorted(rejected - set(EXPECTED_REJECTED)),
             "now_loads": sorted(set(EXPECTED_REJECTED) - rejected),
+        }
+    if no_budget != set(EXPECTED_NO_BUDGET):
+        problems["EXPECTED_NO_BUDGET (files that load and write no budget)"] = {
+            "newly_without_budget": sorted(no_budget - set(EXPECTED_NO_BUDGET)),
+            "gone_or_now_with_budget_or_rejected": sorted(set(EXPECTED_NO_BUDGET) - no_budget),
         }
     # A pinned file that left the corpus or stopped loading must not pass.
     if read_not_written != set(EXPECTED_READ_NOT_WRITTEN):
