@@ -73,7 +73,7 @@ def _corpus_dirs(root: Path) -> tuple[Path, ...]:
     )
 
 # Exact, not a floor: a floor lets manifests leave the seam unseen.
-EXPECTED_WITH_BUDGET = 25  # 2026-11-24, common 5.12.1 / generate 4.1.0 / workers 4.3.0
+EXPECTED_WITH_BUDGET = 25  # 2026-11-27, common 5.12.3 / generate 4.1.0 / workers 4.4.0
 # Budgets both sides agree on, counted per SLO, not per file: equal sets pass
 # when a change drops a budget from generate and measure at once (both classify
 # SLOs from the same parsed slo_type), and a file keeping one budget keeps the
