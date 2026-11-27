@@ -138,13 +138,15 @@ BREACH_ARGS = {
 
 # (target, current_value, severity). Consumption = (target - current) /
 # (100 - target) * 100, worked by hand against the documented thresholds.
+# The doc's "200-500% = high / >500% = critical" leaves exactly 500% to
+# either side: it is critical (Rob's ruling, 2026-11-27, opensrm-yze8).
 BUDGET_CASES = [
     (98.5, 98.0, "low"),        # 0.5 / 1.5 = 33%
     (98.5, 95.6, "low"),        # 2.9 / 1.5 = 193%
     (98.5, 95.5, "high"),       # 3.0 / 1.5 = 200%, the boundary is high
     (98.5, 92.0, "high"),       # 6.5 / 1.5 = 433%, the harness's settled SLI
     (98.5, 91.3, "high"),       # 7.2 / 1.5 = 480%
-    (98.5, 91.0, "critical"),   # 7.5 / 1.5 = 500%, the boundary is critical
+    (98.5, 91.0, "critical"),   # 7.5 / 1.5 = 500%: critical, by the ruling above
     (98.5, 60.0, "critical"),   # 38.5 / 1.5 = 2567%
     (99.0, 97.5, "low"),        # 1.5 / 1.0 = 150%
     (99.0, 96.0, "high"),       # 3.0 / 1.0 = 300%

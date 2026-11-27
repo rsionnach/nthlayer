@@ -162,8 +162,10 @@ _PERCENT_FLOOR = 50.0
 def budget_severity(target: float, current_value: float) -> str:
     """The severity a budget-consumption judgment breach must carry, from
     nthlayer-workers' documented thresholds (docs/architecture.md, "measure":
-    under 200% of the error budget consumed is low, 200 to 500% high, over
-    500% critical). Both inputs are percentages (target 98.5, not 0.985)."""
+    under 200% of the error budget consumed is low, 200% to under 500% high,
+    500% and over critical; exactly 500% is critical by Rob's ruling of
+    2026-11-27, opensrm-yze8). Both inputs are percentages (target 98.5, not
+    0.985)."""
     budget = 100.0 - target
     if budget <= 0:
         return "critical"
