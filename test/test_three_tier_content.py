@@ -394,6 +394,48 @@ async def test_bench_returning_only_other_cases_is_refused(core, bench, capsys):
     assert capsys.readouterr().out == ""
 
 
+# --- PATH=VALUE ---------------------------------------------------------------
+
+# What a caller types -> what the row must hold. Only a finite number is read
+# as a number; everything else, ids and JSON-looking words included, is the
+# string it is.
+SPLIT_CASES = [
+    ("data.target=98.5", ("data.target", 98.5)),
+    ("data.event_count=1", ("data.event_count", 1)),
+    (f"underlying_verdict={BREACH}", ("underlying_verdict", BREACH)),
+    ("data.label=true", ("data.label", "true")),
+    ("data.label=null", ("data.label", "null")),
+    ("data.label=NaN", ("data.label", "NaN")),
+    ("data.label=Infinity", ("data.label", "Infinity")),
+    ("data.note=a=b", ("data.note", "a=b")),
+    ("data.note=", ("data.note", "")),
+]
+
+
+@pytest.mark.parametrize(("spec", "expected"), SPLIT_CASES)
+def test_a_value_is_a_number_only_when_it_reads_as_a_finite_one(spec, expected):
+    assert len(SPLIT_CASES) == 9
+    path, value = tta._split(spec)
+    assert (path, value, type(value)) == (*expected, type(expected[1]))
+
+
+@pytest.mark.parametrize("spec", ["no-equals-sign", "=value"])
+def test_a_spec_without_a_path_or_a_value_is_refused(spec):
+    with pytest.raises(SystemExit) as exc_info:
+        tta._split(spec)
+    assert exc_info.value.code == 1
+
+
+async def test_a_string_field_matches_a_word_that_is_also_json(core, capsys):
+    await _breach(core, slo_name="true")
+
+    await tta.cmd_wait_verdict_type(_args(
+        verdict_type="quality_breach", service="fraud-detect", where=["data.slo_name=true"],
+    ))
+
+    assert _kv(capsys)["VERDICT_ID"] == BREACH
+
+
 # --- the option parser, as the scripts call it -------------------------------
 
 

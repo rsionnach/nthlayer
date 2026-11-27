@@ -19,6 +19,7 @@ import asyncio
 import datetime as dt
 import inspect
 import json
+import math
 import sys
 from typing import Any, NoReturn
 
@@ -101,15 +102,21 @@ def _lookup(row: Any, path: str) -> Any:
 
 
 def _split(spec: str) -> tuple[str, Any]:
-    """``path=value`` -> (path, value). The value is read as JSON when it is
-    JSON (``98.5``, ``true``), else kept as the string it is."""
+    """``path=value`` -> (path, value). The value is a number when it reads
+    as a finite one (``98.5``, ``1``), and otherwise the string it is: ``true``,
+    ``null`` and ``NaN`` stay strings, so an id or a label is never turned
+    into something else. A string field made only of digits cannot be matched;
+    no caller needs one."""
     path, sep, raw = spec.partition("=")
     if not sep or not path:
         _fail(f"expected PATH=VALUE, got {spec!r}")
     try:
-        return path, json.loads(raw)
+        value = json.loads(raw)
     except ValueError:
         return path, raw
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return path, value
+    return path, raw
 
 
 def _same(actual: Any, expected: Any) -> bool:
@@ -195,7 +202,8 @@ def _budget_severity_mismatch(data: Any) -> str | None:
 
 def _add_content_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--where", action="append", metavar="PATH=VALUE",
-                        help="the row must carry VALUE at dotted PATH (repeatable)")
+                        help="the row must carry VALUE at dotted PATH (repeatable). "
+                             "VALUE is a number when it reads as one, else a string")
     parser.add_argument("--contains", action="append", metavar="PATH=VALUE",
                         help="the list at PATH must hold VALUE (repeatable)")
     parser.add_argument("--at-least", action="append", metavar="PATH=NUMBER",

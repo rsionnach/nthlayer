@@ -269,6 +269,9 @@ CORRELATION_SNAPSHOT_ID=""
 
 step6() {
     local output
+    # Without step 4's breach id the content checks below cannot match:
+    # say so now, not after a timeout with a misleading reason.
+    [[ -n "${QUALITY_BREACH_ID}" ]] || { fail "skipped: no quality_breach id from step 4"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-assessment-kind correlation_snapshot \
         --service fraud-detect --core-url "${CORE_URL}" --timeout 60 --interval 1 \
         --where data.domain.service=fraud-detect \
@@ -297,6 +300,9 @@ step7() {
     TRIAGE_ID="${VERDICT_ID}"
     info "triage verdict: ${TRIAGE_ID}"
 
+    # Without step 4's breach id the content check below cannot match:
+    # say so now, not after a timeout with a misleading reason.
+    [[ -n "${QUALITY_BREACH_ID}" ]] || { fail "skipped: no quality_breach id from step 4"; return; }
     output=$(${RUN_BENCH} python "${ASSERTIONS}" wait-case \
         --service fraud-detect --core-url "${CORE_URL}" \
         --timeout 30 --interval 1 \
