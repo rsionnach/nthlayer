@@ -35,7 +35,7 @@ from pathlib import Path
 import httpx
 import pytest
 from httpx import ASGITransport
-from nthlayer_common.api_client import CoreAPIClient
+from nthlayer_common.api_client import APIResult, CoreAPIClient
 from nthlayer_core import server
 from nthlayer_core.store import Store
 
@@ -175,6 +175,26 @@ async def test_snapshot_of_verdict_fails_for_a_verdict_no_snapshot_claims(core, 
     assert capsys.readouterr().out == ""
 
 
+async def test_snapshot_of_verdict_fails_for_a_verdict_two_snapshots_claim(core, capsys):
+    """One verdict, two snapshots among its parents: which incident it
+    belongs to cannot be told, and the harness must not guess."""
+    ids = await _seed_incident(core)
+    await _seed_incident(core, snapshot_id="csn-other", breach_id="vrd-breach-2", minute=10)
+    await _post(core.submit_verdict({
+        "id": "vrd-shared", "type": "remediation", "service": "fraud-detect",
+        "created_at": "2026-11-25T10:30:00+00:00", "parent_ids": [SNAPSHOT, "csn-other"],
+    }))
+
+    with pytest.raises(SystemExit) as exc_info:
+        await tta.cmd_snapshot_of_verdict(_args(verdict_id="vrd-shared"))
+
+    assert exc_info.value.code == 1
+    assert capsys.readouterr().out == ""
+    # A verdict only one of them claims is still found.
+    await tta.cmd_snapshot_of_verdict(_args(verdict_id=ids[0]))
+    assert _kv(capsys)["SNAPSHOT_ID"] == SNAPSHOT
+
+
 # --- no retrospective while the case is open --------------------------------
 
 
@@ -269,6 +289,26 @@ async def test_resolving_fails_when_there_is_no_open_case_for_the_incident(core,
     assert capsys.readouterr().out == ""
 
 
+async def test_a_resolve_that_core_refuses_is_not_reported_as_resolved(core, capsys, monkeypatch):
+    """The PUT does not go through: the harness must stop there, not go on
+    to wait for a retrospective the open case still holds back."""
+    class _RefusedResolve(_InProcessClient):
+        async def resolve_case(self, case_id: str, resolution_id: str) -> APIResult:
+            return APIResult(ok=False, status_code=503, error="unavailable")
+
+    ids = await _seed_incident(core)
+    monkeypatch.setattr(tta, "CoreAPIClient", _RefusedResolve)
+
+    with pytest.raises(SystemExit) as exc_info:
+        await tta.cmd_resolve_cases_for_snapshot(
+            _args(snapshot_id=SNAPSHOT, resolution_id=ids[-1])
+        )
+
+    assert exc_info.value.code == 1
+    assert capsys.readouterr().out == ""
+    assert (await core.get_case(f"case-{SNAPSHOT}")).data["state"] == "pending"
+
+
 async def test_resolving_fails_for_an_unknown_snapshot(core, capsys):
     await _seed_incident(core)
 
@@ -301,6 +341,22 @@ async def test_a_quiet_retrospective_with_responds_verdicts_passes(core, capsys)
         "RETRO_VERDICT_COUNT": "4",
         "RETRO_RESPOND_VERDICTS": "3",
     }
+
+
+async def test_wait_retrospective_waits_for_one_written_after_it_starts(core, capsys):
+    """As in the harness: learn writes it a cycle or two after the case is
+    resolved, not before the wait begins."""
+    ids = await _seed_incident(core)
+
+    async def learn_writes_it_later() -> None:
+        await asyncio.sleep(0.2)
+        await _retrospective(core, timeline_ids=[BREACH, *ids])
+
+    writer = asyncio.create_task(learn_writes_it_later())
+    await tta.cmd_wait_retrospective(_wait_args(ids, timeout=5.0, interval=0.05))
+    await writer
+
+    assert _kv(capsys)["RETRO_ID"] == f"retro-{SNAPSHOT}"
 
 
 async def test_a_retrospective_closed_by_max_age_fails(core, capsys):
